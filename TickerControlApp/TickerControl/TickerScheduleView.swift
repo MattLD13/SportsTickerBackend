@@ -15,6 +15,7 @@ struct TickerScheduleView: View {
     @State private var showingConditionEditor = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var scheduleMutationRevision: [String: Int] = [:]
 
     private var tickerTimeZone: TimeZone {
         TimeZone(identifier: schedule?.timezone ?? "") ?? .current
@@ -254,6 +255,8 @@ struct TickerScheduleView: View {
         startMinute: Int,
         endMinute: Int
     ) {
+        let revision = (scheduleMutationRevision[block.id] ?? 0) + 1
+        scheduleMutationRevision[block.id] = revision
         let optimisticBlock = TickerScheduleBlock(
             id: block.id,
             ticker_id: block.ticker_id,
@@ -282,10 +285,12 @@ struct TickerScheduleView: View {
         ) { result in
             switch result {
             case .success(let updated):
+                guard scheduleMutationRevision[updated.id] == revision else { return }
                 updateLocalSchedule { blocks in
                     blocks.map { $0.id == updated.id ? updated : $0 }
                 }
             case .failure(let error):
+                guard scheduleMutationRevision[block.id] == revision else { return }
                 errorMessage = error.localizedDescription
                 loadSchedule()
             }
@@ -339,9 +344,6 @@ private struct ScheduleTimelineView: View {
     let onEdit: (TickerScheduleBlock) -> Void
     let onDelete: (TickerScheduleBlock) -> Void
     let onUpdate: (TickerScheduleBlock, [Int], Int, Int) -> Void
-
-    @State private var interaction: TimelineInteraction?
-    @State private var gestureStart: TimelineInteraction?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -448,7 +450,7 @@ private struct ScheduleTimelineView: View {
                     }
                 }
             }
-            .scrollDisabled(interaction != nil || gestureStart != nil)
+            .scrollDisabled(isInteracting)
             .scrollIndicators(.visible)
             .onAppear {
                 DispatchQueue.main.async {
@@ -458,10 +460,11 @@ private struct ScheduleTimelineView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y
             } action: { _, offset in
-                guard interaction == nil, gestureStart == nil else { return }
+                guard !isInteracting else { return }
                 let cycleHeight = Self.timelineHeight
                 if offset < cycleHeight * 0.65 || offset > cycleHeight * 3.35 {
                     DispatchQueue.main.async {
+                        guard !self.isInteracting else { return }
                         proxy.scrollTo(Self.nowAnchorID, anchor: .center)
                     }
                 }
@@ -498,6 +501,7 @@ private struct ScheduleTimelineView: View {
                 }
                 .frame(width: trackWidth, height: Self.timelineHeight)
                 .contentShape(Rectangle())
+                .coordinateSpace(name: "schedule-timeline")
             }
         }
         .frame(height: Self.timelineHeight)
@@ -550,17 +554,6 @@ private struct ScheduleTimelineView: View {
         let days = selectedDays
         var result: [TimelineOccurrence] = []
         for block in blocks {
-            let preview = interaction?.blockID == block.id ? interaction : nil
-            if let preview {
-                result.append(TimelineOccurrence(
-                    id: block.id,
-                    block: block,
-                    startMinute: preview.startMinute,
-                    endMinute: preview.endMinute,
-                    isPreview: true
-                ))
-                continue
-            }
             let matchesSelection = days.count == 1
                 ? block.days_of_week.contains(days.first!)
                 : Set(block.days_of_week) == days
@@ -578,129 +571,17 @@ private struct ScheduleTimelineView: View {
     }
 
     private func timelineBlock(_ occurrence: TimelineOccurrence, width: CGFloat) -> some View {
-        let duration = occurrence.endMinute - occurrence.startMinute
-        let blockHeight = max(40, CGFloat(duration) * Self.minuteHeight - 4)
-        return VStack(spacing: 0) {
-            resizeHandle(edge: .start, occurrence: occurrence)
-            HStack(spacing: 4) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(occurrence.block.mode.capitalized)
-                        .font(.caption.bold())
-                        .lineLimit(1)
-                    Text("\(Self.clock(occurrence.startMinute))–\(Self.clock(occurrence.endMinute))")
-                        .font(.caption2.monospacedDigit())
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .highPriorityGesture(moveGesture(occurrence))
-                Menu {
-                    Button("Edit", action: { onEdit(occurrence.block) })
-                    Button("Delete", role: .destructive, action: { onDelete(occurrence.block) })
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.caption.bold())
-                        .frame(width: 28, height: 30)
-                }
-                .menuStyle(.borderlessButton)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            resizeHandle(edge: .end, occurrence: occurrence)
-        }
-        .padding(.horizontal, 4)
-        .frame(width: max(0, width - 12), height: blockHeight)
-        .foregroundColor(.white)
-        .background(modeColor(occurrence.block.mode).opacity(occurrence.block.enabled ? 0.82 : 0.35))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(modeColor(occurrence.block.mode), lineWidth: occurrence.isPreview ? 2 : 1))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .offset(x: 6, y: y(for: occurrence.startMinute) + 2)
-        .opacity(occurrence.block.enabled ? 1 : 0.55)
-    }
-
-    private func resizeHandle(edge: ResizeEdge, occurrence: TimelineOccurrence) -> some View {
-        Capsule()
-            .fill(Color.white.opacity(0.8))
-            .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-            .highPriorityGesture(resizeGesture(occurrence, edge: edge))
-    }
-
-    private func moveGesture(_ occurrence: TimelineOccurrence) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let base: TimelineInteraction
-                if let gestureStart, gestureStart.blockID == occurrence.block.id {
-                    base = gestureStart
-                } else {
-                    base = TimelineInteraction(
-                        blockID: occurrence.block.id,
-                        startMinute: occurrence.startMinute,
-                        endMinute: occurrence.endMinute
-                    )
-                    self.gestureStart = base
-                }
-                isInteracting = true
-                let duration = base.endMinute - base.startMinute
-                let delta = snapMinute(minute(for: value.translation.height))
-                let nextStart = max(0, min(1440 - duration, base.startMinute + delta))
-                interaction = TimelineInteraction(
-                    blockID: occurrence.block.id,
-                    startMinute: nextStart,
-                    endMinute: nextStart + duration
-                )
-            }
-            .onEnded { _ in
-                finishInteraction(for: occurrence)
-            }
-    }
-
-    private func resizeGesture(_ occurrence: TimelineOccurrence, edge: ResizeEdge) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let base: TimelineInteraction
-                if let gestureStart, gestureStart.blockID == occurrence.block.id {
-                    base = gestureStart
-                } else {
-                    base = TimelineInteraction(
-                        blockID: occurrence.block.id,
-                        startMinute: occurrence.startMinute,
-                        endMinute: occurrence.endMinute
-                    )
-                    self.gestureStart = base
-                }
-                isInteracting = true
-                var start = base.startMinute
-                var end = base.endMinute
-                let minuteDelta = snapMinute(minute(for: value.translation.height))
-                if edge == .start {
-                    start = max(0, min(end - Self.minimumBlockMinutes, base.startMinute + minuteDelta))
-                } else {
-                    end = min(1440, max(start + Self.minimumBlockMinutes, base.endMinute + minuteDelta))
-                }
-                interaction = TimelineInteraction(
-                    blockID: occurrence.block.id,
-                    startMinute: start,
-                    endMinute: end
-                )
-            }
-            .onEnded { _ in
-                finishInteraction(for: occurrence)
-            }
-    }
-
-    private func finishInteraction(for occurrence: TimelineOccurrence) {
-        guard let interaction,
-              let gestureStart,
-              interaction.blockID == occurrence.block.id,
-              gestureStart.blockID == occurrence.block.id else { return }
-        defer {
-            self.interaction = nil
-            self.gestureStart = nil
-            isInteracting = false
-        }
-        guard interaction.startMinute != gestureStart.startMinute || interaction.endMinute != gestureStart.endMinute else { return }
-        onUpdate(occurrence.block, occurrence.block.days_of_week, interaction.startMinute, interaction.endMinute)
+        ScheduleTimelineBlockView(
+            block: occurrence.block,
+            startMinute: occurrence.startMinute,
+            endMinute: occurrence.endMinute,
+            isPreview: occurrence.isPreview,
+            width: width,
+            onEdit: onEdit,
+            onDelete: onDelete,
+            onUpdate: onUpdate,
+            onInteractionChanged: { isInteracting = $0 }
+        )
     }
 
     private func snapMinute(_ value: Int) -> Int {
@@ -755,23 +636,187 @@ private struct ScheduleTimelineView: View {
         return String(format: "%d:%02d %@", displayHour, normalizedMinute % 60, meridiem)
     }
 
-    private enum ResizeEdge {
-        case start
-        case end
-    }
-
-    private struct TimelineInteraction {
-        let blockID: String
-        let startMinute: Int
-        let endMinute: Int
-    }
-
     private struct TimelineOccurrence: Identifiable {
         let id: String
         let block: TickerScheduleBlock
         let startMinute: Int
         let endMinute: Int
         let isPreview: Bool
+    }
+}
+
+private struct ScheduleTimelineBlockView: View {
+    private static let minuteHeight: CGFloat = 0.8
+    private static let minimumBlockMinutes = 15
+
+    let block: TickerScheduleBlock
+    let startMinute: Int
+    let endMinute: Int
+    let isPreview: Bool
+    let width: CGFloat
+    let onEdit: (TickerScheduleBlock) -> Void
+    let onDelete: (TickerScheduleBlock) -> Void
+    let onUpdate: (TickerScheduleBlock, [Int], Int, Int) -> Void
+    let onInteractionChanged: (Bool) -> Void
+
+    @State private var session: EditSession?
+    @State private var previewStartMinute: CGFloat?
+    @State private var previewEndMinute: CGFloat?
+
+    private var displayedStartMinute: CGFloat {
+        previewStartMinute ?? CGFloat(startMinute)
+    }
+
+    private var displayedEndMinute: CGFloat {
+        previewEndMinute ?? CGFloat(endMinute)
+    }
+
+    var body: some View {
+        let duration = max(Self.minimumBlockMinutes, Int(displayedEndMinute - displayedStartMinute))
+        let blockHeight = max(40, CGFloat(duration) * Self.minuteHeight - 4)
+        VStack(spacing: 0) {
+            resizeHandle(edge: .start)
+            HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(block.mode.capitalized)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+                    Text("\(Self.clock(Self.snapMinute(Int(displayedStartMinute.rounded()))))–\(Self.clock(Self.snapMinute(Int(displayedEndMinute.rounded()))))")
+                        .font(.caption2.monospacedDigit())
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .highPriorityGesture(moveGesture)
+                Menu {
+                    Button("Edit", action: { onEdit(block) })
+                    Button("Delete", role: .destructive, action: { onDelete(block) })
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.caption.bold())
+                        .frame(width: 28, height: 30)
+                }
+                .menuStyle(.borderlessButton)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            resizeHandle(edge: .end)
+        }
+        .padding(.horizontal, 4)
+        .frame(width: max(0, width - 12), height: blockHeight)
+        .foregroundColor(.white)
+        .background(Self.modeColor(block.mode).opacity(block.enabled ? 0.82 : 0.35))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Self.modeColor(block.mode), lineWidth: isPreview || session != nil ? 2 : 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .offset(x: 6, y: displayedStartMinute * Self.minuteHeight + 2)
+        .opacity(block.enabled ? 1 : 0.55)
+        .onDisappear {
+            onInteractionChanged(false)
+        }
+    }
+
+    private func resizeHandle(edge: ResizeEdge) -> some View {
+        Capsule()
+            .fill(Color.white.opacity(0.8))
+            .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+            .highPriorityGesture(resizeGesture(edge: edge))
+    }
+
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("schedule-timeline"))
+            .onChanged { value in
+                beginSessionIfNeeded()
+                guard let session else { return }
+                let duration = CGFloat(session.endMinute - session.startMinute)
+                let delta = value.translation.height / Self.minuteHeight
+                let nextStart = max(0, min(1440 - duration, CGFloat(session.startMinute) + delta))
+                previewStartMinute = nextStart
+                previewEndMinute = nextStart + duration
+            }
+            .onEnded { _ in
+                finishSession()
+            }
+    }
+
+    private func resizeGesture(edge: ResizeEdge) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("schedule-timeline"))
+            .onChanged { value in
+                beginSessionIfNeeded()
+                guard let session else { return }
+                let delta = value.translation.height / Self.minuteHeight
+                var start = CGFloat(session.startMinute)
+                var end = CGFloat(session.endMinute)
+                if edge == .start {
+                    start = max(0, min(end - CGFloat(Self.minimumBlockMinutes), start + delta))
+                } else {
+                    end = min(1440, max(start + CGFloat(Self.minimumBlockMinutes), end + delta))
+                }
+                previewStartMinute = start
+                previewEndMinute = end
+            }
+            .onEnded { _ in
+                finishSession()
+            }
+    }
+
+    private func beginSessionIfNeeded() {
+        guard session == nil else { return }
+        session = EditSession(startMinute: startMinute, endMinute: endMinute)
+        previewStartMinute = CGFloat(startMinute)
+        previewEndMinute = CGFloat(endMinute)
+        onInteractionChanged(true)
+    }
+
+    private func finishSession() {
+        guard let session else {
+            onInteractionChanged(false)
+            return
+        }
+        let nextStart = Self.snapMinute(Int((previewStartMinute ?? CGFloat(session.startMinute)).rounded()))
+        let nextEnd = Self.snapMinute(Int((previewEndMinute ?? CGFloat(session.endMinute)).rounded()))
+        let clampedStart = max(0, min(1440 - Self.minimumBlockMinutes, nextStart))
+        let clampedEnd = max(clampedStart + Self.minimumBlockMinutes, min(1440, nextEnd))
+        self.session = nil
+        previewStartMinute = nil
+        previewEndMinute = nil
+        onInteractionChanged(false)
+        guard clampedStart != session.startMinute || clampedEnd != session.endMinute else { return }
+        onUpdate(block, block.days_of_week, clampedStart, clampedEnd)
+    }
+
+    private static func snapMinute(_ value: Int) -> Int {
+        Int((Double(value) / 15.0).rounded()) * 15
+    }
+
+    private static func clock(_ minute: Int) -> String {
+        let normalizedMinute = minute == 1440 ? 0 : max(0, min(1440, minute))
+        let hour = (normalizedMinute / 60) % 24
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        let meridiem = hour < 12 ? "AM" : "PM"
+        return String(format: "%d:%02d %@", displayHour, normalizedMinute % 60, meridiem)
+    }
+
+    private static func modeColor(_ mode: String) -> Color {
+        [
+            "sports": Color.green,
+            "stock": Color.orange,
+            "weather": Color.cyan,
+            "music": Color.purple,
+            "flights": Color.yellow,
+            "airports": Color.blue,
+            "clock": Color.gray,
+        ][mode, default: Color.blue]
+    }
+
+    private enum ResizeEdge {
+        case start
+        case end
+    }
+
+    private struct EditSession {
+        let startMinute: Int
+        let endMinute: Int
     }
 }
 
