@@ -13,6 +13,7 @@ from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
 from .full_port import PreparedSportsFullRenderer
+from .logo_visibility import paste_team_logo
 from .stadium_port import PreparedStadiumRenderer
 
 PANEL_W = 384
@@ -239,7 +240,7 @@ class SportsRenderer:
     def _paste_logo(self, image: Image.Image, url: Any, x: int, y: int, color: tuple[int, int, int]) -> None:
         logo = self._logos.get(str(url) if url else None, (LOGO_SIZE, LOGO_SIZE))
         if logo is not None:
-            image.paste(logo, (x, y), logo)
+            paste_team_logo(image, logo, (x, y))
             return
         draw = ImageDraw.Draw(image)
         draw.rectangle((x, y, x + 21, y + 21), fill=_dark(color))

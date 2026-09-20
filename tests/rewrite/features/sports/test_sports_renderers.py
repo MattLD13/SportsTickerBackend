@@ -9,6 +9,7 @@ import pytest
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
+from ticker_core.features.sports.logo_visibility import paste_team_logo
 from ticker_core.rendering import ContentScene, load_default_font_set
 
 
@@ -101,6 +102,86 @@ def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
     image = sports.render_full(game)
     assert image.size == (384, 32)
     assert image.tobytes() == sports.render_full(game).tobytes()
+
+
+@pytest.mark.parametrize(
+    ("background_color", "mark_color", "expected_outline"),
+    [
+        ((0, 0, 0, 255), (0, 0, 0, 255), (244, 247, 250)),
+        ((0, 0, 0, 255), (0, 24, 70, 255), (244, 247, 250)),
+        ((255, 255, 255, 255), (255, 255, 255, 255), (8, 12, 18)),
+    ],
+)
+def test_team_logo_gets_adaptive_keyline_when_mark_blends_into_background(
+    background_color: tuple[int, int, int, int],
+    mark_color: tuple[int, int, int, int],
+    expected_outline: tuple[int, int, int],
+) -> None:
+    canvas = Image.new("RGBA", (18, 18), background_color)
+    logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    for y in range(2, 6):
+        for x in range(2, 6):
+            logo.putpixel((x, y), mark_color)
+
+    assert paste_team_logo(canvas, logo, (5, 5)) is True
+    assert canvas.getpixel((6, 8))[:3] == expected_outline
+    assert canvas.getpixel((8, 8))[:3] == mark_color[:3]
+
+
+def test_team_logo_keeps_high_contrast_mark_unoutlined() -> None:
+    canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    for y in range(2, 6):
+        for x in range(2, 6):
+            logo.putpixel((x, y), (255, 255, 255, 255))
+
+    assert paste_team_logo(canvas, logo, (5, 5)) is False
+    assert canvas.getpixel((6, 8))[:3] == (0, 0, 0)
+
+
+def test_team_logo_keeps_visible_color_without_an_unneeded_keyline() -> None:
+    canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (10, 8), (0, 0, 0, 255))
+    for y in range(8):
+        for x in range(2, 6):
+            logo.putpixel((x, y), (230, 20, 40, 255))
+
+    assert paste_team_logo(canvas, logo, (4, 5)) is False
+
+
+def test_team_logo_keeps_distinct_team_color_without_a_keyline() -> None:
+    canvas = Image.new("RGBA", (18, 18), (15, 90, 35, 255))
+    logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    for y in range(2, 6):
+        for x in range(2, 6):
+            logo.putpixel((x, y), (20, 72, 155, 255))
+
+    assert paste_team_logo(canvas, logo, (5, 5)) is False
+
+
+def test_full_sports_uses_abbreviation_when_logo_asset_is_missing(sports: SportsRenderer) -> None:
+    labels: list[str] = []
+    original = sports._full.draw_outlined_text
+
+    def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
+        labels.append(str(text))
+        return original(draw, x, y, text, font, fill, outline, anchor)
+
+    sports._full.draw_outlined_text = capture
+    image = sports.render_full(
+        {
+            "sport": "ncf_fcs",
+            "state": "in",
+            "status": "Q1 10:00",
+            "away_abbr": "POI",
+            "home_abbr": "NOVA",
+            "away_score": 0,
+            "home_score": 0,
+        }
+    )
+
+    assert image.size == (384, 32)
+    assert "POI" in labels
 
 
 def test_full_baseball_renders_live_details_and_scales_long_names(sports: SportsRenderer) -> None:
