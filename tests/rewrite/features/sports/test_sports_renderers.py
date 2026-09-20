@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from datetime import datetime, timezone
 
 import pytest
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
+from ticker_core.features.sports import full_port as sports_full_port
+from ticker_core.features.sports import stadium_port as sports_stadium_port
+from ticker_core.features.sports.logo_badge import draw_missing_team_badge
 from ticker_core.features.sports.logo_visibility import paste_team_logo
 from ticker_core.rendering import ContentScene, load_default_font_set
 
@@ -159,15 +162,107 @@ def test_team_logo_keeps_distinct_team_color_without_a_keyline() -> None:
     assert paste_team_logo(canvas, logo, (5, 5)) is False
 
 
-def test_full_sports_uses_abbreviation_when_logo_asset_is_missing(sports: SportsRenderer) -> None:
-    labels: list[str] = []
-    original = sports._full.draw_outlined_text
+def test_crimson_ou_mark_stays_unoutlined_on_the_dark_ticker() -> None:
+    canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    ImageDraw.Draw(logo).rectangle((2, 2, 5, 5), fill=(153, 0, 0, 255))
 
-    def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
-        labels.append(str(text))
-        return original(draw, x, y, text, font, fill, outline, anchor)
+    assert paste_team_logo(canvas, logo, (5, 5)) is False
+    assert canvas.getpixel((8, 8))[:3] == (153, 0, 0)
 
-    sports._full.draw_outlined_text = capture
+
+def test_team_logo_with_its_own_contrasting_edge_does_not_get_an_extra_keyline() -> None:
+    background_color = (153, 0, 0, 255)
+    canvas = Image.new("RGBA", (28, 28), background_color)
+    logo = Image.new("RGBA", (20, 20), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((1, 1, 18, 18), fill=(250, 250, 250, 255))
+    draw.rectangle((2, 2, 17, 17), fill=background_color)
+
+    assert paste_team_logo(canvas, logo, (4, 4)) is False
+
+
+def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
+    image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
+    team_color = (220, 30, 55)
+
+    draw_missing_team_badge(image, (0, 0), 24, team_color, "NOVA")
+
+    assert image.getpixel((12, 5))[:3] == team_color
+    assert image.getpixel((0, 0))[:3] == (40, 40, 40)
+    assert image.getpixel((2, 12))[:3] == team_color
+    visible_acronym_pixels = sum(
+        1
+        for red, green, blue, _ in image.crop((2, 8, 22, 17)).getdata()
+        if red >= 240 and green >= 240 and blue >= 240
+    )
+    assert visible_acronym_pixels >= 20
+
+    bright_image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
+    draw_missing_team_badge(bright_image, (0, 0), 24, (255, 210, 0), "MIA")
+    dark_acronym_pixels = sum(
+        1
+        for red, green, blue, _ in bright_image.crop((2, 8, 22, 17)).getdata()
+        if red <= 24 and green <= 24 and blue <= 24
+    )
+    assert dark_acronym_pixels >= 20
+
+
+def test_missing_logo_badge_has_smooth_symmetric_rounded_edges() -> None:
+    image = Image.new("RGBA", (24, 24), (0, 0, 0, 0))
+
+    draw_missing_team_badge(image, (0, 0), 24, (220, 30, 55), "NOVA")
+
+    alpha = image.getchannel("A")
+    assert alpha.getpixel((0, 0)) == 0
+    assert any(0 < value < 255 for value in alpha.getdata())
+    assert alpha.tobytes() == alpha.transpose(Image.Transpose.FLIP_LEFT_RIGHT).tobytes()
+    assert alpha.tobytes() == alpha.transpose(Image.Transpose.FLIP_TOP_BOTTOM).tobytes()
+
+
+def test_scroll_sports_uses_colored_acronym_badges_when_logos_are_missing(
+    sports: SportsRenderer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    badges: list[tuple[str, tuple[int, int, int]]] = []
+    original = sports_stadium_port.draw_missing_team_badge
+
+    def capture(image, xy, size, team_color, abbreviation):
+        badges.append((str(abbreviation), tuple(team_color)))
+        return original(image, xy, size, team_color, abbreviation)
+
+    monkeypatch.setattr(sports_stadium_port, "draw_missing_team_badge", capture)
+    image = sports.render_card(
+        {
+            "sport": "mlb",
+            "state": "in",
+            "status": "Top 5th",
+            "away_abbr": "NYY",
+            "home_abbr": "BOS",
+            "away_color": "#0C2340",
+            "home_color": "#BD3039",
+            "away_score": 2,
+            "home_score": 1,
+        }
+    )
+
+    assert image.height == 32
+    assert ("NYY", (12, 35, 64)) in badges
+    assert ("BOS", (189, 48, 57)) in badges
+
+
+def test_full_sports_uses_colored_acronym_badges_when_logos_are_missing(
+    sports: SportsRenderer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    badges: list[tuple[str, tuple[int, int, int]]] = []
+    original = sports_full_port.draw_missing_team_badge
+
+    def capture(image, xy, size, team_color, abbreviation):
+        badges.append((str(abbreviation), tuple(team_color)))
+        return original(image, xy, size, team_color, abbreviation)
+
+    monkeypatch.setattr(sports_full_port, "draw_missing_team_badge", capture)
     image = sports.render_full(
         {
             "sport": "ncf_fcs",
@@ -175,13 +270,16 @@ def test_full_sports_uses_abbreviation_when_logo_asset_is_missing(sports: Sports
             "status": "Q1 10:00",
             "away_abbr": "POI",
             "home_abbr": "NOVA",
+            "away_color": "#00338D",
+            "home_color": "#841617",
             "away_score": 0,
             "home_score": 0,
         }
     )
 
     assert image.size == (384, 32)
-    assert "POI" in labels
+    assert ("POI", (0, 51, 141)) in badges
+    assert ("NOVA", (132, 22, 23)) in badges
 
 
 def test_full_baseball_renders_live_details_and_scales_long_names(sports: SportsRenderer) -> None:

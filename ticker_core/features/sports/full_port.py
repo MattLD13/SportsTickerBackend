@@ -3,6 +3,7 @@ import time
 from PIL import Image, ImageDraw, ImageStat
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from .logo_badge import draw_missing_team_badge
 from .logo_visibility import paste_team_logo
 
 PANEL_W = 384
@@ -284,8 +285,8 @@ class SportsMixin:
 
             hl = self.get_logo(game.get('home_logo'), (24, 24))
             al = self.get_logo(game.get('away_logo'), (24, 24))
-            self._paste_team_mark(img, hl, (h_logo_cx - LOGO_SZ // 2, h_logo_top), home_ab, LOGO_SZ)
-            self._paste_team_mark(img, al, (a_logo_cx - LOGO_SZ // 2, a_logo_top), away_ab, LOGO_SZ)
+            self._paste_team_mark(img, hl, (h_logo_cx - LOGO_SZ // 2, h_logo_top), home_ab, LOGO_SZ, home_ez)
+            self._paste_team_mark(img, al, (a_logo_cx - LOGO_SZ // 2, a_logo_top), away_ab, LOGO_SZ, away_ez)
 
             for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
                 if not sc: continue
@@ -345,8 +346,8 @@ class SportsMixin:
             a_logo_x = W - 3 - LOGO_SZ - 5
             hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
             al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
-            self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ)
-            self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ)
+            self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_pitch)
+            self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_pitch)
 
             h_sc_x = h_logo_x + LOGO_SZ + 4
             a_sc_x = a_logo_x - 4
@@ -538,8 +539,8 @@ class SportsMixin:
             a_logo_x = W - 3 - LOGO_SZ - 5
             hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
             al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
-            self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ)
-            self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ)
+            self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_clr)
+            self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_clr)
 
             # ── Step 4: scores ───────────────────────────────────────────────
             h_sc_x = h_logo_x + LOGO_SZ + 4
@@ -823,8 +824,8 @@ class SportsMixin:
         logo_y   = (H - LOGO_SZ) // 2
         hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
         al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
-        self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ)
-        self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ)
+        self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_clr)
+        self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_clr)
 
         # Scores
         h_sc_x = h_logo_x + LOGO_SZ + 4
@@ -1113,25 +1114,13 @@ class PreparedSportsFullRenderer(SportsMixin):
         """Return a prepared logo and never fetch from the renderer."""
         return self._logos.get(str(url) if url else None, size)
 
-    def _paste_team_mark(self, image, logo, xy, abbreviation, size):
+    def _paste_team_mark(self, image, logo, xy, abbreviation, size, team_color):
         """Paste one prepared logo or a readable code when its asset is absent."""
         if logo is not None:
             mark = logo if logo.size == (size, size) else logo.resize((size, size), Image.LANCZOS)
             paste_team_logo(image, mark, xy)
             return
-        label = str(abbreviation or "").strip().upper()[:4]
-        if not label:
-            return
-        draw = ImageDraw.Draw(image, "RGBA")
-        self.draw_outlined_text(
-            draw,
-            int(xy[0]) + size // 2,
-            int(xy[1]) + size // 2,
-            label,
-            self.micro,
-            (245, 248, 252),
-            (8, 12, 18, 245),
-        )
+        draw_missing_team_badge(image, xy, size, team_color, abbreviation)
 
     def draw_outlined_text(self, draw, x, y, text, font, fill, outline, anchor="mm"):
         """Draw a deterministic one-pixel text outline."""

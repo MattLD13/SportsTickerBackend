@@ -5,6 +5,7 @@ import re
 from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP
+from .logo_badge import draw_missing_team_badge
 from .logo_visibility import paste_team_logo
 
 _HYBRID_SMALL_V = [0x0, 0x0, 0xA, 0x4, 0x0, 0x0]
@@ -240,24 +241,6 @@ def draw_so_column(d, x, y, results, vertical=True, size=5, stride=7, max_show=5
         draw_shootout_dot(d, dx, dy, r, size=size, stride=stride)
 
 
-def _fallback_logo(color, size=(22, 22)):
-    """Coloured square with highlight border when no real logo available."""
-    img = Image.new('RGBA', size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    r, g, b = color
-    dc = da(color)
-    d.rectangle([0, 0, size[0]-1, size[1]-1], fill=(*dc, 255))
-    d.rectangle([2, 2, size[0]-3, size[1]-3], fill=(*da(color, 0.1), 255))
-    d.rectangle([0, 0, size[0]-1, 0], fill=(r, g, b, 255))
-    d.rectangle([0, size[1]-1, size[0]-1, size[1]-1], fill=(r, g, b, 255))
-    d.rectangle([0, 0, 0, size[1]-1], fill=(r, g, b, 255))
-    d.rectangle([size[0]-1, 0, size[0]-1, size[1]-1], fill=(r, g, b, 255))
-    li_c = li(color, 0.25)
-    d.rectangle([1, 1, size[0]-2, 1], fill=(*li_c, 255))
-    d.rectangle([1, 1, 1, size[1]-2], fill=(*li_c, 255))
-    return img
-
-
 # ── Card width calculator ─────────────────────────────────────────────────────
 
 def calc_card_width(g):
@@ -415,12 +398,12 @@ class StadiumRenderer:
         if a_logo:
             self._paste_logo(img, a_logo, a_logo_x, logo_y)
         else:
-            self._draw_fallback_logo(d, a_logo_x, logo_y, ac, g.get('away', ''))
+            draw_missing_team_badge(img, (a_logo_x, logo_y), LOGO_SZ, ac, g.get('away_abbr') or g.get('away', ''))
 
         if h_logo:
             self._paste_logo(img, h_logo, h_logo_x, logo_y)
         else:
-            self._draw_fallback_logo(d, h_logo_x, logo_y, hc, g.get('home', ''))
+            draw_missing_team_badge(img, (h_logo_x, logo_y), LOGO_SZ, hc, g.get('home_abbr') or g.get('home', ''))
 
         if sport in {'ncf_fbs', 'ncf_fcs'}:
             for rank, logo_x, right_aligned in (
@@ -633,25 +616,6 @@ class StadiumRenderer:
                 fi(d, x, dy, 3, 3, 220, 55, 55)
             else:
                 fi(d, x, dy, 3, 3, 80, 80, 80)
-
-    def _draw_fallback_logo(self, d, x, y, color, label=''):
-        r, g, b = color
-        dc = da(color)
-        fi(d, x, y, LOGO_SZ, LOGO_SZ, *dc)
-        fi(d, x + 2, y + 2, LOGO_SZ - 4, LOGO_SZ - 4, *da(color, 0.1))
-        fi(d, x, y, LOGO_SZ, 1, r, g, b)
-        fi(d, x, y + LOGO_SZ - 1, LOGO_SZ, 1, r, g, b)
-        fi(d, x, y, 1, LOGO_SZ, r, g, b)
-        fi(d, x + LOGO_SZ - 1, y, 1, LOGO_SZ, r, g, b)
-        lc = li(color, 0.25)
-        fi(d, x + 1, y + 1, LOGO_SZ - 2, 1, *lc)
-        fi(d, x + 1, y + 1, 1, LOGO_SZ - 2, *lc)
-        text = str(label or '?').upper()[:3]
-        text_width = pf_w(text)
-        text_x = x + max(1, (LOGO_SZ - text_width) // 2)
-        text_y = y + (LOGO_SZ - 5) // 2
-        pf_text(d, text, text_x + 1, text_y + 1, 0, 0, 0)
-        pf_text(d, text, text_x, text_y, *li(color, 0.65))
 
     @staticmethod
     def _normalise(g):

@@ -7,8 +7,14 @@ from PIL import Image, ImageFilter
 
 _CONTRAST_RATIO_THRESHOLD = 2.0
 _COLOR_DISTANCE_THRESHOLD_SQUARED = 96 * 96
-_MIN_VISIBLE_FRACTION = 0.30
+_MIN_CONTRASTING_FRACTION = 0.30
 _KEYLINE_COLORS = ((244, 247, 250), (8, 12, 18))
+_ALPHA_THRESHOLD = 160
+_NEIGHBOR_OFFSETS = (
+    (-1, -1), (0, -1), (1, -1),
+    (-1, 0), (1, 0),
+    (-1, 1), (0, 1), (1, 1),
+)
 
 
 def paste_team_logo(canvas: Image.Image, logo: Image.Image, xy: tuple[int, int]) -> bool:
@@ -18,19 +24,10 @@ def paste_team_logo(canvas: Image.Image, logo: Image.Image, xy: tuple[int, int])
     x, y = int(xy[0]), int(xy[1])
     width, height = mark.size
     background = canvas.crop((x, y, x + width, y + height)).convert("RGBA")
-    mark_pixels = mark.load()
-    background_pixels = background.load()
-
-    visible_pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]] = []
-    for py in range(height):
-        for px in range(width):
-            red, green, blue, alpha = mark_pixels[px, py]
-            if alpha >= 160:
-                under = background_pixels[px, py]
-                visible_pairs.append(((red, green, blue), (under[0], under[1], under[2])))
-
-    if visible_pairs and _needs_keyline(visible_pairs):
-        line_color = _keyline_color(visible_pairs)
+    edge_pairs = _logo_edge_pairs(mark, background)
+    visible_pairs = _logo_pixel_pairs(mark, background)
+    if edge_pairs and visible_pairs and _needs_keyline(edge_pairs) and _needs_keyline(visible_pairs):
+        line_color = _keyline_color(edge_pairs)
         edge = mark.getchannel("A").filter(ImageFilter.MaxFilter(3))
         keyline = Image.new("RGBA", mark.size, (*line_color, 255))
         canvas.paste(keyline, (x, y), edge)
@@ -40,6 +37,57 @@ def paste_team_logo(canvas: Image.Image, logo: Image.Image, xy: tuple[int, int])
 
     canvas.paste(mark, (x, y), mark)
     return added_keyline
+
+
+def _logo_edge_pairs(
+    mark: Image.Image,
+    background: Image.Image,
+) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
+    """Compare opaque logo edges with the pixels below them."""
+
+    width, height = mark.size
+    mark_pixels = mark.load()
+    background_pixels = background.load()
+    pairs = []
+    for y in range(height):
+        for x in range(width):
+            red, green, blue, alpha = mark_pixels[x, y]
+            if alpha < _ALPHA_THRESHOLD or not _is_edge_pixel(mark_pixels, x, y, width, height):
+                continue
+            under = background_pixels[x, y]
+            pairs.append(((red, green, blue), (under[0], under[1], under[2])))
+    return pairs
+
+
+def _logo_pixel_pairs(
+    mark: Image.Image,
+    background: Image.Image,
+) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
+    """Compare opaque logo pixels with the pixels below them."""
+
+    mark_pixels = mark.load()
+    background_pixels = background.load()
+    pairs = []
+    for y in range(mark.height):
+        for x in range(mark.width):
+            red, green, blue, alpha = mark_pixels[x, y]
+            if alpha < _ALPHA_THRESHOLD:
+                continue
+            under = background_pixels[x, y]
+            pairs.append(((red, green, blue), (under[0], under[1], under[2])))
+    return pairs
+
+
+def _is_edge_pixel(pixels, x: int, y: int, width: int, height: int) -> bool:
+    """Return true when an opaque pixel touches transparency or the logo edge."""
+
+    for dx, dy in _NEIGHBOR_OFFSETS:
+        nx, ny = x + dx, y + dy
+        if nx < 0 or nx >= width or ny < 0 or ny >= height:
+            return True
+        if pixels[nx, ny][3] < _ALPHA_THRESHOLD:
+            return True
+    return False
 
 
 def _needs_keyline(
@@ -52,7 +100,7 @@ def _needs_keyline(
         for mark, background in visible_pairs
         if _is_contrasting(mark, background)
     )
-    return contrasted / len(visible_pairs) < _MIN_VISIBLE_FRACTION
+    return contrasted / len(visible_pairs) < _MIN_CONTRASTING_FRACTION
 
 
 def _is_contrasting(mark: tuple[int, int, int], background: tuple[int, int, int]) -> bool:
@@ -85,13 +133,13 @@ def _contrast_ratio(first: tuple[int, int, int], second: tuple[int, int, int]) -
 
 
 def _keyline_color(
-    visible_pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
+    edge_pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
 ) -> tuple[int, int, int]:
     """Choose a light or dark keyline that separates from both mark and background."""
 
-    count = len(visible_pairs)
-    mark_mean = tuple(sum(mark[channel] for mark, _ in visible_pairs) // count for channel in range(3))
-    background_mean = tuple(sum(background[channel] for _, background in visible_pairs) // count for channel in range(3))
+    count = len(edge_pairs)
+    mark_mean = tuple(sum(mark[channel] for mark, _ in edge_pairs) // count for channel in range(3))
+    background_mean = tuple(sum(background[channel] for _, background in edge_pairs) // count for channel in range(3))
 
     def score(candidate: tuple[int, int, int]) -> int:
         mark_distance = max(abs(candidate[channel] - mark_mean[channel]) for channel in range(3))
