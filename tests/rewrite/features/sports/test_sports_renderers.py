@@ -193,6 +193,18 @@ def test_team_logo_with_its_own_contrasting_edge_does_not_get_an_extra_keyline()
     assert paste_team_logo(canvas, logo, (4, 4)) is False
 
 
+def test_team_logo_with_visible_color_details_does_not_get_an_unneeded_keyline() -> None:
+    background_color = (0, 53, 148, 255)
+    canvas = Image.new("RGBA", (18, 18), background_color)
+    logo = Image.new("RGBA", (8, 8), background_color)
+    draw = ImageDraw.Draw(logo)
+    draw.line((0, 0, 6, 0), fill=(255, 255, 255, 255), width=1)
+    draw.rectangle((2, 3, 4, 5), fill=(255, 255, 255, 255))
+
+    assert paste_team_logo(canvas, logo, (5, 5)) is False
+    assert canvas.getpixel((4, 8))[:3] == background_color[:3]
+
+
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
     image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
     team_color = (220, 30, 55)
