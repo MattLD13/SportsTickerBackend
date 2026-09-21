@@ -111,7 +111,7 @@ def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
     ("background_color", "mark_color", "expected_outline"),
     [
         ((0, 0, 0, 255), (0, 0, 0, 255), (244, 247, 250)),
-        ((0, 0, 0, 255), (0, 24, 70, 255), (244, 247, 250)),
+        ((0, 0, 0, 255), (0, 0, 8, 255), (244, 247, 250)),
         ((255, 255, 255, 255), (255, 255, 255, 255), (8, 12, 18)),
     ],
 )
@@ -129,6 +129,17 @@ def test_team_logo_gets_adaptive_keyline_when_mark_blends_into_background(
     assert paste_team_logo(canvas, logo, (5, 5)) is True
     assert canvas.getpixel((6, 8))[:3] == expected_outline
     assert canvas.getpixel((8, 8))[:3] == mark_color[:3]
+
+
+def test_nyg_logo_color_stays_unoutlined_on_its_blue_background() -> None:
+    canvas = Image.new("RGBA", (24, 24), (11, 34, 101, 255))
+    logo = Image.new("RGBA", (24, 24), (0, 0, 0, 0))
+    ImageDraw.Draw(logo).polygon(
+        ((4, 4), (12, 2), (20, 5), (19, 18), (12, 22), (4, 18)),
+        fill=(0, 29, 103, 255),
+    )
+
+    assert paste_team_logo(canvas, logo, (0, 0)) is False
 
 
 def test_team_logo_keeps_high_contrast_mark_unoutlined() -> None:
