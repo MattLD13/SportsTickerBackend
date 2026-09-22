@@ -26,6 +26,8 @@ _BIG_KINDS = frozenset(
         "fumble_td",
         "kick_return_td",
         "punt_return_td",
+        "interception",
+        "fumble",
         "shorthanded",
         "empty_net",
         "penalty_shot",
@@ -37,6 +39,7 @@ _BIG_KINDS = frozenset(
 )
 _MAX_ALERTS = 64
 _MAX_AGE = 45.0
+_FOOTBALL_PLAY_KINDS = frozenset(("interception", "fumble"))
 
 
 def _number(value: object) -> int | None:
@@ -283,6 +286,10 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
             scorer = str(play.get("scorer") or play.get("player") or "").strip().upper()
             if scorer:
                 if family == "football":
+                    if play.get("football_kind") in {"interception", "fumble"}:
+                        football_detail = _football_alert_detail(play)
+                        if football_detail:
+                            return football_detail
                     yards = str(play.get("yards") or "").strip()
                     passer = str(play.get("passer") or "").strip().upper()
                     event_type = str(play.get("event_type") or play.get("type") or "").upper()
@@ -316,6 +323,98 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
     if last_play:
         return last_play[:24].upper()
 
+    return ""
+
+
+def _football_alert_detail(play: Mapping[str, Any]) -> str:
+    """Build one compact turnover detail with player and return context."""
+
+    kind = str(play.get("football_kind") or "").strip().lower()
+    yards = _number(play.get("return_yards") or play.get("yards"))
+    if kind == "interception":
+        player = str(play.get("interceptor") or play.get("scorer") or "").strip().upper()
+        passer = str(play.get("passer") or "").strip().upper()
+        candidates = []
+        if player and yards is not None and passer:
+            candidates.append(f"{player} {yards}YD | {passer}")
+        if player and yards is not None:
+            candidates.append(f"{player} {yards}YD")
+        if player and passer:
+            candidates.append(f"{player} INT | {passer}")
+        if player:
+            candidates.append(player)
+    elif kind == "fumble":
+        fumbler = str(play.get("fumbler") or "").strip().upper()
+        recoverer = str(play.get("recoverer") or "").strip().upper()
+        forced_by = str(play.get("forced_by") or "").strip().upper()
+        if play.get("is_scoring") and recoverer:
+            candidates = []
+            if yards is not None and fumbler:
+                candidates.append(f"{recoverer} {yards}YD | {fumbler}")
+            candidates.append(f"{recoverer} FUM | {fumbler}".strip())
+            candidates.append(recoverer)
+        else:
+            candidates = []
+            if fumbler and recoverer:
+                candidates.append(f"{fumbler} FUM | REC {recoverer}")
+                candidates.append(f"{fumbler} FUM | {recoverer}")
+            if fumbler and forced_by:
+                candidates.append(f"{fumbler} FUM | {forced_by}")
+            if fumbler:
+                candidates.append(f"{fumbler} FUM")
+            if recoverer:
+                candidates.append(recoverer)
+    else:
+        return ""
+    for candidate in candidates:
+        if candidate and len(candidate) <= 24:
+            return candidate
+    return next((candidate[:24].rstrip() for candidate in candidates if candidate), "")
+
+
+def _football_event_identity(play: Mapping[str, Any]) -> str:
+    """Return a stable ESPN play identity for poll-to-poll deduplication."""
+
+    identifier = str(
+        play.get("event_id")
+        or play.get("play_id")
+        or play.get("id")
+        or play.get("sequence")
+        or play.get("sequenceNumber")
+        or ""
+    ).strip()
+    if identifier:
+        return identifier
+    return "|".join(
+        str(play.get(key) or "").strip()
+        for key in ("football_kind", "team", "text", "period", "clock")
+    )
+
+
+def _football_events(
+    situation: Mapping[str, Any], game: Mapping[str, Any]
+) -> tuple[Mapping[str, Any], ...]:
+    """Read normalized football turnover plays from the shared game projection."""
+
+    values = situation.get("football_plays") or game.get("football_plays")
+    if not isinstance(values, (list, tuple)):
+        return ()
+    return tuple(value for value in values if isinstance(value, Mapping) and value.get("football_kind"))
+
+
+def _has_football_projection(situation: Mapping[str, Any], game: Mapping[str, Any]) -> bool:
+    """Return whether the provider supplied a complete football play projection."""
+
+    return "football_plays" in situation or "football_plays" in game
+
+
+def _football_event_side(game: Mapping[str, Any], play: Mapping[str, Any]) -> str:
+    """Resolve the team that owns one normalized football event."""
+
+    team = str(play.get("team") or "").strip().lower()
+    for side in ("home", "away"):
+        if team and team == str(game.get(f"{side}_abbr") or "").strip().lower():
+            return side
     return ""
 
 
@@ -425,12 +524,16 @@ class ScoreAlertTracker:
         self._clock = clock
         self._lock = Lock()
         self._scores: dict[str, tuple[int, int, str, str]] = {}
+        self._football_events: dict[str, set[str]] = {}
+        self._football_projection_ready: dict[str, bool] = {}
         self._alerts: list[dict[str, Any]] = []
 
     def prime(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Set a complete source baseline without creating score alerts."""
 
         scores: dict[str, tuple[int, int, str, str]] = {}
+        football_events: dict[str, set[str]] = {}
+        projection_ready: dict[str, bool] = {}
         for game in games:
             if str(game.get("kind") or game.get("type") or "") != "scoreboard":
                 continue
@@ -445,8 +548,18 @@ class ScoreAlertTracker:
                 str(game.get("status") or ""),
                 str(game.get("state") or "").lower(),
             )
+            sit = game.get("situation")
+            situation = sit if isinstance(sit, Mapping) else {}
+            projection_ready[game_id] = _has_football_projection(situation, game)
+            football_events[game_id] = {
+                _football_event_identity(play)
+                for play in _football_events(situation, game)
+                if _football_event_identity(play)
+            }
         with self._lock:
             self._scores = scores
+            self._football_events = football_events
+            self._football_projection_ready = projection_ready
 
     def ingest(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Compare one complete scoreboard observation with the prior poll."""
@@ -469,10 +582,39 @@ class ScoreAlertTracker:
                 family = sport_family(sport)
                 state = str(game.get("state") or "").lower()
                 self._scores[game_id] = (home, away, status, state)
-                if previous is None or (
+                sit = game.get("situation")
+                situation = sit if isinstance(sit, Mapping) else {}
+                football_events = _football_events(situation, game)
+                seen_football_events = self._football_events.setdefault(game_id, set())
+                projection_ready = _has_football_projection(situation, game)
+                seed_football_events = False
+                if previous is None:
+                    seen_football_events.update(
+                        _football_event_identity(play)
+                        for play in football_events
+                        if _football_event_identity(play)
+                    )
+                    self._football_projection_ready[game_id] = projection_ready
+                    continue
+                if family == "football" and projection_ready and not self._football_projection_ready.get(game_id, False):
+                    seen_football_events.update(
+                        _football_event_identity(play)
+                        for play in football_events
+                        if _football_event_identity(play)
+                    )
+                    self._football_projection_ready[game_id] = True
+                    seed_football_events = True
+                elif projection_ready:
+                    self._football_projection_ready[game_id] = True
+                if (
                     state not in _LIVE_STATES
                     and not (family == "basketball" and state in {"post", "final"})
                 ):
+                    seen_football_events.update(
+                        _football_event_identity(play)
+                        for play in football_events
+                        if _football_event_identity(play)
+                    )
                     continue
                 lead_change = (
                     family == "basketball"
@@ -490,12 +632,15 @@ class ScoreAlertTracker:
                     headline: str,
                     detail: str,
                     points: int,
+                    *,
+                    event_id: str = "",
                 ) -> None:
                     other = "away" if side == "home" else "home"
                     self._alerts.append(
                         {
-                            "id": f"{game_id}:{home}-{away}:{side}",
+                            "id": event_id or f"{game_id}:{home}-{away}:{side}",
                             "game_id": game_id,
+                            "event_id": event_id,
                             "sport": sport,
                             "ts": now,
                             "side": side,
@@ -521,8 +666,31 @@ class ScoreAlertTracker:
                         }
                     )
 
-                sit = game.get("situation")
-                situation = sit if isinstance(sit, Mapping) else {}
+                if family == "football":
+                    for play in football_events:
+                        identifier = _football_event_identity(play)
+                        if not identifier or identifier in seen_football_events:
+                            continue
+                        seen_football_events.add(identifier)
+                        if seed_football_events:
+                            continue
+                        if play.get("is_scoring"):
+                            continue
+                        side = _football_event_side(game, play)
+                        if not side:
+                            continue
+                        kind = str(play.get("football_kind") or "").strip().lower()
+                        headline = "PICK" if kind == "interception" else "FUMBLE" if kind == "fumble" else ""
+                        if not headline:
+                            continue
+                        append_alert(
+                            side,
+                            kind,
+                            headline,
+                            _football_alert_detail(play),
+                            0,
+                            event_id=f"{game_id}:football:{identifier}",
+                        )
                 for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
                     delta = new_score - old_score
                     if delta <= 0:
@@ -546,6 +714,14 @@ class ScoreAlertTracker:
                     detail = _extract_alert_detail(sport, game, side)
                     append_alert(side, kind, headline, detail, delta)
             self._scores = {key: value for key, value in self._scores.items() if key in current_ids}
+            self._football_events = {
+                key: value for key, value in self._football_events.items() if key in current_ids
+            }
+            self._football_projection_ready = {
+                key: value
+                for key, value in self._football_projection_ready.items()
+                if key in current_ids
+            }
             self._alerts = self._alerts[-_MAX_ALERTS:]
 
     def recent(self, *, max_age: float = _MAX_AGE, delay: float = 0.0) -> tuple[dict[str, Any], ...]:
@@ -576,10 +752,20 @@ def alerts_for_settings(
             ),
             getattr(settings, "active_conferences", {}),
         )
-        and matches_followed_team(
-            str(alert.get("sport") or ""),
-            str(alert.get("team_abbr") or ""),
-            followed,
+        and (
+            matches_followed_team(
+                str(alert.get("sport") or ""),
+                str(alert.get("team_abbr") or ""),
+                followed,
+            )
+            or (
+                str(alert.get("kind") or "").lower() in _FOOTBALL_PLAY_KINDS
+                and matches_followed_team(
+                    str(alert.get("sport") or ""),
+                    str(alert.get("opp_abbr") or ""),
+                    followed,
+                )
+            )
         )
     )
 

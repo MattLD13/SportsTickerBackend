@@ -13,6 +13,7 @@ from sports_ticker.providers.espn import (
     _scoreboard_url_for_dates,
     _event_detail_url,
     _event_update,
+    _event_football_details,
     _event_scoring_details,
     _mlb_has_boxscore,
     _mlb_event_details,
@@ -1572,6 +1573,94 @@ def test_espn_event_scoring_details_extract_football_metadata_without_participan
     assert play["event_type"] == "Rushing Touchdown"
     assert play["yards"] == 1
     assert play["period"] == "1st"
+
+
+def test_espn_event_football_details_extract_turnovers_from_drive_plays() -> None:
+    details = _event_football_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "10", "abbreviation": "NYG"}},
+                {"homeAway": "away", "team": {"id": "20", "abbreviation": "DAL"}},
+            ]}]},
+            "drives": {"previous": [{"plays": [
+                {
+                    "id": "pick-1",
+                    "type": {"text": "Pass Interception Return"},
+                    "text": "D.Prescott pass deep right intended for C.Lamb INTERCEPTED by NYG-A.Thomas. A.Thomas to DAL 40 for 12 yards.",
+                    "period": {"number": 2},
+                    "clock": {"displayValue": "4:12"},
+                    "start": {"team": {"id": "20"}, "down": 2, "distance": 8},
+                    "end": {"team": {"id": "10"}},
+                    "teamParticipants": [
+                        {"id": "10", "type": "defense"},
+                        {"id": "20", "type": "offense"},
+                    ],
+                    "isTurnover": True,
+                    "scoringPlay": False,
+                },
+                {
+                    "id": "fumble-1",
+                    "type": {"text": "Fumble Recovery (Opponent)"},
+                    "text": "D.Prescott pass short left to C.Lamb. FUMBLES (NYG-B.Thibodeaux), RECOVERED by NYG-A.Thomas at DAL 30.",
+                    "period": {"number": 3},
+                    "clock": {"displayValue": "8:01"},
+                    "start": {"team": {"id": "20"}},
+                    "end": {"team": {"id": "10"}},
+                    "teamParticipants": [
+                        {"id": "10", "type": "defense"},
+                        {"id": "20", "type": "offense"},
+                    ],
+                    "isTurnover": True,
+                    "scoringPlay": False,
+                },
+                {
+                    "id": "reversed-1",
+                    "type": {"text": "Pass Incompletion"},
+                    "text": "D.Prescott pass INTERCEPTED by A.Thomas. The ruling was REVERSED.",
+                    "review": {"upheld": False},
+                    "isTurnover": False,
+                    "scoringPlay": False,
+                },
+            ]}]},
+        },
+        {"sport": "nfl", "home_abbr": "NYG", "away_abbr": "DAL"},
+    )
+
+    plays = details["football_plays"]
+    assert [play["event_id"] for play in plays] == ["pick-1", "fumble-1"]
+    assert plays[0]["team"] == "NYG"
+    assert plays[0]["interceptor"] == "THOMAS"
+    assert plays[0]["passer"] == "PRESCOTT"
+    assert plays[0]["return_yards"] == 12
+    assert plays[0]["period"] == "Q2"
+    assert plays[1]["fumbler"] == "PRESCOTT"
+    assert plays[1]["recoverer"] == "THOMAS"
+    assert plays[1]["forced_by"] == "THIBODEAUX"
+
+
+def test_espn_event_scoring_details_keep_pick_six_context() -> None:
+    details = _event_scoring_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "10", "abbreviation": "NYG"}},
+                {"homeAway": "away", "team": {"id": "20", "abbreviation": "DAL"}},
+            ]}]},
+            "scoringPlays": [{
+                "id": "pick-six-1",
+                "team": {"id": "10"},
+                "type": {"text": "Interception Return Touchdown"},
+                "text": "A.Thomas 12 Yd Interception Return",
+                "scoringPlay": True,
+                "scoreValue": 6,
+            }],
+        },
+        {"sport": "nfl", "home_abbr": "NYG", "away_abbr": "DAL"},
+    )
+
+    play = details["scoring_plays"][0]
+    assert play["football_kind"] == "interception"
+    assert play["interceptor"] == "THOMAS"
+    assert play["return_yards"] == 12
 
 
 def test_espn_event_scoring_details_resolve_basketball_participants() -> None:

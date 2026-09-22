@@ -73,6 +73,73 @@ def test_football_score_alert_uses_the_scoring_play() -> None:
     assert alert["detail"] == "WILLIAMS 1YD"
 
 
+def test_football_turnover_alerts_include_player_context_and_deduplicate() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "nfl-turnovers", "sport": "nfl", "state": "in",
+        "home_abbr": "NYG", "away_abbr": "DAL", "home_score": 7, "away_score": 7,
+        "situation": {"football_plays": []},
+    }
+    tracker.ingest([baseline])
+    current = {
+        **baseline,
+        "situation": {"football_plays": [
+            {
+                "event_id": "pick-1", "football_kind": "interception", "team": "NYG",
+                "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
+                "is_scoring": False,
+            },
+            {
+                "event_id": "fumble-1", "football_kind": "fumble", "team": "DAL",
+                "fumbler": "LAMB", "recoverer": "LAWRENCE", "forced_by": "THOMAS",
+                "is_scoring": False,
+            },
+        ]},
+    }
+    tracker.ingest([current])
+
+    alerts = tracker.recent()
+    assert len(alerts) == 2
+    assert alerts[0]["headline"] == "PICK"
+    assert alerts[0]["detail"] == "THOMAS 12YD | PRESCOTT"
+    assert alerts[0]["points"] == 0
+    assert alerts[0]["event_id"] == "nfl-turnovers:football:pick-1"
+    assert alerts[1]["headline"] == "FUMBLE"
+    assert alerts[1]["detail"] == "LAMB FUM | REC LAWRENCE"
+    assert alerts[1]["team_abbr"] == "DAL"
+    assert len(
+        alerts_for_settings(
+            alerts,
+            DisplaySettings(mode="sports", score_alerts=True, my_teams=("nfl:nyg",)),
+        )
+    ) == 2
+
+    tracker.ingest([current])
+    assert len(tracker.recent()) == 2
+
+
+def test_football_pick_six_detail_uses_returner_and_quarterback() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "nfl-pick-six", "sport": "nfl", "state": "in",
+        "home_abbr": "NYG", "away_abbr": "DAL", "home_score": 0, "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "home_score": 6,
+        "situation": {"scoring_plays": [{
+            "team": "NYG", "scorer": "THOMAS", "type": "Touchdown",
+            "event_type": "Interception Return Touchdown", "football_kind": "interception",
+            "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
+        }]},
+    }])
+
+    alert = tracker.recent()[0]
+    assert alert["headline"] == "PICK SIX"
+    assert alert["detail"] == "THOMAS 12YD | PRESCOTT"
+
+
 def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> None:
     tracker = ScoreAlertTracker(clock=lambda: 100.0)
     baseline = {

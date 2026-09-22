@@ -68,6 +68,7 @@ _FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 _LIVE_DETAIL_WORKERS = 2
+_FOOTBALL_LEAGUES = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
 _MLB_LIVE_DETAIL_CACHE_KEYS = frozenset(
     {
         "batter_name",
@@ -1153,6 +1154,8 @@ class EspnScoreboardProvider:
             if league == "nhl"
             else _soccer_event_details(update, item.data)
             if league.startswith("soccer")
+            else _event_football_details(update, item.data)
+            if league in _FOOTBALL_LEAGUES
             else display_situation(
                 league,
                 _event_competition(update),
@@ -2118,6 +2121,35 @@ def _event_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
     return tuple(record for record in records if record)
 
 
+def _event_drive_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """Return the complete football play stream, including non-scoring plays."""
+
+    drives = _mapping(summary.get("drives"))
+    records: list[Mapping[str, Any]] = []
+    for key in ("previous", "current"):
+        source = drives.get(key)
+        drive_values = (source,) if isinstance(source, Mapping) else _sequence(source)
+        for drive in drive_values:
+            records.extend(_mapping(value) for value in _sequence(_mapping(drive).get("plays")))
+    if not records:
+        records.extend(_mapping(value) for value in _sequence(summary.get("plays")))
+    if not records:
+        records.extend(_mapping(value) for value in _sequence(summary.get("scoringPlays")))
+
+    result: list[Mapping[str, Any]] = []
+    seen: set[str] = set()
+    for record in records:
+        if not record:
+            continue
+        identifier = str(record.get("id") or record.get("sequenceNumber") or "").strip()
+        if identifier and identifier in seen:
+            continue
+        if identifier:
+            seen.add(identifier)
+        result.append(record)
+    return tuple(result)
+
+
 def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize ESPN scoring plays for score-alert detail rendering."""
 
@@ -2231,6 +2263,27 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             passer = _event_passer(text)
             if passer:
                 normalized["passer"] = passer
+            football_play = _normalize_football_play(
+                play,
+                competition,
+                home_abbr,
+                away_abbr,
+                summary,
+                force_scoring=True,
+            )
+            if football_play:
+                normalized.update(
+                    {
+                        key: value
+                        for key, value in football_play.items()
+                        if key not in {"team", "scorer", "player", "text"}
+                    }
+                )
+                if football_play.get("team"):
+                    normalized["team"] = football_play["team"]
+                if football_play.get("scorer"):
+                    normalized["scorer"] = football_play["scorer"]
+                    normalized["player"] = football_play["scorer"]
         clock = _event_clock(play)
         period = _mapping(play.get("period"))
         period_text = str(period.get("displayValue") or period.get("number") or "").strip()
@@ -2258,6 +2311,235 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             )
         scoring_plays.append(normalized)
     return {"scoring_plays": scoring_plays} if scoring_plays else {}
+
+
+def _event_football_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize football turnovers and player context from ESPN drive plays."""
+
+    summary = _mapping(payload)
+    competition = _event_competition(summary)
+    home_abbr = str(item.get("home_abbr") or "")
+    away_abbr = str(item.get("away_abbr") or "")
+    plays: list[dict[str, Any]] = []
+    for raw_play in _event_drive_plays(summary):
+        normalized = _normalize_football_play(
+            raw_play,
+            competition,
+            home_abbr,
+            away_abbr,
+            summary,
+        )
+        if normalized and normalized.get("football_kind"):
+            plays.append(normalized)
+    return {"football_plays": plays}
+
+
+def _normalize_football_play(
+    play: Mapping[str, Any],
+    competition: Mapping[str, Any],
+    home_abbr: str,
+    away_abbr: str,
+    summary: Mapping[str, Any],
+    *,
+    force_scoring: bool = False,
+) -> dict[str, Any] | None:
+    """Normalize one authoritative ESPN football play without text-only scoring guesses."""
+
+    text = str(
+        play.get("shortText")
+        or play.get("text")
+        or play.get("description")
+        or ""
+    ).strip()
+    play_type = _mapping(play.get("type"))
+    type_text = str(
+        play_type.get("text")
+        or play.get("event_type")
+        or play.get("eventType")
+        or ""
+    ).strip()
+    lower = f"{type_text} {text}".lower()
+    review = _mapping(play.get("review"))
+    if review.get("upheld") is False and "revers" in lower:
+        return None
+
+    is_scoring = force_scoring or _event_boolean(play.get("scoringPlay")) or _event_boolean(play.get("isScoringPlay"))
+    kind = "interception" if "intercept" in lower else "fumble" if "fumble" in lower else ""
+    if not kind and not is_scoring:
+        return None
+
+    event_id = str(play.get("id") or play.get("sequenceNumber") or "").strip()
+    offense = _event_participant_team(play, competition, home_abbr, away_abbr, "offense")
+    defense = _event_participant_team(play, competition, home_abbr, away_abbr, "defense")
+    start = _event_team_abbr(_mapping(play.get("start")), competition, home_abbr, away_abbr)
+    end = _event_team_abbr(_mapping(play.get("end")), competition, home_abbr, away_abbr)
+    explicit = _event_team_abbr(play, competition, home_abbr, away_abbr)
+    if kind == "interception":
+        team = explicit or defense or end or start or offense
+    elif kind == "fumble":
+        team = end if _event_boolean(play.get("isTurnover")) and end and end != start else offense or start or explicit or end
+    else:
+        team = explicit or offense or start or end
+
+    interceptor = _event_interceptor(text) if kind == "interception" else ""
+    if kind == "interception" and not interceptor:
+        interceptor = _event_interception_returner(text)
+    fumbler = _event_fumbler(text) if kind == "fumble" else ""
+    recoverer = _event_recoverer(text) if kind == "fumble" else ""
+    forced_by = _event_forced_by(text) if kind == "fumble" else ""
+    if kind == "fumble" and not recoverer:
+        recoverer = _event_fumble_returner(text)
+    if kind == "fumble" and not recoverer and "recovers" in lower:
+        recoverer = fumbler
+    passer = _event_passer(text) if kind == "interception" else ""
+    return_yards = _event_return_yards(text, kind)
+    if return_yards is None and kind in {"interception", "fumble"}:
+        return_yards = _event_yards(text)
+    scorer = _event_player(play, summary)
+    if kind == "interception" and interceptor:
+        scorer = interceptor
+    elif kind == "fumble" and is_scoring and recoverer:
+        scorer = recoverer
+    if not scorer:
+        scorer = _event_text_player(text)
+
+    period = _mapping(play.get("period"))
+    period_text = str(period.get("displayValue") or period.get("number") or "").strip()
+    if period_text.isdigit():
+        period_text = f"Q{period_text}"
+    clock = _event_clock(play)
+    start_state = _mapping(play.get("start"))
+    result: dict[str, Any] = {
+        "event_id": event_id,
+        "football_kind": kind,
+        "team": team,
+        "scorer": scorer,
+        "player": scorer,
+        "event_type": type_text[:24],
+        "text": text[:80],
+        "is_scoring": is_scoring,
+        "is_turnover": _event_boolean(play.get("isTurnover")) or kind == "interception",
+    }
+    for key, value in (
+        ("interceptor", interceptor),
+        ("fumbler", fumbler),
+        ("recoverer", recoverer),
+        ("forced_by", forced_by),
+        ("passer", passer),
+        ("return_yards", return_yards),
+        ("period", period_text),
+        ("clock", clock),
+    ):
+        if value not in (None, ""):
+            result[key] = value
+    for source_key, target_key in (("down", "down"), ("distance", "distance")):
+        value = start_state.get(source_key)
+        if value not in (None, ""):
+            result[target_key] = value
+    stat_yardage = play.get("statYardage")
+    if stat_yardage not in (None, ""):
+        try:
+            result["yards"] = int(stat_yardage)
+        except (TypeError, ValueError):
+            pass
+    if return_yards is not None:
+        result["yards"] = return_yards
+    return result
+
+
+def _event_boolean(value: Any) -> bool:
+    """Read ESPN boolean fields without treating the string false as true."""
+
+    return value is True or str(value).strip().lower() in {"1", "true", "yes"}
+
+
+def _event_participant_team(
+    play: Mapping[str, Any],
+    competition: Mapping[str, Any],
+    home_abbr: str,
+    away_abbr: str,
+    role: str,
+) -> str:
+    """Resolve one offense or defense team from ESPN play participants."""
+
+    for participant in _sequence(play.get("teamParticipants")):
+        record = _mapping(participant)
+        if str(record.get("type") or "").strip().lower() != role:
+            continue
+        identifier = record.get("id") or _mapping(record.get("team")).get("id")
+        return _event_team_abbr(
+            {"teamId": identifier},
+            competition,
+            home_abbr,
+            away_abbr,
+        )
+    return ""
+
+
+def _event_interceptor(text: str) -> str:
+    """Read the defender named after ESPN's interception marker."""
+
+    match = re.search(r"\bINTERCEPTED\s+by\s+(?:[A-Z]{2,4}-)?([A-Z][A-Za-z.'-]*)", text, re.IGNORECASE)
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_interception_returner(text: str) -> str:
+    """Read an interception-return scorer when ESPN omits the interception clause."""
+
+    match = re.search(
+        r"^\s*(.+?)\s+\d+\s+Yd\s+Interception\s+Return\b",
+        text,
+        re.IGNORECASE,
+    )
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_fumbler(text: str) -> str:
+    """Read the ball carrier named before ESPN's fumble marker."""
+
+    prefix = re.split(r"FUMBLES", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    prefix = re.sub(r"^\s*(?:\([^)]*\)\s*)+", "", prefix)
+    match = re.match(
+        r"\s*([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]+)?)\b",
+        prefix,
+    )
+    if match and match.group(1).strip().upper() in {"PUNT", "KICKOFF", "SNAP"}:
+        return ""
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_recoverer(text: str) -> str:
+    """Read the player named after ESPN's fumble recovery marker."""
+
+    match = re.search(r"\bRECOVERED\s+by\s+(?:[A-Z]{2,4}-)?([A-Z][A-Za-z.'-]*)", text, re.IGNORECASE)
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_fumble_returner(text: str) -> str:
+    """Read a fumble-return scorer when ESPN omits the recovery clause."""
+
+    match = re.search(
+        r"^\s*(.+?)\s+\d+\s+Yd\s+Fumble\s+Return\b",
+        text,
+        re.IGNORECASE,
+    )
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_forced_by(text: str) -> str:
+    """Read the first forced-fumble defender from ESPN's parenthetical text."""
+
+    match = re.search(r"FUMBLES\s*\(([^)]+)\)", text, re.IGNORECASE)
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_return_yards(text: str, kind: str) -> int | None:
+    """Read return yardage only from the interception or fumble return segment."""
+
+    marker = "INTERCEPTED" if kind == "interception" else "FUMBLES"
+    tail = text[text.upper().find(marker):] if marker in text.upper() else text
+    values = re.findall(r"\bfor\s+(\d+)\s+yards?\b", tail, re.IGNORECASE)
+    return int(values[-1]) if values else None
 
 
 def _event_team_abbr(
@@ -2373,10 +2655,13 @@ def _event_participant_names(
 def _compact_event_name(value: object) -> str:
     """Return one participant surname for a narrow alert detail line."""
 
-    text = str(value or "").strip()
+    raw = str(value or "").strip().strip(".,;:()")
+    text = raw
     if not text:
         return ""
     parts = text.replace(".", "").split()
+    if len(parts) == 1 and "." in raw:
+        return raw.rsplit(".", 1)[-1].upper()[:12]
     if len(parts) > 1 and parts[-1].upper() in {"JR", "SR", "II", "III", "IV", "V"}:
         return f"{parts[-2]} {parts[-1]}".upper()[:12]
     return parts[-1].upper()[:12]
@@ -2393,6 +2678,9 @@ def _event_passer(text: str) -> str:
     """Read a quarterback name from one ESPN passing touchdown description."""
 
     match = re.search(r"\bpass from\s+([^()]+)", text, re.IGNORECASE)
+    if match:
+        return _compact_event_name(match.group(1))
+    match = re.search(r"\b([A-Z][A-Za-z.'-]*)\s+pass\b", text, re.IGNORECASE)
     return _compact_event_name(match.group(1)) if match else ""
 
 
