@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from PIL import Image, ImageFilter
 
 
 _CONTRAST_RATIO_THRESHOLD = 2.0
 _COLOR_DISTANCE_THRESHOLD_SQUARED = 12 * 12
-_MIN_CONTRASTING_FRACTION = 0.20
+_SCROLL_MIN_CONTRASTING_FRACTION = 0.30
+_FULL_MIN_CONTRASTING_FRACTION = 0.20
 _KEYLINE_COLORS = ((244, 247, 250), (8, 12, 18))
 _ALPHA_THRESHOLD = 160
 _NEIGHBOR_OFFSETS = (
@@ -17,16 +20,40 @@ _NEIGHBOR_OFFSETS = (
 )
 
 
-def paste_team_logo(canvas: Image.Image, logo: Image.Image, xy: tuple[int, int]) -> bool:
-    """Paste a logo and add a one-pixel keyline only when local contrast stays low."""
+class LogoOutlineMode(str, Enum):
+    """Select the display-specific logo outline policy."""
+
+    SCROLL = "scroll"
+    FULL = "full"
+
+
+def paste_team_logo(
+    canvas: Image.Image,
+    logo: Image.Image,
+    xy: tuple[int, int],
+    *,
+    outline_mode: LogoOutlineMode = LogoOutlineMode.SCROLL,
+) -> bool:
+    """Paste a logo and apply the selected display outline policy."""
 
     mark = logo.convert("RGBA")
+    outline_mode = LogoOutlineMode(outline_mode)
     x, y = int(xy[0]), int(xy[1])
     width, height = mark.size
     background = canvas.crop((x, y, x + width, y + height)).convert("RGBA")
     edge_pairs = _logo_edge_pairs(mark, background)
     visible_pairs = _logo_pixel_pairs(mark, background)
-    if edge_pairs and visible_pairs and _needs_keyline(edge_pairs) and _needs_keyline(visible_pairs):
+    min_contrasting_fraction = (
+        _FULL_MIN_CONTRASTING_FRACTION
+        if outline_mode is LogoOutlineMode.FULL
+        else _SCROLL_MIN_CONTRASTING_FRACTION
+    )
+    if (
+        edge_pairs
+        and visible_pairs
+        and _needs_keyline(edge_pairs, min_contrasting_fraction)
+        and _needs_keyline(visible_pairs, min_contrasting_fraction)
+    ):
         line_color = _keyline_color(edge_pairs)
         edge = mark.getchannel("A").filter(ImageFilter.MaxFilter(3))
         keyline = Image.new("RGBA", mark.size, (*line_color, 255))
@@ -92,6 +119,7 @@ def _is_edge_pixel(pixels, x: int, y: int, width: int, height: int) -> bool:
 
 def _needs_keyline(
     visible_pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
+    min_contrasting_fraction: float,
 ) -> bool:
     """Measure the share of the logo that contrasts with the pixels below it."""
 
@@ -100,7 +128,7 @@ def _needs_keyline(
         for mark, background in visible_pairs
         if _is_contrasting(mark, background)
     )
-    return contrasted / len(visible_pairs) < _MIN_CONTRASTING_FRACTION
+    return contrasted / len(visible_pairs) < min_contrasting_fraction
 
 
 def _is_contrasting(mark: tuple[int, int, int], background: tuple[int, int, int]) -> bool:

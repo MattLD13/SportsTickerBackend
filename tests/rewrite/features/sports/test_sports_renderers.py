@@ -12,7 +12,7 @@ from ticker_core.features.sports import SportsRenderer
 from ticker_core.features.sports import full_port as sports_full_port
 from ticker_core.features.sports import stadium_port as sports_stadium_port
 from ticker_core.features.sports.logo_badge import draw_missing_team_badge
-from ticker_core.features.sports.logo_visibility import paste_team_logo
+from ticker_core.features.sports.logo_visibility import LogoOutlineMode, paste_team_logo
 from ticker_core.rendering import ContentScene, load_default_font_set
 
 
@@ -201,8 +201,21 @@ def test_team_logo_with_visible_color_details_does_not_get_an_unneeded_keyline()
     draw.line((0, 0, 6, 0), fill=(255, 255, 255, 255), width=1)
     draw.rectangle((2, 3, 4, 5), fill=(255, 255, 255, 255))
 
-    assert paste_team_logo(canvas, logo, (5, 5)) is False
+    assert paste_team_logo(canvas, logo, (5, 5), outline_mode=LogoOutlineMode.FULL) is False
     assert canvas.getpixel((4, 8))[:3] == background_color[:3]
+
+
+def test_scroll_logo_policy_outlines_a_mark_with_low_visible_contrast() -> None:
+    canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    for y in range(2, 6):
+        for x in range(2, 6):
+            logo.putpixel((x, y), (0, 0, 0, 255))
+    for point in ((2, 2), (3, 2), (5, 2), (3, 3)):
+        logo.putpixel(point, (255, 255, 255, 255))
+
+    assert paste_team_logo(canvas, logo, (5, 5), outline_mode=LogoOutlineMode.SCROLL) is True
+    assert canvas.getpixel((6, 9))[:3] != (0, 0, 0)
 
 
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:

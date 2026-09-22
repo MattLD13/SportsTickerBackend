@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw, ImageStat
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 from .logo_badge import draw_missing_team_badge
-from .logo_visibility import paste_team_logo
+from .logo_visibility import LogoOutlineMode, paste_team_logo
 
 PANEL_W = 384
 PANEL_H = 32
@@ -1118,7 +1118,7 @@ class PreparedSportsFullRenderer(SportsMixin):
         """Paste one prepared logo or a readable code when its asset is absent."""
         if logo is not None:
             mark = logo if logo.size == (size, size) else logo.resize((size, size), Image.LANCZOS)
-            paste_team_logo(image, mark, xy)
+            paste_team_logo(image, mark, xy, outline_mode=LogoOutlineMode.FULL)
             return
         draw_missing_team_badge(image, xy, size, team_color, abbreviation)
 

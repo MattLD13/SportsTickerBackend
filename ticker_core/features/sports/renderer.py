@@ -14,7 +14,7 @@ from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, norma
 
 from .full_port import PreparedSportsFullRenderer
 from .logo_badge import draw_missing_team_badge
-from .logo_visibility import paste_team_logo
+from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .stadium_port import PreparedStadiumRenderer
 
 PANEL_W = 384
@@ -249,7 +249,7 @@ class SportsRenderer:
     ) -> None:
         logo = self._logos.get(str(url) if url else None, (LOGO_SIZE, LOGO_SIZE))
         if logo is not None:
-            paste_team_logo(image, logo, (x, y))
+            paste_team_logo(image, logo, (x, y), outline_mode=LogoOutlineMode.SCROLL)
             return
         draw_missing_team_badge(image, (x, y), LOGO_SIZE, color, abbreviation)
 

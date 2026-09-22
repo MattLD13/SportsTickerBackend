@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP
 from .logo_badge import draw_missing_team_badge
-from .logo_visibility import paste_team_logo
+from .logo_visibility import LogoOutlineMode, paste_team_logo
 
 _HYBRID_SMALL_V = [0x0, 0x0, 0xA, 0x4, 0x0, 0x0]
 
@@ -314,7 +314,7 @@ class StadiumRenderer:
     def _paste_logo(self, img, logo, x, y):
         """Paste RGBA logo onto img at (x, y), using alpha as mask."""
         if logo:
-            paste_team_logo(img, logo, (int(x), int(y)))
+            paste_team_logo(img, logo, (int(x), int(y)), outline_mode=LogoOutlineMode.SCROLL)
 
     def render(self, g):
         """
