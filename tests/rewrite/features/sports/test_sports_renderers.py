@@ -205,17 +205,21 @@ def test_team_logo_with_visible_color_details_does_not_get_an_unneeded_keyline()
     assert canvas.getpixel((4, 8))[:3] == background_color[:3]
 
 
-def test_scroll_logo_policy_outlines_a_mark_with_low_visible_contrast() -> None:
-    canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
+def test_full_logo_policy_outlines_a_mark_that_scroll_leaves_clean() -> None:
+    full_canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
+    scroll_canvas = Image.new("RGBA", (18, 18), (0, 0, 0, 255))
     logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
     for y in range(2, 6):
         for x in range(2, 6):
             logo.putpixel((x, y), (0, 0, 0, 255))
-    for point in ((2, 2), (3, 2), (5, 2), (3, 3)):
+    logo.putpixel((6, 3), (0, 0, 0, 255))
+    for point in ((2, 2), (3, 2), (4, 2), (3, 3)):
         logo.putpixel(point, (255, 255, 255, 255))
 
-    assert paste_team_logo(canvas, logo, (5, 5), outline_mode=LogoOutlineMode.SCROLL) is True
-    assert canvas.getpixel((6, 9))[:3] != (0, 0, 0)
+    assert paste_team_logo(full_canvas, logo, (5, 5), outline_mode=LogoOutlineMode.FULL) is True
+    assert paste_team_logo(scroll_canvas, logo, (5, 5), outline_mode=LogoOutlineMode.SCROLL) is False
+    assert full_canvas.getpixel((6, 9))[:3] != (0, 0, 0)
+    assert scroll_canvas.getpixel((6, 9))[:3] == (0, 0, 0)
 
 
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
