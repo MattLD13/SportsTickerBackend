@@ -45,3 +45,20 @@ def test_sports_news_kinds_use_distinct_banner_accents() -> None:
     ]
 
     assert len(set(colors)) == 4
+
+
+def test_news_team_header_uses_gradient_without_team_color_boxes() -> None:
+    renderer = PreparedNewsBannerRenderer()
+    image = renderer.draw_news_banner({
+        "kind": "TRADE",
+        "from_abbr": "NYJ",
+        "to_abbr": "IND",
+        "from_color": "#115740",
+        "from_alt_color": "#FFFFFF",
+        "to_color": "#003B75",
+        "to_alt_color": "#FFFFFF",
+        "text": "JETS SEND PLAYER TO COLTS",
+    })
+
+    assert image.getpixel((20, 0)) != image.getpixel((160, 0))
+    assert image.getpixel((77, 0)) == image.getpixel((77, 9))

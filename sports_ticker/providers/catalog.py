@@ -120,6 +120,25 @@ class EspnTeamCatalog:
     def teams(self, league: str) -> tuple[dict[str, str], ...]:
         """Return all teams for one configured ESPN league."""
 
+        return tuple(
+            {key: team[key] for key in ("id", "abbr", "logo")}
+            for team in self._team_records(league)
+        )
+
+    def team_colors(self, league: str) -> dict[str, dict[str, str]]:
+        """Return ESPN primary and alternate colors by team abbreviation."""
+
+        return {
+            team["abbr"]: {
+                "color": team["color"],
+                "alt_color": team["alt_color"],
+            }
+            for team in self._team_records(league)
+        }
+
+    def _team_records(self, league: str) -> tuple[dict[str, str], ...]:
+        """Return cached team records with display colors."""
+
         identifier = str(league).strip().lower()
         definition = league_for(identifier)
         if not definition.my_teams_enabled:
@@ -319,6 +338,8 @@ def _teams(
                 "id": f"{league}:{abbreviation}",
                 "abbr": abbreviation,
                 "logo": corrected_logo(league, abbreviation, _logo(team)) or "",
+                "color": _hex_color(team.get("color")),
+                "alt_color": _hex_color(team.get("alternateColor")),
             }
         )
     return tuple(sorted({item["id"]: item for item in values}.values(), key=lambda item: item["abbr"]))
@@ -380,6 +401,19 @@ def _logo(team: Mapping[str, object]) -> str:
         if href:
             return href
     return ""
+
+
+def _hex_color(value: object) -> str:
+    """Return one valid six-digit ESPN team color without a hash."""
+
+    text = str(value or "").strip().lstrip("#")
+    if len(text) != 6:
+        return ""
+    try:
+        int(text, 16)
+    except ValueError:
+        return ""
+    return text.upper()
 
 
 __all__ = ["EspnTeamCatalog"]

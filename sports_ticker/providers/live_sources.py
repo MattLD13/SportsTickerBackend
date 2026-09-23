@@ -527,12 +527,14 @@ class EspnNewsSource:
         news_urls: Mapping[str, str],
         client: JsonHttpClient | None = None,
         *,
+        team_color_lookup: Callable[[str], Mapping[str, Mapping[str, str]]] | None = None,
         timeout: float = 10.0,
         refresh_seconds: float = 30.0,
         background: bool = True,
     ) -> None:
         self._news_urls = dict(news_urls)
         self._client = client or UrllibJsonHttpClient()
+        self._team_color_lookup = team_color_lookup
         self._timeout = _timeout(timeout)
         self._refresh_seconds = _timeout(refresh_seconds)
         self._background = bool(background)
@@ -584,6 +586,7 @@ class EspnNewsSource:
             articles = payload.get("articles", ()) if isinstance(payload, Mapping) else ()
             if not isinstance(articles, Sequence) or isinstance(articles, (str, bytes)):
                 continue
+            league_records: list[dict[str, object]] = []
             for article in articles:
                 record = _classify_espn_news_article(article, league, set())
                 if record is None:
@@ -592,8 +595,43 @@ class EspnNewsSource:
                 identifier = hashlib.sha1(f"{league}:{article_id}".encode()).hexdigest()[:20]
                 record["id"] = identifier
                 record.pop("source_headline", None)
-                records.append(record)
+                league_records.append(record)
+            if league_records and self._team_color_lookup is not None:
+                try:
+                    team_colors = self._team_color_lookup(league)
+                except Exception:
+                    team_colors = {}
+                if isinstance(team_colors, Mapping):
+                    for record in league_records:
+                        _apply_news_team_colors(record, team_colors)
+            records.extend(league_records)
         return tuple(records[:24])
+
+
+def _apply_news_team_colors(
+    record: dict[str, object],
+    team_colors: Mapping[str, Mapping[str, str]],
+) -> None:
+    """Attach catalog colors to the teams shown by one news banner."""
+
+    for side in ("from", "to"):
+        abbreviation = str(record.get(f"{side}_abbr") or "").strip().upper()
+        team = team_colors.get(abbreviation)
+        if not isinstance(team, Mapping):
+            continue
+        for color_key, field_suffix in (
+            ("color", "color"),
+            ("alt_color", "alt_color"),
+        ):
+            value = str(team.get(color_key) or "").strip().lstrip("#")
+            if len(value) != 6:
+                continue
+            try:
+                for index in (0, 2, 4):
+                    int(value[index:index + 2], 16)
+            except ValueError:
+                continue
+            record[f"{side}_{field_suffix}"] = f"#{value.upper()}"
 
 
 def _filter_news_for_ticker(

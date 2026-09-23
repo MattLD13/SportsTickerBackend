@@ -68,7 +68,8 @@ def create_production_application(
     repository = TickerRepository(path)
     _provision_initial_ticker(repository)
     spotify = SpotifyIntegrationService(repository, SpotifyConfig.from_environment())
-    providers = _providers(spotify)
+    catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS)
+    providers = _providers(spotify, catalog)
     snapshots = SnapshotStore()
     refresh = RefreshService(providers.values(), snapshots)
     scheduler = RefreshScheduler(refresh)
@@ -84,7 +85,7 @@ def create_production_application(
         snapshots,
         scheduler=scheduler,
         spotify_service=spotify,
-        catalog=EspnTeamCatalog(TEAM_CATALOG_PATHS),
+        catalog=catalog,
         weather_location_resolver=WeatherLocationResolver().resolve,
     )
     runtime = BackendRuntime(
@@ -139,7 +140,10 @@ def start_runtime(app: Flask) -> Callable[[], None]:
     return stop
 
 
-def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
+def _providers(
+    spotify: SpotifyIntegrationService,
+    catalog: EspnTeamCatalog,
+) -> dict[str, object]:
     scoreboard_urls = {
         league: _scoreboard_url(league, path)
         for league, path in ESPN_SCOREBOARD_PATHS.items()
@@ -154,7 +158,9 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
     return {
         "espn": EspnScoreboardProvider(scoreboard_urls, fastcast=fastcast),
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
-        "news": NewsProvider(EspnNewsSource(news_urls)),
+        "news": NewsProvider(
+            EspnNewsSource(news_urls, team_color_lookup=catalog.team_colors)
+        ),
         "weather": HybridWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
         "racing": RacingProvider(LiveRacingSource()),

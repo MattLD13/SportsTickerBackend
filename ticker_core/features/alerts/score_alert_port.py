@@ -197,11 +197,13 @@ class ScoreAlertMixin:
         arrow, status = self._alert_status_label(alert)
         x = x0 + 6
         if arrow:
-            # A row lower than the text: the triangle is three rows tall and
-            # would otherwise hang off the top of the five-row digits.
-            draw_tiny_text(d, x, 26, arrow, (200, 200, 210))
-            # The triangle fills all five columns of its cell, so the font's
-            # own advance leaves the inning number touching the base.
+            marker_color = (200, 200, 210)
+            if arrow == '▲':
+                d.polygon([(x + 2, 26), (x + 4, 28), (x, 28)], fill=marker_color)
+            elif arrow == '▼':
+                d.polygon([(x, 26), (x + 4, 26), (x + 2, 28)], fill=marker_color)
+            else:
+                draw_tiny_text(d, x, 26, arrow, marker_color)
             x += 7
         if status:
             draw_tiny_text(d, x, 25, status, (200, 200, 210))

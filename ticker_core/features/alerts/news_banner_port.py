@@ -86,6 +86,57 @@ def _readable(color):
     return tuple(min(255, int(c * factor)) for c in color)
 
 
+def _darken(color, factor=0.38):
+    """Keep team colors recognizable while protecting small white header text."""
+    return tuple(max(0, min(255, int(channel * factor))) for channel in color)
+
+
+def _gradient_stops(item, accent):
+    """Return real team colors for a compact, multi-stop news header."""
+    trade = str(item.get("kind") or "").strip().upper() == "TRADE"
+    sides = ("from", "to") if trade else ("to", "from")
+    colors = []
+    for side in sides:
+        for suffix in ("color", "alt_color"):
+            raw = item.get(f"{side}_{suffix}")
+            if raw:
+                colors.append(_hex_rgb(raw))
+    if not colors:
+        colors.append(accent)
+    if len(colors) == 1:
+        colors.append(accent)
+    colors = [_darken(color) for color in colors[:4]]
+    if len(colors) == 2:
+        colors.insert(1, _darken(accent, 0.30))
+    return colors
+
+
+def _team_text_color(item, side, fallback):
+    """Choose a catalog color that remains visible without a filled chip."""
+    primary = _hex_rgb(item.get(f"{side}_color"), fallback)
+    alternate = _hex_rgb(item.get(f"{side}_alt_color"), (255, 255, 255))
+    luminance = lambda color: 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2]
+    if luminance(primary) >= 130:
+        return primary
+    if luminance(alternate) >= 130:
+        return alternate
+    return (255, 255, 255)
+
+
+def _draw_header_gradient(draw, colors, x0=0, x1=BANNER_W - 1, y0=0, y1=10):
+    """Draw a smooth, low-profile horizontal gradient across the alert header."""
+    span = max(1, x1 - x0)
+    segments = max(1, len(colors) - 1)
+    for x in range(x0, x1 + 1):
+        position = (x - x0) / span * segments
+        segment = min(segments - 1, int(position))
+        blend = position - segment
+        start, end = colors[segment], colors[segment + 1]
+        color = tuple(int(start[channel] + (end[channel] - start[channel]) * blend)
+                      for channel in range(3))
+        draw.line([(x, y0), (x, y1)], fill=color)
+
+
 def _news_kind_style(item):
     """Return the accent and compact label for one sports news kind."""
 
@@ -147,26 +198,23 @@ class NewsBannerMixin:
         accent, kind = _news_kind_style(item)
 
         d.rectangle([0, 0, 2, PANEL_H], fill=accent)
-        d.rectangle([4, 0, BANNER_W, 10], fill=(22, 24, 30))
-        d.rectangle([6, 1, 8 + len(kind) * 5, 9], fill=accent)
-        draw_tiny_text(d, 8, 3, kind, (10, 10, 12))
+        _draw_header_gradient(d, _gradient_stops(item, accent))
+        draw_tiny_text(d, 7, 3, kind, (255, 255, 255))
 
         y = 2
-        x = 14 + len(kind) * 5
+        x = 12 + len(kind) * 5
         from_abbr = str(item.get('from_abbr', ''))[:4]
         to_abbr = str(item.get('to_abbr', ''))[:4]
         if str(item.get("kind") or "").strip().upper() == "TRADE" and from_abbr and to_abbr:
-            x = draw_hybrid_text(d, x, y, from_abbr, from_color)
+            x = draw_hybrid_text(d, x, y, from_abbr, _team_text_color(item, "from", from_color))
             self._draw_banner_arrow(d, x + 4, y + 2, 13, from_color, to_color)
-            chip_x = x + 23
+            team_x = x + 23
         else:
-            chip_x = x
-        chip_abbr = to_abbr or from_abbr
-        chip_w = len(chip_abbr) * 5 + 5
-        d.rectangle([chip_x, y - 1, chip_x + chip_w, y + 8], fill=to_color)
-        lum = 0.2126 * to_color[0] + 0.7152 * to_color[1] + 0.0722 * to_color[2]
-        draw_hybrid_text(d, chip_x + 3, y, chip_abbr,
-                         (10, 10, 12) if lum > 150 else (255, 255, 255))
+            team_x = x
+        team_abbr = to_abbr or from_abbr
+        team_side = "to" if to_abbr else "from"
+        team_color = _team_text_color(item, team_side, to_color)
+        draw_hybrid_text(d, team_x, y, team_abbr, team_color)
 
         d.line([(4, 11), (BANNER_W, 11)], fill=(52, 56, 66))
 

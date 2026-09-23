@@ -134,6 +134,27 @@ def test_ten_recent_real_transaction_shapes_get_impact_tiers():
     assert all(record["distribution"] == "global" for record in records if record["impact_tier"] == "MAJOR")
 
 
+def test_espn_team_catalog_primary_and_alternate_colors_reach_news_records():
+    colors = {
+        "DAL": {"color": "003594", "alt_color": "869397"},
+        "GB": {"color": "203731", "alt_color": "FFB612"},
+    }
+    source = EspnNewsSource(
+        {"nfl": "https://example.test/nfl/news"},
+        client=FixtureClient(),
+        team_color_lookup=lambda league: colors,
+        background=False,
+    )
+
+    records = source._fetch_news()
+    parsons = next(record for record in records if record["athletes"] == ["Micah Parsons"])
+
+    assert parsons["from_color"] == "#003594"
+    assert parsons["from_alt_color"] == "#869397"
+    assert parsons["to_color"] == "#203731"
+    assert parsons["to_alt_color"] == "#FFB612"
+
+
 def test_blockbuster_and_major_trades_broadcast_without_followed_teams():
     records = _source().fetch(DisplaySettings())
 
