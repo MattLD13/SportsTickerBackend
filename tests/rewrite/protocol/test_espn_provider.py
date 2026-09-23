@@ -765,6 +765,51 @@ def test_espn_mlb_live_refresh_reads_summary_details_for_dense_slate() -> None:
     assert live_item.data["situation"]["scoring_plays"][0]["type"] == "Single"
 
 
+def test_espn_nhl_dense_live_slate_keeps_scoring_players() -> None:
+    events = [
+        _event(f"nhl-{index}", "2026-08-16T18:00:00Z", state="in")
+        for index in range(6)
+    ]
+    updates = {}
+    for index, event in enumerate(events):
+        competition = deepcopy(event["competitions"][0])
+        updates[event["id"]] = {
+            "header": {"id": event["id"], "competitions": [competition]},
+            "plays": [{
+                "type": {"text": "Goal"},
+                "text": f"Player {index} Goal",
+                "scoringPlay": True,
+                "scoreValue": 1,
+                "team": {"abbreviation": "NYG"},
+                "participants": [{
+                    "athlete": {"displayName": f"Player {index}"},
+                    "type": "scorer",
+                }],
+            }],
+        }
+
+    client = RecordingClient(
+        {"20260816-20260817": {"events": events}},
+        event_updates=updates,
+    )
+    provider = EspnScoreboardProvider(
+        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch_for_ticker(
+        "ticker-nhl",
+        DisplaySettings(active_sports={"nhl": True}, my_teams=("nhl:NYG",)),
+    )
+
+    assert sum("/summary?event=" in url for url in client.urls) == 6
+    assert all(
+        item.data["situation"]["scoring_plays"][0]["scorer"]
+        for item in result.content
+    )
+
+
 def test_espn_mlb_dense_live_refresh_keeps_details_after_schedule_refresh() -> None:
     events = [
         _event(f"mlb-{index}", "2026-08-16T18:00:00Z", state="in")

@@ -694,6 +694,13 @@ class ScoreAlertTracker:
                 for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
                     delta = new_score - old_score
                     if delta <= 0:
+                        if family == "hockey":
+                            self._hydrate_hockey_alert(
+                                game,
+                                side,
+                                home_score=home,
+                                away_score=away,
+                            )
                         continue
                     scoring_play = _latest_scoring_play(game, situation, side)
                     if family == "basketball":
@@ -723,6 +730,44 @@ class ScoreAlertTracker:
                 if key in current_ids
             }
             self._alerts = self._alerts[-_MAX_ALERTS:]
+
+    def _hydrate_hockey_alert(
+        self,
+        game: Mapping[str, Any],
+        side: str,
+        *,
+        home_score: int,
+        away_score: int,
+    ) -> None:
+        """Fill one recent generic hockey alert when ESPN detail arrives late."""
+
+        detail = _extract_alert_detail(str(game.get("sport") or "nhl"), game, side)
+        if not detail:
+            return
+        game_id = str(game.get("id") or "").strip()
+        for alert in reversed(self._alerts):
+            if (
+                alert.get("game_id") == game_id
+                and alert.get("side") == side
+                and alert.get("home_score") == home_score
+                and alert.get("away_score") == away_score
+                and not str(alert.get("detail") or "").strip()
+            ):
+                scoring_play = _latest_scoring_play(
+                    game,
+                    game.get("situation") if isinstance(game.get("situation"), Mapping) else {},
+                    side,
+                )
+                kind, headline = _describe(
+                    game.get("sport") or "nhl",
+                    max(1, int(alert.get("points") or 1)),
+                    scoring_play,
+                )
+                alert["kind"] = kind
+                alert["headline"] = headline
+                alert["detail"] = detail
+                alert["big"] = kind in _BIG_KINDS
+                return
 
     def recent(self, *, max_age: float = _MAX_AGE, delay: float = 0.0) -> tuple[dict[str, Any], ...]:
         """Return alerts visible at the delayed content timestamp."""

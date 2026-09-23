@@ -51,6 +51,43 @@ def test_score_alert_enrichment_details() -> None:
     assert mlb_alert["detail"] == "JUDGE"
 
 
+def test_hockey_score_alert_hydrates_when_summary_detail_arrives_after_score() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard",
+        "id": "nhl-late-detail",
+        "sport": "nhl",
+        "state": "in",
+        "status": "P2 10:00",
+        "home_abbr": "NYR",
+        "away_abbr": "BOS",
+        "home_score": 0,
+        "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{**baseline, "home_score": 1, "status": "P2 09:42"}])
+    assert tracker.recent()[0]["detail"] == ""
+
+    tracker.ingest([{
+        **baseline,
+        "home_score": 1,
+        "status": "P2 09:35",
+        "situation": {
+            "scoring_plays": [{
+                "team": "NYR",
+                "scorer": "RADDYSH",
+                "type": "Goal",
+                "strength": "even-strength",
+                "assists": ["SMITS"],
+            }],
+        },
+    }])
+
+    alert = tracker.recent()[0]
+    assert alert["headline"] == "GOAL"
+    assert alert["detail"] == "RADDYSH (SMITS)"
+
+
 def test_football_score_alert_uses_the_scoring_play() -> None:
     tracker = ScoreAlertTracker(clock=lambda: 100.0)
     baseline = {

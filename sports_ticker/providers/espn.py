@@ -67,7 +67,7 @@ _SOURCE_CACHE_SECONDS = 5.0
 _FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
-_LIVE_DETAIL_WORKERS = 2
+_LIVE_DETAIL_WORKERS = 8
 _FOOTBALL_LEAGUES = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
 _MLB_LIVE_DETAIL_CACHE_KEYS = frozenset(
     {
@@ -443,7 +443,22 @@ class EspnScoreboardProvider:
                         live_events,
                         monotonic_now,
                     )
-                    live_detail_suppressed.add(league)
+                    if league == "nhl":
+                        live_refreshes.extend(
+                            _LiveRefresh(
+                                league=league,
+                                event=event,
+                                fastcast_updated_at=self._fastcast.event_updated_at(
+                                    league,
+                                    str(event.get("id") or "").strip(),
+                                )
+                                if self._fastcast is not None
+                                else None,
+                            )
+                            for event in live_events
+                        )
+                    else:
+                        live_detail_suppressed.add(league)
                     if not stale_live_events:
                         continue
                     if (
@@ -451,7 +466,7 @@ class EspnScoreboardProvider:
                         or len(stale_live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
                     ):
                         refresh_leagues.append((league, url))
-                    else:
+                    elif league != "nhl":
                         live_refreshes.extend(
                             _LiveRefresh(
                                 league=league,
@@ -469,7 +484,7 @@ class EspnScoreboardProvider:
                     live_events = _unique_live_events(schedule_events, current)
                     if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
-                        if league != "mlb":
+                        if league != "mlb" and league != "nhl":
                             live_detail_suppressed.add(league)
                     else:
                         live_refreshes.extend(
@@ -564,14 +579,27 @@ class EspnScoreboardProvider:
                         if event_id:
                             live_update_payloads.setdefault((league, event_id), event)
                     if self._fastcast_active(league) and league != "mlb":
-                        live_detail_suppressed.add(league)
-                    elif self._event_detail_urls.get(league):
-                        if (
-                            len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
-                            and league != "mlb"
-                        ):
+                        if league != "nhl":
                             live_detail_suppressed.add(league)
-                        elif cache_schedule:
+                        elif self._event_detail_urls.get(league):
+                            for event in live_events:
+                                event_id = str(event.get("id") or "").strip()
+                                if event_id and (league, event_id) not in live_update_futures:
+                                    live_update_futures[(league, event_id)] = pool.submit(
+                                        self._read_event_scoreboard,
+                                        league,
+                                        event_id,
+                                        cache_source=cache_schedule,
+                                    )
+                                    live_update_expected_fastcast_at[(league, event_id)] = None
+                    elif self._event_detail_urls.get(league):
+                        dense_live = len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
+                        if dense_live and league != "mlb" and league != "nhl":
+                            live_detail_suppressed.add(league)
+                        if (
+                            (not dense_live or league == "mlb" or league == "nhl")
+                            and (cache_schedule or league == "nhl")
+                        ):
                             for event in live_events:
                                 event_id = str(event.get("id") or "").strip()
                                 if event_id and (league, event_id) not in live_update_futures:
@@ -642,7 +670,8 @@ class EspnScoreboardProvider:
             (league, str(event.get("id") or "").strip())
             for league in live_detail_suppressed
             for event in events_by_league.get(league, ())
-            if str(event.get("id") or "").strip() and _event_needs_live_refresh(event, current)
+            if str(event.get("id") or "").strip()
+            and _event_needs_live_refresh(event, current)
         }
         event_leagues = sorted(
             active_leagues,
