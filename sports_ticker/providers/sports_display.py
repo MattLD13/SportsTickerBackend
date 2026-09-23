@@ -147,6 +147,8 @@ def _status(
         return str(data.get("status") or detail or "TBD")
     if "POSTPON" in upper or "CANCEL" in upper or "SUSPEND" in upper or "DELAY" in upper:
         return detail.split(",", 1)[0].title()
+    if league == "nhl" and upper.startswith("END OF"):
+        return _period_status("P", period, "END", overtime_base=3)
     if state == "half" or "HALFTIME" in upper or upper in {"HT", "HALF"}:
         return "Half" if league.startswith("soccer") else "Halftime"
     if "FINAL" in upper or state in {"post", "final"}:

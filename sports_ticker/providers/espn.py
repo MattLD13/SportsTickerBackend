@@ -459,9 +459,13 @@ class EspnScoreboardProvider:
                         )
                     else:
                         live_detail_suppressed.add(league)
-                    if not stale_live_events:
+                    if league == "nhl":
+                        # ESPN Fastcast updates NHL scores quickly, but it does not carry a
+                        # continuously changing game clock. Refresh the scoreboard clock directly.
+                        refresh_leagues.append((league, url))
+                    elif not stale_live_events:
                         continue
-                    if (
+                    elif (
                         not self._event_detail_urls.get(league)
                         or len(stale_live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
                     ):
@@ -482,7 +486,10 @@ class EspnScoreboardProvider:
                         )
                 elif self._event_detail_urls.get(league):
                     live_events = _unique_live_events(schedule_events, current)
-                    if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
+                    if league == "nhl":
+                        # Keep the NHL clock owned by the complete scoreboard response.
+                        refresh_leagues.append((league, url))
+                    elif len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
                         if league != "mlb" and league != "nhl":
                             live_detail_suppressed.add(league)
@@ -622,7 +629,7 @@ class EspnScoreboardProvider:
                 updated_events_list: list[Mapping[str, Any]] = []
                 for event in events:
                     if str(event.get("id") or "").strip() == event_id:
-                        updated_event = _event_update(update, event)
+                        updated_event = _event_update(update, event, league=league)
                         updated_events_list.append(updated_event)
                     else:
                         updated_events_list.append(event)
@@ -646,7 +653,7 @@ class EspnScoreboardProvider:
                     )
                     stored_events = cached_schedule.events if cached_schedule is not None else updated_events
                     stored_events = tuple(
-                        _event_update(update, event)
+                        _event_update(update, event, league=league)
                         if str(event.get("id") or "").strip() == event_id
                         else event
                         for event in stored_events
@@ -809,7 +816,7 @@ class EspnScoreboardProvider:
             events = _events(snapshot)
         except (TypeError, ValueError):
             return tuple(fallback)
-        return _merge_event_collections(fallback, events)
+        return _merge_event_collections(fallback, events, league=league)
 
     def _read_scoreboard(
         self,
@@ -1409,6 +1416,8 @@ def _event_payload(payload: Any) -> Mapping[str, Any]:
 def _merge_event_collections(
     fallback: Sequence[Mapping[str, Any]],
     updates: Sequence[Mapping[str, Any]],
+    *,
+    league: str = "",
 ) -> tuple[Mapping[str, Any], ...]:
     """Merge one Fastcast event collection into its complete schedule."""
 
@@ -1422,7 +1431,9 @@ def _merge_event_collections(
     for event in fallback:
         event_id = str(event.get("id") or "").strip()
         update = updates_by_id.get(event_id)
-        merged.append(_event_update(update, event) if update is not None else event)
+        merged.append(
+            _event_update(update, event, league=league) if update is not None else event
+        )
         if event_id:
             seen.add(event_id)
     merged.extend(
@@ -1433,7 +1444,12 @@ def _merge_event_collections(
     return tuple(merged)
 
 
-def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any]:
+def _event_update(
+    payload: Any,
+    fallback: Mapping[str, Any],
+    *,
+    league: str = "",
+) -> Mapping[str, Any]:
     """Merge one native ESPN event update into its cached scoreboard event."""
 
     source = _mapping(payload)
@@ -1459,7 +1475,14 @@ def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any
     update_status = _mapping(
         competition.get("status") or header.get("status") or source.get("status")
     )
-    if _status_rank(update_status) >= _status_rank(fallback_status):
+    preserve_nhl_live_status = (
+        str(league).strip().lower() == "nhl"
+        and _status_rank(update_status) == 1
+        and _status_rank(fallback_status) == 1
+    )
+    if preserve_nhl_live_status:
+        event["status"] = fallback_status
+    elif _status_rank(update_status) >= _status_rank(fallback_status):
         event["status"] = _merge_mapping(fallback_status, update_status)
     scoreboard_competition = _first_mapping(event.get("competitions"))
     merged_competition = _merge_mapping(scoreboard_competition, competition)
@@ -1467,6 +1490,10 @@ def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any
         scoreboard_competition.get("competitors"),
         competition.get("competitors"),
     )
+    if preserve_nhl_live_status:
+        scoreboard_status = _mapping(scoreboard_competition.get("status"))
+        if scoreboard_status:
+            merged_competition["status"] = scoreboard_status
     scoreboard_situation = _mapping(scoreboard_competition.get("situation"))
     update_situation = _mapping(source.get("situation")) or _mapping(
         competition.get("situation")

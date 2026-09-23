@@ -15,6 +15,7 @@ from sports_ticker.providers.espn import (
     _event_update,
     _event_football_details,
     _event_scoring_details,
+    _merge_event_collections,
     _mlb_has_boxscore,
     _mlb_event_details,
     _mlb_statsapi_summary,
@@ -810,6 +811,62 @@ def test_espn_nhl_dense_live_slate_keeps_scoring_players() -> None:
     )
 
 
+def test_espn_nhl_live_refresh_uses_scoreboard_clock_before_summary_detail() -> None:
+    scheduled = _event("nhl-1", "2026-08-16T18:00:00Z")
+    live = deepcopy(scheduled)
+    live["status"] = {
+        "type": {"state": "in", "shortDetail": "16:40 - 3rd"},
+        "displayClock": "16:40",
+        "period": 3,
+    }
+    stale_detail_competition = deepcopy(live["competitions"][0])
+    stale_detail_competition["status"] = {
+        "type": {"state": "in", "shortDetail": "17:39 - 3rd"},
+        "displayClock": "17:39",
+        "period": 3,
+    }
+
+    class NhlClockClient(RecordingClient):
+        def __init__(self) -> None:
+            super().__init__({})
+            self.scoreboard_calls = 0
+
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            if "/summary?event=" in url:
+                return {
+                    "header": {
+                        "id": "nhl-1",
+                        "competitions": [stale_detail_competition],
+                    }
+                }
+            self.scoreboard_calls += 1
+            return {
+                "events": [scheduled if self.scoreboard_calls == 1 else live]
+            }
+
+    client = NhlClockClient()
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
+        client=client,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker("ticker-one", _settings())
+    current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+    monotonic[0] = 6.0
+    result = provider.fetch_for_ticker("ticker-two", _settings())
+
+    live_item = next(item for item in result.content if item.id == "nhl-1")
+    assert client.scoreboard_calls == 2
+    assert sum("/summary?event=" in url for url in client.urls) == 1
+    assert live_item.data["status"] == "P3 16:40"
+
+
 def test_espn_mlb_dense_live_refresh_keeps_details_after_schedule_refresh() -> None:
     events = [
         _event(f"mlb-{index}", "2026-08-16T18:00:00Z", state="in")
@@ -1201,6 +1258,50 @@ def test_espn_event_update_preserves_scoreboard_fields_and_live_state() -> None:
     }
     assert competition["competitors"][0]["team"]["logo"] == "scoreboard-logo"
     assert competition["competitors"][0]["score"] == "7"
+
+
+def test_espn_nhl_detail_update_keeps_scoreboard_live_status() -> None:
+    fallback = _event("game-1", "2026-08-16T18:00:00Z", state="in")
+    fallback["status"] = {
+        "type": {"state": "in", "shortDetail": "16:40 - 3rd"},
+        "displayClock": "16:40",
+        "period": 3,
+    }
+    update = {
+        "header": {
+            "id": "game-1",
+            "competitions": [{
+                "status": {
+                    "type": {"state": "in", "shortDetail": "17:39 - 3rd"},
+                    "displayClock": "17:39",
+                    "period": 3,
+                },
+            }],
+        },
+    }
+
+    merged = _event_update(update, fallback, league="nhl")
+
+    assert merged["status"] == fallback["status"]
+
+
+def test_espn_nhl_fastcast_merge_keeps_scoreboard_live_status() -> None:
+    fallback = _event("game-1", "2026-08-16T18:00:00Z", state="in")
+    fallback["status"] = {
+        "type": {"state": "in", "shortDetail": "16:40 - 3rd"},
+        "displayClock": "16:40",
+        "period": 3,
+    }
+    update = deepcopy(fallback)
+    update["status"] = {
+        "type": {"state": "in", "shortDetail": "17:39 - 3rd"},
+        "displayClock": "17:39",
+        "period": 3,
+    }
+
+    merged = _merge_event_collections([fallback], [update], league="nhl")
+
+    assert merged[0]["status"] == fallback["status"]
 
 
 def test_espn_event_update_keeps_mlb_players_when_fastcast_sends_empty_objects() -> None:

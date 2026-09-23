@@ -144,6 +144,16 @@ def test_finished_game_has_no_live_play_context() -> None:
     assert ended.data["situation"] == {}
 
 
+def test_hockey_period_end_uses_end_label() -> None:
+    event = _event("End of 1st", {}, "in")
+    event["status"]["period"] = 1
+    event["status"]["displayClock"] = "0:00"
+
+    hockey = SportsDisplayProjector().project(_item("hockey", "nhl"), event)
+
+    assert hockey.data["status"] == "P1 END"
+
+
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
     event = _event("93'", {}, "in")
     event["status"]["displayClock"] = "93\u200e\u200e'"
