@@ -70,6 +70,15 @@ def _luma(color):
     return 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2]
 
 
+def _readable_team_color(color):
+    """Lift dark team colors enough to read on the score-panel scrim."""
+    luminance = _luma(color)
+    if luminance >= 140:
+        return color
+    blend = (140.0 - luminance) / max(1.0, 255.0 - luminance)
+    return _mix(color, (255, 255, 255), blend)
+
+
 def score_alert_duration(alert):
     """Total on-screen time for one alert, in seconds."""
     return DEFAULT_SCORE_ALERT_DURATION
@@ -142,9 +151,15 @@ class ScoreAlertMixin:
         if logo is not None:
             img.paste(logo, ((LOGO_PANEL_W - 1 - 24) // 2, 4), logo)
         else:
-            draw_tiny_text(d, 5, 13, str(alert.get('team_abbr', ''))[:3], (235, 235, 235))
+            draw_tiny_text(
+                d,
+                5,
+                13,
+                str(alert.get('team_abbr', ''))[:3],
+                _readable_team_color(base),
+            )
 
-    def _draw_alert_score_panel(self, img, alert, accent):
+    def _draw_alert_score_panel(self, img, alert, accent, team_color):
         """Away/home rows plus the game status line, in their own column.
 
         The score is the one thing here read from across a room, so it gets a
@@ -168,12 +183,13 @@ class ScoreAlertMixin:
         for i, (abbr, score) in enumerate(rows):
             top = 1 + i * 12
             is_scorer = abbr.upper() == scorer
-            color = (255, 255, 255) if is_scorer else _DIM_GREY
+            color = team_color if is_scorer else _DIM_GREY
             if is_scorer:
                 d.rectangle([x0 + 1, top, x0 + 2, top + 10], fill=accent)
             draw_hybrid_text(d, x0 + 6, top + 2, abbr[:3], color)
+            score_color = (255, 255, 255) if is_scorer else _DIM_GREY
             d.text((PANEL_W - 3, top + 5), str(score if score is not None else ''),
-                   font=self.medium_font, fill=color, anchor="rm")
+                   font=self.medium_font, fill=score_color, anchor="rm")
 
         # Neutral rather than team-coloured: a navy or maroon accent at 5px is
         # unreadable on the black scrim, and the clock is the one line here
@@ -291,11 +307,12 @@ class ScoreAlertMixin:
         landing on top of the ticker instead of the ticker blinking out first.
         """
         base, accent = self._score_alert_palette(alert)
+        team_text_color = _readable_team_color(base)
         img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
 
         self._draw_alert_background(img, base, accent, elapsed)
         self._draw_alert_logo_panel(img, alert, base, accent)
-        self._draw_alert_score_panel(img, alert, accent)
+        self._draw_alert_score_panel(img, alert, accent, team_text_color)
         self._draw_alert_headline(img, alert, accent, elapsed)
 
         return self._apply_alert_shutters(img, alert, elapsed, accent, under)
