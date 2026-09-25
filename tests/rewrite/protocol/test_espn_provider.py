@@ -19,6 +19,7 @@ from sports_ticker.providers.espn import (
     _mlb_has_boxscore,
     _mlb_event_details,
     _mlb_statsapi_summary,
+    _nhl_event_details,
     _soccer_event_details,
 )
 
@@ -809,6 +810,77 @@ def test_espn_nhl_dense_live_slate_keeps_scoring_players() -> None:
         item.data["situation"]["scoring_plays"][0]["scorer"]
         for item in result.content
     )
+
+
+def test_espn_nhl_shootout_attempts_come_from_live_play_stream() -> None:
+    fallback = _event("nhl-shootout", "2026-08-16T18:00:00Z", state="in")
+    competition = deepcopy(fallback["competitions"][0])
+    competition["situation"] = {}
+    period = {"number": 5, "displayValue": "SO"}
+    update = {
+        "header": {"competitions": [competition]},
+        "plays": [
+            {
+                "type": {"text": "Period Start"},
+                "text": "Start of Shootout",
+                "period": period,
+            },
+            {
+                "id": "shot-away",
+                "type": {"text": "Shot"},
+                "text": "Away player shot saved by goalie",
+                "period": period,
+                "shootingPlay": True,
+                "team": {"abbreviation": "DAL"},
+            },
+            {
+                "id": "goal-home",
+                "type": {"text": "Goal"},
+                "text": "Home player Goal Wrist Shot",
+                "period": period,
+                "scoringPlay": True,
+                "shootingPlay": True,
+                "team": {"abbreviation": "NYG"},
+            },
+            {
+                "type": {"text": "Shootout End"},
+                "text": "End of Shootout",
+                "period": period,
+            },
+        ],
+    }
+    item_data = {"home_abbr": "NYG", "away_abbr": "DAL"}
+
+    details = _nhl_event_details(update, item_data)
+
+    assert details["shootout"] == {"home": ["goal"], "away": ["miss"]}
+
+    provider = EspnScoreboardProvider(
+        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
+        client=RecordingClient({}),
+    )
+    live_item = ContentItem(
+        "nhl-shootout",
+        "sports",
+        "scoreboard",
+        True,
+        {
+            "sport": "nhl",
+            "state": "in",
+            "status": "OT2 0:00",
+            "home_abbr": "NYG",
+            "away_abbr": "DAL",
+            "situation": {},
+        },
+    )
+
+    enriched = provider._enrich_live_item("nhl", live_item, update=update)
+
+    assert enriched.data["status"] == "S/O"
+    assert enriched.data["situation"]["shootout"] == {
+        "home": ("goal",),
+        "away": ("miss",),
+    }
 
 
 def test_espn_nhl_live_refresh_uses_scoreboard_clock_before_summary_detail() -> None:

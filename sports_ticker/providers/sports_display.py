@@ -147,6 +147,10 @@ def _status(
         return str(data.get("status") or detail or "TBD")
     if "POSTPON" in upper or "CANCEL" in upper or "SUSPEND" in upper or "DELAY" in upper:
         return detail.split(",", 1)[0].title()
+    if league == "nhl" and state in {"in", "half", "crit"} and _nhl_shootout_active(
+        event, competition
+    ):
+        return "S/O"
     if league == "nhl" and upper.startswith("END OF"):
         return _period_status("P", period, "END", overtime_base=3)
     if state == "half" or "HALFTIME" in upper or upper in {"HT", "HALF"}:
@@ -429,6 +433,41 @@ def _period_status(prefix: str, period: int, clock: str, *, overtime_base: int) 
     else:
         label = f"{prefix}{period}" if period else prefix
     return f"{label} {clock}".strip()
+
+
+def _nhl_shootout_active(
+    event: Mapping[str, Any], competition: Mapping[str, Any]
+) -> bool:
+    """Detect explicit NHL shootout markers without treating overtime as a shootout."""
+
+    status = _mapping(event.get("status"))
+    status_type = _mapping(status.get("type"))
+    competition_situation = _mapping(competition.get("situation"))
+    event_situation = _mapping(event.get("situation"))
+    sources = (
+        status_type,
+        event_situation,
+        competition_situation,
+        _mapping(event_situation.get("lastPlay")),
+        _mapping(competition_situation.get("lastPlay")),
+        _mapping(event.get("lastPlay")),
+    )
+    for source in sources:
+        for key in ("shootout", "isShootout", "inShootout", "shootoutActive"):
+            value = source.get(key)
+            if value is True or str(value or "").strip().lower() in {"true", "yes", "active"}:
+                return True
+        for key in ("shortDetail", "detail", "altDetail", "displayValue", "text"):
+            value = str(source.get(key) or "").strip().upper()
+            if value in {"SO", "S/O", "SHOOTOUT"} or "SHOOTOUT" in value:
+                return True
+        period = _mapping(source.get("period"))
+        if str(period.get("displayValue") or "").strip().upper() == "SO":
+            return True
+        shot_info = _mapping(source.get("shotInfo"))
+        if "SHOOTOUT" in str(shot_info.get("text") or "").upper():
+            return True
+    return False
 
 
 def _baseball_status(value: str) -> str:

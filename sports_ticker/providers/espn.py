@@ -1204,6 +1204,8 @@ class EspnScoreboardProvider:
         if not details:
             return item
         data = dict(item.data)
+        if league == "nhl" and details.get("shootout") is not None:
+            data["status"] = "S/O"
         situation = dict(_mapping(data.get("situation")))
         situation.update(details)
         data["situation"] = assign_active_team(
@@ -2116,10 +2118,70 @@ def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
         elif home_goalie == 0:
             details["emptyNet"] = True
             details["emptyNetSide"] = home_abbr
-    shootout = _shootout_details(summary)
+    shootout = _shootout_details(summary) or _nhl_shootout_from_plays(
+        summary, item, competition
+    )
     if shootout is not None:
         details["shootout"] = shootout
     return details
+
+
+def _nhl_shootout_from_plays(
+    summary: Mapping[str, Any],
+    item: Mapping[str, Any],
+    competition: Mapping[str, Any],
+) -> dict[str, list[str]] | None:
+    """Read current NHL shootout state and attempts from ESPN's play stream."""
+
+    plays = tuple(
+        _mapping(value)
+        for value in _sequence(summary.get("plays"))
+        if isinstance(value, Mapping)
+    ) or _event_plays(summary)
+    home_abbr = str(item.get("home_abbr") or "")
+    away_abbr = str(item.get("away_abbr") or "")
+    outcomes: dict[str, list[str]] = {"home": [], "away": []}
+    active = False
+    seen: set[str] = set()
+    for play in plays:
+        period = _mapping(play.get("period"))
+        period_label = str(period.get("displayValue") or "").strip().upper()
+        shot_info = _mapping(play.get("shotInfo"))
+        kind = _mapping(play.get("type"))
+        kind_text = str(kind.get("text") or kind.get("abbreviation") or "").strip().lower()
+        text = str(play.get("text") or play.get("shortText") or "").strip().lower()
+        is_shootout = (
+            period_label == "SO"
+            or "shootout" in str(shot_info.get("text") or "").lower()
+            or "shootout" in kind_text
+            or "shootout" in text
+        )
+        if not is_shootout:
+            continue
+        active = True
+        identifier = str(play.get("id") or "")
+        if identifier and identifier in seen:
+            continue
+        if identifier:
+            seen.add(identifier)
+        if "start" in kind_text or "end" in kind_text or "period" in kind_text:
+            continue
+        if bool(play.get("scoringPlay")) or "goal" in kind_text:
+            result = "goal"
+        elif (
+            bool(play.get("shootingPlay"))
+            or "shot" in kind_text
+            or "saved" in text
+            or "missed" in text
+        ):
+            result = "miss"
+        else:
+            continue
+        team = _event_team_abbr(play, competition, home_abbr, away_abbr)
+        side = "home" if team.upper() == home_abbr.upper() else "away" if team.upper() == away_abbr.upper() else ""
+        if side:
+            outcomes[side].append(result)
+    return outcomes if active else None
 
 
 def _soccer_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
