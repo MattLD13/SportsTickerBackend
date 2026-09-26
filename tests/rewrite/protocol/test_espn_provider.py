@@ -812,6 +812,36 @@ def test_espn_nhl_dense_live_slate_keeps_scoring_players() -> None:
     )
 
 
+def test_espn_nhl_goal_details_keep_assist_roles_and_goal_score_identity() -> None:
+    event = _event("nhl-goal-details", "2026-08-16T18:00:00Z", state="in")
+    play = {
+        "id": "goal-2",
+        "type": {"text": "Goal"},
+        "text": "Second Scorer Goal, assists: First Helperone (1), Second Helpertwo (1)",
+        "scoringPlay": True,
+        "homeScore": 2,
+        "awayScore": 0,
+        "team": {"abbreviation": "NYG"},
+        "participants": [
+            {"athlete": {"displayName": "First Helperone"}, "type": "assister"},
+            {"athlete": {"displayName": "Second Scorer"}, "type": "scorer"},
+            {"athlete": {"displayName": "Second Helpertwo"}, "type": "assister"},
+        ],
+    }
+
+    details = _event_scoring_details(
+        {"header": {"competitions": event["competitions"]}, "plays": [play]},
+        {"sport": "nhl", "home_abbr": "NYG", "away_abbr": "DAL"},
+    )
+
+    scoring_play = details["scoring_plays"][0]
+    assert scoring_play["team"] == "NYG"
+    assert scoring_play["scorer"] == "SCORER"
+    assert scoring_play["assists"] == ("HELPERONE", "HELPERTWO")
+    assert scoring_play["play_id"] == "goal-2"
+    assert (scoring_play["home_score"], scoring_play["away_score"]) == (2, 0)
+
+
 def test_espn_nhl_shootout_attempts_come_from_live_play_stream() -> None:
     fallback = _event("nhl-shootout", "2026-08-16T18:00:00Z", state="in")
     competition = deepcopy(fallback["competitions"][0])

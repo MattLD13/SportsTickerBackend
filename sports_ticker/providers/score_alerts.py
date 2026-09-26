@@ -252,33 +252,9 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
                     return typed[:24].rstrip()
 
     if family == "hockey":
-        scoring_plays = situation.get("scoring_plays") or game.get("scoring_plays")
-        if isinstance(scoring_plays, (list, tuple)) and scoring_plays:
-            matching = [
-                p for p in scoring_plays
-                if isinstance(p, Mapping) and (
-                    str(p.get("team") or p.get("side") or "").lower() == str(game.get(f"{side}_abbr") or side).lower()
-                )
-            ]
-            if matching:
-                last_p = matching[-1]
-                scorer = str(last_p.get("scorer") or last_p.get("player") or "").strip().upper()
-                strength = str(last_p.get("strength") or "").strip().upper()
-                assists = [
-                    str(a).strip().upper()
-                    for a in (last_p.get("assists") or ())
-                    if str(a).strip()
-                ]
-                if scorer:
-                    if assists:
-                        for count in (2, 1):
-                            candidate = f"{scorer} ({', '.join(assists[:count])})"
-                            if len(candidate) <= 24:
-                                return candidate
-                        return scorer[:24]
-                    if strength in {"PPG", "SHG", "ENG", "OTG"}:
-                        return f"{scorer} {strength}"[:24]
-                    return scorer[:24]
+        scoring_play = _latest_scoring_play(game, situation, side)
+        if scoring_play is not None:
+            return _hockey_alert_detail(scoring_play)
 
     if family in {"football", "basketball"}:
         play = _latest_scoring_play(game, situation, side)
@@ -485,6 +461,8 @@ def _latest_scoring_play(
         if isinstance(play, Mapping)
         and str(play.get("team") or play.get("side") or "").lower() in {team, side}
     ]
+    if sport_family(game.get("sport")) == "hockey":
+        return _hockey_scoring_play_for_score(game, matching, side)
     if matching:
         return matching[-1]
     if sport_family(game.get("sport")) == "soccer":
@@ -503,6 +481,57 @@ def _latest_scoring_play(
                     "assist": event.get("assist") or "",
                 }
     return None
+
+
+def _hockey_scoring_play_for_score(
+    game: Mapping[str, Any], plays: Sequence[Mapping[str, Any]], side: str
+) -> Mapping[str, Any] | None:
+    """Match one hockey goal to its scoreboard state instead of taking the latest team goal."""
+
+    if not plays:
+        return None
+    target_home = _number(game.get("home_score"))
+    target_away = _number(game.get("away_score"))
+    if target_home is None or target_away is None:
+        return plays[-1]
+    score_aware = any(
+        _number(play.get("home_score")) is not None
+        and _number(play.get("away_score")) is not None
+        for play in plays
+    )
+    if score_aware:
+        for play in reversed(plays):
+            if (
+                _number(play.get("home_score")) == target_home
+                and _number(play.get("away_score")) == target_away
+            ):
+                return play
+        return None
+    target_team_score = _number(game.get(f"{side}_score"))
+    if target_team_score is None or target_team_score <= 0 or len(plays) < target_team_score:
+        return None
+    return plays[target_team_score - 1]
+
+
+def _hockey_alert_detail(play: Mapping[str, Any]) -> str:
+    """Keep the scorer and label assists clearly within the banner detail line."""
+
+    scorer = str(
+        play.get("scorer") or play.get("player") or ""
+    ).strip().upper()
+    if not scorer:
+        return ""
+    assists = [
+        str(value).strip().upper()
+        for value in play.get("assists", ())
+        if str(value).strip()
+    ]
+    if assists:
+        return f"{scorer} | ASSISTS: {', '.join(assists[:2])}"[:50].rstrip()
+    strength = str(play.get("strength") or "").strip().upper()
+    if strength in {"PPG", "SHG", "ENG", "OTG"}:
+        return f"{scorer} {strength}"[:40]
+    return scorer[:40]
 
 
 def _is_basketball_dunk(scoring_play: Mapping[str, Any] | None) -> bool:
@@ -616,6 +645,8 @@ class ScoreAlertTracker:
                         if _football_event_identity(play)
                     )
                     continue
+                if family == "hockey":
+                    self._hydrate_hockey_alerts(game)
                 lead_change = (
                     family == "basketball"
                     and (previous[0] - previous[1]) * (home - away) < 0
@@ -634,6 +665,7 @@ class ScoreAlertTracker:
                     points: int,
                     *,
                     event_id: str = "",
+                    scoring_play_id: str = "",
                 ) -> None:
                     other = "away" if side == "home" else "home"
                     self._alerts.append(
@@ -663,6 +695,7 @@ class ScoreAlertTracker:
                             "status": status,
                             "home_conference_id": game.get("home_conference_id", ""),
                             "away_conference_id": game.get("away_conference_id", ""),
+                            **({"scoring_play_id": scoring_play_id} if scoring_play_id else {}),
                         }
                     )
 
@@ -694,13 +727,6 @@ class ScoreAlertTracker:
                 for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
                     delta = new_score - old_score
                     if delta <= 0:
-                        if family == "hockey":
-                            self._hydrate_hockey_alert(
-                                game,
-                                side,
-                                home_score=home,
-                                away_score=away,
-                            )
                         continue
                     scoring_play = _latest_scoring_play(game, situation, side)
                     if family == "basketball":
@@ -719,7 +745,18 @@ class ScoreAlertTracker:
                         elif lead_change:
                             kind, headline = "lead_taking_dunk", "LEAD TAKING DUNK"
                     detail = _extract_alert_detail(sport, game, side)
-                    append_alert(side, kind, headline, detail, delta)
+                    append_alert(
+                        side,
+                        kind,
+                        headline,
+                        detail,
+                        delta,
+                        scoring_play_id=(
+                            str(scoring_play.get("play_id") or "")
+                            if family == "hockey" and scoring_play
+                            else ""
+                        ),
+                    )
             self._scores = {key: value for key, value in self._scores.items() if key in current_ids}
             self._football_events = {
                 key: value for key, value in self._football_events.items() if key in current_ids
@@ -731,43 +768,71 @@ class ScoreAlertTracker:
             }
             self._alerts = self._alerts[-_MAX_ALERTS:]
 
-    def _hydrate_hockey_alert(
-        self,
-        game: Mapping[str, Any],
-        side: str,
-        *,
-        home_score: int,
-        away_score: int,
-    ) -> None:
-        """Fill one recent generic hockey alert when ESPN detail arrives late."""
+    def _hydrate_hockey_alerts(self, game: Mapping[str, Any]) -> None:
+        """Match delayed ESPN goal details to each alert's score and refresh assists."""
 
-        detail = _extract_alert_detail(str(game.get("sport") or "nhl"), game, side)
-        if not detail:
-            return
         game_id = str(game.get("id") or "").strip()
+        sit = game.get("situation")
+        situation = sit if isinstance(sit, Mapping) else {}
         for alert in reversed(self._alerts):
-            if (
-                alert.get("game_id") == game_id
-                and alert.get("side") == side
-                and alert.get("home_score") == home_score
-                and alert.get("away_score") == away_score
-                and not str(alert.get("detail") or "").strip()
-            ):
-                scoring_play = _latest_scoring_play(
-                    game,
-                    game.get("situation") if isinstance(game.get("situation"), Mapping) else {},
-                    side,
-                )
-                kind, headline = _describe(
-                    game.get("sport") or "nhl",
-                    max(1, int(alert.get("points") or 1)),
-                    scoring_play,
-                )
-                alert["kind"] = kind
-                alert["headline"] = headline
-                alert["detail"] = detail
-                alert["big"] = kind in _BIG_KINDS
-                return
+            if alert.get("game_id") != game_id:
+                continue
+            side = str(alert.get("side") or "")
+            if side not in {"home", "away"}:
+                continue
+            goal_game = {
+                **game,
+                "home_score": alert.get("home_score"),
+                "away_score": alert.get("away_score"),
+            }
+            scoring_play = _latest_scoring_play(goal_game, situation, side)
+            if scoring_play is None:
+                continue
+            detail = _hockey_alert_detail(scoring_play)
+            if not detail:
+                continue
+            play_id = str(scoring_play.get("play_id") or "")
+            previous_detail = str(alert.get("detail") or "").strip()
+            previous_scorer = previous_detail.split("|", 1)[0].strip().upper()
+            scorer = str(
+                scoring_play.get("scorer") or scoring_play.get("player") or ""
+            ).strip().upper()
+            raw_assists = scoring_play.get("assists") or ()
+            new_assists = (
+                tuple(raw_assists)
+                if isinstance(raw_assists, (list, tuple))
+                else ()
+            )
+            old_assists = previous_detail.split("ASSISTS:", 1)[-1].strip()
+            old_assist_count = (
+                sum(bool(name.strip()) for name in old_assists.split(","))
+                if "ASSISTS:" in previous_detail
+                else 0
+            )
+            changed_goal = bool(
+                alert.get("scoring_play_id")
+                and play_id
+                and alert.get("scoring_play_id") != play_id
+            )
+            improved = (
+                not previous_detail
+                or changed_goal
+                or bool(scorer and previous_scorer and scorer != previous_scorer)
+                or len(new_assists) > old_assist_count
+            )
+            if not improved:
+                continue
+            kind, headline = _describe(
+                game.get("sport") or "nhl",
+                max(1, int(alert.get("points") or 1)),
+                scoring_play,
+            )
+            alert["kind"] = kind
+            alert["headline"] = headline
+            alert["detail"] = detail
+            alert["big"] = kind in _BIG_KINDS
+            if play_id:
+                alert["scoring_play_id"] = play_id
 
     def recent(self, *, max_age: float = _MAX_AGE, delay: float = 0.0) -> tuple[dict[str, Any], ...]:
         """Return alerts visible at the delayed content timestamp."""

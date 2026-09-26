@@ -14,14 +14,17 @@ def test_score_alert_enrichment_details() -> None:
 
     game_nhl_p2 = {
         "kind": "scoreboard", "id": "nhl-1", "sport": "nhl", "state": "in", "status": "P2 08:30", "home_abbr": "NYR", "away_abbr": "BOS", "home_score": 2, "away_score": 1,
-        "situation": {"scoring_plays": [{"team": "NYR", "scorer": "Panarin", "strength": "PPG", "assists": ["Fox", "Zibanejad"]}]},
+        "situation": {"scoring_plays": [{
+            "team": "NYR", "scorer": "Panarin", "strength": "PPG",
+            "assists": ["Fox", "Zibanejad"], "home_score": 2, "away_score": 1,
+        }]},
     }
     tracker.ingest([game_nhl_p2])
     nhl_alerts = tracker.recent()
     assert len(nhl_alerts) == 1
     assert nhl_alerts[0]["team_abbr"] == "NYR"
     assert nhl_alerts[0]["headline"] == "POWER PLAY GOAL"
-    assert nhl_alerts[0]["detail"] == "PANARIN (FOX, ZIBANEJAD)"
+    assert nhl_alerts[0]["detail"] == "PANARIN | ASSISTS: FOX, ZIBANEJAD"
 
     # 2. Soccer header goal
     game_soc_p1 = {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_epl", "state": "in", "status": "35'", "home_abbr": "ARS", "away_abbr": "TOT", "home_score": 0, "away_score": 0}
@@ -79,13 +82,64 @@ def test_hockey_score_alert_hydrates_when_summary_detail_arrives_after_score() -
                 "type": "Goal",
                 "strength": "even-strength",
                 "assists": ["SMITS"],
+                "home_score": 1,
+                "away_score": 0,
             }],
         },
     }])
 
     alert = tracker.recent()[0]
     assert alert["headline"] == "GOAL"
-    assert alert["detail"] == "RADDYSH (SMITS)"
+    assert alert["detail"] == "RADDYSH | ASSISTS: SMITS"
+
+
+def test_hockey_goal_alerts_match_each_goal_and_hydrate_assists() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "nhl-goal-order", "sport": "nhl", "state": "in",
+        "home_abbr": "NYR", "away_abbr": "BOS", "home_score": 0, "away_score": 0,
+    }
+    first_goal = {
+        "team": "NYR", "scorer": "FIRST", "play_id": "goal-1",
+        "home_score": 1, "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "home_score": 1,
+        "situation": {"scoring_plays": [first_goal]},
+    }])
+    assert tracker.recent()[0]["detail"] == "FIRST"
+
+    tracker.ingest([{
+        **baseline,
+        "home_score": 2,
+        "situation": {"scoring_plays": [first_goal]},
+    }])
+    alerts = tracker.recent()
+    assert len(alerts) == 2
+    assert alerts[1]["detail"] == ""
+
+    first_goal_with_assists = {
+        **first_goal,
+        "assists": ["HELPERONE", "HELPERTWO"],
+    }
+    second_goal = {
+        "team": "NYR", "scorer": "SECOND", "play_id": "goal-2",
+        "assists": ["PASSERONE", "PASSERTWO"],
+        "home_score": 2, "away_score": 0,
+    }
+    tracker.ingest([{
+        **baseline,
+        "home_score": 2,
+        "situation": {"scoring_plays": [first_goal_with_assists, second_goal]},
+    }])
+
+    first_alert, second_alert = tracker.recent()
+    assert first_alert["detail"] == "FIRST | ASSISTS: HELPERONE, HELPERTWO"
+    assert second_alert["detail"] == "SECOND | ASSISTS: PASSERONE, PASSERTWO"
+    assert first_alert["scoring_play_id"] == "goal-1"
+    assert second_alert["scoring_play_id"] == "goal-2"
 
 
 def test_football_score_alert_uses_the_scoring_play() -> None:

@@ -2359,11 +2359,26 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             if text_player:
                 normalized["scorer"] = text_player
                 normalized["player"] = text_player
-        if league in {"nba", "march_madness", "nhl"} and len(participant_names) > 1:
+        if league in {"nba", "march_madness"} and len(participant_names) > 1:
             normalized["assists"] = tuple(
                 _compact_event_name(name) for name in participant_names[1:]
             )
         if league == "nhl":
+            assists = _event_assist_names(play, summary, athlete)
+            if assists:
+                normalized["assists"] = assists
+            play_id = str(play.get("id") or play.get("sequenceNumber") or "").strip()
+            if play_id:
+                normalized["play_id"] = play_id
+            for source_key, target_key in (
+                ("homeScore", "home_score"),
+                ("awayScore", "away_score"),
+                ("home_score", "home_score"),
+                ("away_score", "away_score"),
+            ):
+                value = play.get(source_key)
+                if value is not None:
+                    normalized[target_key] = value
             strength = _mapping(play.get("strength"))
             strength_text = str(
                 strength.get("abbreviation") or strength.get("text") or ""
@@ -2768,6 +2783,51 @@ def _event_participant_names(
         if name and name not in result:
             result.append(name)
     return tuple(result)
+
+
+def _event_assist_names(
+    play: Mapping[str, Any],
+    summary: Mapping[str, Any] | None,
+    scorer: str,
+) -> tuple[str, ...]:
+    """Read hockey assists by participant role, then use ESPN text as a fallback."""
+
+    athletes = _event_boxscore_athletes(summary)
+    tagged: list[str] = []
+    participants = tuple(_mapping(value) for value in _sequence(play.get("participants")))
+    has_roles = False
+    for participant in participants:
+        raw_role = participant.get("type")
+        role = str(_mapping(raw_role).get("text") or raw_role or "").strip().lower()
+        has_roles = has_roles or bool(role)
+        if not re.search(r"\bassist(?:er)?\b", role):
+            continue
+        name = _event_person_name(_mapping(participant.get("athlete")), athletes)
+        compact = _compact_event_name(name)
+        if compact and compact not in tagged:
+            tagged.append(compact)
+    if tagged:
+        return tuple(tagged)
+
+    text = str(play.get("text") or play.get("shortText") or play.get("description") or "")
+    match = re.search(r"\bassists?:\s*(.+)$", text, re.IGNORECASE)
+    if match:
+        scorer_name = _compact_event_name(scorer)
+        names: list[str] = []
+        for value in match.group(1).split(","):
+            name = re.sub(r"\s*\([^)]*\)", "", value).strip(" .;:")
+            compact = _compact_event_name(name)
+            if compact and compact != scorer_name and compact not in names:
+                names.append(compact)
+        return tuple(names)
+    if has_roles:
+        return ()
+    scorer_name = _compact_event_name(scorer)
+    return tuple(dict.fromkeys(
+        compact
+        for name in _event_participant_names(play, summary)
+        if (compact := _compact_event_name(name)) and compact != scorer_name
+    ))
 
 
 def _compact_event_name(value: object) -> str:
