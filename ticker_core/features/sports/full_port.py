@@ -163,6 +163,18 @@ class SportsMixin:
             d.line([(ezW, 0), (ezW, H)],         fill=(255, 255, 255, 230))
             d.line([(W - ezW, 0), (W - ezW, H)], fill=(255, 255, 255, 230))
 
+            # Mark possession above the team badge in its end zone.
+            active_team = str(sit.get('activeTeam', '')).strip().upper()
+            possession_x = None
+            if active_team and active_team == home_ab:
+                possession_x = int(ezW / 2)
+            elif active_team and active_team == away_ab:
+                possession_x = W - int(ezW / 2)
+            if possession_x is not None:
+                d.polygon([(possession_x - 5, 1), (possession_x + 5, 1),
+                           (possession_x, 5)], fill=(255, 235, 80),
+                          outline=(0, 0, 0, 255))
+
             # 3 · 10-yard stripe lines
             for i in range(11):
                 lx = ezW + i * playW / 10

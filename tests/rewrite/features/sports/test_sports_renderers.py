@@ -107,6 +107,28 @@ def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
     assert image.tobytes() == sports.render_full(game).tobytes()
 
 
+@pytest.mark.parametrize(("active_team", "arrow_x", "other_x"), [("AWY", 16, 368), ("HOM", 368, 16)])
+def test_full_football_marks_possession_above_the_team(
+    sports: SportsRenderer, active_team: str, arrow_x: int, other_x: int
+) -> None:
+    game = {
+        "sport": "ncf_fbs",
+        "state": "in",
+        "status": "Q2 05:12",
+        "away_abbr": "AWY",
+        "home_abbr": "HOM",
+        "away_score": 17,
+        "home_score": 14,
+        "situation": {"activeTeam": active_team},
+    }
+
+    image = sports.render_full(game)
+
+    assert image.size == (384, 32)
+    assert image.getpixel((arrow_x, 2)) == (255, 235, 80)
+    assert image.getpixel((other_x, 2)) != (255, 235, 80)
+
+
 @pytest.mark.parametrize(
     ("background_color", "mark_color", "expected_outline"),
     [
