@@ -145,17 +145,8 @@ class GolfRenderer:
         first = teams[0] if len(teams) > 0 and isinstance(teams[0], dict) else {}
         second = teams[1] if len(teams) > 1 and isinstance(teams[1], dict) else {}
         title = f"{payload.get('event_name') or 'TEAM GOLF'}  {self._team_label(first.get('abbr', 'USA'))} {first.get('score', '--')}  {self._team_label(second.get('abbr', 'INTL'))} {second.get('score', '--')}".upper()
-        width = max(174, len(title) * 5 + 4)
-        image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
-        x = max(1, (width - len(title) * 5) // 2)
-        hybrid_text(draw, x + 1, 2, title, (8, 8, 8, 180), self._fonts.tiny)
-        hybrid_text(draw, x, 1, title, (255, 240, 150, 255), self._fonts.tiny)
-        draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
-        result_x = width - 37
-        tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
-        tiny_text(draw, result_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
         matches = payload.get("matches", []) if isinstance(payload.get("matches"), list) else []
+        rows = []
         for index, match in enumerate(matches[:3]):
             if not isinstance(match, dict):
                 continue
@@ -164,14 +155,25 @@ class GolfRenderer:
             right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
             left_name = self._short_player(str(left["player"])) if left.get("player") else self._team_label(left.get("team", "USA"))
             right_name = self._short_player(str(right["player"])) if right.get("player") else self._team_label(right.get("team", "INTL"))
-            label = f"{left_name} / {right_name}"[: max(1, (result_x - 20) // 5)]
             result, winner = self._match_result(left, right)
-            if winner:
-                score_color = (255, 215, 0)
-            else:
-                score_color = (150, 150, 150)
+            label = f"{left_name} / {right_name}"
+            rows.append((label, result, winner))
+        result_width = max([30, *(len(result) * 5 for _, result, _ in rows)])
+        longest_label = max((len(label) for label, _, _ in rows), default=8)
+        width = max(128, len(title) * 5 + 4, longest_label * 5 + result_width + 22)
+        image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(image)
+        x = max(1, (width - len(title) * 5) // 2)
+        hybrid_text(draw, x + 1, 2, title, (8, 8, 8, 180), self._fonts.tiny)
+        hybrid_text(draw, x, 1, title, (255, 240, 150, 255), self._fonts.tiny)
+        draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
+        result_x = width - result_width - 2
+        tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
+        tiny_text(draw, result_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
+        for index, (label, result, winner) in enumerate(rows):
+            score_color = (255, 215, 0) if winner else (150, 150, 150)
             tiny_text(draw, 1, (14, 20, 26)[index], label, "white", self._fonts.tiny)
-            tiny_text(draw, result_x, (14, 20, 26)[index], result[:8], score_color, self._fonts.tiny)
+            tiny_text(draw, result_x, (14, 20, 26)[index], result, score_color, self._fonts.tiny)
         return image
 
     def _match_play_full(
@@ -203,8 +205,6 @@ class GolfRenderer:
         self._text(draw, "PRES CUP", 2, 0, colors["accent"])
         total = f"{self._team_label(first.get('abbr', 'USA'))} {first.get('score', '--')} - {self._team_label(second.get('abbr', 'INTL'))} {second.get('score', '--')}"
         self._text(draw, total[:24], 42, 0, colors["white"])
-        self._center(draw, "MATCH", 292, 1, colors["label"])
-        self._center(draw, "RESULT", 350, 1, colors["label"])
         start = (page - 1) * 3
         for index, match in enumerate(matches[start : start + 3]):
             sides = match.get("sides", []) if isinstance(match.get("sides"), list) else []
@@ -212,15 +212,18 @@ class GolfRenderer:
             right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
             left_name = self._short_player(str(left["player"])) if left.get("player") else self._team_label(left.get("team", "USA"))
             right_name = self._short_player(str(right["player"])) if right.get("player") else self._team_label(right.get("team", "INTL"))
-            label = f"{left_name} / {right_name}"[:76]
             y = 8 + index * 8
             result, winner = self._match_result(left, right)
             result_color = colors["gold"] if winner else colors["label"]
             left_team = str(left.get("team") or "USA")
-            marker_color = colors["gold"] if winner and left_team == winner else colors["white"]
-            self._text(draw, self._team_label(left_team)[:3], 2, y + 1, marker_color)
-            self._text(draw, label, 14, y + 1, colors["white"])
-            self._center(draw, result[:10], 350, y + 1, result_color)
+            right_team = str(right.get("team") or "INTL")
+            left_color = colors["gold"] if winner and left_team == winner else colors["white"]
+            right_color = colors["gold"] if winner and right_team == winner else colors["white"]
+            self._text(draw, self._team_label(left_team), 2, y + 1, left_color)
+            self._text(draw, left_name, 16, y + 1, colors["white"])
+            self._center(draw, result[:10], 202, y + 1, result_color)
+            self._text(draw, self._team_label(right_team), 248, y + 1, right_color)
+            self._text(draw, right_name, 266, y + 1, colors["white"])
         self._page_indicator(draw, page, colors)
         return GolfAnimationState(state.pair, page, changed)
 
