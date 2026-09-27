@@ -175,9 +175,22 @@ class EspnGolfSource:
                 result: Mapping[str, object] = {"content": []}
             else:
                 competition = _first_mapping(event.get("competitions"))
-                players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
-                players = _rank_golf_players(value for value in players if value is not None)
                 status = _status(event, competition)
+                event_name = str(event.get("name") or "PGA TOUR")
+                if _is_golf_match_play(competition):
+                    golf = _golf_match_play(event, competition)
+                    display_status = "Match Play"
+                else:
+                    players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
+                    players = _rank_golf_players(value for value in players if value is not None)
+                    display_status = status["text"]
+                    golf = {
+                        "brand": _golf_brand(event_name),
+                        "event_name": event_name,
+                        "year": _mapping(event.get("season")).get("year", now.year),
+                        "round": _golf_round(status["text"]),
+                        "players": players,
+                    }
                 result = {
                     "content": [
                         {
@@ -185,15 +198,9 @@ class EspnGolfSource:
                             "type": "golf",
                             "sport": "golf",
                             "state": status["state"],
-                            "status": status["text"],
-                            "away_abbr": str(event.get("shortName") or event.get("name") or "PGA TOUR"),
-                            "golf": {
-                                "brand": _golf_brand(str(event.get("name") or "")),
-                                "event_name": str(event.get("name") or "PGA TOUR"),
-                                "year": _mapping(event.get("season")).get("year", now.year),
-                                "round": _golf_round(status["text"]),
-                                "players": players,
-                            },
+                            "status": display_status,
+                            "away_abbr": str(event.get("shortName") or event_name),
+                            "golf": golf,
                         }
                     ]
                 }
@@ -2133,6 +2140,67 @@ def _golf_brand(event_name: str) -> str:
     """Return the explicit golf palette brand for one source event."""
 
     return "masters" if "masters" in event_name.casefold() else "pga"
+
+
+def _is_golf_match_play(competition: Mapping[str, Any]) -> bool:
+    """Identify a team event from its top-level team competitors."""
+
+    competitors = _mappings(competition.get("competitors"))
+    return len(competitors) >= 2 and all(
+        str(_mapping(value.get("team")).get("abbreviation") or "").strip()
+        and not _mapping(value.get("athlete"))
+        for value in competitors
+    )
+
+
+def _golf_match_play(event: Mapping[str, Any], competition: Mapping[str, Any]) -> dict[str, object]:
+    """Project team totals and match results from an ESPN golf event."""
+
+    teams = []
+    for competitor in _mappings(competition.get("competitors")):
+        team = _mapping(competitor.get("team"))
+        teams.append({
+            "abbr": str(team.get("abbreviation") or team.get("shortDisplayName") or "TEAM"),
+            "name": str(team.get("shortDisplayName") or team.get("displayName") or team.get("name") or "Team"),
+            "score": str(competitor.get("score") or "0"),
+        })
+
+    matches = []
+    competitions = _mappings(event.get("competitions"))
+    for match in competitions[1:]:
+        competitors = _mappings(match.get("competitors"))
+        sides = []
+        for competitor in competitors:
+            team = _mapping(competitor.get("team"))
+            athlete = _mapping(competitor.get("athlete"))
+            name = str(athlete.get("displayName") or athlete.get("fullName") or athlete.get("shortName") or "")
+            sides.append({
+                "team": str(team.get("abbreviation") or "TEAM"),
+                "player": name,
+                "score": str(competitor.get("score") or ""),
+            })
+        if len(sides) < 2:
+            continue
+        match_state = _status(match, {})
+        match_type = str(_mapping(match.get("type")).get("id") or "")
+        matches.append({
+            "type": match_type,
+            "status": match_state["text"],
+            "state": match_state["state"],
+            "sides": sides,
+        })
+    state_order = {"in": 0, "half": 0, "pre": 1, "post": 2}
+    matches.sort(key=lambda value: state_order.get(str(value["state"]), 3))
+
+    event_name = str(event.get("name") or "PGA TOUR")
+    return {
+        "brand": _golf_brand(event_name),
+        "event_name": event_name,
+        "year": _mapping(event.get("season")).get("year", ""),
+        "format": "match_play",
+        "teams": teams,
+        "matches": matches,
+    }
 
 
 def _mappings(value: object) -> tuple[Mapping[str, Any], ...]:

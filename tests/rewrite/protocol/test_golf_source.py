@@ -87,6 +87,55 @@ def test_golf_source_includes_live_tournament() -> None:
     assert result["content"][0]["id"] == "golf:401811963"
 
 
+def test_golf_source_projects_presidents_cup_team_score_and_matches() -> None:
+    now = datetime(2026, 9, 27, 18, 0, tzinfo=timezone.utc)
+    settings = DisplaySettings(timezone="America/New_York")
+    payload = {
+        "events": [{
+            "id": "401824815",
+            "name": "Presidents Cup",
+            "shortName": "Presidents Cup",
+            "date": "2026-09-24T04:00Z",
+            "endDate": "2026-09-28T03:59Z",
+            "status": {"type": {"state": "in"}},
+            "season": {"year": 2026},
+            "competitions": [
+                {
+                    "type": {"id": "1"},
+                    "status": {"type": {"state": "in", "shortDetail": "Round 0 - In Progress"}},
+                    "competitors": [
+                        {"type": "team", "team": {"abbreviation": "USA", "shortDisplayName": "USA"}, "score": "7.5"},
+                        {"type": "team", "team": {"abbreviation": "INTL", "shortDisplayName": "International"}, "score": "10.5"},
+                    ],
+                },
+                {
+                    "type": {"id": "3"},
+                    "status": {"type": {"state": "pre", "shortDetail": "Scheduled"}},
+                    "competitors": [
+                        {"type": "athlete", "team": {"abbreviation": "USA"}, "athlete": {"displayName": "Cameron Young"}, "score": ""},
+                        {"type": "athlete", "team": {"abbreviation": "INTL"}, "athlete": {"displayName": "Ryo Hisatsune"}, "score": ""},
+                    ],
+                },
+            ],
+        }]
+    }
+    source = EspnGolfSource(client=MockHttpClient(payload), now=lambda: now)
+
+    item = source.fetch(settings)["content"][0]
+
+    assert item["golf"]["format"] == "match_play"
+    assert item["status"] == "Match Play"
+    assert item["golf"]["teams"] == [
+        {"abbr": "USA", "name": "USA", "score": "7.5"},
+        {"abbr": "INTL", "name": "International", "score": "10.5"},
+    ]
+    assert item["golf"]["matches"][0]["sides"] == [
+        {"team": "USA", "player": "Cameron Young", "score": ""},
+        {"team": "INTL", "player": "Ryo Hisatsune", "score": ""},
+    ]
+    assert item["golf"]["matches"][0]["type"] == "3"
+
+
 def test_golf_source_reads_once_for_many_tickers_in_one_refresh() -> None:
     now = datetime(2026, 8, 21, 18, 0, tzinfo=timezone.utc)
     settings = DisplaySettings(timezone="America/New_York")

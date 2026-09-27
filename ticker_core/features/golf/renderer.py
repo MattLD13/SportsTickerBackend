@@ -43,6 +43,8 @@ class GolfRenderer:
         """Render the compact top-three score card."""
         game = item if isinstance(item, dict) else {}
         payload = self._payload(game)
+        if payload.get("format") == "match_play":
+            return self._match_play_scroll(payload)
         event = str(payload.get("event_name") or game.get("away_abbr") or "PGA TOUR").upper()
         round_label = str(payload.get("round") or game.get("status") or "").upper()
         match = re.search(r"\d+", round_label)
@@ -100,6 +102,9 @@ class GolfRenderer:
         colors = self._colors(game)
         image = Image.new("RGBA", (PANEL_W, PANEL_H), colors["bg"])
         draw = ImageDraw.Draw(image)
+        if payload.get("format") == "match_play":
+            next_state = self._match_play_full(draw, payload, colors, context, state, elapsed)
+            return image, next_state
         pars = payload.get("pars", []) if isinstance(payload.get("pars"), list) else []
         pars = (pars + [4, 5, 4, 3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 5, 3, 4, 4])[:18]
         all_players = self._players(payload, compact=False)
@@ -132,6 +137,72 @@ class GolfRenderer:
         for index, player in enumerate(players):
             self._player(draw, player, 8 + index * 8, pars, colors, hole_x, hole_step, hole_width)
         return image, next_state
+
+    def _match_play_scroll(self, payload: dict[str, Any]) -> Image.Image:
+        """Render team totals for a compact match-play golf ticker."""
+
+        image = Image.new("RGBA", (160, PANEL_H), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(image)
+        teams = payload.get("teams", []) if isinstance(payload.get("teams"), list) else []
+        first = teams[0] if len(teams) > 0 and isinstance(teams[0], dict) else {}
+        second = teams[1] if len(teams) > 1 and isinstance(teams[1], dict) else {}
+        title = "PRESIDENTS CUP" if "president" in str(payload.get("event_name", "")).casefold() else str(payload.get("event_name") or "TEAM GOLF").upper()
+        self._text(draw, title[:24], 1, 1, (231, 199, 92, 255))
+        score = f"{first.get('abbr', 'USA')} {first.get('score', '--')} - {second.get('abbr', 'INTL')} {second.get('score', '--')}"
+        self._text(draw, score[:38], 1, 10, (244, 248, 231, 255))
+        self._text(draw, "MATCH PLAY", 1, 20, (145, 169, 145, 255))
+        return image
+
+    def _match_play_full(
+        self,
+        draw: ImageDraw.ImageDraw,
+        payload: dict[str, Any],
+        colors: dict[str, tuple[int, int, int, int]],
+        context: RenderContext,
+        state: GolfAnimationState,
+        elapsed: float | None,
+    ) -> GolfAnimationState:
+        """Render team totals and three match results on a 384x32 panel."""
+
+        teams = payload.get("teams", []) if isinstance(payload.get("teams"), list) else []
+        first = teams[0] if len(teams) > 0 and isinstance(teams[0], dict) else {}
+        second = teams[1] if len(teams) > 1 and isinstance(teams[1], dict) else {}
+        matches = payload.get("matches", []) if isinstance(payload.get("matches"), list) else []
+        matches = [match for match in matches if isinstance(match, dict)]
+        page_count = max(1, (len(matches) + 2) // 3)
+        page = min(max(1, state.page), page_count)
+        if elapsed is None:
+            changed = context.now.timestamp() if state.changed_at is None else state.changed_at
+            if context.now.timestamp() - changed > 4.0:
+                page = page % page_count + 1
+                changed = context.now.timestamp()
+        else:
+            page = int(max(0.0, elapsed) // 4.0) % page_count + 1
+            changed = None
+        self._text(draw, "PRESIDENTS CUP"[:20], 2, 0, colors["accent"])
+        total = f"{first.get('abbr', 'USA')} {first.get('score', '--')} - {second.get('abbr', 'INTL')} {second.get('score', '--')}"
+        self._text(draw, total[:24], 86, 0, colors["white"])
+        start = (page - 1) * 3
+        for index, match in enumerate(matches[start : start + 3]):
+            sides = match.get("sides", []) if isinstance(match.get("sides"), list) else []
+            left = sides[0] if len(sides) > 0 and isinstance(sides[0], dict) else {}
+            right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
+            left_name = self._short_player(str(left.get("player") or left.get("team") or "USA"))
+            right_name = self._short_player(str(right.get("player") or right.get("team") or "INTL"))
+            label = f"{left_name} / {right_name}"[:48]
+            y = 8 + index * 8
+            self._text(draw, label, 2, y, colors["white"])
+            result = str(left.get("score") or right.get("score") or "PRE")
+            self._text(draw, result.upper()[:8], 325, y, colors["accent"])
+        self._page_indicator(draw, page, colors)
+        return GolfAnimationState(state.pair, page, changed)
+
+    @staticmethod
+    def _short_player(value: str) -> str:
+        """Fit a player name into one match row."""
+
+        parts = value.split()
+        return f"{parts[0][0]}. {parts[-1]}".upper() if len(parts) > 1 else value.upper()
 
     def _page_indicator(self, draw: ImageDraw.ImageDraw, page: int, colors: dict[str, tuple[int, int, int, int]]) -> None:
         """Show the active page in the vertical five-page indicator."""
