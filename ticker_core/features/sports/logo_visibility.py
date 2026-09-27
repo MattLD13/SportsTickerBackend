@@ -9,6 +9,7 @@ from PIL import Image, ImageFilter
 
 _CONTRAST_RATIO_THRESHOLD = 2.0
 _COLOR_DISTANCE_THRESHOLD_SQUARED = 12 * 12
+_FULL_COLOR_DISTANCE_THRESHOLD_SQUARED = 32 * 32
 _SCROLL_MIN_CONTRASTING_FRACTION = 0.20
 _FULL_MIN_CONTRASTING_FRACTION = 0.25
 _KEYLINE_COLORS = ((244, 247, 250), (8, 12, 18))
@@ -48,11 +49,16 @@ def paste_team_logo(
         if outline_mode is LogoOutlineMode.FULL
         else _SCROLL_MIN_CONTRASTING_FRACTION
     )
+    distance_squared = (
+        _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
+        if outline_mode is LogoOutlineMode.FULL
+        else _COLOR_DISTANCE_THRESHOLD_SQUARED
+    )
     if (
         edge_pairs
         and visible_pairs
-        and _needs_keyline(edge_pairs, min_contrasting_fraction)
-        and _needs_keyline(visible_pairs, min_contrasting_fraction)
+        and _needs_keyline(edge_pairs, min_contrasting_fraction, distance_squared)
+        and _needs_keyline(visible_pairs, min_contrasting_fraction, distance_squared)
     ):
         line_color = _keyline_color(edge_pairs)
         edge = mark.getchannel("A").filter(ImageFilter.MaxFilter(3))
@@ -120,24 +126,29 @@ def _is_edge_pixel(pixels, x: int, y: int, width: int, height: int) -> bool:
 def _needs_keyline(
     visible_pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
     min_contrasting_fraction: float,
+    minimum_distance_squared: int,
 ) -> bool:
     """Measure the share of the logo that contrasts with the pixels below it."""
 
     contrasted = sum(
         1
         for mark, background in visible_pairs
-        if _is_contrasting(mark, background)
+        if _is_contrasting(mark, background, minimum_distance_squared)
     )
     return contrasted / len(visible_pairs) < min_contrasting_fraction
 
 
-def _is_contrasting(mark: tuple[int, int, int], background: tuple[int, int, int]) -> bool:
+def _is_contrasting(
+    mark: tuple[int, int, int],
+    background: tuple[int, int, int],
+    minimum_distance_squared: int,
+) -> bool:
     """Count readable luminance or saturated-colour differences."""
 
     if _contrast_ratio(mark, background) >= _CONTRAST_RATIO_THRESHOLD:
         return True
     distance_squared = sum((mark[channel] - background[channel]) ** 2 for channel in range(3))
-    return distance_squared >= _COLOR_DISTANCE_THRESHOLD_SQUARED
+    return distance_squared >= minimum_distance_squared
 
 
 def _relative_luminance(color: tuple[int, int, int]) -> float:

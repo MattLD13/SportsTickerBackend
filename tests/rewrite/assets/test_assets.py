@@ -289,6 +289,29 @@ def test_planner_extracts_every_family_without_mode_filtering() -> None:
     assert ("https://nascar.com/car.jpg", "nascar_car", (130, 20)) in signatures
 
 
+def test_planner_reads_team_logos_from_v2_content_envelopes() -> None:
+    jets_logo = "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/nyj.png"
+    payload = {
+        "api_version": "v2",
+        "content": {
+            "sports": [
+                {
+                    "id": "jets",
+                    "family": "sports",
+                    "kind": "scoreboard",
+                    "data": {"sport": "nfl", "away_logo": jets_logo},
+                }
+            ]
+        },
+    }
+
+    plan = AssetPlanner().plan(payload)
+
+    assert (jets_logo, "logo", (24, 24)) in {
+        (request.url, request.processor, request.size) for request in plan.requests
+    }
+
+
 def _png() -> bytes:
     image = Image.new("RGBA", (8, 4), (30, 150, 220, 255))
     output = io.BytesIO()

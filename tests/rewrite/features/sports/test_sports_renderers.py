@@ -244,6 +244,23 @@ def test_full_logo_policy_outlines_a_mark_that_scroll_leaves_clean() -> None:
     assert scroll_canvas.getpixel((6, 9))[:3] == (0, 0, 0)
 
 
+def test_full_logo_policy_outlines_the_near_matching_jets_green_mark() -> None:
+    background_color = (17, 87, 64, 255)
+    canvas = Image.new("RGBA", (18, 18), background_color)
+    logo = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((1, 1, 6, 6), fill=(0, 87, 61, 255))
+
+    assert paste_team_logo(canvas, logo, (5, 5), outline_mode=LogoOutlineMode.FULL) is True
+    assert paste_team_logo(
+        Image.new("RGBA", (18, 18), background_color),
+        logo,
+        (5, 5),
+        outline_mode=LogoOutlineMode.SCROLL,
+    ) is False
+    assert canvas.getpixel((5, 8))[:3] == (244, 247, 250)
+
+
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
     image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
     team_color = (220, 30, 55)

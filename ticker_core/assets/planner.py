@@ -84,10 +84,15 @@ def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
             yield from _content_items(family)
         return
     for item in content if isinstance(content, Iterable) and not isinstance(content, (str, bytes, Mapping)) else ():
-        data = getattr(item, "data", item)
+        data = getattr(item, "data", None)
+        if data is None and isinstance(item, Mapping):
+            data = item.get("data", item)
         if isinstance(data, Mapping):
             family = getattr(item, "family", None)
             kind = getattr(item, "kind", None)
+            if isinstance(item, Mapping):
+                family = family or item.get("family")
+                kind = kind or item.get("kind")
             if family or kind:
                 merged = dict(data)
                 if family and "family" not in merged:
@@ -109,7 +114,9 @@ def _payload_items(value: object) -> Iterable[Mapping[str, Any]]:
         if not isinstance(items, (list, tuple)):
             continue
         for item in items:
-            data = getattr(item, "data", item)
+            data = getattr(item, "data", None)
+            if data is None and isinstance(item, Mapping):
+                data = item.get("data", item)
             if isinstance(data, Mapping):
                 yield data
 
