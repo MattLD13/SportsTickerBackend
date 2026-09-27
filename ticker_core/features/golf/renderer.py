@@ -139,18 +139,36 @@ class GolfRenderer:
         return image, next_state
 
     def _match_play_scroll(self, payload: dict[str, Any]) -> Image.Image:
-        """Render team totals for a compact match-play golf ticker."""
+        """Render team match play with the compact golf scorecard style."""
 
-        image = Image.new("RGBA", (160, PANEL_H), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
         teams = payload.get("teams", []) if isinstance(payload.get("teams"), list) else []
         first = teams[0] if len(teams) > 0 and isinstance(teams[0], dict) else {}
         second = teams[1] if len(teams) > 1 and isinstance(teams[1], dict) else {}
-        title = "PRESIDENTS CUP" if "president" in str(payload.get("event_name", "")).casefold() else str(payload.get("event_name") or "TEAM GOLF").upper()
-        self._text(draw, title[:24], 1, 1, (231, 199, 92, 255))
-        score = f"{first.get('abbr', 'USA')} {first.get('score', '--')} - {second.get('abbr', 'INTL')} {second.get('score', '--')}"
-        self._text(draw, score[:38], 1, 10, (244, 248, 231, 255))
-        self._text(draw, "MATCH PLAY", 1, 20, (145, 169, 145, 255))
+        title = f"{payload.get('event_name') or 'TEAM GOLF'}  {first.get('abbr', 'USA')} {first.get('score', '--')}  {second.get('abbr', 'INTL')} {second.get('score', '--')}".upper()
+        width = max(128, len(title) * 5 + 4)
+        image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(image)
+        x = max(1, (width - len(title) * 5) // 2)
+        hybrid_text(draw, x + 1, 2, title, (8, 8, 8, 180), self._fonts.tiny)
+        hybrid_text(draw, x, 1, title, (255, 240, 150, 255), self._fonts.tiny)
+        draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
+        result_x = width - 32
+        tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
+        tiny_text(draw, result_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
+        matches = payload.get("matches", []) if isinstance(payload.get("matches"), list) else []
+        for index, match in enumerate(matches[:3]):
+            if not isinstance(match, dict):
+                continue
+            sides = match.get("sides", []) if isinstance(match.get("sides"), list) else []
+            left = sides[0] if len(sides) > 0 and isinstance(sides[0], dict) else {}
+            right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
+            left_name = self._short_player(str(left.get("player") or left.get("team") or "USA"))
+            right_name = self._short_player(str(right.get("player") or right.get("team") or "INTL"))
+            label = f"{left_name} / {right_name}"[: max(1, (result_x - 20) // 5)]
+            score = str(left.get("score") or right.get("score") or "PRE").upper()
+            tiny_text(draw, 1, (14, 20, 26)[index], label, "white", self._fonts.tiny)
+            score_color = (255, 215, 0) if score not in {"", "PRE", "HALVED"} else (150, 150, 150)
+            tiny_text(draw, result_x, (14, 20, 26)[index], score[:6], score_color, self._fonts.tiny)
         return image
 
     def _match_play_full(
@@ -179,9 +197,11 @@ class GolfRenderer:
         else:
             page = int(max(0.0, elapsed) // 4.0) % page_count + 1
             changed = None
-        self._text(draw, "PRESIDENTS CUP"[:20], 2, 0, colors["accent"])
+        self._text(draw, "PRES CUP", 2, 0, colors["accent"])
         total = f"{first.get('abbr', 'USA')} {first.get('score', '--')} - {second.get('abbr', 'INTL')} {second.get('score', '--')}"
-        self._text(draw, total[:24], 86, 0, colors["white"])
+        self._text(draw, total[:24], 42, 0, colors["white"])
+        self._center(draw, "MATCH", 292, 1, colors["label"])
+        self._center(draw, "RESULT", 350, 1, colors["label"])
         start = (page - 1) * 3
         for index, match in enumerate(matches[start : start + 3]):
             sides = match.get("sides", []) if isinstance(match.get("sides"), list) else []
@@ -189,11 +209,22 @@ class GolfRenderer:
             right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
             left_name = self._short_player(str(left.get("player") or left.get("team") or "USA"))
             right_name = self._short_player(str(right.get("player") or right.get("team") or "INTL"))
-            label = f"{left_name} / {right_name}"[:48]
+            label = f"{left_name} / {right_name}"[:76]
             y = 8 + index * 8
-            self._text(draw, label, 2, y, colors["white"])
-            result = str(left.get("score") or right.get("score") or "PRE")
-            self._text(draw, result.upper()[:8], 325, y, colors["accent"])
+            score = str(left.get("score") or right.get("score") or "")
+            if score and score.casefold() != "halved":
+                winner = str(left.get("team") if left.get("score") else right.get("team") or "INTL")
+                result = f"{winner} {score}".upper()
+                result_color = colors["gold"]
+            else:
+                winner = ""
+                result = "HALVED" if score else "PRE"
+                result_color = colors["label"]
+            left_team = str(left.get("team") or "USA")
+            marker_color = colors["gold"] if winner and left_team == winner else colors["white"]
+            self._text(draw, left_team[:3], 2, y + 1, marker_color)
+            self._text(draw, label, 14, y + 1, colors["white"])
+            self._center(draw, result[:10], 350, y + 1, result_color)
         self._page_indicator(draw, page, colors)
         return GolfAnimationState(state.pair, page, changed)
 
