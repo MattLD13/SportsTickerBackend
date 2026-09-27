@@ -144,7 +144,7 @@ class GolfRenderer:
         teams = payload.get("teams", []) if isinstance(payload.get("teams"), list) else []
         first = teams[0] if len(teams) > 0 and isinstance(teams[0], dict) else {}
         second = teams[1] if len(teams) > 1 and isinstance(teams[1], dict) else {}
-        title = f"{payload.get('event_name') or 'TEAM GOLF'}  {first.get('abbr', 'USA')} {first.get('score', '--')}  {second.get('abbr', 'INTL')} {second.get('score', '--')}".upper()
+        title = f"{payload.get('event_name') or 'TEAM GOLF'}  {self._team_label(first.get('abbr', 'USA'))} {first.get('score', '--')}  {self._team_label(second.get('abbr', 'INTL'))} {second.get('score', '--')}".upper()
         width = max(128, len(title) * 5 + 4)
         image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
@@ -162,8 +162,8 @@ class GolfRenderer:
             sides = match.get("sides", []) if isinstance(match.get("sides"), list) else []
             left = sides[0] if len(sides) > 0 and isinstance(sides[0], dict) else {}
             right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
-            left_name = self._short_player(str(left.get("player") or left.get("team") or "USA"))
-            right_name = self._short_player(str(right.get("player") or right.get("team") or "INTL"))
+            left_name = self._short_player(str(left["player"])) if left.get("player") else self._team_label(left.get("team", "USA"))
+            right_name = self._short_player(str(right["player"])) if right.get("player") else self._team_label(right.get("team", "INTL"))
             label = f"{left_name} / {right_name}"[: max(1, (result_x - 20) // 5)]
             score = str(left.get("score") or right.get("score") or "PRE").upper()
             tiny_text(draw, 1, (14, 20, 26)[index], label, "white", self._fonts.tiny)
@@ -198,7 +198,7 @@ class GolfRenderer:
             page = int(max(0.0, elapsed) // 4.0) % page_count + 1
             changed = None
         self._text(draw, "PRES CUP", 2, 0, colors["accent"])
-        total = f"{first.get('abbr', 'USA')} {first.get('score', '--')} - {second.get('abbr', 'INTL')} {second.get('score', '--')}"
+        total = f"{self._team_label(first.get('abbr', 'USA'))} {first.get('score', '--')} - {self._team_label(second.get('abbr', 'INTL'))} {second.get('score', '--')}"
         self._text(draw, total[:24], 42, 0, colors["white"])
         self._center(draw, "MATCH", 292, 1, colors["label"])
         self._center(draw, "RESULT", 350, 1, colors["label"])
@@ -207,8 +207,8 @@ class GolfRenderer:
             sides = match.get("sides", []) if isinstance(match.get("sides"), list) else []
             left = sides[0] if len(sides) > 0 and isinstance(sides[0], dict) else {}
             right = sides[1] if len(sides) > 1 and isinstance(sides[1], dict) else {}
-            left_name = self._short_player(str(left.get("player") or left.get("team") or "USA"))
-            right_name = self._short_player(str(right.get("player") or right.get("team") or "INTL"))
+            left_name = self._short_player(str(left["player"])) if left.get("player") else self._team_label(left.get("team", "USA"))
+            right_name = self._short_player(str(right["player"])) if right.get("player") else self._team_label(right.get("team", "INTL"))
             label = f"{left_name} / {right_name}"[:76]
             y = 8 + index * 8
             score = str(left.get("score") or right.get("score") or "")
@@ -222,7 +222,7 @@ class GolfRenderer:
                 result_color = colors["label"]
             left_team = str(left.get("team") or "USA")
             marker_color = colors["gold"] if winner and left_team == winner else colors["white"]
-            self._text(draw, left_team[:3], 2, y + 1, marker_color)
+            self._text(draw, self._team_label(left_team)[:3], 2, y + 1, marker_color)
             self._text(draw, label, 14, y + 1, colors["white"])
             self._center(draw, result[:10], 350, y + 1, result_color)
         self._page_indicator(draw, page, colors)
@@ -234,6 +234,13 @@ class GolfRenderer:
 
         parts = value.split()
         return f"{parts[0][0]}. {parts[-1]}".upper() if len(parts) > 1 else value.upper()
+
+    @staticmethod
+    def _team_label(value: object) -> str:
+        """Use short names for the Presidents Cup teams."""
+
+        label = normal_text(value).strip().upper()
+        return {"USA": "US", "UNITED STATES": "US", "INTL": "INT", "INTERNATIONAL": "INT"}.get(label, label[:3])
 
     def _page_indicator(self, draw: ImageDraw.ImageDraw, page: int, colors: dict[str, tuple[int, int, int, int]]) -> None:
         """Show the active page in the vertical five-page indicator."""
