@@ -145,14 +145,14 @@ class GolfRenderer:
         first = teams[0] if len(teams) > 0 and isinstance(teams[0], dict) else {}
         second = teams[1] if len(teams) > 1 and isinstance(teams[1], dict) else {}
         title = f"{payload.get('event_name') or 'TEAM GOLF'}  {self._team_label(first.get('abbr', 'USA'))} {first.get('score', '--')}  {self._team_label(second.get('abbr', 'INTL'))} {second.get('score', '--')}".upper()
-        width = max(128, len(title) * 5 + 4)
+        width = max(174, len(title) * 5 + 4)
         image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
         x = max(1, (width - len(title) * 5) // 2)
         hybrid_text(draw, x + 1, 2, title, (8, 8, 8, 180), self._fonts.tiny)
         hybrid_text(draw, x, 1, title, (255, 240, 150, 255), self._fonts.tiny)
         draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
-        result_x = width - 32
+        result_x = width - 37
         tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
         tiny_text(draw, result_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
         matches = payload.get("matches", []) if isinstance(payload.get("matches"), list) else []
@@ -165,10 +165,13 @@ class GolfRenderer:
             left_name = self._short_player(str(left["player"])) if left.get("player") else self._team_label(left.get("team", "USA"))
             right_name = self._short_player(str(right["player"])) if right.get("player") else self._team_label(right.get("team", "INTL"))
             label = f"{left_name} / {right_name}"[: max(1, (result_x - 20) // 5)]
-            score = str(left.get("score") or right.get("score") or "PRE").upper()
+            result, winner = self._match_result(left, right)
+            if winner:
+                score_color = (255, 215, 0)
+            else:
+                score_color = (150, 150, 150)
             tiny_text(draw, 1, (14, 20, 26)[index], label, "white", self._fonts.tiny)
-            score_color = (255, 215, 0) if score not in {"", "PRE", "HALVED"} else (150, 150, 150)
-            tiny_text(draw, result_x, (14, 20, 26)[index], score[:6], score_color, self._fonts.tiny)
+            tiny_text(draw, result_x, (14, 20, 26)[index], result[:8], score_color, self._fonts.tiny)
         return image
 
     def _match_play_full(
@@ -211,15 +214,8 @@ class GolfRenderer:
             right_name = self._short_player(str(right["player"])) if right.get("player") else self._team_label(right.get("team", "INTL"))
             label = f"{left_name} / {right_name}"[:76]
             y = 8 + index * 8
-            score = str(left.get("score") or right.get("score") or "")
-            if score and score.casefold() != "halved":
-                winner = str(left.get("team") if left.get("score") else right.get("team") or "INTL")
-                result = f"{winner} {score}".upper()
-                result_color = colors["gold"]
-            else:
-                winner = ""
-                result = "HALVED" if score else "PRE"
-                result_color = colors["label"]
+            result, winner = self._match_result(left, right)
+            result_color = colors["gold"] if winner else colors["label"]
             left_team = str(left.get("team") or "USA")
             marker_color = colors["gold"] if winner and left_team == winner else colors["white"]
             self._text(draw, self._team_label(left_team)[:3], 2, y + 1, marker_color)
@@ -241,6 +237,21 @@ class GolfRenderer:
 
         label = normal_text(value).strip().upper()
         return {"USA": "US", "UNITED STATES": "US", "INTL": "INT", "INTERNATIONAL": "INT"}.get(label, label[:3])
+
+    @staticmethod
+    def _match_result(left: dict[str, Any], right: dict[str, Any]) -> tuple[str, str]:
+        """Show the winning team beside a decided match result."""
+
+        left_score = str(left.get("score") or "").strip()
+        right_score = str(right.get("score") or "").strip()
+        score = left_score or right_score
+        normalized = score.casefold().replace(" ", "")
+        if normalized in {"as", "allsquare", "halved"}:
+            return ("HALVED" if normalized == "halved" else "AS"), ""
+        if not score:
+            return "PRE", ""
+        winner = str((left.get("team") if left_score else right.get("team")) or "")
+        return f"{GolfRenderer._team_label(winner)} {score}".upper(), winner
 
     def _page_indicator(self, draw: ImageDraw.ImageDraw, page: int, colors: dict[str, tuple[int, int, int, int]]) -> None:
         """Show the active page in the vertical five-page indicator."""
