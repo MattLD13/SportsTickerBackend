@@ -169,11 +169,13 @@ class GolfRenderer:
         draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
         result_x = width - result_width - 2
         tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
-        tiny_text(draw, result_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
+        heading_x = result_x + (result_width - len("RESULT") * 5) // 2
+        tiny_text(draw, heading_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
         for index, (label, result, winner) in enumerate(rows):
             score_color = (255, 215, 0) if winner else (150, 150, 150)
             tiny_text(draw, 1, (14, 20, 26)[index], label, "white", self._fonts.tiny)
-            tiny_text(draw, result_x, (14, 20, 26)[index], result, score_color, self._fonts.tiny)
+            result_text_x = result_x + (result_width - len(result) * 5) // 2
+            tiny_text(draw, result_text_x, (14, 20, 26)[index], result, score_color, self._fonts.tiny)
         return image
 
     def _match_play_full(
