@@ -1375,7 +1375,14 @@ class EspnScoreboardProvider:
             )
             updated = dict(data)
             situation = dict(_mapping(data.get("situation")))
-            for key in ("powerPlay", "powerPlayTeam", "emptyNet", "emptyNetSide"):
+            for key in (
+                "powerPlay",
+                "powerPlayTeam",
+                "awaySkaters",
+                "homeSkaters",
+                "emptyNet",
+                "emptyNetSide",
+            ):
                 situation.pop(key, None)
                 if key in details:
                     situation[key] = details[key]
@@ -2404,6 +2411,8 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
                 _compact_event_name(name) for name in participant_names[1:]
             )
         if league == "nhl":
+            if team.upper() in {home_abbr.upper(), away_abbr.upper()}:
+                normalized["is_home"] = team.upper() == home_abbr.upper()
             assists = _event_assist_names(play, summary, athlete)
             if assists:
                 normalized["assists"] = assists
@@ -2458,6 +2467,8 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
                     normalized["scorer"] = football_play["scorer"]
                     normalized["player"] = football_play["scorer"]
         clock = _event_clock(play)
+        if league == "nhl":
+            clock = clock.rstrip("'")
         period = _mapping(play.get("period"))
         period_text = str(period.get("displayValue") or period.get("number") or "").strip()
         if league in {"nfl", "ncf_fbs", "ncf_fcs"} and period_text.isdigit():

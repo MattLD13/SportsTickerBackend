@@ -792,19 +792,22 @@ class SportsMixin:
         # ── NHL / NBA: side scrims (alpha_composite) then text on top ────────
 
         # Hockey PP / EN badges
-        h_badge = a_badge = ''
+        h_badges: list[str] = []
+        a_badges: list[str] = []
         if is_nhl and sit.get('emptyNet'):
             empty_net_side = str(sit.get('emptyNetSide') or '').upper()
             if empty_net_side == home_ab:
-                h_badge = 'EN'
+                h_badges.append('EN')
             elif empty_net_side == away_ab:
-                a_badge = 'EN'
-        elif is_nhl and sit.get('powerPlay'):
+                a_badges.append('EN')
+        if is_nhl and sit.get('powerPlay'):
             power_play_team = str(sit.get('powerPlayTeam') or '').upper()
             if power_play_team == home_ab:
-                h_badge = 'PP'
+                h_badges.append('PP')
             elif power_play_team == away_ab:
-                a_badge = 'PP'
+                a_badges.append('PP')
+        h_badge = '+'.join(h_badges)
+        a_badge = '+'.join(a_badges)
 
         # Side scrims via alpha_composite (correct blending)
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -851,19 +854,103 @@ class SportsMixin:
         a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
         if h_badge:
-            h_col = (255, 204, 0) if h_badge == 'PP' else (255, 90, 90)
+            h_col = (255, 204, 0) if 'PP' in h_badges else (255, 90, 90)
             h_badge_x = int(h_sc_x + h_sc_w + 9)
             self.draw_outlined_text(d, h_badge_x, H // 2, h_badge,
                                     self.tiny, h_col, (0, 0, 0, 220), anchor='mm')
         if a_badge:
-            a_col = (255, 204, 0) if a_badge == 'PP' else (255, 90, 90)
+            a_col = (255, 204, 0) if 'PP' in a_badges else (255, 90, 90)
             a_badge_x = int(a_sc_x - a_sc_w - 9)
             self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
 
+        away_skaters = sit.get('awaySkaters')
+        home_skaters = sit.get('homeSkaters')
+        if is_nhl and away_skaters is not None and home_skaters is not None:
+            try:
+                away_count, home_count = int(away_skaters), int(home_skaters)
+            except (TypeError, ValueError):
+                away_count = home_count = 5
+            if (away_count, home_count) != (5, 5):
+                manpower = f'{away_count}v{home_count}'
+                self.draw_outlined_text(
+                    d,
+                    cx,
+                    H - 3,
+                    manpower,
+                    self.tiny,
+                    (240, 240, 240),
+                    (0, 0, 0, 220),
+                    anchor='mm',
+                )
+
+        if is_nhl and sit.get('scoring_plays'):
+            self._draw_hockey_goal_events(
+                d,
+                sit.get('scoring_plays') or (),
+                center_x=cx,
+                period_text=prd,
+                home_score_x=h_sc_x,
+                home_score_width=h_sc_w,
+                away_score_x=a_sc_x,
+                away_score_width=a_sc_w,
+            )
+
         # No possession arrow for hockey/basketball full-bleed mode.
 
         return img
+
+    def _draw_hockey_goal_events(
+        self,
+        draw,
+        plays,
+        *,
+        center_x,
+        period_text,
+        home_score_x,
+        home_score_width,
+        away_score_x,
+        away_score_width,
+    ):
+        """Show recent hockey scorers in the lanes beside the period clock."""
+
+        left_events = [play for play in plays if play.get('is_home') is False][-2:]
+        right_events = [play for play in plays if play.get('is_home') is True][-2:]
+        status_width = draw.textlength(str(period_text or ''), font=self.big_font)
+        left_start = int(home_score_x + home_score_width) + 3
+        left_end = int(center_x - status_width / 2) - 4
+        right_start = int(center_x + status_width / 2) + 4
+        right_end = int(away_score_x - away_score_width) - 3
+        for events, start, end in (
+            (left_events, left_start, left_end),
+            (right_events, right_start, right_end),
+        ):
+            if not events or end <= start:
+                continue
+            lane_center = (start + end) // 2
+            line_height = 9
+            first_y = PANEL_H // 2 - (len(events) - 1) * line_height // 2
+            for index, play in enumerate(events):
+                scorer = str(play.get('scorer') or play.get('player') or '').strip()[:6]
+                period = str(play.get('period') or '').strip().upper()
+                if period.isdigit():
+                    period = f'P{period}'
+                elif period in {'1ST', '2ND', '3RD'}:
+                    period = f'P{period[0]}'
+                clock = str(play.get('clock') or '').strip()
+                label = ' '.join(value for value in (scorer, period, clock) if value)
+                if not label:
+                    continue
+                self.draw_outlined_text(
+                    draw,
+                    lane_center,
+                    first_y + index * line_height,
+                    label,
+                    self.micro,
+                    (235, 235, 235),
+                    (0, 0, 0, 220),
+                    anchor='mm',
+                )
 
     # ── Sport background helpers — exact ports of the HTML JS functions ──────
 

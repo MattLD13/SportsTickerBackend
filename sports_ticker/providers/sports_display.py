@@ -240,6 +240,8 @@ def display_situation(
         code = str(source.get("situationCode") or "").strip()
         if len(code) == 4 and code.isdigit():
             away_goalie, away_skaters, home_skaters, home_goalie = map(int, code)
+            result["awaySkaters"] = away_skaters
+            result["homeSkaters"] = home_skaters
             if away_goalie == 0 or home_goalie == 0:
                 result["emptyNet"] = True
                 result["emptyNetSide"] = away_abbr if away_goalie == 0 else home_abbr
@@ -332,6 +334,8 @@ _LIVE_PLAY_KEYS = frozenset(
         "last_pitch_type",
         "powerPlay",
         "powerPlayTeam",
+        "awaySkaters",
+        "homeSkaters",
         "emptyNet",
         "emptyNetSide",
     }

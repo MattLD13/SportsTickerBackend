@@ -190,6 +190,21 @@ def test_nhl_situation_code_projects_power_play_owner() -> None:
 
     assert hockey.data["situation"]["powerPlay"] is True
     assert hockey.data["situation"]["powerPlayTeam"] == "AWY"
+    assert hockey.data["situation"]["awaySkaters"] == 5
+    assert hockey.data["situation"]["homeSkaters"] == 4
+
+
+@pytest.mark.critical
+def test_nhl_four_on_four_projects_counts_without_a_power_play() -> None:
+    hockey = SportsDisplayProjector().project(
+        _item("hockey-four-on-four", "nhl"),
+        _event("2nd period", {"situationCode": "1441"}),
+    )
+
+    assert hockey.data["situation"]["awaySkaters"] == 4
+    assert hockey.data["situation"]["homeSkaters"] == 4
+    assert hockey.data["situation"]["powerPlay"] is False
+    assert "powerPlayTeam" not in hockey.data["situation"]
 
 
 @pytest.mark.critical
@@ -207,6 +222,25 @@ def test_nhl_empty_net_owner_does_not_become_a_power_play() -> None:
     assert hockey.data["situation"]["emptyNetSide"] == "AWY"
     assert hockey.data["situation"]["powerPlay"] is False
     assert "powerPlayTeam" not in hockey.data["situation"]
+
+
+@pytest.mark.critical
+def test_nhl_empty_net_and_penalty_keep_both_team_facts() -> None:
+    hockey = SportsDisplayProjector().project(
+        _item("hockey-empty-net-power-play", "nhl"),
+        _event("3rd period", {
+            "situationCode": "0651",
+            "homePenaltyBoxCount": 1,
+            "awayPenaltyBoxCount": 0,
+        }),
+    )
+
+    situation = hockey.data["situation"]
+    assert situation["awaySkaters"] == 6
+    assert situation["homeSkaters"] == 5
+    assert situation["emptyNetSide"] == "AWY"
+    assert situation["powerPlay"] is True
+    assert situation["powerPlayTeam"] == "AWY"
 
 
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:

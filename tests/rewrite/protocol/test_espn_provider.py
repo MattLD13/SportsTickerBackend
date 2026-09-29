@@ -1797,6 +1797,34 @@ def test_espn_event_scoring_details_normalize_team_and_scorer() -> None:
     }]
 
 
+@pytest.mark.critical
+def test_espn_hockey_scoring_details_mark_goal_team_and_clock() -> None:
+    details = _event_scoring_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "10", "abbreviation": "CAR"}},
+                {"homeAway": "away", "team": {"id": "20", "abbreviation": "FLA"}},
+            ]}]},
+            "scoringPlays": [{
+                "team": {"id": "20"},
+                "athlete": {"displayName": "Matthew Tkachuk"},
+                "type": {"text": "Goal"},
+                "text": "Matthew Tkachuk scores",
+                "period": {"displayValue": "2nd"},
+                "clock": {"displayValue": "12:34"},
+            }],
+        },
+        {"sport": "nhl", "home_abbr": "CAR", "away_abbr": "FLA"},
+    )
+
+    goal = details["scoring_plays"][0]
+    assert goal["team"] == "FLA"
+    assert goal["scorer"] == "TKACHUK"
+    assert goal["is_home"] is False
+    assert goal["period"] == "2nd"
+    assert goal["clock"] == "12:34"
+
+
 def test_espn_event_scoring_details_extract_football_metadata_without_participants() -> None:
     details = _event_scoring_details(
         {
