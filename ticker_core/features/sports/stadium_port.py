@@ -467,6 +467,7 @@ class StadiumRenderer:
             is_pp       = sit.get('powerPlay',  False) or g.get('pp', False)
             is_en       = sit.get('emptyNet',   False) or g.get('en', False)
             badges = {'home': [], 'away': []}
+            power_play_displayed = False
             if is_en:
                 en_side = _side_from_value(sit.get('emptyNetSide'))
                 if en_side:
@@ -474,13 +475,29 @@ class StadiumRenderer:
             if is_pp:
                 power_play_side = _side_from_value(sit.get('powerPlayTeam'))
                 if power_play_side:
-                    badges[power_play_side].append('PP')
+                    try:
+                        away_count = int(sit.get('awaySkaters'))
+                        home_count = int(sit.get('homeSkaters'))
+                    except (TypeError, ValueError):
+                        away_count = home_count = 5
+                    advantaged_count, short_count = (
+                        (home_count, away_count)
+                        if power_play_side == 'home'
+                        else (away_count, home_count)
+                    )
+                    label = (
+                        'PP'
+                        if (advantaged_count, short_count) == (5, 4)
+                        else f'{advantaged_count}v{short_count}'
+                    )
+                    badges[power_play_side].append(label)
+                    power_play_displayed = True
             for side, labels in badges.items():
                 if not labels:
                     continue
                 team_x = h_logo_x + LOGO_SZ // 2 if side == 'home' else a_logo_x + LOGO_SZ // 2
                 label = '+'.join(labels)
-                color = (255, 220, 0) if 'PP' in labels else (255, 100, 100)
+                color = (255, 220, 0) if any(label != 'EN' for label in labels) else (255, 100, 100)
                 pf_text(d, label, team_x - pf_w(label) // 2, 2, *color)
 
             away_skaters = sit.get('awaySkaters')
@@ -490,7 +507,7 @@ class StadiumRenderer:
                     away_count, home_count = int(away_skaters), int(home_skaters)
                 except (TypeError, ValueError):
                     away_count = home_count = 5
-                if (away_count, home_count) != (5, 5):
+                if (away_count, home_count) != (5, 5) and not power_play_displayed:
                     manpower = f'{away_count}v{home_count}'
                     pf_text(d, manpower, cCX - pf_w(manpower) // 2, 25, 235, 235, 235)
 

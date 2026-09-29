@@ -52,7 +52,12 @@ def test_hockey_power_play_renders_on_owner_without_possession(
         "home_abbr": "NYI",
         "away_score": 1,
         "home_score": 0,
-        "situation": {"powerPlay": True, "powerPlayTeam": "NYR"},
+        "situation": {
+            "powerPlay": True,
+            "powerPlayTeam": "NYR",
+            "awaySkaters": 5,
+            "homeSkaters": 4,
+        },
     }
     scroll_labels: list[int] = []
     original_pixel_text = sports_stadium_port.pf_text
@@ -102,23 +107,67 @@ def test_hockey_power_play_shows_manpower_on_scroll_and_full_frames(
             "homeSkaters": 3,
         },
     }
-    scroll_labels: list[int] = []
+    scroll_labels: list[tuple[int, tuple[int, int, int]]] = []
     original_pixel_text = sports_stadium_port.pf_text
 
     def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
         if text == "5v3":
-            scroll_labels.append(x)
+            scroll_labels.append((x, (red, green, blue)))
         return original_pixel_text(draw, text, x, y, red, green, blue, sc)
 
     monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
     sports.render_card(game)
     assert len(scroll_labels) == 1
+    assert scroll_labels[0][0] < 80
+    assert scroll_labels[0][1] == (255, 220, 0)
+
+    full_labels: list[tuple[str, tuple[int, int, int]]] = []
+    original_full_text = sports._full.draw_outlined_text
+
+    def capture_full_text(draw, x, y, text, font, fill, *args, **kwargs):
+        if text == "5v3":
+            full_labels.append((text, fill))
+        return original_full_text(draw, x, y, text, font, fill, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
+    image = sports.render_full(game)
+
+    assert image.size == (384, 32)
+    assert full_labels == [("5v3", (255, 204, 0))]
+
+
+@pytest.mark.critical
+def test_hockey_four_on_four_stays_centered_without_power_play(
+    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game = {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P2 8:00",
+        "away_abbr": "NYR",
+        "home_abbr": "NYI",
+        "away_score": 1,
+        "home_score": 0,
+        "situation": {"powerPlay": False, "awaySkaters": 4, "homeSkaters": 4},
+    }
+    labels: list[str] = []
+    original_pixel_text = sports_stadium_port.pf_text
+
+    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
+        if text in {"PP", "4v4"}:
+            labels.append(text)
+        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
+
+    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
+    sports.render_card(game)
+
+    assert labels == ["4v4"]
 
     full_labels: list[str] = []
     original_full_text = sports._full.draw_outlined_text
 
     def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text == "5v3":
+        if text in {"PP", "4v4"}:
             full_labels.append(text)
         return original_full_text(draw, x, y, text, *args, **kwargs)
 
@@ -126,7 +175,7 @@ def test_hockey_power_play_shows_manpower_on_scroll_and_full_frames(
     image = sports.render_full(game)
 
     assert image.size == (384, 32)
-    assert full_labels == ["5v3"]
+    assert full_labels == ["4v4"]
 
 
 @pytest.mark.critical
@@ -154,19 +203,19 @@ def test_hockey_empty_net_power_play_shows_both_badges_and_manpower(
     original_pixel_text = sports_stadium_port.pf_text
 
     def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text in {"EN+PP", "6v5"}:
+        if text in {"EN+6v5", "6v5"}:
             scroll_labels.append(text)
         return original_pixel_text(draw, text, x, y, red, green, blue, sc)
 
     monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
     sports.render_card(game)
-    assert scroll_labels == ["EN+PP", "6v5"]
+    assert scroll_labels == ["EN+6v5"]
 
     labels: list[str] = []
     original_draw_text = sports._full.draw_outlined_text
 
     def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text in {"EN+PP", "6v5"}:
+        if text in {"EN+6v5", "6v5"}:
             labels.append(text)
         return original_draw_text(draw, x, y, text, *args, **kwargs)
 
@@ -175,7 +224,7 @@ def test_hockey_empty_net_power_play_shows_both_badges_and_manpower(
     image = sports.render_full(game)
 
     assert image.size == (384, 32)
-    assert labels == ["EN+PP", "6v5"]
+    assert labels == ["EN+6v5"]
 
 
 @pytest.mark.critical
