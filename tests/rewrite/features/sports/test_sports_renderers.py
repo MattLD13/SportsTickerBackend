@@ -40,6 +40,99 @@ def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) 
     assert first.tobytes() == second.tobytes()
 
 
+@pytest.mark.critical
+def test_hockey_power_play_renders_on_owner_without_possession(
+    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game = {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P2 8:00",
+        "away_abbr": "NYR",
+        "home_abbr": "NYI",
+        "away_score": 1,
+        "home_score": 0,
+        "situation": {"powerPlay": True, "powerPlayTeam": "NYR"},
+    }
+    scroll_labels: list[int] = []
+    original_pixel_text = sports_stadium_port.pf_text
+
+    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
+        if text == "PP":
+            scroll_labels.append(x)
+        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
+
+    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
+    sports.render_card(game)
+    assert len(scroll_labels) == 1
+    assert scroll_labels[0] < 80
+
+    full_labels: list[int] = []
+    original_full_text = sports._full.draw_outlined_text
+
+    def capture_full_text(draw, x, y, text, *args, **kwargs):
+        if text == "PP":
+            full_labels.append(x)
+        return original_full_text(draw, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
+    image = sports.render_full(game)
+
+    assert image.size == (384, 32)
+    assert len(full_labels) == 1
+    assert full_labels[0] < 192
+
+
+@pytest.mark.parametrize(("empty_net_side", "on_home_side"), [("NYI", True), ("NYR", False)])
+@pytest.mark.critical
+def test_hockey_empty_net_renders_on_explicit_side(
+    sports: SportsRenderer,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_net_side: str,
+    on_home_side: bool,
+) -> None:
+    game = {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 1:12",
+        "away_abbr": "NYR",
+        "home_abbr": "NYI",
+        "away_score": 1,
+        "home_score": 2,
+        "situation": {"emptyNet": True, "emptyNetSide": empty_net_side},
+    }
+    scroll_labels: list[int] = []
+    original_pixel_text = sports_stadium_port.pf_text
+
+    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
+        if text == "EN":
+            scroll_labels.append(x)
+        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
+
+    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
+    card = sports.render_card(game)
+    assert len(scroll_labels) == 1
+    if on_home_side:
+        assert scroll_labels[0] > card.width // 2
+    else:
+        assert scroll_labels[0] < card.width // 2
+
+    labels: list[int] = []
+    original_full_text = sports._full.draw_outlined_text
+
+    def capture_full_text(draw, x, y, text, *args, **kwargs):
+        if text == "EN":
+            labels.append(x)
+        return original_full_text(draw, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
+    image = sports.render_full(game)
+
+    assert image.size == (384, 32)
+    assert len(labels) == 1
+    assert (labels[0] > 192) is on_home_side
+
+
 def test_campaign_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     item = {

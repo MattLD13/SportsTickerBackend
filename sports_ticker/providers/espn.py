@@ -265,6 +265,7 @@ class EspnScoreboardProvider:
         now: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
         fastcast: EspnFastcastSource | None = None,
+        nhl_situation_source: Any | None = None,
     ) -> None:
         if not isinstance(scoreboard_urls, Mapping):
             raise TypeError("scoreboard_urls must be a mapping")
@@ -301,6 +302,7 @@ class EspnScoreboardProvider:
         self._rankings_cache: tuple[float, dict[str, dict[str, str]]] | None = None
         self._ncaa_school_index_cache: tuple[float, dict[str, str]] | None = None
         self._fastcast = fastcast
+        self._nhl_situation_source = nhl_situation_source
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
         self._mlb_live_detail_cache_lock = RLock()
@@ -1311,7 +1313,7 @@ class EspnScoreboardProvider:
             )
         ]
         if not targets:
-            return list(items)
+            return self._enrich_nhl_live_items(items)
         enriched = list(items)
         workers = min(8, len(targets))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
@@ -1335,7 +1337,57 @@ class EspnScoreboardProvider:
                     enriched[index] = future.result()
                 except Exception:
                     continue
-        return enriched
+        return self._enrich_nhl_live_items(enriched)
+
+    def _enrich_nhl_live_items(
+        self,
+        items: Sequence[ContentItem],
+    ) -> list[ContentItem]:
+        """Add cached NHL manpower facts without waiting for ESPN detail polls."""
+
+        source = self._nhl_situation_source
+        if source is None:
+            return list(items)
+        try:
+            snapshot = source.snapshot()
+        except Exception:
+            return list(items)
+        if not isinstance(snapshot, Mapping) or not snapshot:
+            return list(items)
+        result = list(items)
+        for index, item in enumerate(result):
+            data = item.data
+            if (
+                str(data.get("sport") or "") != "nhl"
+                or str(data.get("state") or "").lower() not in {"in", "half", "crit"}
+            ):
+                continue
+            away = str(data.get("away_abbr") or "").strip().upper()
+            home = str(data.get("home_abbr") or "").strip().upper()
+            facts = snapshot.get((away, home))
+            if not away or not home or not isinstance(facts, Mapping):
+                continue
+            details = display_situation(
+                "nhl",
+                {"situation": facts},
+                home_abbr=home,
+                away_abbr=away,
+            )
+            updated = dict(data)
+            situation = dict(_mapping(data.get("situation")))
+            for key in ("powerPlay", "powerPlayTeam", "emptyNet", "emptyNetSide"):
+                situation.pop(key, None)
+                if key in details:
+                    situation[key] = details[key]
+            updated["situation"] = situation
+            result[index] = ContentItem(
+                id=item.id,
+                family=item.family,
+                kind=item.kind,
+                is_shown=item.is_shown,
+                data=updated,
+            )
+        return result
 
 
 
@@ -2098,26 +2150,14 @@ def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
         return {}
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
-    details = display_situation("nhl", competition, home_abbr=home_abbr, away_abbr=away_abbr)
-    details["powerPlay"] = bool(
-        source.get("powerPlay") or source.get("isPowerPlay") or source.get("hasPowerPlay")
+    situation_competition = dict(competition)
+    situation_competition["situation"] = source
+    details = display_situation(
+        "nhl",
+        situation_competition,
+        home_abbr=home_abbr,
+        away_abbr=away_abbr,
     )
-    details["emptyNet"] = bool(source.get("emptyNet") or source.get("isEmptyNet"))
-    code = str(source.get("situationCode") or "")
-    if len(code) >= 4 and code[:4].isdigit():
-        away_goalie, away_skaters, home_skaters, home_goalie = (int(value) for value in code[:4])
-        if away_skaters > home_skaters:
-            details["powerPlay"] = True
-            details["possession"] = away_abbr
-        elif home_skaters > away_skaters:
-            details["powerPlay"] = True
-            details["possession"] = home_abbr
-        if away_goalie == 0:
-            details["emptyNet"] = True
-            details["emptyNetSide"] = away_abbr
-        elif home_goalie == 0:
-            details["emptyNet"] = True
-            details["emptyNetSide"] = home_abbr
     shootout = _shootout_details(summary) or _nhl_shootout_from_plays(
         summary, item, competition
     )

@@ -464,25 +464,20 @@ class StadiumRenderer:
 
         # ══ NHL ══════════════════════════════════════════════════════════════
         if is_nhl and is_active and not is_so:
-            poss        = sit.get('activeTeam', '')
             is_pp       = sit.get('powerPlay',  False) or g.get('pp', False)
             is_en       = sit.get('emptyNet',   False) or g.get('en', False)
-            en_team     = sit.get('emptyNetSide', '') or g.get('enTeam', '')
-            poss_side = _side_from_value(poss)
-            is_poss_home = poss_side == 'home'
-            is_poss_away = poss_side == 'away'
-
-            poss_hdr_x = (h_logo_x + LOGO_SZ // 2) if is_poss_home \
-                         else (a_logo_x + LOGO_SZ // 2)
-
             if is_en:
-                en_side = _side_from_value(en_team) or poss_side
-                en_is_home = (en_side == 'home')
-                en_hdr_x = (h_logo_x + LOGO_SZ // 2) if en_is_home \
-                           else (a_logo_x + LOGO_SZ // 2)
-                pf_text(d, 'EN', en_hdr_x - pf_w('EN') // 2, 2, 255, 100, 100)
-            elif is_pp and (is_poss_home or is_poss_away):
-                pf_text(d, 'PP', poss_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
+                en_side = _side_from_value(sit.get('emptyNetSide'))
+                if en_side:
+                    en_hdr_x = (h_logo_x + LOGO_SZ // 2) if en_side == 'home' \
+                               else (a_logo_x + LOGO_SZ // 2)
+                    pf_text(d, 'EN', en_hdr_x - pf_w('EN') // 2, 2, 255, 100, 100)
+            elif is_pp:
+                power_play_side = _side_from_value(sit.get('powerPlayTeam'))
+                if power_play_side:
+                    pp_hdr_x = (h_logo_x + LOGO_SZ // 2) if power_play_side == 'home' \
+                               else (a_logo_x + LOGO_SZ // 2)
+                    pf_text(d, 'PP', pp_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
 
         if is_nhl and is_so:
             so_a = shootout.get('away', [])

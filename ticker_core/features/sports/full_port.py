@@ -794,16 +794,17 @@ class SportsMixin:
         # Hockey PP / EN badges
         h_badge = a_badge = ''
         if is_nhl and sit.get('emptyNet'):
-            # If home has possession (extra skater), home net is empty
-            if poss_ab == home_ab:
+            empty_net_side = str(sit.get('emptyNetSide') or '').upper()
+            if empty_net_side == home_ab:
                 h_badge = 'EN'
-            elif poss_ab == away_ab:
+            elif empty_net_side == away_ab:
                 a_badge = 'EN'
-            else:
-                a_badge = 'EN' # Fallback
         elif is_nhl and sit.get('powerPlay'):
-            if poss_ab == home_ab:   h_badge = 'PP'
-            elif poss_ab == away_ab: a_badge = 'PP'
+            power_play_team = str(sit.get('powerPlayTeam') or '').upper()
+            if power_play_team == home_ab:
+                h_badge = 'PP'
+            elif power_play_team == away_ab:
+                a_badge = 'PP'
 
         # Side scrims via alpha_composite (correct blending)
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))

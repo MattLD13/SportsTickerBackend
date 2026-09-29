@@ -40,6 +40,7 @@ from sports_ticker.providers.live_sources import (
     FinnhubStockSource,
     FlightRadarSource,
 )
+from sports_ticker.providers.nhl_live import NhlLiveSituationSource
 from sports_ticker.providers.racing_live import LiveRacingSource
 
 
@@ -151,12 +152,17 @@ def _providers(
     fastcast = EspnFastcastSource(
         {league: fastcast_topic(url) for league, url in scoreboard_urls.items()}
     )
+    nhl_situation_source = NhlLiveSituationSource()
     news_urls = {
         league: f"{_ESPN_BASE}/{path}/news"
         for league, path in TEAM_CATALOG_PATHS.items()
     }
     return {
-        "espn": EspnScoreboardProvider(scoreboard_urls, fastcast=fastcast),
+        "espn": EspnScoreboardProvider(
+            scoreboard_urls,
+            fastcast=fastcast,
+            nhl_situation_source=nhl_situation_source,
+        ),
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
         "news": NewsProvider(
             EspnNewsSource(news_urls, team_color_lookup=catalog.team_colors)

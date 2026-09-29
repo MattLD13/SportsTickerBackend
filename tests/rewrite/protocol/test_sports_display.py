@@ -177,6 +177,38 @@ def test_hockey_second_overtime_stays_overtime_without_shootout_marker() -> None
     assert hockey.data["status"] == "OT2 0:00"
 
 
+@pytest.mark.critical
+def test_nhl_situation_code_projects_power_play_owner() -> None:
+    hockey = SportsDisplayProjector().project(
+        _item("hockey-pp", "nhl"),
+        _event("2nd period", {
+            "situationCode": "1541",
+            "homePenaltyBoxCount": 1,
+            "awayPenaltyBoxCount": 0,
+        }),
+    )
+
+    assert hockey.data["situation"]["powerPlay"] is True
+    assert hockey.data["situation"]["powerPlayTeam"] == "AWY"
+
+
+@pytest.mark.critical
+def test_nhl_empty_net_owner_does_not_become_a_power_play() -> None:
+    hockey = SportsDisplayProjector().project(
+        _item("hockey-empty-net", "nhl"),
+        _event("3rd period", {
+            "situationCode": "0651",
+            "homePenaltyBoxCount": 0,
+            "awayPenaltyBoxCount": 0,
+        }),
+    )
+
+    assert hockey.data["situation"]["emptyNet"] is True
+    assert hockey.data["situation"]["emptyNetSide"] == "AWY"
+    assert hockey.data["situation"]["powerPlay"] is False
+    assert "powerPlayTeam" not in hockey.data["situation"]
+
+
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
     event = _event("93'", {}, "in")
     event["status"]["displayClock"] = "93\u200e\u200e'"

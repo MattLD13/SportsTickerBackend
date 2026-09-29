@@ -219,7 +219,7 @@ def display_situation(
                 result[f"{role}_name"] = name
         return result
     if league == "nhl":
-        return {
+        result = {
             "possession": possession,
             "powerPlay": _boolean_any(source, "powerPlay", "isPowerPlay", "hasPowerPlay"),
             "emptyNet": _boolean_any(source, "emptyNet", "isEmptyNet"),
@@ -231,6 +231,36 @@ def display_situation(
             ),
             "shootout": _shootout(source.get("shootout") or source.get("shootoutDetails")),
         }
+        power_play_team = _possession(
+            source.get("powerPlayTeam") or source.get("advantageTeam"),
+            competition,
+            home_abbr,
+            away_abbr,
+        )
+        code = str(source.get("situationCode") or "").strip()
+        if len(code) == 4 and code.isdigit():
+            away_goalie, away_skaters, home_skaters, home_goalie = map(int, code)
+            if away_goalie == 0 or home_goalie == 0:
+                result["emptyNet"] = True
+                result["emptyNetSide"] = away_abbr if away_goalie == 0 else home_abbr
+
+            if away_skaters != home_skaters:
+                advantage_side = "away" if away_skaters > home_skaters else "home"
+                short_side = "home" if advantage_side == "away" else "away"
+                advantage_goalie = away_goalie if advantage_side == "away" else home_goalie
+                short_box_count = _integer(source.get(f"{short_side}PenaltyBoxCount"))
+                result["powerPlay"] = bool(advantage_goalie or short_box_count)
+                power_play_team = away_abbr if advantage_side == "away" else home_abbr
+            else:
+                result["powerPlay"] = _boolean_any(
+                    source, "powerPlay", "isPowerPlay", "hasPowerPlay"
+                )
+                if not result["powerPlay"]:
+                    power_play_team = ""
+
+        if result["powerPlay"] and power_play_team:
+            result["powerPlayTeam"] = power_play_team
+        return result
     if league.startswith("soccer"):
         return {
             "possession": possession,
@@ -301,6 +331,7 @@ _LIVE_PLAY_KEYS = frozenset(
         "last_pitch_speed",
         "last_pitch_type",
         "powerPlay",
+        "powerPlayTeam",
         "emptyNet",
         "emptyNetSide",
     }
