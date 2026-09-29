@@ -498,7 +498,8 @@ class StadiumRenderer:
                 team_x = h_logo_x + LOGO_SZ // 2 if side == 'home' else a_logo_x + LOGO_SZ // 2
                 label = '+'.join(labels)
                 color = (255, 220, 0) if any(label != 'EN' for label in labels) else (255, 100, 100)
-                pf_text(d, label, team_x - pf_w(label) // 2, 2, *color)
+                badge_y = 1 if any(value != 'EN' for value in labels) else 2
+                pf_text(d, label, team_x - pf_w(label) // 2, badge_y, *color)
 
             away_skaters = sit.get('awaySkaters')
             home_skaters = sit.get('homeSkaters')

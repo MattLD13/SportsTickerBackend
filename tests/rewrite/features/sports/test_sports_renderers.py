@@ -107,19 +107,20 @@ def test_hockey_power_play_shows_manpower_on_scroll_and_full_frames(
             "homeSkaters": 3,
         },
     }
-    scroll_labels: list[tuple[int, tuple[int, int, int]]] = []
+    scroll_labels: list[tuple[int, int, tuple[int, int, int]]] = []
     original_pixel_text = sports_stadium_port.pf_text
 
     def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
         if text == "5v3":
-            scroll_labels.append((x, (red, green, blue)))
+            scroll_labels.append((x, y, (red, green, blue)))
         return original_pixel_text(draw, text, x, y, red, green, blue, sc)
 
     monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
     sports.render_card(game)
     assert len(scroll_labels) == 1
     assert scroll_labels[0][0] < 80
-    assert scroll_labels[0][1] == (255, 220, 0)
+    assert scroll_labels[0][1] == 1
+    assert scroll_labels[0][2] == (255, 220, 0)
 
     full_labels: list[tuple[str, tuple[int, int, int]]] = []
     original_full_text = sports._full.draw_outlined_text
