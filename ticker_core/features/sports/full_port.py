@@ -1299,7 +1299,7 @@ class PreparedSportsFullRenderer(SportsMixin):
                 text = text.replace(f"{number}{suffix}", number)
         text = text.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
         for period in ("P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"):
-            text = text.replace(f"{period} ", f"{period}~")
+            text = text.replace(f"{period} ", f"{period}-")
         return text
 
     @staticmethod

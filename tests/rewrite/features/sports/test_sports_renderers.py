@@ -342,6 +342,21 @@ def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
     assert image.tobytes() == sports.render_full(game).tobytes()
 
 
+@pytest.mark.parametrize(
+    ("status", "sport", "expected"),
+    [
+        ("P2 10:00", "nhl", "P2-10:00"),
+        ("Q4 0:00", "nfl", "Q4-0:00"),
+        ("OT 0:00", "nhl", "OT-0:00"),
+    ],
+)
+@pytest.mark.critical
+def test_full_screen_clock_uses_dash_and_plain_zero(
+    sports: SportsRenderer, status: str, sport: str, expected: str
+) -> None:
+    assert sports._full.shorten_status(status, sport) == expected
+
+
 @pytest.mark.parametrize(("active_team", "arrow_x", "other_x"), [("AWY", 16, 368), ("HOM", 368, 16)])
 def test_full_football_marks_possession_above_the_team(
     sports: SportsRenderer, active_team: str, arrow_x: int, other_x: int
