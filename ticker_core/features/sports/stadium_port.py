@@ -468,7 +468,6 @@ class StadiumRenderer:
             is_en       = sit.get('emptyNet',   False) or g.get('en', False)
             badges = {'home': [], 'away': []}
             power_play_displayed = False
-            empty_net_displayed_count = False
             try:
                 away_count = int(sit.get('awaySkaters'))
                 home_count = int(sit.get('homeSkaters'))
@@ -481,16 +480,8 @@ class StadiumRenderer:
 
             if empty_net_side:
                 badges[empty_net_side].append('EN')
-                if counts_valid and empty_net_side != power_play_side and (away_count, home_count) != (5, 5):
-                    empty_count, other_count = (
-                        (home_count, away_count)
-                        if empty_net_side == 'home'
-                        else (away_count, home_count)
-                    )
-                    badges[empty_net_side].append(f'{empty_count}v{other_count}')
-                    empty_net_displayed_count = True
 
-            if is_pp and power_play_side:
+            if is_pp and not is_en and power_play_side:
                 advantaged_count, short_count = (
                     (home_count, away_count)
                     if power_play_side == 'home'
@@ -504,12 +495,12 @@ class StadiumRenderer:
                     continue
                 team_x = h_logo_x + LOGO_SZ // 2 if side == 'home' else a_logo_x + LOGO_SZ // 2
                 label = '+'.join(labels)
-                is_power_play_side = side == power_play_side
+                is_power_play_side = not is_en and side == power_play_side
                 color = (255, 220, 0) if is_power_play_side else (255, 100, 100)
                 badge_y = 1 if is_power_play_side else 2
                 pf_text(d, label, team_x - pf_w(label) // 2, badge_y, *color)
 
-            if counts_valid and (away_count, home_count) != (5, 5) and not power_play_displayed and not empty_net_displayed_count:
+            if counts_valid and (away_count, home_count) != (5, 5) and (is_en or not power_play_displayed):
                 manpower = f'{away_count}v{home_count}'
                 pf_text(d, manpower, cCX - pf_w(manpower) // 2, 25, 235, 235, 235)
 

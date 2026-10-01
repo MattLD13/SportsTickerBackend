@@ -247,6 +247,22 @@ def test_nhl_empty_net_owner_does_not_become_a_power_play() -> None:
 
 
 @pytest.mark.critical
+def test_nhl_home_empty_net_routes_active_team_without_puck_possession() -> None:
+    hockey = SportsDisplayProjector().project(
+        _item("hockey-home-empty-net", "nhl"),
+        _event("3rd period", {"situationCode": "1560"}),
+    )
+
+    situation = hockey.data["situation"]
+    assert situation["awaySkaters"] == 5
+    assert situation["homeSkaters"] == 6
+    assert situation["emptyNetSide"] == "HOM"
+    assert situation["activeTeam"] == "HOM"
+    assert situation["possession"] == ""
+    assert situation["powerPlay"] is False
+
+
+@pytest.mark.critical
 def test_nhl_empty_net_and_penalty_keep_both_team_facts() -> None:
     hockey = SportsDisplayProjector().project(
         _item("hockey-empty-net-power-play", "nhl"),

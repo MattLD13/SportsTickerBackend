@@ -805,20 +805,12 @@ class SportsMixin:
             counts_valid = False
         power_play_team = str(sit.get('powerPlayTeam') or '').upper()
         empty_net_side = str(sit.get('emptyNetSide') or '').upper()
-        home_en_manpower = False
-        away_en_manpower = False
         if is_nhl and sit.get('emptyNet'):
             if empty_net_side == home_ab:
                 h_badges.append('EN')
-                if counts_valid and empty_net_side != power_play_team and (away_count, home_count) != (5, 5):
-                    h_badges.append(f'{away_count}v{home_count}')
-                    home_en_manpower = True
             elif empty_net_side == away_ab:
                 a_badges.append('EN')
-                if counts_valid and empty_net_side != power_play_team and (away_count, home_count) != (5, 5):
-                    a_badges.append(f'{home_count}v{away_count}')
-                    away_en_manpower = True
-        if is_nhl and sit.get('powerPlay'):
+        if is_nhl and sit.get('powerPlay') and not sit.get('emptyNet'):
             if power_play_team == home_ab:
                 label = 'PP'
                 if counts_valid and (away_count, home_count) != (5, 4):
@@ -890,9 +882,7 @@ class SportsMixin:
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
 
         if is_nhl and counts_valid:
-            if (away_count, home_count) != (5, 5) and not (
-                home_power_play or away_power_play or home_en_manpower or away_en_manpower
-            ):
+            if (away_count, home_count) != (5, 5) and not (home_power_play or away_power_play):
                 manpower = f'{away_count}v{home_count}'
                 self.draw_outlined_text(
                     d,

@@ -102,3 +102,43 @@ def test_live_situation_enrichment_supplies_renderer_team_without_possession() -
     assert enriched.data["situation"]["powerPlayTeam"] == "NYR"
     assert enriched.data["situation"]["activeTeam"] == "NYR"
     assert "possession" not in enriched.data["situation"]
+
+
+@pytest.mark.critical
+def test_live_empty_net_enrichment_routes_owner_without_puck_possession() -> None:
+    class SituationSource:
+        def snapshot(self):
+            return {
+                ("NYR", "NYI"): {
+                    "situationCode": "1560",
+                    "awayPenaltyBoxCount": 0,
+                    "homePenaltyBoxCount": 0,
+                }
+            }
+
+    provider = EspnScoreboardProvider(
+        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
+        nhl_situation_source=SituationSource(),
+    )
+    item = ContentItem(
+        "hockey-empty-net",
+        "sports",
+        "scoreboard",
+        True,
+        {
+            "sport": "nhl",
+            "state": "in",
+            "status": "P3 1:00",
+            "away_abbr": "NYR",
+            "home_abbr": "NYI",
+            "situation": {},
+        },
+    )
+
+    enriched = provider._enrich_nhl_live_items((item,))[0]
+
+    assert enriched.data["situation"]["emptyNetSide"] == "NYI"
+    assert enriched.data["situation"]["activeTeam"] == "NYI"
+    assert enriched.data["situation"]["awaySkaters"] == 5
+    assert enriched.data["situation"]["homeSkaters"] == 6
+    assert "possession" not in enriched.data["situation"]
