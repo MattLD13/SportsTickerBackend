@@ -796,28 +796,38 @@ class SportsMixin:
         a_badges: list[str] = []
         home_power_play = False
         away_power_play = False
+        try:
+            away_count = int(sit.get('awaySkaters'))
+            home_count = int(sit.get('homeSkaters'))
+            counts_valid = True
+        except (TypeError, ValueError):
+            away_count = home_count = 0
+            counts_valid = False
+        power_play_team = str(sit.get('powerPlayTeam') or '').upper()
+        empty_net_side = str(sit.get('emptyNetSide') or '').upper()
+        home_en_manpower = False
+        away_en_manpower = False
         if is_nhl and sit.get('emptyNet'):
-            empty_net_side = str(sit.get('emptyNetSide') or '').upper()
             if empty_net_side == home_ab:
                 h_badges.append('EN')
+                if counts_valid and empty_net_side != power_play_team and (away_count, home_count) != (5, 5):
+                    h_badges.append(f'{away_count}v{home_count}')
+                    home_en_manpower = True
             elif empty_net_side == away_ab:
                 a_badges.append('EN')
+                if counts_valid and empty_net_side != power_play_team and (away_count, home_count) != (5, 5):
+                    a_badges.append(f'{home_count}v{away_count}')
+                    away_en_manpower = True
         if is_nhl and sit.get('powerPlay'):
-            power_play_team = str(sit.get('powerPlayTeam') or '').upper()
-            try:
-                away_count = int(sit.get('awaySkaters'))
-                home_count = int(sit.get('homeSkaters'))
-            except (TypeError, ValueError):
-                away_count = home_count = 0
             if power_play_team == home_ab:
                 label = 'PP'
-                if away_count and home_count and (away_count, home_count) != (5, 4):
+                if counts_valid and (away_count, home_count) != (5, 4):
                     label = f'{away_count}v{home_count}'
                 h_badges.append(label)
                 home_power_play = True
             elif power_play_team == away_ab:
                 label = 'PP'
-                if away_count and home_count and (home_count, away_count) != (5, 4):
+                if counts_valid and (home_count, away_count) != (5, 4):
                     label = f'{home_count}v{away_count}'
                 a_badges.append(label)
                 away_power_play = True
@@ -869,24 +879,20 @@ class SportsMixin:
         a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
         if h_badge:
-            h_col = (255, 204, 0) if any(label != 'EN' for label in h_badges) else (255, 90, 90)
+            h_col = (255, 204, 0) if home_power_play else (255, 90, 90)
             h_badge_x = int(h_sc_x + h_sc_w + 9)
             self.draw_outlined_text(d, h_badge_x, H // 2, h_badge,
                                     self.tiny, h_col, (0, 0, 0, 220), anchor='mm')
         if a_badge:
-            a_col = (255, 204, 0) if any(label != 'EN' for label in a_badges) else (255, 90, 90)
+            a_col = (255, 204, 0) if away_power_play else (255, 90, 90)
             a_badge_x = int(a_sc_x - a_sc_w - 9)
             self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
 
-        away_skaters = sit.get('awaySkaters')
-        home_skaters = sit.get('homeSkaters')
-        if is_nhl and away_skaters is not None and home_skaters is not None:
-            try:
-                away_count, home_count = int(away_skaters), int(home_skaters)
-            except (TypeError, ValueError):
-                away_count = home_count = 5
-            if (away_count, home_count) != (5, 5) and not (home_power_play or away_power_play):
+        if is_nhl and counts_valid:
+            if (away_count, home_count) != (5, 5) and not (
+                home_power_play or away_power_play or home_en_manpower or away_en_manpower
+            ):
                 manpower = f'{away_count}v{home_count}'
                 self.draw_outlined_text(
                     d,

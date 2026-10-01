@@ -190,6 +190,8 @@ def test_nhl_situation_code_projects_power_play_owner() -> None:
 
     assert hockey.data["situation"]["powerPlay"] is True
     assert hockey.data["situation"]["powerPlayTeam"] == "AWY"
+    assert hockey.data["situation"]["activeTeam"] == "AWY"
+    assert hockey.data["situation"]["possession"] == ""
     assert hockey.data["situation"]["awaySkaters"] == 5
     assert hockey.data["situation"]["homeSkaters"] == 4
 
@@ -205,6 +207,25 @@ def test_nhl_four_on_four_projects_counts_without_a_power_play() -> None:
     assert hockey.data["situation"]["homeSkaters"] == 4
     assert hockey.data["situation"]["powerPlay"] is False
     assert "powerPlayTeam" not in hockey.data["situation"]
+    assert "activeTeam" not in hockey.data["situation"]
+
+
+@pytest.mark.critical
+def test_nhl_power_play_owner_does_not_replace_puck_possession() -> None:
+    hockey = SportsDisplayProjector().project(
+        _item("hockey-pp-possession", "nhl"),
+        _event("2nd period", {
+            "possession": "1",
+            "situationCode": "1541",
+            "homePenaltyBoxCount": 0,
+            "awayPenaltyBoxCount": 1,
+        }),
+    )
+
+    situation = hockey.data["situation"]
+    assert situation["powerPlayTeam"] == "AWY"
+    assert situation["possession"] == "HOM"
+    assert situation["activeTeam"] == "AWY"
 
 
 @pytest.mark.critical
@@ -220,6 +241,7 @@ def test_nhl_empty_net_owner_does_not_become_a_power_play() -> None:
 
     assert hockey.data["situation"]["emptyNet"] is True
     assert hockey.data["situation"]["emptyNetSide"] == "AWY"
+    assert hockey.data["situation"]["activeTeam"] == "AWY"
     assert hockey.data["situation"]["powerPlay"] is False
     assert "powerPlayTeam" not in hockey.data["situation"]
 
@@ -241,6 +263,8 @@ def test_nhl_empty_net_and_penalty_keep_both_team_facts() -> None:
     assert situation["emptyNetSide"] == "AWY"
     assert situation["powerPlay"] is True
     assert situation["powerPlayTeam"] == "AWY"
+    assert situation["activeTeam"] == "AWY"
+    assert situation["possession"] == ""
 
 
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:

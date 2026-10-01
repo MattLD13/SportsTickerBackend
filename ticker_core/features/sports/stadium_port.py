@@ -468,49 +468,50 @@ class StadiumRenderer:
             is_en       = sit.get('emptyNet',   False) or g.get('en', False)
             badges = {'home': [], 'away': []}
             power_play_displayed = False
-            if is_en:
-                en_side = _side_from_value(sit.get('emptyNetSide'))
-                if en_side:
-                    badges[en_side].append('EN')
-            if is_pp:
-                power_play_side = _side_from_value(sit.get('powerPlayTeam'))
-                if power_play_side:
-                    try:
-                        away_count = int(sit.get('awaySkaters'))
-                        home_count = int(sit.get('homeSkaters'))
-                    except (TypeError, ValueError):
-                        away_count = home_count = 5
-                    advantaged_count, short_count = (
+            empty_net_displayed_count = False
+            try:
+                away_count = int(sit.get('awaySkaters'))
+                home_count = int(sit.get('homeSkaters'))
+                counts_valid = True
+            except (TypeError, ValueError):
+                away_count = home_count = 5
+                counts_valid = False
+            power_play_side = _side_from_value(sit.get('powerPlayTeam')) if is_pp else None
+            empty_net_side = _side_from_value(sit.get('emptyNetSide')) if is_en else None
+
+            if empty_net_side:
+                badges[empty_net_side].append('EN')
+                if counts_valid and empty_net_side != power_play_side and (away_count, home_count) != (5, 5):
+                    empty_count, other_count = (
                         (home_count, away_count)
-                        if power_play_side == 'home'
+                        if empty_net_side == 'home'
                         else (away_count, home_count)
                     )
-                    label = (
-                        'PP'
-                        if (advantaged_count, short_count) == (5, 4)
-                        else f'{advantaged_count}v{short_count}'
-                    )
-                    badges[power_play_side].append(label)
-                    power_play_displayed = True
+                    badges[empty_net_side].append(f'{empty_count}v{other_count}')
+                    empty_net_displayed_count = True
+
+            if is_pp and power_play_side:
+                advantaged_count, short_count = (
+                    (home_count, away_count)
+                    if power_play_side == 'home'
+                    else (away_count, home_count)
+                )
+                label = 'PP' if (advantaged_count, short_count) == (5, 4) else f'{advantaged_count}v{short_count}'
+                badges[power_play_side].append(label)
+                power_play_displayed = True
             for side, labels in badges.items():
                 if not labels:
                     continue
                 team_x = h_logo_x + LOGO_SZ // 2 if side == 'home' else a_logo_x + LOGO_SZ // 2
                 label = '+'.join(labels)
-                color = (255, 220, 0) if any(label != 'EN' for label in labels) else (255, 100, 100)
-                badge_y = 1 if any(value != 'EN' for value in labels) else 2
+                is_power_play_side = side == power_play_side
+                color = (255, 220, 0) if is_power_play_side else (255, 100, 100)
+                badge_y = 1 if is_power_play_side else 2
                 pf_text(d, label, team_x - pf_w(label) // 2, badge_y, *color)
 
-            away_skaters = sit.get('awaySkaters')
-            home_skaters = sit.get('homeSkaters')
-            if away_skaters is not None and home_skaters is not None:
-                try:
-                    away_count, home_count = int(away_skaters), int(home_skaters)
-                except (TypeError, ValueError):
-                    away_count = home_count = 5
-                if (away_count, home_count) != (5, 5) and not power_play_displayed:
-                    manpower = f'{away_count}v{home_count}'
-                    pf_text(d, manpower, cCX - pf_w(manpower) // 2, 25, 235, 235, 235)
+            if counts_valid and (away_count, home_count) != (5, 5) and not power_play_displayed and not empty_net_displayed_count:
+                manpower = f'{away_count}v{home_count}'
+                pf_text(d, manpower, cCX - pf_w(manpower) // 2, 25, 235, 235, 235)
 
         if is_nhl and is_so:
             so_a = shootout.get('away', [])

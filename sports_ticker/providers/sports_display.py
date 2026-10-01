@@ -289,7 +289,12 @@ def assign_active_team(
         for key in _LIVE_PLAY_KEYS:
             result.pop(key, None)
         return result
-    active_team = str(result.get("possession") or "").strip()
+    if league == "nhl":
+        active_team = str(
+            result.get("emptyNetSide") or result.get("powerPlayTeam") or ""
+        ).strip()
+    else:
+        active_team = str(result.get("possession") or "").strip()
     if league == "mlb" and not active_team:
         active_team = _baseball_batting_team(status, home_abbr, away_abbr)
     if active_team:

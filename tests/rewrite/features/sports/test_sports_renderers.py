@@ -291,38 +291,43 @@ def test_hockey_empty_net_renders_on_explicit_side(
         "home_abbr": "NYI",
         "away_score": 1,
         "home_score": 2,
-        "situation": {"emptyNet": True, "emptyNetSide": empty_net_side},
+        "situation": {
+            "emptyNet": True,
+            "emptyNetSide": empty_net_side,
+            "awaySkaters": 6 if empty_net_side == "NYR" else 5,
+            "homeSkaters": 6 if empty_net_side == "NYI" else 5,
+        },
     }
-    scroll_labels: list[int] = []
+    scroll_labels: list[tuple[str, int]] = []
     original_pixel_text = sports_stadium_port.pf_text
 
     def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text == "EN":
-            scroll_labels.append(x)
+        if text == "EN+6v5":
+            scroll_labels.append((text, x))
         return original_pixel_text(draw, text, x, y, red, green, blue, sc)
 
     monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
     card = sports.render_card(game)
-    assert len(scroll_labels) == 1
+    assert [text for text, _ in scroll_labels] == ["EN+6v5"]
     if on_home_side:
-        assert scroll_labels[0] > card.width // 2
+        assert scroll_labels[0][1] > card.width // 2
     else:
-        assert scroll_labels[0] < card.width // 2
+        assert scroll_labels[0][1] < card.width // 2
 
-    labels: list[int] = []
+    labels: list[tuple[str, int]] = []
     original_full_text = sports._full.draw_outlined_text
 
     def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text == "EN":
-            labels.append(x)
+        if text == "EN+6v5":
+            labels.append((text, x))
         return original_full_text(draw, x, y, text, *args, **kwargs)
 
     monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
     image = sports.render_full(game)
 
     assert image.size == (384, 32)
-    assert len(labels) == 1
-    assert (labels[0] > 192) is on_home_side
+    assert [text for text, _ in labels] == ["EN+6v5"]
+    assert (labels[0][1] > 192) is on_home_side
 
 
 def test_campaign_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:

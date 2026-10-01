@@ -100,4 +100,5 @@ def test_live_situation_enrichment_supplies_renderer_team_without_possession() -
 
     assert enriched.data["situation"]["powerPlay"] is True
     assert enriched.data["situation"]["powerPlayTeam"] == "NYR"
+    assert enriched.data["situation"]["activeTeam"] == "NYR"
     assert "possession" not in enriched.data["situation"]

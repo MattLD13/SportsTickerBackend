@@ -1386,6 +1386,14 @@ class EspnScoreboardProvider:
                 situation.pop(key, None)
                 if key in details:
                     situation[key] = details[key]
+            situation = assign_active_team(
+                "nhl",
+                str(data.get("state") or ""),
+                str(data.get("status") or ""),
+                situation,
+                home_abbr=home,
+                away_abbr=away,
+            )
             updated["situation"] = situation
             result[index] = ContentItem(
                 id=item.id,
