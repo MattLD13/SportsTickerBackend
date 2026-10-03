@@ -20,6 +20,7 @@ from sports_ticker.markets import MARKET_GROUPS
 
 from .espn import _display_timezone, _event_time
 from .http import JsonHttpClient, UrllibJsonHttpClient
+from .news_transactions import ConfirmedTrade, TradeConfirmationSource
 
 
 ESPN_GOLF_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
@@ -27,14 +28,13 @@ FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"
 FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
 _ESPN_NEWS_TYPES = frozenset(("headlinenews",))
 _NEWS_RUMOR_MARKERS = re.compile(
-    r"\b(?:rumou?r|interest(?:ed)?|could|would|might|may|potential|possible|"
+    r"\b(?:rumou?rs?|interest(?:ed)?|could|would|might|may|potential|possible|"
     r"explore|consider(?:ing)?|target(?:ing)?|eyeing|monitor(?:ing)?|buzz)\b",
     re.IGNORECASE,
 )
-_NEWS_TRADE_MARKER = re.compile(
-    r"\b(?:trad(?:e|es|ed|ing)?\b.{0,80}\b(?:for|to)\b|"
-    r"in\s+trade\s+with\b|acquire[sd]?|land(?:s|ed)?|"
-    r"send(?:s|ing)?\b.{0,80}\bto\b)",
+_NEWS_TRADE_CANDIDATE = re.compile(
+    r"\b(?:trade|trades|traded|trading|acquire|acquires|acquired|"
+    r"land|lands|landed|send|sends|sent|transfer|transfers|transferred)\b",
     re.IGNORECASE,
 )
 _NEWS_EXTENSION_MARKER = re.compile(
@@ -48,7 +48,9 @@ _NEWS_SIGNING_MARKER = re.compile(
 _NEWS_INJURY_MARKER = re.compile(
     r"\b(?:injured|will\s+miss|miss(?:es|ed)?|ruled\s+out|out\s+for|"
     r"return\s+from\s+\d+-day\s+il|placed\s+on\s+(?:the\s+)?il|"
-    r"undergo(?:ing)?\s+surgery|surgery|concussion|fracture|broken)\b",
+    r"undergo(?:ing)?\s+surgery|surgery|concussion|fracture)\b|"
+    r"\bbroken\s+(?:bone|finger|wrist|hand|ankle|leg|arm|rib|nose|jaw|"
+    r"collarbone|foot|toe|thumb|knee|shoulder|back|neck)\b",
     re.IGNORECASE,
 )
 _NEWS_WAIVER_MARKER = re.compile(
@@ -535,6 +537,7 @@ class EspnNewsSource:
         client: JsonHttpClient | None = None,
         *,
         team_color_lookup: Callable[[str], Mapping[str, Mapping[str, str]]] | None = None,
+        trade_confirmation_source: TradeConfirmationSource | None = None,
         timeout: float = 10.0,
         refresh_seconds: float = 30.0,
         background: bool = True,
@@ -542,6 +545,7 @@ class EspnNewsSource:
         self._news_urls = dict(news_urls)
         self._client = client or UrllibJsonHttpClient()
         self._team_color_lookup = team_color_lookup
+        self._trade_confirmation_source = trade_confirmation_source
         self._timeout = _timeout(timeout)
         self._refresh_seconds = _timeout(refresh_seconds)
         self._background = bool(background)
@@ -595,7 +599,30 @@ class EspnNewsSource:
                 continue
             league_records: list[dict[str, object]] = []
             for article in articles:
-                record = _classify_espn_news_article(article, league, set())
+                trade_confirmation = None
+                if (
+                    self._trade_confirmation_source is not None
+                    and isinstance(article, Mapping)
+                    and _NEWS_TRADE_CANDIDATE.search(
+                        f"{article.get('headline') or article.get('title') or ''} "
+                        f"{article.get('description') or ''}"
+                    )
+                ):
+                    try:
+                        trade_confirmation = self._trade_confirmation_source.confirm_trade(
+                            league,
+                            _article_athletes(article),
+                            tuple(abbr for abbr, _name in _article_team_records(article)),
+                            now=datetime.now(timezone.utc),
+                        )
+                    except Exception:
+                        trade_confirmation = None
+                record = _classify_espn_news_article(
+                    article,
+                    league,
+                    set(),
+                    confirmed_trade=trade_confirmation,
+                )
                 if record is None:
                     continue
                 article_id = str(record.pop("source_id"))
@@ -722,6 +749,8 @@ def _classify_espn_news_article(
     article: object,
     league: str,
     followed: set[str],
+    *,
+    confirmed_trade: ConfirmedTrade | None = None,
 ) -> dict[str, object] | None:
     """Build one conservative sports-news record or reject the article."""
 
@@ -751,18 +780,10 @@ def _classify_espn_news_article(
     from_abbr = ""
     to_abbr = teams[0][0]
     compact_prefix = ""
-    if _NEWS_TRADE_MARKER.search(headline):
-        if len(teams) < 2:
-            return None
-        sends_to = re.search(
-            r"\b(?:traded?|trading|sent|sends?)\b.{0,80}\bto\b",
-            headline,
-            re.IGNORECASE,
-        )
-        if sends_to:
-            from_abbr, to_abbr = teams[0][0], teams[1][0]
-        else:
-            to_abbr, from_abbr = teams[0][0], teams[1][0]
+    transaction_candidate = bool(_NEWS_TRADE_CANDIDATE.search(searchable))
+    if confirmed_trade is not None:
+        from_abbr = confirmed_trade.from_abbr
+        to_abbr = confirmed_trade.to_abbr
         kind = "TRADE"
         compact_prefix = "ACQUIRE"
     elif _NEWS_WAIVER_MARKER.search(headline):
@@ -801,13 +822,27 @@ def _classify_espn_news_article(
     elif _NEWS_INJURY_MARKER.search(headline):
         kind = "INJURY"
         compact_prefix = "STATUS"
+    elif transaction_candidate:
+        kind = "NEWS"
+        compact_prefix = ""
     else:
         return None
 
-    impact_score, impact_tier = _news_impact(searchable, kind, teams)
+    display_teams = (
+        ((from_abbr, from_abbr), (to_abbr, to_abbr))
+        if confirmed_trade is not None
+        else teams
+    )
+    impact_text = (
+        f"{searchable} {confirmed_trade.details}"
+        if confirmed_trade is not None
+        else searchable
+    )
+    impact_score, impact_tier = _news_impact(impact_text, kind, display_teams)
     names = " + ".join(athletes[:2])
     if len(athletes) > 2:
         names += " + ..."
+    text = headline if kind == "NEWS" else f"{compact_prefix} {names}".strip()
     return {
         "kind": kind,
         "domain": "sports",
@@ -816,15 +851,19 @@ def _classify_espn_news_article(
         "to_abbr": to_abbr,
         "from_color": "#8B93A3",
         "to_color": "#8B93A3",
-        "text": f"{compact_prefix} {names}".strip(),
-        "teams": [abbreviation for abbreviation, _name in teams],
+        "text": text,
+        "teams": [abbreviation for abbreviation, _name in display_teams],
         "athletes": list(athletes),
         "impact_score": impact_score,
         "impact_tier": impact_tier,
         "distribution": "global"
         if kind == "TRADE" and impact_tier in {"BLOCKBUSTER", "MAJOR"}
         else "followed_teams",
-        "verification": "source_report",
+        "verification": (
+            "official_nhl_trade_tracker"
+            if confirmed_trade is not None
+            else "source_report"
+        ),
         "source_headline": headline,
         "source_id": str(article.get("id") or article.get("link") or headline),
         "source_url": str(
@@ -834,6 +873,16 @@ def _classify_espn_news_article(
             else ""
         ),
         "published_at": str(article.get("published") or article.get("lastModified") or ""),
+        "transaction_at": (
+            confirmed_trade.occurred_at.isoformat()
+            if confirmed_trade is not None
+            else ""
+        ),
+        "transaction_source_url": (
+            confirmed_trade.source_url
+            if confirmed_trade is not None
+            else ""
+        ),
     }
 
 

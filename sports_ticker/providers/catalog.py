@@ -136,6 +136,15 @@ class EspnTeamCatalog:
             for team in self._team_records(league)
         }
 
+    def team_name_map(self, league: str) -> dict[str, str]:
+        """Return canonical ESPN display names by team abbreviation."""
+
+        return {
+            team["name"]: team["abbr"]
+            for team in self._team_records(league)
+            if team.get("name")
+        }
+
     def _team_records(self, league: str) -> tuple[dict[str, str], ...]:
         """Return cached team records with display colors."""
 
@@ -337,6 +346,11 @@ def _teams(
             {
                 "id": f"{league}:{abbreviation}",
                 "abbr": abbreviation,
+                "name": str(
+                    team.get("displayName")
+                    or team.get("shortDisplayName")
+                    or f"{team.get('location') or ''} {team.get('name') or ''}"
+                ).strip(),
                 "logo": corrected_logo(league, abbreviation, _logo(team)) or "",
                 "color": _hex_color(team.get("color")),
                 "alt_color": _hex_color(team.get("alternateColor")),

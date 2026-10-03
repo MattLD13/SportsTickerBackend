@@ -3,6 +3,7 @@
 import pytest
 
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.providers.news_transactions import ConfirmedTrade
 from sports_ticker.providers.live_sources import (
     EspnNewsSource,
     _classify_espn_news_article,
@@ -120,8 +121,25 @@ def _source():
     return EspnNewsSource(
         {league: f"https://example.test/{league}/news" for league in _FIXTURES},
         client=FixtureClient(),
+        trade_confirmation_source=FixtureTradeVerifier(),
         background=False,
     )
+
+
+class FixtureTradeVerifier:
+    """Confirm transaction fixtures through an injected trusted source."""
+
+    def confirm_trade(self, league, athlete_names, team_abbreviations, *, now):
+        if len(team_abbreviations) < 2 or not athlete_names:
+            return None
+        return ConfirmedTrade(
+            from_abbr=team_abbreviations[0],
+            to_abbr=team_abbreviations[1],
+            occurred_at=now.date(),
+            source_url="https://example.test/transactions/confirmed",
+            headline="Confirmed transaction",
+            details="Confirmed completed trade",
+        )
 
 
 def test_ten_recent_real_transaction_shapes_get_impact_tiers():
@@ -143,6 +161,7 @@ def test_espn_team_catalog_primary_and_alternate_colors_reach_news_records():
         {"nfl": "https://example.test/nfl/news"},
         client=FixtureClient(),
         team_color_lookup=lambda league: colors,
+        trade_confirmation_source=FixtureTradeVerifier(),
         background=False,
     )
 
@@ -153,6 +172,65 @@ def test_espn_team_catalog_primary_and_alternate_colors_reach_news_records():
     assert parsons["from_alt_color"] == "#869397"
     assert parsons["to_color"] == "#203731"
     assert parsons["to_alt_color"] == "#FFB612"
+
+
+def test_unverified_trade_language_stays_followed_team_news():
+    class UnverifiedClient:
+        def get_json(self, url, *, timeout):
+            del url, timeout
+            return {
+                "articles": [
+                    _article(
+                        "larkin",
+                        "Amid trade request, Red Wings move Larkin to injured reserve",
+                        "Detroit places captain Dylan Larkin on injured reserve.",
+                        ("DET", "NYR"),
+                        "Dylan Larkin",
+                    )
+                ]
+            }
+
+    source = EspnNewsSource(
+        {"nhl": "https://example.test/nhl/news"},
+        client=UnverifiedClient(),
+        background=False,
+    )
+
+    records = source._fetch_news()
+
+    assert len(records) == 1
+    assert records[0]["kind"] == "INJURY"
+    assert records[0]["distribution"] == "followed_teams"
+
+
+def test_unverified_trade_recap_stays_a_headline_news_item():
+    headline = "Tatum 'comfortable' leading new-look Celtics post-Brown trade"
+    article = _article(
+        "brown-recap",
+        headline,
+        "Boston traded Jaylen Brown to Philadelphia earlier this offseason.",
+        ("BOS", "PHI"),
+        "Jayson Tatum",
+    )
+
+    record = _classify_espn_news_article(article, "nba", set())
+
+    assert record["kind"] == "NEWS"
+    assert record["text"] == headline
+    assert record["distribution"] == "followed_teams"
+    assert record["verification"] == "source_report"
+
+
+def test_record_breaking_does_not_create_an_injury_alert():
+    article = _article(
+        "record-broken",
+        "Harvey Elliott's record as youngest player in EFL Cup broken by 15-year-old",
+        "A youth player set a new age record in the EFL Cup.",
+        ("LIV",),
+        "Harvey Elliott",
+    )
+
+    assert _classify_espn_news_article(article, "soccer_epl", set()) is None
 
 
 def test_blockbuster_and_major_trades_broadcast_without_followed_teams():

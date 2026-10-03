@@ -98,3 +98,33 @@ def test_college_conferences_are_existing_controller_league_options() -> None:
     first_call_count = len(client.urls)
     catalog.leagues()
     assert len(client.urls) == first_call_count
+
+
+def test_team_name_map_resolves_names_without_changing_team_payloads() -> None:
+    class TeamClient:
+        def get_json(self, url: str, *, timeout: float):
+            del url, timeout
+            return {
+                "sports": [{
+                    "leagues": [{
+                        "teams": [{
+                            "team": {
+                                "id": "124",
+                                "abbreviation": "SEA",
+                                "displayName": "Seattle Kraken",
+                                "shortDisplayName": "Kraken",
+                                "color": "001628",
+                            }
+                        }]
+                    }]
+                }]
+            }
+
+    catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS, client=TeamClient())
+
+    assert catalog.team_name_map("nhl") == {"Seattle Kraken": "SEA"}
+    assert catalog.teams("nhl") == ({
+        "id": "nhl:SEA",
+        "abbr": "SEA",
+        "logo": "",
+    },)

@@ -40,6 +40,7 @@ from sports_ticker.providers.live_sources import (
     FinnhubStockSource,
     FlightRadarSource,
 )
+from sports_ticker.providers.news_transactions import NhlTradeTrackerSource
 from sports_ticker.providers.nhl_live import NhlLiveSituationSource
 from sports_ticker.providers.racing_live import LiveRacingSource
 
@@ -165,7 +166,11 @@ def _providers(
         ),
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
         "news": NewsProvider(
-            EspnNewsSource(news_urls, team_color_lookup=catalog.team_colors)
+            EspnNewsSource(
+                news_urls,
+                team_color_lookup=catalog.team_colors,
+                trade_confirmation_source=NhlTradeTrackerSource(catalog.team_name_map),
+            )
         ),
         "weather": HybridWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
