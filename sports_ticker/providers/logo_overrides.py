@@ -35,7 +35,7 @@ LOGO_OVERRIDES = MappingProxyType({
     "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
     "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
     "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
-    "NCF_FBS:OSU": "https://content.sportslogos.net/logos/33/791/full/ohio_state_buckeyes_logo_primary_dark_2013_sportslogosnet-2432.png",
+    "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
     "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
     "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
     "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
