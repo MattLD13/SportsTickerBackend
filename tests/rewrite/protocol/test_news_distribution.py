@@ -3,7 +3,7 @@
 import pytest
 
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers.news_transactions import ConfirmedTrade
+from sports_ticker.providers.news_transactions import ConfirmedTransaction
 from sports_ticker.providers.live_sources import (
     EspnNewsSource,
     _classify_espn_news_article,
@@ -121,7 +121,7 @@ def _source():
     return EspnNewsSource(
         {league: f"https://example.test/{league}/news" for league in _FIXTURES},
         client=FixtureClient(),
-        trade_confirmation_source=FixtureTradeVerifier(),
+        transaction_confirmation_source=FixtureTradeVerifier(),
         background=False,
     )
 
@@ -129,10 +129,12 @@ def _source():
 class FixtureTradeVerifier:
     """Confirm transaction fixtures through an injected trusted source."""
 
-    def confirm_trade(self, league, athlete_names, team_abbreviations, *, now):
+    def confirm_transaction(self, league, athlete_names, team_abbreviations, article_text, *, now):
+        del article_text
         if len(team_abbreviations) < 2 or not athlete_names:
             return None
-        return ConfirmedTrade(
+        return ConfirmedTransaction(
+            kind="TRADE",
             from_abbr=team_abbreviations[0],
             to_abbr=team_abbreviations[1],
             occurred_at=now.date(),
@@ -161,7 +163,7 @@ def test_espn_team_catalog_primary_and_alternate_colors_reach_news_records():
         {"nfl": "https://example.test/nfl/news"},
         client=FixtureClient(),
         team_color_lookup=lambda league: colors,
-        trade_confirmation_source=FixtureTradeVerifier(),
+        transaction_confirmation_source=FixtureTradeVerifier(),
         background=False,
     )
 
@@ -221,6 +223,22 @@ def test_unverified_trade_recap_stays_a_headline_news_item():
     assert record["verification"] == "source_report"
 
 
+def test_sponsor_deal_does_not_create_a_team_signing_alert():
+    headline = "Cavs' Donovan Mitchell signs new multiyear deal with Adidas"
+    article = _article(
+        "adidas-deal",
+        headline,
+        "The new deal extends Donovan Mitchell's partnership with Adidas.",
+        ("CLE",),
+        "Donovan Mitchell",
+    )
+
+    record = _classify_espn_news_article(article, "nba", set())
+
+    assert record["kind"] == "NEWS"
+    assert record["distribution"] == "followed_teams"
+
+
 def test_record_breaking_does_not_create_an_injury_alert():
     article = _article(
         "record-broken",
@@ -260,27 +278,26 @@ def test_followed_team_receives_its_major_trade_and_all_blockbusters():
 
 
 @pytest.mark.parametrize(
-    ("headline", "expected_kind"),
+    "headline",
     (
-        ("Pirates place Konnor Griffin on waivers", "WAIVER"),
-        ("Pirates designate Konnor Griffin for assignment", "DFA"),
-        ("Pirates outright release Konnor Griffin", "RELEASE"),
-        ("Pirates option Konnor Griffin to Triple-A", "OPTION"),
-        ("Pirates recall Konnor Griffin from Triple-A", "RECALL"),
-        ("Pirates activate Konnor Griffin from the 10-day IL", "ACTIVATED"),
-        ("Pirates suspend Konnor Griffin", "SUSPENSION"),
-        ("Konnor Griffin announces retirement", "RETIREMENT"),
-        ("Pirates non-tender Konnor Griffin", "NO_TENDER"),
+        "Pirates place Konnor Griffin on waivers",
+        "Pirates designate Konnor Griffin for assignment",
+        "Pirates outright release Konnor Griffin",
+        "Pirates option Konnor Griffin to Triple-A",
+        "Pirates recall Konnor Griffin from Triple-A",
+        "Pirates activate Konnor Griffin from the 10-day IL",
+        "Pirates non-tender Konnor Griffin",
     ),
 )
-def test_roster_transaction_kinds_are_followed_team_only(headline, expected_kind):
+def test_unverified_roster_transaction_stays_followed_team_news(headline):
     record = _classify_espn_news_article(
         _article("roster", headline, "", ("PIT",), "Konnor Griffin"),
         "mlb",
         set(),
     )
 
-    assert record["kind"] == expected_kind
+    assert record["kind"] == "NEWS"
+    assert record["text"] == headline
     assert record["distribution"] == "followed_teams"
     assert _filter_news_for_ticker((record,), set()) == ()
     assert _filter_news_for_ticker((record,), {"mlb:pit"}) == (record,)

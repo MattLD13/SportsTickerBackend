@@ -20,6 +20,18 @@ _TRACKER_ROW = re.compile(
     r"\((?P<url>https?://[^)]+)\)\*\*",
     re.DOTALL,
 )
+_COMPLETED_TRADE_LANGUAGE = re.compile(
+    r"\b(?:trade|traded|trades|trading)\b[^,;:.!?]{0,100}\b(?:to|from|for|with)\b|"
+    r"\b(?:acquire|acquires|acquired|land|lands|landed)\b[^,;:.!?]{0,100}\bfrom\b|"
+    r"\bin\s+(?:a\s+)?trade\s+with\b",
+    re.IGNORECASE,
+)
+_SPECULATIVE_TRADE_LANGUAGE = re.compile(
+    r"\btrade\s+requests?\b|\btrade\s+rumou?rs?\b|"
+    r"\b(?:could|might|may|would)\s+(?:soon\s+)?(?:be\s+)?traded\b|"
+    r"\b(?:could|might|may|would)\s+trade\b",
+    re.IGNORECASE,
+)
 _MONTHS = {
     "JANUARY": 1,
     "FEBRUARY": 2,
@@ -37,9 +49,10 @@ _MONTHS = {
 
 
 @dataclass(frozen=True, slots=True)
-class ConfirmedTrade:
-    """Describe one current trade listed by the official NHL tracker."""
+class ConfirmedTransaction:
+    """Describe one current transaction listed by an official source."""
 
+    kind: str
     from_abbr: str
     to_abbr: str
     occurred_at: date
@@ -48,18 +61,19 @@ class ConfirmedTrade:
     details: str
 
 
-class TradeConfirmationSource(Protocol):
-    """Confirm one player trade from a trusted league source."""
+class TransactionConfirmationSource(Protocol):
+    """Confirm one roster transaction from a trusted league source."""
 
-    def confirm_trade(
+    def confirm_transaction(
         self,
         league: str,
         athlete_names: Sequence[str],
         team_abbreviations: Sequence[str],
+        article_text: str,
         *,
         now: datetime,
-    ) -> ConfirmedTrade | None:
-        """Return a recent confirmed trade that matches the article facts."""
+    ) -> ConfirmedTransaction | None:
+        """Return a recent confirmed transaction that matches article facts."""
 
 
 class NhlTradeTrackerSource:
@@ -79,17 +93,18 @@ class NhlTradeTrackerSource:
         self._cache_seconds = max(1.0, float(cache_seconds))
         self._clock = clock
         self._max_age_days = max(0, int(max_age_days))
-        self._cache: tuple[float, tuple[ConfirmedTrade, ...]] | None = None
+        self._cache: tuple[float, tuple[ConfirmedTransaction, ...]] | None = None
         self._lock = Lock()
 
-    def confirm_trade(
+    def confirm_transaction(
         self,
         league: str,
         athlete_names: Sequence[str],
         team_abbreviations: Sequence[str],
+        article_text: str,
         *,
         now: datetime,
-    ) -> ConfirmedTrade | None:
+    ) -> ConfirmedTransaction | None:
         """Confirm one recent NHL trade against tracked player and team facts."""
 
         if str(league).strip().lower() != "nhl":
@@ -98,6 +113,11 @@ class NhlTradeTrackerSource:
         athlete_values = tuple(name for name in (_normalize(value) for value in athlete_names) if name)
         article_teams = {str(value).strip().upper() for value in team_abbreviations if str(value).strip()}
         if not athlete_values or not article_teams:
+            return None
+        text = str(article_text)
+        if _SPECULATIVE_TRADE_LANGUAGE.search(text):
+            return None
+        if not _COMPLETED_TRADE_LANGUAGE.search(text):
             return None
         for trade in self._records(observed_at):
             age_days = (observed_at.date() - trade.occurred_at).days
@@ -110,7 +130,7 @@ class NhlTradeTrackerSource:
                 return trade
         return None
 
-    def _records(self, now: datetime) -> tuple[ConfirmedTrade, ...]:
+    def _records(self, now: datetime) -> tuple[ConfirmedTransaction, ...]:
         timestamp = self._clock()
         with self._lock:
             cached = self._cache
@@ -137,7 +157,7 @@ def _parse_tracker(
     html: str,
     now: datetime,
     team_name_map: Mapping[str, str],
-) -> tuple[ConfirmedTrade, ...]:
+) -> tuple[ConfirmedTransaction, ...]:
     """Parse dated deal rows from the NHL trade tracker page."""
 
     season_start = now.year if now.month >= 7 else now.year - 1
@@ -150,7 +170,7 @@ def _parse_tracker(
         key=lambda item: len(item[0]),
         reverse=True,
     )
-    records: list[ConfirmedTrade] = []
+    records: list[ConfirmedTransaction] = []
     for match in _TRACKER_ROW.finditer(html):
         month = _MONTHS.get(match.group("month"))
         if month is None:
@@ -184,7 +204,8 @@ def _parse_tracker(
         if from_abbr == to_abbr:
             continue
         records.append(
-            ConfirmedTrade(
+            ConfirmedTransaction(
+                kind="TRADE",
                 from_abbr=from_abbr,
                 to_abbr=to_abbr,
                 occurred_at=occurred_at,
@@ -210,4 +231,4 @@ def _contains_name(text: str, name: str) -> bool:
     return f" {name} " in f" {text} "
 
 
-__all__ = ["ConfirmedTrade", "NhlTradeTrackerSource", "TradeConfirmationSource"]
+__all__ = ["ConfirmedTransaction", "NhlTradeTrackerSource", "TransactionConfirmationSource"]

@@ -20,7 +20,7 @@ from sports_ticker.markets import MARKET_GROUPS
 
 from .espn import _display_timezone, _event_time
 from .http import JsonHttpClient, UrllibJsonHttpClient
-from .news_transactions import ConfirmedTrade, TradeConfirmationSource
+from .news_transactions import ConfirmedTransaction, TransactionConfirmationSource
 
 
 ESPN_GOLF_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
@@ -32,10 +32,17 @@ _NEWS_RUMOR_MARKERS = re.compile(
     r"explore|consider(?:ing)?|target(?:ing)?|eyeing|monitor(?:ing)?|buzz)\b",
     re.IGNORECASE,
 )
-_NEWS_TRADE_CANDIDATE = re.compile(
+_NEWS_TRANSACTION_CANDIDATE = re.compile(
     r"\b(?:trade|trades|traded|trading|acquire|acquires|acquired|"
-    r"land|lands|landed|send|sends|sent|transfer|transfers|transferred)\b",
+    r"land|lands|landed|send|sends|sent|transfer|transfers|transferred|"
+    r"sign|signs|signed|signing|extension|extend|extends|extended|"
+    r"waive|waives|waived|waiver|release|releases|released|"
+    r"option|optioned|recall|recalled|activate|activated|reinstated|"
+    r"designated|non-tender|suspend|suspended|suspension)\b",
     re.IGNORECASE,
+)
+_UNVERIFIED_TRANSACTION_KINDS = frozenset(
+    ("TRADE", "SIGNING", "EXTENSION", "WAIVER", "DFA", "NO_TENDER", "OPTION", "RECALL", "ACTIVATED", "RELEASE")
 )
 _NEWS_EXTENSION_MARKER = re.compile(
     r"\b(?:extension|re-?sign(?:s|ed)?|agrees?\s+to\s+.{0,35}\b(?:deal|contract))\b",
@@ -537,7 +544,7 @@ class EspnNewsSource:
         client: JsonHttpClient | None = None,
         *,
         team_color_lookup: Callable[[str], Mapping[str, Mapping[str, str]]] | None = None,
-        trade_confirmation_source: TradeConfirmationSource | None = None,
+        transaction_confirmation_source: TransactionConfirmationSource | None = None,
         timeout: float = 10.0,
         refresh_seconds: float = 30.0,
         background: bool = True,
@@ -545,7 +552,7 @@ class EspnNewsSource:
         self._news_urls = dict(news_urls)
         self._client = client or UrllibJsonHttpClient()
         self._team_color_lookup = team_color_lookup
-        self._trade_confirmation_source = trade_confirmation_source
+        self._transaction_confirmation_source = transaction_confirmation_source
         self._timeout = _timeout(timeout)
         self._refresh_seconds = _timeout(refresh_seconds)
         self._background = bool(background)
@@ -599,29 +606,34 @@ class EspnNewsSource:
                 continue
             league_records: list[dict[str, object]] = []
             for article in articles:
-                trade_confirmation = None
+                confirmed_transaction = None
                 if (
-                    self._trade_confirmation_source is not None
+                    self._transaction_confirmation_source is not None
                     and isinstance(article, Mapping)
-                    and _NEWS_TRADE_CANDIDATE.search(
+                    and _NEWS_TRANSACTION_CANDIDATE.search(
                         f"{article.get('headline') or article.get('title') or ''} "
                         f"{article.get('description') or ''}"
                     )
                 ):
                     try:
-                        trade_confirmation = self._trade_confirmation_source.confirm_trade(
+                        article_text = (
+                            f"{article.get('headline') or article.get('title') or ''} "
+                            f"{article.get('description') or ''}"
+                        )
+                        confirmed_transaction = self._transaction_confirmation_source.confirm_transaction(
                             league,
                             _article_athletes(article),
                             tuple(abbr for abbr, _name in _article_team_records(article)),
+                            article_text,
                             now=datetime.now(timezone.utc),
                         )
                     except Exception:
-                        trade_confirmation = None
+                        confirmed_transaction = None
                 record = _classify_espn_news_article(
                     article,
                     league,
                     set(),
-                    confirmed_trade=trade_confirmation,
+                    confirmed_transaction=confirmed_transaction,
                 )
                 if record is None:
                     continue
@@ -750,7 +762,7 @@ def _classify_espn_news_article(
     league: str,
     followed: set[str],
     *,
-    confirmed_trade: ConfirmedTrade | None = None,
+    confirmed_transaction: ConfirmedTransaction | None = None,
 ) -> dict[str, object] | None:
     """Build one conservative sports-news record or reject the article."""
 
@@ -764,7 +776,7 @@ def _classify_espn_news_article(
     if not headline:
         return None
     searchable = f"{headline} {description}"
-    if _NEWS_RUMOR_MARKERS.search(searchable):
+    if _NEWS_RUMOR_MARKERS.search(searchable) and confirmed_transaction is None:
         return None
     teams = _article_team_records(article)
     athletes = _article_athletes(article)
@@ -780,12 +792,12 @@ def _classify_espn_news_article(
     from_abbr = ""
     to_abbr = teams[0][0]
     compact_prefix = ""
-    transaction_candidate = bool(_NEWS_TRADE_CANDIDATE.search(searchable))
-    if confirmed_trade is not None:
-        from_abbr = confirmed_trade.from_abbr
-        to_abbr = confirmed_trade.to_abbr
-        kind = "TRADE"
-        compact_prefix = "ACQUIRE"
+    transaction_candidate = bool(_NEWS_TRANSACTION_CANDIDATE.search(searchable))
+    if confirmed_transaction is not None:
+        kind = confirmed_transaction.kind.upper()
+        from_abbr = confirmed_transaction.from_abbr
+        to_abbr = confirmed_transaction.to_abbr
+        compact_prefix = "ACQUIRE" if kind == "TRADE" else kind
     elif _NEWS_WAIVER_MARKER.search(headline):
         kind = "WAIVER"
         compact_prefix = "WAIVER"
@@ -828,14 +840,17 @@ def _classify_espn_news_article(
     else:
         return None
 
+    if kind in _UNVERIFIED_TRANSACTION_KINDS and confirmed_transaction is None:
+        kind = "NEWS"
+        compact_prefix = ""
     display_teams = (
-        ((from_abbr, from_abbr), (to_abbr, to_abbr))
-        if confirmed_trade is not None
+        tuple((abbr, abbr) for abbr in (from_abbr, to_abbr) if abbr)
+        if confirmed_transaction is not None
         else teams
     )
     impact_text = (
-        f"{searchable} {confirmed_trade.details}"
-        if confirmed_trade is not None
+        f"{searchable} {confirmed_transaction.details}"
+        if confirmed_transaction is not None
         else searchable
     )
     impact_score, impact_tier = _news_impact(impact_text, kind, display_teams)
@@ -860,9 +875,11 @@ def _classify_espn_news_article(
         if kind == "TRADE" and impact_tier in {"BLOCKBUSTER", "MAJOR"}
         else "followed_teams",
         "verification": (
-            "official_nhl_trade_tracker"
-            if confirmed_trade is not None
-            else "source_report"
+            "source_report"
+            if confirmed_transaction is None
+            else "official_nhl_trade_tracker"
+            if confirmed_transaction.kind.upper() == "TRADE"
+            else "official_league_transaction"
         ),
         "source_headline": headline,
         "source_id": str(article.get("id") or article.get("link") or headline),
@@ -874,13 +891,13 @@ def _classify_espn_news_article(
         ),
         "published_at": str(article.get("published") or article.get("lastModified") or ""),
         "transaction_at": (
-            confirmed_trade.occurred_at.isoformat()
-            if confirmed_trade is not None
+            confirmed_transaction.occurred_at.isoformat()
+            if confirmed_transaction is not None
             else ""
         ),
         "transaction_source_url": (
-            confirmed_trade.source_url
-            if confirmed_trade is not None
+            confirmed_transaction.source_url
+            if confirmed_transaction is not None
             else ""
         ),
     }

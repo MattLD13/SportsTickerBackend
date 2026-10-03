@@ -169,7 +169,7 @@ def _providers(
             EspnNewsSource(
                 news_urls,
                 team_color_lookup=catalog.team_colors,
-                trade_confirmation_source=NhlTradeTrackerSource(catalog.team_name_map),
+                transaction_confirmation_source=NhlTradeTrackerSource(catalog.team_name_map),
             )
         ),
         "weather": HybridWeatherProvider(),

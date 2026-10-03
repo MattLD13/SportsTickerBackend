@@ -3,7 +3,7 @@ import pytest
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.espn import EspnScoreboardProvider
 from sports_ticker.providers.live_sources import EspnNewsSource
-from sports_ticker.providers.news_transactions import ConfirmedTrade
+from sports_ticker.providers.news_transactions import ConfirmedTransaction
 
 pytestmark = pytest.mark.critical
 
@@ -118,25 +118,37 @@ class NewsClient:
         }
 
 
-class EvangelistaTradeVerifier:
-    def confirm_trade(self, league, athlete_names, team_abbreviations, *, now):
-        if league != "nhl" or "Luke Evangelista" not in athlete_names:
-            return None
-        return ConfirmedTrade(
-            from_abbr="NSH",
-            to_abbr="NJD",
-            occurred_at=now.date(),
-            source_url="https://www.nhl.com/devils/news/confirmed-trade",
-            headline="Evangelista traded to Devils",
-            details="New Jersey Devils acquire Luke Evangelista from the Nashville Predators.",
-        )
+class VerifiedTransactionSource:
+    def confirm_transaction(self, league, athlete_names, team_abbreviations, article_text, *, now):
+        del article_text, team_abbreviations
+        if league == "nhl" and "Luke Evangelista" in athlete_names:
+            return ConfirmedTransaction(
+                kind="TRADE",
+                from_abbr="NSH",
+                to_abbr="NJD",
+                occurred_at=now.date(),
+                source_url="https://www.nhl.com/devils/news/confirmed-trade",
+                headline="Evangelista traded to Devils",
+                details="New Jersey Devils acquire Luke Evangelista from the Nashville Predators.",
+            )
+        if "Amen Thompson" in athlete_names:
+            return ConfirmedTransaction(
+                kind="EXTENSION",
+                from_abbr="",
+                to_abbr="HOU",
+                occurred_at=now.date(),
+                source_url="https://www.nba.com/rockets/news/extension",
+                headline="Amen Thompson extension",
+                details="Houston Rockets confirm an Amen Thompson extension.",
+            )
+        return None
 
 
 def test_espn_news_source_produces_half_panel_payload_for_followed_team():
     source = EspnNewsSource(
         {"nhl": "https://example.test/nhl/news"},
         client=NewsClient(),
-        trade_confirmation_source=EvangelistaTradeVerifier(),
+        transaction_confirmation_source=VerifiedTransactionSource(),
         background=False,
     )
     records = source.fetch(
