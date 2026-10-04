@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time
+import json
+from pathlib import Path
 from typing import Any
 
 from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnapshot
@@ -15,6 +17,22 @@ from ..providers.sports_display import matches_followed_team
 _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
 _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
+}
+_LOGO_DECISIONS_PATH = Path(__file__).with_name("logo_rendering_decisions.json")
+try:
+    _LOGO_DECISION_EXPORT = json.loads(_LOGO_DECISIONS_PATH.read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    _LOGO_DECISION_EXPORT = {}
+_LOGO_RENDERING_TARGET_TICKER_ID = str(_LOGO_DECISION_EXPORT.get("target_ticker_id") or "").strip()
+_LOGO_DECISIONS = {
+    str(decision.get("team_key") or "").strip().lower(): decision
+    for decision in _LOGO_DECISION_EXPORT.get("decisions", ())
+    if isinstance(decision, Mapping) and decision.get("team_key")
+}
+_LOGO_DECISIONS_BY_URL = {
+    str(decision.get("logo_url") or "").strip(): decision
+    for decision in _LOGO_DECISIONS.values()
+    if decision.get("logo_url")
 }
 
 def project_data_v2(
@@ -36,9 +54,13 @@ def project_data_v2(
     content: dict[str, list[dict[str, Any]]] = {
         family: [] for family in CONTENT_FAMILIES
     }
+    apply_logo_rendering = (
+        bool(_LOGO_RENDERING_TARGET_TICKER_ID)
+        and str(snapshot.ticker_id).strip() == _LOGO_RENDERING_TARGET_TICKER_ID
+    )
     for item in snapshot.content:
         family = item.family if item.family in content else item.family
-        content.setdefault(family, []).append(_content_item(item))
+        content.setdefault(family, []).append(_content_item(item, apply_logo_rendering=apply_logo_rendering))
 
     return {
         "api_version": "v2",
@@ -180,15 +202,45 @@ def _item_data(item: Mapping[str, Any]) -> Mapping[str, Any]:
     return data if isinstance(data, Mapping) else {}
 
 
-def _content_item(item: ContentItem) -> dict[str, Any]:
+def _content_item(item: ContentItem, *, apply_logo_rendering: bool = False) -> dict[str, Any]:
     if not isinstance(item, ContentItem):
         raise TypeError("snapshot content must contain ContentItem values")
+    data = dict(item.data)
+    if apply_logo_rendering and item.family == "sports":
+        for side in ("home", "away"):
+            rendering = _logo_rendering_choice(data, side)
+            if rendering is not None:
+                data[f"{side}_logo_rendering"] = rendering
     return {
         "id": item.id,
         "family": item.family,
         "kind": item.kind,
         "is_shown": item.is_shown,
-        "data": _json_value(item.data),
+        "data": _json_value(data),
+    }
+
+
+def _logo_rendering_choice(item: Mapping[str, Any], side: str) -> dict[str, Any] | None:
+    """Return one saved logo method for a team in a projected sports item."""
+    league = str(item.get("league_id") or item.get("sport") or "").strip().lower()
+    abbreviation = str(item.get(f"{side}_abbr") or "").strip().upper()
+    decision = _LOGO_DECISIONS.get(f"{league}:{abbreviation}".lower())
+    if decision is None:
+        logo_url = str(item.get(f"{side}_logo") or "").strip()
+        decision = _LOGO_DECISIONS_BY_URL.get(logo_url)
+    if decision is None:
+        return None
+    choice = str(decision.get("choice") or "").strip().lower()
+    if choice not in {"old", "new"}:
+        return None
+    settings = decision.get(choice)
+    if not isinstance(settings, Mapping):
+        return None
+    return {
+        "method": choice,
+        "outline": str(settings.get("outline") or "off"),
+        "cutoff": int(settings.get("cutoff", 35)),
+        "status": str(decision.get("status") or "saved_for_later"),
     }
 
 

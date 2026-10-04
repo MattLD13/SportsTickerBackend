@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from PIL import Image
 
-from ticker_core.assets import AssetPlanner, AssetRequest, AssetView, PreparedAssetStore, prepare_car, prepare_contained, prepare_imsa_car, prepare_nascar_car
+from ticker_core.assets import AssetPlanner, AssetRequest, AssetView, PreparedAssetStore, prepare_car, prepare_contained, prepare_contained_native_grid, prepare_imsa_car, prepare_nascar_car
 
 
 class AssetFetcher(Protocol):
@@ -128,6 +128,7 @@ class AssetCoordinator(AssetView):
         self._planner = planner or AssetPlanner()
         self._processors: Mapping[str, Callable[[bytes, tuple[int, int]], Image.Image]] = {
             "logo": prepare_contained,
+            "logo_native_grid": prepare_contained_native_grid,
             "artwork": prepare_contained,
             "image": prepare_contained,
             "car": prepare_car,

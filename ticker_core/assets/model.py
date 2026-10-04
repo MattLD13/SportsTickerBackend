@@ -43,6 +43,25 @@ class LogoAssetView:
 
     assets: AssetView
 
-    def get(self, url: str | None, size: tuple[int, int] = (24, 24)) -> Image.Image | None:
+    def get(
+        self,
+        url: str | None,
+        size: tuple[int, int] = (24, 24),
+        rendering: Mapping[str, object] | None = None,
+    ) -> Image.Image | None:
         """Return a prepared logo without starting I/O."""
-        return self.assets.image(url, "logo", size) if url else None
+        if not url:
+            return None
+        method = str(rendering.get("method") or "old").lower() if rendering else "old"
+        processor = "logo_native_grid" if method == "new" else "logo"
+        image = self.assets.image(url, processor, size)
+        if image is None or not rendering:
+            return image
+        image = image.copy()
+        image.logo_rendering_outline = str(rendering.get("outline") or "ticker")
+        try:
+            cutoff = float(rendering.get("cutoff", 35))
+        except (TypeError, ValueError):
+            cutoff = 35.0
+        image.logo_rendering_cutoff = max(0.0, min(255.0, cutoff * 255 / 100))
+        return image

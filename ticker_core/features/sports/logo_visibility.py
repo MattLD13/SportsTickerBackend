@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 
 _CONTRAST_RATIO_THRESHOLD = 2.0
@@ -38,6 +38,19 @@ def paste_team_logo(
     """Paste a logo and apply the selected display outline policy."""
 
     mark = logo.convert("RGBA")
+    selected_outline = getattr(logo, "logo_rendering_outline", None)
+    if selected_outline in {"off", "inner", "auto"}:
+        cutoff = float(getattr(logo, "logo_rendering_cutoff", 0.0))
+        x, y = int(xy[0]), int(xy[1])
+        needs_outline = selected_outline == "inner" or (
+            selected_outline == "auto" and mean_edge_brightness(mark) <= cutoff
+        )
+        canvas.paste(mark, (x, y), mark)
+        if needs_outline:
+            keyline = Image.new("RGBA", mark.size, (244, 247, 250, 255))
+            canvas.paste(keyline, (x, y), _inner_contour_mask(mark))
+        return needs_outline
+
     outline_mode = LogoOutlineMode(outline_mode)
     x, y = int(xy[0]), int(xy[1])
     width, height = mark.size
@@ -70,6 +83,23 @@ def paste_team_logo(
 
     canvas.paste(mark, (x, y), mark)
     return added_keyline
+
+
+def _inner_contour_mask(mark: Image.Image) -> Image.Image:
+    """Trace every silhouette boundary one opaque pixel inside the mark."""
+    silhouette = mark.getchannel("A").point(lambda value: 255 if value >= _ALPHA_THRESHOLD else 0)
+    padded = Image.new("L", (mark.width + 2, mark.height + 2), 0)
+    padded.paste(silhouette, (1, 1))
+    eroded = padded.filter(ImageFilter.MinFilter(3)).crop((1, 1, mark.width + 1, mark.height + 1))
+    return ImageChops.subtract(silhouette, eroded)
+
+
+def mean_edge_brightness(mark: Image.Image) -> float:
+    """Return the mean sRGB brightness along the visible logo silhouette."""
+    pairs = _logo_edge_pairs(mark.convert("RGBA"), Image.new("RGBA", mark.size, (0, 0, 0, 255)))
+    if not pairs:
+        return 255.0
+    return sum(0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2] for color, _ in pairs) / len(pairs)
 
 
 def _logo_edge_pairs(

@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
+from .logo_rendering import SCROLLING_TEAM_LOGO_SIZE, get_prepared_team_logo, team_logo_layout
 
 _HYBRID_SMALL_V = [0x0, 0x0, 0xA, 0x4, 0x0, 0x0]
 
@@ -304,7 +305,7 @@ class StadiumRenderer:
     def __init__(self, logo_cache=None):
         self._cache = logo_cache if logo_cache is not None else {}
 
-    def _get_logo(self, url):
+    def _get_logo(self, url, rendering=None):
         """Return RGBA PIL image at LOGO_SIZE, or None."""
         if not url:
             return None
@@ -392,8 +393,8 @@ class StadiumRenderer:
         h_logo_x = CW - LOGO_SZ - 1
         logo_y   = H - LOGO_SZ - 1
 
-        a_logo = self._get_logo(g.get('away_logo'))
-        h_logo = self._get_logo(g.get('home_logo'))
+        a_logo = self._get_logo(g.get('away_logo'), g.get('away_logo_rendering'))
+        h_logo = self._get_logo(g.get('home_logo'), g.get('home_logo_rendering'))
 
         if a_logo:
             self._paste_logo(img, a_logo, a_logo_x, logo_y)
@@ -694,9 +695,9 @@ class PreparedStadiumRenderer(StadiumRenderer):
         super().__init__({})
         self._logos = logos
 
-    def _get_logo(self, url):
+    def _get_logo(self, url, rendering=None):
         """Return one prepared logo from the injected source."""
-        return self._logos.get(str(url) if url else None, self.LOGO_SIZE)
+        return get_prepared_team_logo(self._logos, str(url) if url else None, self.LOGO_SIZE, rendering)
 
 
 def build_strip(games, logo_cache=None, repeat=1):

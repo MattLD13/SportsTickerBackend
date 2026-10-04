@@ -33,7 +33,7 @@ class AssetPlanner:
         sport = str(item.get("sport") or family).lower()
         if item.get("team_logo"):
             for size in ((16, 16), (24, 24)):
-                _add(requests, item.get("team_logo"), "logo", size)
+                _add_team_logo(requests, item, "team_logo", size)
         for key in ("from_logo", "to_logo"):
             _add(requests, item.get(key), "logo", (24, 24))
         if item_type == "fan_duel_joke_ad":
@@ -61,15 +61,15 @@ class AssetPlanner:
             for driver in series.get("drivers", ()):
                 if not isinstance(driver, Mapping):
                     continue
-                _add(requests, driver.get("team_logo"), "logo", (18, 18))
-                _add(requests, driver.get("team_logo"), "logo", (21, 21))
+                _add_team_logo(requests, driver, "team_logo", (18, 18))
+                _add_team_logo(requests, driver, "team_logo", (21, 21))
                 car = driver.get("car_illustration")
                 processor = "nascar_car" if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar" else ("imsa_car" if "imsa.com" in str(car or "") or sport == "imsa" or kind == "imsa" else "image")
                 _add(requests, car, processor, (130, 20) if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar" else (120, 19))
             return
         for key in ("home_logo", "away_logo"):
             for size in ((16, 16), (22, 22), (24, 24)):
-                _add(requests, item.get(key), "logo", size)
+                _add_team_logo(requests, item, key, size)
 
 
 def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
@@ -140,6 +140,18 @@ def _add(requests: set[AssetRequest], value: object, processor: str, size: tuple
     """Add one nonempty URL request."""
     if isinstance(value, str) and value:
         requests.add(AssetRequest(value, processor, size))
+
+
+def _add_team_logo(
+    requests: set[AssetRequest],
+    item: Mapping[str, Any],
+    logo_key: str,
+    size: tuple[int, int],
+) -> None:
+    """Plan one team logo with its selected native-grid processor."""
+    rendering = _mapping(item.get(f"{logo_key}_rendering"))
+    processor = "logo_native_grid" if str(rendering.get("method") or "").lower() == "new" else "logo"
+    _add(requests, item.get(logo_key), processor, size)
 
 
 def _flight_logo_url(item: Mapping[str, Any]) -> str:

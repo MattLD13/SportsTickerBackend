@@ -15,6 +15,7 @@ from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, norma
 from .full_port import PreparedSportsFullRenderer
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
+from .logo_rendering import get_prepared_team_logo
 from .stadium_port import PreparedStadiumRenderer
 
 PANEL_W = 384
@@ -218,8 +219,8 @@ class SportsRenderer:
         soccer = "soccer" in sport
         draw.line((0, 7, width, 7), fill=(55, 76, 130))
         away_x, home_x, logo_y = 1, width - LOGO_SIZE - 1, 9
-        self._paste_logo(image, game.get("away_logo"), away_x, logo_y, game["ac"], game.get("away_abbr"))
-        self._paste_logo(image, game.get("home_logo"), home_x, logo_y, game["hc"], game.get("home_abbr"))
+        self._paste_logo(image, game.get("away_logo"), away_x, logo_y, game["ac"], game.get("away_abbr"), game.get("away_logo_rendering"))
+        self._paste_logo(image, game.get("home_logo"), home_x, logo_y, game["hc"], game.get("home_abbr"), game.get("home_logo_rendering"))
         center = width // 2
         status = str(game["status"])[:12]
         delay = any(word in status.lower() for word in ("delay", "suspended", "postponed", "canceled", "ppd"))
@@ -246,8 +247,9 @@ class SportsRenderer:
         y: int,
         color: tuple[int, int, int],
         abbreviation: object,
+        rendering: Mapping[str, Any] | None = None,
     ) -> None:
-        logo = self._logos.get(str(url) if url else None, (LOGO_SIZE, LOGO_SIZE))
+        logo = get_prepared_team_logo(self._logos, str(url) if url else None, (LOGO_SIZE, LOGO_SIZE), rendering)
         if logo is not None:
             paste_team_logo(image, logo, (x, y), outline_mode=LogoOutlineMode.SCROLL)
             return
@@ -397,8 +399,8 @@ class SportsRenderer:
         for side, x, anchor in (("home", 8, "lm"), ("away", 376, "rm")):
             score = str(game.get("hs" if side == "home" else "as", ""))
             draw.text((x + (28 if side == "home" else -28), 16), score, font=self._fonts.clock, fill=(255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0), anchor=anchor)
-        self._paste_logo(image, game.get("home_logo"), 8, 4, game["hc"], game.get("home_abbr"))
-        self._paste_logo(image, game.get("away_logo"), 354, 4, game["ac"], game.get("away_abbr"))
+        self._paste_logo(image, game.get("home_logo"), 8, 4, game["hc"], game.get("home_abbr"), game.get("home_logo_rendering"))
+        self._paste_logo(image, game.get("away_logo"), 354, 4, game["ac"], game.get("away_abbr"), game.get("away_logo_rendering"))
 
     @staticmethod
     def _scrim(image: Image.Image) -> None:
