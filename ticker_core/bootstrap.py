@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from PIL import Image
 
+from .assets import LogoAssetView
 from .app.frame_builder import FrameBuilder
 from .app.viewport import CardViewport
 from .features.alerts import NewsBannerRenderer, ScoreAlertRenderer
@@ -50,8 +51,9 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     """Create the renderer catalog for every enabled ticker content family."""
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
+    sports_logos = LogoAssetView(assets)
     catalog = ContentRendererCatalog()
-    sports = SportsRenderer(fonts, logos)
+    sports = SportsRenderer(fonts, sports_logos)
     utility = UtilityRenderer(fonts, logos)
     catalog.register("clock", _ClockContentRenderer(ClockRenderer(fonts.tiny, fonts.clock)))
     catalog.register("scoreboard", sports)
