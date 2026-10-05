@@ -18,13 +18,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check deploy activity
+        id: deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -eu
+          active=$(gh run list --workflow deploy.yml --branch main --limit 20 --json status --jq '[.[] | select(.status != "completed")] | length')
+          echo "active=${active}"
+          if [ "${active}" -gt 0 ]; then
+            echo "busy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check deployed build
         id: check
+        if: steps.deploy.outputs.busy == 'false'
         shell: bash
         run: |
           set -eu
           head_sha=$(git rev-parse --short=12 HEAD)
-          live_sha=$(curl --fail --silent --show-error --location https://ticker.mattdicks.org/ \
+          live_sha=$(curl --fail --silent --show-error --location \
+            --connect-timeout 5 --max-time 15 --retry 2 --retry-delay 2 \
+            https://ticker.mattdicks.org/ \
             | python -c 'import re, sys; page=sys.stdin.read(); match=re.search(r"chip-ver.*?<span[^>]*>([0-9a-f]{7,12})</span>", page, re.S); print(match.group(1) if match else "")')
           echo "main=${head_sha} live=${live_sha}"
           if [ -n "${live_sha}" ] && [[ "${head_sha}" == "${live_sha}"* ]]; then
@@ -33,8 +51,8 @@ jobs:
             echo "needed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Dispatch deploy
-        if: steps.check.outputs.needed == 'true'
+      - name: Dispatch backend recovery deploy
+        if: steps.deploy.outputs.busy == 'false' && steps.check.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run deploy.yml --ref main
+        run: gh workflow run deploy.yml --ref main -f recovery_only=true
