@@ -43,6 +43,7 @@ LOGO_OVERRIDES = MappingProxyType({
     "MARCH_MADNESS:IOWA": "https://a.espncdn.com/guid/b7840e2f-6236-e764-2cae-20286a0829e7/logos/primary_logo_on_black_color.png",
     "MLB:NYY": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
     "MLB:COL": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/Colorado_Rockies_logo.svg.png",
+    # Main ticker uses the gold Hawkeye mark rather than ESPN’s black default.
     "NCF_FBS:IOWA": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2294.png",
 })
 
