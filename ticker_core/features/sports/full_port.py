@@ -133,9 +133,10 @@ class SportsMixin:
                     pass
                 return None
 
-            # Keep the official primary color when it has a distinct hue. If it
-            # is effectively gray, prefer the official alternate color when that
-            # gives the endzone a stronger team identity. The logo renderer then
+            # ESPN supplies primary and alternate colors for the FBS and FCS teams.
+            # Keep a distinct primary hue, but use a colorful alternate instead of
+            # inventing a red or blue fallback for an effectively gray primary.
+            # The logo renderer then
             # picks a contrasting black or white keyline against that fill.
             def _resolve_endzone_color(side, fallback):
                 primary = _parse_hex_color(game.get(f"{side}_color")) or fallback
