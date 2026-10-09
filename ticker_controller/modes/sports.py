@@ -127,18 +127,19 @@ class SportsMixin:
                     pass
                 return None
 
-            # Prefer explicit team colors; if missing, fall back to a readable
-            # default palette (instead of logo-average grays).
-            home_ez = _parse_hex_color(game.get('home_color')) or home_clr
-            away_ez = _parse_hex_color(game.get('away_color')) or away_clr
+            # Keep the official primary color when it has a distinct hue. If it
+            # is effectively gray, prefer the official alternate color when that
+            # gives the endzone a stronger team identity. The logo renderer then
+            # picks a contrasting black or white keyline against that fill.
+            def _resolve_endzone_color(side, fallback):
+                primary = _parse_hex_color(game.get(f"{side}_color")) or fallback
+                alternate = _parse_hex_color(game.get(f"{side}_alt_color"))
+                if max(primary) - min(primary) < 25 and alternate and max(alternate) - min(alternate) >= 25:
+                    return alternate
+                return primary
 
-            def _is_dull(c):
-                return max(c) - min(c) < 25
-
-            if _is_dull(home_ez):
-                home_ez = (155, 32, 32)
-            if _is_dull(away_ez):
-                away_ez = (32, 62, 155)
+            home_ez = _resolve_endzone_color("home", home_clr)
+            away_ez = _resolve_endzone_color("away", away_clr)
 
             EZ_RATIO = 30 / 360
             ezW    = W * EZ_RATIO          # ~32 px
