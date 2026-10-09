@@ -140,7 +140,11 @@ class SportsMixin:
             def _resolve_endzone_color(side, fallback):
                 primary = _parse_hex_color(game.get(f"{side}_color")) or fallback
                 alternate = _parse_hex_color(game.get(f"{side}_alt_color"))
-                if max(primary) - min(primary) < 25 and alternate and max(alternate) - min(alternate) >= 25:
+                if (
+                    max(primary) - min(primary) < 25
+                    and alternate
+                    and max(alternate) - min(alternate) >= 25
+                ):
                     return alternate
                 return primary
 
