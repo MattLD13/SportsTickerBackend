@@ -419,8 +419,8 @@ def test_full_football_uses_alternate_for_gray_iowa_primary(sports: SportsRender
 
     image = sports.render_full(game)
 
-    assert image.getpixel((2, 16)) == (252, 209, 22)
-    assert image.getpixel((382, 16)) == (51, 0, 111)
+    assert image.getpixel((2, 16))[:3] == (252, 209, 22)
+    assert image.getpixel((382, 16))[:3] == (51, 0, 111)
 
 
 @pytest.mark.parametrize(
