@@ -402,6 +402,27 @@ def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
     assert image.tobytes() == sports.render_full(game).tobytes()
 
 
+def test_full_football_uses_alternate_for_gray_iowa_primary(sports: SportsRenderer) -> None:
+    """Use Iowa gold for the endzone instead of the old hardcoded red fallback."""
+    game = {
+        "sport": "ncf_fbs",
+        "state": "pre",
+        "status": "8:00 PM",
+        "home_abbr": "WASH",
+        "home_color": "#33006F",
+        "home_alt_color": "#E8D3A2",
+        "away_abbr": "IOWA",
+        "away_color": "#231F20",
+        "away_alt_color": "#FCD116",
+        "situation": {},
+    }
+
+    image = sports.render_full(game)
+
+    assert image.getpixel((2, 16)) == (252, 209, 22)
+    assert image.getpixel((382, 16)) == (51, 0, 111)
+
+
 @pytest.mark.parametrize(
     ("status", "sport", "expected"),
     [
