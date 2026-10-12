@@ -546,6 +546,21 @@ def _is_basketball_dunk(scoring_play: Mapping[str, Any] | None) -> bool:
     return "dunk" in play_text
 
 
+def _is_basketball_q4(
+    status: object,
+    scoring_play: Mapping[str, Any] | None,
+) -> bool:
+    """Read the scoring play's quarter, then use the game status."""
+
+    period = str(scoring_play.get("period") or "").strip() if scoring_play else ""
+    text = (period or str(status or "")).upper()
+    if re.search(r"\b(?:OT|OVERTIME)\b", text):
+        return False
+    return bool(
+        re.search(r"\bQ\s*4\b|\b4(?:TH)?(?:\s+QUARTER)?\b", text)
+    )
+
+
 class ScoreAlertTracker:
     """Keep score memory across scoreboard polls and release recent alerts."""
 
@@ -734,9 +749,10 @@ class ScoreAlertTracker:
                         other_old = previous[1] if side == "home" else previous[0]
                         other_new = away if side == "home" else home
                         winning_score = new_score > other_new and old_score <= other_old
+                        q4_score = _is_basketball_q4(status, scoring_play)
                         if game_ending and not (winning_score and scoring_play):
                             continue
-                        if not game_ending and not lead_change:
+                        if not game_ending and not (lead_change or q4_score):
                             continue
                     kind, headline = _describe(sport, delta, scoring_play)
                     if family == "basketball" and _is_basketball_dunk(scoring_play):

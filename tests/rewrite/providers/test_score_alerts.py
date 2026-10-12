@@ -231,7 +231,7 @@ def test_football_pick_six_detail_uses_returner_and_quarterback() -> None:
     assert alert["detail"] == "THOMAS 12YD | PRESCOTT"
 
 
-def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> None:
+def test_basketball_score_alerts_report_q4_scores_lead_changes_and_final_scores() -> None:
     tracker = ScoreAlertTracker(clock=lambda: 100.0)
     baseline = {
         "kind": "scoreboard", "id": "nba-coalesced", "sport": "nba", "state": "in",
@@ -255,6 +255,7 @@ def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> 
         "situation": {"scoring_plays": [{
             "team": "NY", "scorer": "BRUNSON", "type": "Jump Shot",
             "text": "Brunson makes 25-foot three point jumper", "score_value": 3,
+            "period": "2nd",
         }]},
     }])
     alerts = tracker.recent()
@@ -269,7 +270,7 @@ def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> 
         "away_score": 13,
         "situation": {"scoring_plays": [{
             "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
-            "score_value": 2,
+            "score_value": 2, "period": "3rd",
         }]},
     }])
     alerts = tracker.recent()
@@ -285,7 +286,7 @@ def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> 
         "away_score": 13,
         "situation": {"scoring_plays": [{
             "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
-            "score_value": 2,
+            "score_value": 2, "period": "4th",
         }]},
     }])
     alerts = tracker.recent()
@@ -322,6 +323,40 @@ def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> 
     assert len(final_alerts) == 1
     assert final_alerts[0]["headline"] == "GAME WINNING DUNK"
     assert final_alerts[0]["points"] == 2
+
+
+def test_basketball_non_lead_scores_alert_only_in_q4() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "nba-q4-only", "sport": "nba", "state": "in",
+        "status": "Q3 04:00", "home_abbr": "CLE", "away_abbr": "NY",
+        "home_score": 20, "away_score": 18,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "home_score": 22,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MOBLEY", "type": "Jump Shot",
+            "score_value": 2, "period": "3rd",
+        }]},
+    }])
+    assert tracker.recent() == ()
+
+    tracker.ingest([{
+        **baseline,
+        "status": "Q4 08:33",
+        "home_score": 24,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MOBLEY", "type": "Jump Shot",
+            "score_value": 2, "period": "4th",
+        }]},
+    }])
+
+    alerts = tracker.recent()
+    assert len(alerts) == 1
+    assert alerts[0]["team_abbr"] == "CLE"
+    assert alerts[0]["points"] == 2
 
 
 def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
