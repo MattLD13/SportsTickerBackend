@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/schedule-condition-response.json",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "live_games"
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "operator": {
+      "enum": [
+        "gt",
+        "gte"
+      ]
+    },
+    "when_mode": {
+      "const": "sports"
+    },
+    "action_sports_filter": {
+      "const": "live"
+    },
+    "ignore_pinned": {
+      "const": true,
+      "default": true
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ticker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "number",
+      "minimum": 0
+    },
+    "updated_at": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "kind",
+    "threshold",
+    "operator",
+    "when_mode",
+    "action_sports_filter",
+    "ignore_pinned",
+    "enabled",
+    "id",
+    "ticker_id",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false
+}

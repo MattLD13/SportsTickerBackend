@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/display-response.json",
+  "type": "object",
+  "properties": {
+    "api_version": {
+      "const": "v2"
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "ticker_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "observed_at": {
+          "type": "string"
+        },
+        "stale": {}
+      },
+      "required": [
+        "ticker_id",
+        "revision",
+        "observed_at",
+        "stale"
+      ],
+      "additionalProperties": false
+    },
+    "settings": {
+      "$ref": "display-settings-response.json"
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "family": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "is_shown": {
+              "type": "boolean"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "family",
+            "kind",
+            "is_shown",
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "events": {
+      "type": "object",
+      "properties": {
+        "alerts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "event_id",
+              "kind",
+              "payload"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "news": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "event_id",
+              "kind",
+              "payload"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "alerts",
+        "news"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "healthy": {
+          "type": "boolean"
+        },
+        "error": {}
+      },
+      "required": [
+        "provider",
+        "healthy",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "$ref": "hardware-profile-response.json"
+        },
+        "schedule": {
+          "$ref": "schedule-status-response.json"
+        },
+        "pairing": {
+          "type": "object",
+          "properties": {
+            "paired": {
+              "type": "boolean"
+            },
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "paired",
+            "code"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "api_version",
+    "snapshot",
+    "settings",
+    "content",
+    "events",
+    "health",
+    "meta"
+  ],
+  "additionalProperties": true
+}

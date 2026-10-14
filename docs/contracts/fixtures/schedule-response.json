@@ -1,0 +1,137 @@
+{
+  "api_version": "v2",
+  "blocks": [
+    {
+      "created_at": 1786752000.0,
+      "day_names": [
+        "monday",
+        "wednesday"
+      ],
+      "days_of_week": [
+        0,
+        2
+      ],
+      "enabled": true,
+      "end_minute": 120,
+      "id": "block-contract",
+      "mode": "sports",
+      "sports_filter": null,
+      "start_minute": 60,
+      "ticker_id": "mini-contract",
+      "updated_at": 1786752000.0
+    }
+  ],
+  "conditions": [
+    {
+      "action_sports_filter": "live",
+      "created_at": 1786752000.0,
+      "enabled": true,
+      "id": "condition-contract",
+      "ignore_pinned": true,
+      "kind": "live_games",
+      "operator": "gt",
+      "threshold": 2,
+      "ticker_id": "mini-contract",
+      "updated_at": 1786752000.0,
+      "when_mode": "sports"
+    }
+  ],
+  "days": [
+    {
+      "blocks": [
+        {
+          "created_at": 1786752000.0,
+          "day_names": [
+            "monday",
+            "wednesday"
+          ],
+          "days_of_week": [
+            0,
+            2
+          ],
+          "enabled": true,
+          "end_minute": 120,
+          "id": "block-contract",
+          "mode": "sports",
+          "sports_filter": null,
+          "start_minute": 60,
+          "ticker_id": "mini-contract",
+          "updated_at": 1786752000.0
+        }
+      ],
+      "day_of_week": 0,
+      "name": "monday"
+    },
+    {
+      "blocks": [],
+      "day_of_week": 1,
+      "name": "tuesday"
+    },
+    {
+      "blocks": [
+        {
+          "created_at": 1786752000.0,
+          "day_names": [
+            "monday",
+            "wednesday"
+          ],
+          "days_of_week": [
+            0,
+            2
+          ],
+          "enabled": true,
+          "end_minute": 120,
+          "id": "block-contract",
+          "mode": "sports",
+          "sports_filter": null,
+          "start_minute": 60,
+          "ticker_id": "mini-contract",
+          "updated_at": 1786752000.0
+        }
+      ],
+      "day_of_week": 2,
+      "name": "wednesday"
+    },
+    {
+      "blocks": [],
+      "day_of_week": 3,
+      "name": "thursday"
+    },
+    {
+      "blocks": [],
+      "day_of_week": 4,
+      "name": "friday"
+    },
+    {
+      "blocks": [],
+      "day_of_week": 5,
+      "name": "saturday"
+    },
+    {
+      "blocks": [],
+      "day_of_week": 6,
+      "name": "sunday"
+    }
+  ],
+  "effective": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 4,
+    "live_games": 0,
+    "local_day": "friday",
+    "local_time": "20:00",
+    "mode": "sports",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "Eastern Daylight Time"
+  },
+  "live_games": 0,
+  "ticker_id": "mini-contract",
+  "timezone": ""
+}

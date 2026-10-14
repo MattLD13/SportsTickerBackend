@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/display-settings-response.json",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "enum": [
+        "sports",
+        "stock",
+        "weather",
+        "music",
+        "flights",
+        "airports",
+        "clock",
+        "pairing"
+      ]
+    },
+    "sports_filter": {
+      "enum": [
+        "all",
+        "live",
+        "my_teams"
+      ]
+    },
+    "sports_presentation": {
+      "enum": [
+        "rotation",
+        "pinned"
+      ]
+    },
+    "pinned_content_id": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "weather_city": {
+      "type": "string"
+    },
+    "airport_code_iata": {
+      "type": "string"
+    },
+    "airport_code_icao": {
+      "type": "string"
+    },
+    "airport_name": {
+      "type": "string"
+    },
+    "track_flight_id": {
+      "type": "string"
+    },
+    "track_guest_name": {
+      "type": "string"
+    },
+    "brightness": {
+      "type": "number"
+    },
+    "weather_lat": {
+      "type": "number"
+    },
+    "weather_lon": {
+      "type": "number"
+    },
+    "live_delay_seconds": {
+      "type": "number"
+    },
+    "scroll_speed": {
+      "type": "number"
+    },
+    "inverted": {
+      "type": "boolean"
+    },
+    "live_delay_mode": {
+      "type": "boolean"
+    },
+    "scroll_seamless": {
+      "type": "boolean"
+    },
+    "score_alerts": {
+      "type": "boolean"
+    },
+    "active_sports": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "active_conferences": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "my_teams": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "mode",
+    "sports_filter",
+    "sports_presentation",
+    "pinned_content_id",
+    "timezone",
+    "weather_city",
+    "airport_code_iata",
+    "airport_code_icao",
+    "airport_name",
+    "track_flight_id",
+    "track_guest_name",
+    "brightness",
+    "weather_lat",
+    "weather_lon",
+    "live_delay_seconds",
+    "scroll_speed",
+    "inverted",
+    "live_delay_mode",
+    "scroll_seamless",
+    "score_alerts",
+    "active_sports",
+    "active_conferences",
+    "my_teams"
+  ],
+  "additionalProperties": false
+}

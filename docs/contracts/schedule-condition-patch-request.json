@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/schedule-condition-patch-request.json",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "pattern": "^\\s*(?:[lL][iI][vV][eE]_[gG][aA][mM][eE][sS])\\s*$"
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "operator": {
+      "type": "string",
+      "pattern": "^\\s*(?:[gG][tT]|[gG][tT][eE])\\s*$",
+      "default": "gt"
+    },
+    "when_mode": {
+      "type": "string",
+      "pattern": "^\\s*(?:[sS][pP][oO][rR][tT][sS])\\s*$",
+      "default": "sports"
+    },
+    "action_sports_filter": {
+      "type": "string",
+      "pattern": "^\\s*(?:[lL][iI][vV][eE])\\s*$",
+      "default": "live"
+    },
+    "ignore_pinned": {
+      "const": true,
+      "default": true
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

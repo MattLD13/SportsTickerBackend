@@ -1,0 +1,12 @@
+{
+  "api_version": "v2",
+  "firmware": {
+    "binary_url": "https://example.com/mini.bin",
+    "hardware": "esp32-s3",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size": 65536,
+    "target": "esp32s3",
+    "version": "mini-1"
+  },
+  "ticker_id": "mini-contract"
+}

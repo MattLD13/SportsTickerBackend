@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/device-registration-request.json",
+  "type": "object",
+  "properties": {
+    "device_id": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "name": {
+      "type": "string",
+      "default": "Ticker"
+    },
+    "metadata": {
+      "type": "object",
+      "default": {}
+    },
+    "profile": {
+      "$ref": "hardware-profile-request.json"
+    },
+    "pairing_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "device_id"
+  ],
+  "additionalProperties": false
+}

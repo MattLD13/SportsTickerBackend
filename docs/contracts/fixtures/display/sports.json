@@ -1,0 +1,91 @@
+{
+  "api_version": "v2",
+  "snapshot": {
+    "ticker_id": "sports-contract",
+    "revision": 7,
+    "observed_at": "2026-08-15T00:00:00+00:00",
+    "stale": false
+  },
+  "settings": {
+    "active_sports": {},
+    "active_conferences": {},
+    "my_teams": [],
+    "mode": "sports",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "pinned_content_id": "",
+    "brightness": 100.0,
+    "inverted": false,
+    "timezone": "",
+    "weather_city": "New York",
+    "weather_lat": 40.7128,
+    "weather_lon": -74.006,
+    "airport_code_iata": "EWR",
+    "airport_code_icao": "KEWR",
+    "airport_name": "Newark Liberty International",
+    "track_flight_id": "",
+    "track_guest_name": "",
+    "live_delay_mode": false,
+    "live_delay_seconds": 45.0,
+    "scroll_seamless": true,
+    "scroll_speed": 0.03,
+    "score_alerts": true
+  },
+  "content": {
+    "sports": [
+      {
+        "id": "nfl-live",
+        "family": "sports",
+        "kind": "scoreboard",
+        "is_shown": true,
+        "data": {
+          "sport": "nfl",
+          "state": "in",
+          "home_abbr": "NYG",
+          "away_abbr": "DAL",
+          "home_score": "7",
+          "away_score": "3"
+        }
+      }
+    ],
+    "weather": [],
+    "music": [],
+    "flights": [],
+    "airports": [],
+    "golf": [],
+    "racing": [],
+    "clock": [],
+    "status": [],
+    "stock": []
+  },
+  "events": {
+    "alerts": [
+      {
+        "event_id": "score-1",
+        "kind": "score_alert",
+        "payload": {
+          "id": "score-1",
+          "headline": "TOUCHDOWN"
+        }
+      }
+    ],
+    "news": [
+      {
+        "event_id": "news-1",
+        "kind": "news",
+        "payload": {
+          "id": "news-1",
+          "text": "Contract news"
+        }
+      }
+    ]
+  },
+  "health": {
+    "provider": "fixture",
+    "healthy": true,
+    "error": null
+  },
+  "meta": {
+    "stale": false
+  }
+}

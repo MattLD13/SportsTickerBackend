@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/schedule-block-response.json",
+  "type": "object",
+  "properties": {
+    "days_of_week": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 6
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "start_minute": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1440
+    },
+    "end_minute": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1440
+    },
+    "mode": {
+      "enum": [
+        "sports",
+        "stock",
+        "weather",
+        "music",
+        "flights",
+        "airports",
+        "clock"
+      ]
+    },
+    "sports_filter": {
+      "enum": [
+        "all",
+        "live",
+        "my_teams",
+        null
+      ]
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ticker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "number",
+      "minimum": 0
+    },
+    "updated_at": {
+      "type": "number",
+      "minimum": 0
+    },
+    "day_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "days_of_week",
+    "start_minute",
+    "end_minute",
+    "mode",
+    "sports_filter",
+    "enabled",
+    "id",
+    "ticker_id",
+    "created_at",
+    "updated_at",
+    "day_names"
+  ],
+  "additionalProperties": false
+}

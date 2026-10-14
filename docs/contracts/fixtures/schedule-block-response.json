@@ -1,0 +1,19 @@
+{
+  "created_at": 1786752000.0,
+  "day_names": [
+    "monday",
+    "wednesday"
+  ],
+  "days_of_week": [
+    0,
+    2
+  ],
+  "enabled": true,
+  "end_minute": 120,
+  "id": "block-contract",
+  "mode": "sports",
+  "sports_filter": null,
+  "start_minute": 60,
+  "ticker_id": "mini-contract",
+  "updated_at": 1786752000.0
+}

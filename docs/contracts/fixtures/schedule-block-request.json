@@ -1,0 +1,11 @@
+{
+  "days_of_week": [
+    0,
+    0,
+    2
+  ],
+  "end_minute": 120,
+  "mode": " SPORTS ",
+  "sports_filter": null,
+  "start_minute": 60
+}

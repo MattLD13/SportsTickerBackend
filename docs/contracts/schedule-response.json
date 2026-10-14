@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/schedule-response.json",
+  "type": "object",
+  "properties": {
+    "api_version": {
+      "const": "v2"
+    },
+    "ticker_id": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "day_of_week": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "name": {
+            "type": "string"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "schedule-block-response.json"
+            }
+          }
+        },
+        "required": [
+          "day_of_week",
+          "name",
+          "blocks"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 7,
+      "maxItems": 7
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "schedule-block-response.json"
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "$ref": "schedule-condition-response.json"
+      }
+    },
+    "live_games": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "effective": {
+      "$ref": "schedule-status-response.json"
+    }
+  },
+  "required": [
+    "api_version",
+    "ticker_id",
+    "timezone",
+    "days",
+    "blocks",
+    "conditions",
+    "live_games",
+    "effective"
+  ],
+  "additionalProperties": false
+}

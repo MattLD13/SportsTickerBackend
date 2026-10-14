@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/firmware-manifest-response.json",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "target": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "hardware": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "binary_url": {
+      "type": "string",
+      "pattern": "^https://[^/\\s]+"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 65536,
+      "maximum": 2093056
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "version",
+    "target",
+    "hardware",
+    "binary_url",
+    "size",
+    "sha256"
+  ],
+  "additionalProperties": false
+}

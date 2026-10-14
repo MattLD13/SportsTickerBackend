@@ -1,0 +1,19 @@
+{
+  "capabilities": {
+    "asset_cache": false,
+    "color_depth": 16,
+    "modes": [
+      "sports"
+    ],
+    "ota": true
+  },
+  "display": {
+    "height": 32,
+    "orientation": "landscape",
+    "panel_count": 1,
+    "width": 64
+  },
+  "firmware": "unknown",
+  "hardware": "esp32-s3",
+  "product_family": "mini"
+}

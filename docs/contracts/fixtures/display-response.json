@@ -1,0 +1,92 @@
+{
+  "api_version": "v2",
+  "content": {},
+  "events": {
+    "alerts": [],
+    "news": []
+  },
+  "health": {
+    "error": null,
+    "healthy": true,
+    "provider": "scheduler"
+  },
+  "meta": {
+    "live_delay": {
+      "enabled": false,
+      "seconds": 0
+    },
+    "pairing": {
+      "code": "123456",
+      "paired": false
+    },
+    "profile": {
+      "capabilities": {
+        "asset_cache": false,
+        "color_depth": 16,
+        "modes": [
+          "sports"
+        ],
+        "ota": true
+      },
+      "display": {
+        "height": 32,
+        "orientation": "landscape",
+        "panel_count": 1,
+        "width": 64
+      },
+      "firmware": "unknown",
+      "hardware": "esp32-s3",
+      "product_family": "mini"
+    },
+    "schedule": {
+      "active": false,
+      "condition_id": null,
+      "day_of_week": 4,
+      "live_games": 0,
+      "local_day": "friday",
+      "local_time": "20:00",
+      "mode": "sports",
+      "override": false,
+      "override_expires_at": null,
+      "rule_id": null,
+      "scheduled_mode": null,
+      "scheduled_sports_filter": null,
+      "source": "base",
+      "sports_filter": "all",
+      "sports_presentation": "rotation",
+      "timezone": "Eastern Daylight Time"
+    },
+    "stale": false
+  },
+  "settings": {
+    "active_conferences": {},
+    "active_sports": {},
+    "airport_code_iata": "EWR",
+    "airport_code_icao": "KEWR",
+    "airport_name": "Newark Liberty International",
+    "brightness": 100.0,
+    "inverted": false,
+    "live_delay_mode": false,
+    "live_delay_seconds": 45.0,
+    "mode": "pairing",
+    "my_teams": [],
+    "pinned_content_id": "",
+    "score_alerts": true,
+    "scroll_seamless": true,
+    "scroll_speed": 0.03,
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "",
+    "track_flight_id": "",
+    "track_guest_name": "",
+    "weather_city": "New York",
+    "weather_lat": 40.7128,
+    "weather_lon": -74.006
+  },
+  "snapshot": {
+    "observed_at": "2026-08-15T00:00:00+00:00",
+    "revision": 1,
+    "stale": false,
+    "ticker_id": "mini-contract"
+  }
+}

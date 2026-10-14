@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/schedule-status-response.json",
+  "type": "object",
+  "properties": {
+    "active": {
+      "type": "boolean"
+    },
+    "override": {
+      "type": "boolean"
+    },
+    "override_expires_at": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "source": {
+      "enum": [
+        "base",
+        "time",
+        "condition",
+        "app_override"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "sports",
+        "stock",
+        "weather",
+        "music",
+        "flights",
+        "airports",
+        "clock"
+      ]
+    },
+    "sports_filter": {
+      "enum": [
+        "all",
+        "live",
+        "my_teams"
+      ]
+    },
+    "sports_presentation": {
+      "enum": [
+        "rotation",
+        "pinned"
+      ]
+    },
+    "live_games": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "local_day": {
+      "type": "string"
+    },
+    "day_of_week": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+    },
+    "local_time": {
+      "type": "string",
+      "pattern": "^\\d{2}:\\d{2}$"
+    },
+    "rule_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "condition_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scheduled_mode": {
+      "enum": [
+        "sports",
+        "stock",
+        "weather",
+        "music",
+        "flights",
+        "airports",
+        "clock",
+        null
+      ]
+    },
+    "scheduled_sports_filter": {
+      "enum": [
+        "all",
+        "live",
+        "my_teams",
+        null
+      ]
+    }
+  },
+  "required": [
+    "active",
+    "override",
+    "override_expires_at",
+    "source",
+    "mode",
+    "sports_filter",
+    "sports_presentation",
+    "live_games",
+    "timezone",
+    "local_day",
+    "day_of_week",
+    "local_time",
+    "rule_id",
+    "condition_id",
+    "scheduled_mode",
+    "scheduled_sports_filter"
+  ],
+  "additionalProperties": false
+}
