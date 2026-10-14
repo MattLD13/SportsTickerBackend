@@ -33,7 +33,7 @@ Existing manual live delay remains in scope as a behavior to preserve.
 | OTA rollback | Existing foundation. | Retain current dual-slot flow. Add evidence for failure and recovery gates. |
 | iOS modularization | Feasible, medium effort. | Split one screen and service boundary at a time. Keep BLE and token behavior stable. |
 | Pi atomic deployment | Already implemented in substance. | Keep immutable worktrees and rollback. Improve health evidence before replacing deployment. |
-| Backend service migration | Feasible and required for native WebSockets. | Replace Waitress with an ASGI server. Keep Flask HTTP routes behind an adapter during migration. |
+| Backend service migration | Gate 1 implemented in this branch. | Hypercorn serves one ASGI worker. Flask HTTP routes pass through `WsgiToAsgi`. Gate 2 still owns device WebSockets. |
 | Telemetry and CI | Partly complete. | Add stream and render metrics. Trigger checks on direct main pushes and contract changes. |
 | Quick wins | Mixed. | Require a measured benefit and target hardware evidence for every item. |
 | Thread-to-async publication | Feasible and required for stream safety. | Use `loop.call_soon_threadsafe` or a bounded thread-safe broker. Never write to event-loop queues from provider threads. |
@@ -63,10 +63,10 @@ Existing manual live delay remains in scope as a behavior to preserve.
 
 ## Transport decision
 
-The current backend is Flask over Waitress. Flask is WSGI, while device WebSockets need an ASGI route.
-The revised plan uses Hypercorn for the ASGI server boundary.
-An outer ASGI application owns WebSocket routes and adapts existing Flask HTTP routes with `asgiref.wsgi.WsgiToAsgi`.
-The backend runtime must start once. Initial deployment uses one worker until shared state has a proven design.
+The current backend uses Hypercorn with one ASGI worker.
+An outer ASGI application owns runtime lifecycle and adapts Flask HTTP routes with `asgiref.wsgi.WsgiToAsgi`.
+Gate 2 adds the device WebSocket route. The ASGI application currently rejects WebSocket scopes.
+The backend runtime starts once. Keep one worker until shared state has a proven design.
 The Pi service remains separate from the backend service.
 
 Provider work runs in standard background threads. WebSocket queues run on the ASGI event loop.

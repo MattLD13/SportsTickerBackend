@@ -33,19 +33,20 @@ Snapshot revisions identify backend replacements. They do not define a replayabl
 
 ## Deployment
 
-`sports_ticker/server.py` starts the production application, refresh runtime, and Waitress HTTP server.
+`sports_ticker/server.py` starts Hypercorn with one ASGI worker.
+`sports_ticker/asgi.py` owns the production runtime through ASGI lifespan and adapts existing Flask HTTP routes with `WsgiToAsgi`.
 `ticker.service` starts that backend entry point.
 `ticker-controller.service` starts `python3 -m ticker_core` on the Pi.
 `setup.sh` installs Pi releases as immutable Git worktrees under `/opt/sports-ticker`.
 The Pi service stores runtime data under `/home/mld/ticker` outside each release.
 `updater.py` manages release updates. Existing deployment workflows remain in `.github/workflows/`.
 
-## Planned stream transport
+## Device stream status
 
-The revised SOW replaces Waitress with Hypercorn as the backend transport target.
-An outer ASGI application will own WebSocket routes and will adapt existing Flask HTTP routes through `asgiref.wsgi.WsgiToAsgi`.
-The ASGI application must start one `BackendRuntime` owner and stop it during shutdown.
-The service must run one worker until cross-worker snapshot publication has a design and validation.
+The current ASGI application serves existing Flask HTTP routes and owns one `BackendRuntime` lifecycle.
+`TICKER_HTTP_THREADS` bounds concurrent Flask work through per-request thread-sensitive contexts.
+The WebSocket scope remains closed until Gate 2 defines and implements the device stream.
+The service runs one worker until cross-worker snapshot publication has a design and validation.
 The Pi controller service remains a separate process and release.
 
 Read [the revised engineering SOW](docs/master-engineering-sow.md) for stream ownership, rollout gates, and replay requirements.

@@ -30,7 +30,7 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 
 | Capability | Current owner | Current state |
 |---|---|---|
-| Backend service | `sports_ticker/server.py` | Flask uses Waitress and one refresh runtime. |
+| Backend service | `sports_ticker/server.py`, `sports_ticker/asgi.py` | Hypercorn serves one ASGI worker. Flask HTTP routes use `WsgiToAsgi`. Gate 2 WebSocket routes are not implemented yet. |
 | V2 snapshot | `sports_ticker/projections/data_api.py` | Devices read `/api/v2/tickers/<ticker_id>/data`. |
 | Pi delta application | `ticker_core/protocol/model.py` | Deltas update local state after HTTP polling. |
 | Pi card surfaces | `ticker_core/app/viewport.py` | Changed cards render asynchronously and retain separate surfaces. |
@@ -79,17 +79,15 @@ Generate narrow DTOs only after Python, Swift, and C++ contracts agree.
 The existing `docs/contracts/device-registration.json` differs from route defaults and accepted fields.
 Resolve that mismatch before using schemas as runtime request gates.
 
-## Workstream 3: Move backend transport to ASGI
+## Workstream 3: Serve the backend through ASGI
 
-Replace Waitress with Hypercorn serving one outer ASGI application.
-The outer ASGI application will own WebSocket routes.
-It will adapt existing Flask HTTP routes through `asgiref.wsgi.WsgiToAsgi` during migration.
-Keep HTTP paths, status codes, authorization, and response bodies stable.
-Keep one backend runtime owner and one worker during the initial rollout.
-Add multi-worker support only after shared publication and single-owner scheduling have evidence.
+Gate 1 serves the existing Flask HTTP application through Hypercorn and an outer ASGI application.
+`asgiref.wsgi.WsgiToAsgi` adapts Flask HTTP routes. The ASGI lifespan owns one `BackendRuntime` start and stop.
+Keep existing HTTP paths, statuses, authorization, and bodies stable. Keep one worker until shared publication has evidence.
+Preserve `TICKER_HTTP_THREADS` as a bounded concurrent WSGI request limit through per-request thread-sensitive contexts.
 Keep WebSocket queues on the ASGI event loop and bridge runtime threads as Workstream 4 defines.
-Start and stop `BackendRuntime` through the ASGI application lifecycle.
-Update `ticker.service`, runtime dependencies, setup documentation, and deployment checks together.
+Gate 1 passed HTTP parity, bounded concurrency, runtime lifecycle, and local Hypercorn smoke checks in this branch.
+Gate 2 adds the device WebSocket route. Do not open that route until its protocol and authorization checks pass.
 Keep `ticker-controller.service` separate from the backend service.
 
 ### Transport references
@@ -231,7 +229,7 @@ Do not delay or recalibrate score alerts beyond current policy.
 | Gate | Completion evidence |
 |---|---|
 | 0. SOW and contracts | Revised scope, schema inventory, request/response mismatch fixed, offline fixtures pass, Xcode state untracked, duplicate icon removed. |
-| 1. ASGI transport | Existing HTTP checks pass, health passes, one runtime starts and stops once, no API contract changes. |
+| 1. ASGI transport | Existing HTTP checks pass, bounded concurrency remains, health passes, one runtime starts and stops once, no API contract changes. |
 | 2. Device stream | Snapshot handoff, sequence replay, reset, auth, queue bounds, reconnect, and effective projection checks pass. |
 | 3. Pi client | Stream reconnects, recovers snapshots, preserves delay and overlays, and renders real `384x32` frames. |
 | 4. Mini client | Cache miss fetches once, reboot reuses validated bytes, same-URL policy changes invalidate, RAM stays bounded. |
