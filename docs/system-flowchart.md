@@ -84,7 +84,8 @@ flowchart LR
 sequenceDiagram
     participant App as Controller app
     participant Backend as V2 backend
-    participant Ticker as Main or mini ticker
+    participant Ticker as Main Pi ticker
+    participant Mini as ESP32 mini ticker
     participant Source as Sports and mode providers
     participant Cache as Local asset cache
 
@@ -92,8 +93,12 @@ sequenceDiagram
     Backend->>Backend: Persist ticker state
     Source->>Backend: Refresh provider snapshots
     Backend->>Backend: Normalize data and apply logo overrides
-    Ticker->>Backend: Register, then poll /data
+    Ticker->>Backend: Register and fetch boot snapshot
     Backend-->>Ticker: Effective settings, content, events, asset URLs
+    Ticker->>Backend: Resume /stream with stream_id and after_seq
+    Backend-->>Ticker: Sequenced projection deltas and recovery snapshots
+    Mini->>Backend: Poll /data over HTTP
+    Backend-->>Mini: Effective settings, content, events, asset URLs
     Ticker->>Cache: Resolve logo from memory or durable cache
     alt Logo is missing
         Ticker->>Cache: Download, decode, resize, and persist logo

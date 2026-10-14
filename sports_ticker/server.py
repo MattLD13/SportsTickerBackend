@@ -22,6 +22,7 @@ def server_config() -> Config:
         host = f"[{host}]"
     config.bind = [f"{host}:{port}"]
     config.workers = 1
+    config.websocket_ping_interval = 20.0
     return config
 
 

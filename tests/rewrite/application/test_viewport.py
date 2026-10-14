@@ -54,6 +54,25 @@ def test_viewport_renders_only_changed_card() -> None:
         viewport.close()
 
 
+def test_cached_pane_strip_matches_previous_composition_across_wraps() -> None:
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    panes = tuple(
+        Content(f"pane-{index}", "scoreboard", "nfl", {"down": "1st" if index % 2 == 0 else "2nd"})
+        for index in range(3)
+    )
+    try:
+        viewport.update(panes, context, "sports")
+        _drain(viewport, catalog, len(panes))
+        layout = viewport.layout
+        assert layout is not None
+        for offset in (0, 1, layout.width // 2, layout.width - 1, layout.width, layout.width + 17):
+            assert viewport.frame(offset).tobytes() == _previous_pane_composition(viewport, offset).tobytes()
+    finally:
+        viewport.close()
+
+
 def test_viewport_keeps_cold_start_unpublished_until_a_surface_is_ready() -> None:
     catalog = Catalog()
     viewport = CardViewport(catalog)
@@ -263,3 +282,34 @@ def _drain(viewport: CardViewport, catalog: Catalog, expected_calls: int) -> Non
         sleep(0.005)
     viewport.install_completed()
     assert catalog.calls == expected_calls
+
+
+def _previous_pane_composition(viewport: CardViewport, offset: int) -> Image.Image:
+    """Render with the previous per-pane loop as a pixel-equivalence oracle."""
+    with viewport._lock:
+        layout = viewport._layout
+        surfaces = dict(viewport._surfaces)
+        order = viewport._order
+    image = Image.new("RGB", (384, 32), "black")
+    if layout is None or not order:
+        return image
+    position = offset % layout.width
+    start = 0
+    index = 0
+    for index, segment in enumerate(layout.segments):
+        if start + segment.width > position:
+            break
+        start += segment.width
+    x = start - position
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(image)
+    while x < image.width:
+        segment = layout.segments[index % len(layout.segments)]
+        surface = surfaces.get(segment.item_id)
+        draw.line((x, 0, x, image.height - 1), fill=(45, 45, 45))
+        if surface is not None:
+            image.paste(surface.image, (x + 1, 0), surface.image)
+        x += segment.width
+        index += 1
+    return image

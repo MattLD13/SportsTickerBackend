@@ -97,3 +97,33 @@ def test_client_reports_http_json_and_transport_failures() -> None:
         BackendClient("https://ticker.test", session=FakeSession(FakeResponse(json_error=ValueError("bad")))).fetch_data("pi-1")
     with pytest.raises(BackendTransportError, match="offline"):
         BackendClient("https://ticker.test", session=FakeSession(requests.ConnectionError("offline"))).fetch_data("pi-1")
+
+
+def test_client_builds_a_tls_verified_device_stream_resume_url() -> None:
+    captured = {}
+
+    def connect(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return object()
+
+    client = BackendClient(
+        "https://ticker.test/base/",
+        session=FakeSession(FakeResponse(payload=_payload())),
+        stream_connector=connect,
+    )
+
+    connection = client.open_device_stream(
+        "pi 1", stream_id="stream-a", after_seq=7
+    )
+
+    assert connection is not None
+    assert captured["url"] == "wss://ticker.test/base/api/v2/tickers/pi%201/stream?stream_id=stream-a&after_seq=7"
+    assert captured["subprotocols"] == ["ticker-v2"]
+    assert captured["sslopt"]["cert_reqs"] == 2
+    assert captured["sslopt"]["check_hostname"] is True
+
+
+def test_client_requires_a_complete_stream_resume_cursor() -> None:
+    client = BackendClient("http://ticker.test", session=FakeSession(FakeResponse(payload=_payload())))
+    with pytest.raises(ValueError, match="provided together"):
+        client.open_device_stream("pi-1", stream_id="stream-a")

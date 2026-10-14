@@ -29,7 +29,7 @@ from ticker_core.protocol import BackendClient, DisplayDelta, TickerResponse, ap
 from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
-from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollSucceeded
+from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded
 from .viewport import CardViewport
 
 
@@ -331,6 +331,18 @@ class TickerApplication:
             elif isinstance(event, PollConnected):
                 self._runtime.confirm_connection()
                 self._disconnected = False
+            elif isinstance(event, PollStreamEvent):
+                record_stream = getattr(self._logger, "record_stream", None)
+                if callable(record_stream):
+                    record_stream(
+                        event.event,
+                        message_type=event.message_type,
+                        sequence=event.sequence,
+                        response_bytes=event.response_bytes,
+                        apply_ms=event.apply_ms,
+                        reconnect=event.reconnect,
+                        error_type=event.error_type,
+                    )
             else:
                 self._logger.record_poll(
                     success=False,
@@ -631,6 +643,9 @@ class _NullPiLogger:
 
     def record_poll(self, **kwargs) -> None:
         del kwargs
+
+    def record_stream(self, event, **kwargs) -> None:
+        del event, kwargs
 
     def record_payload(self, response) -> None:
         del response

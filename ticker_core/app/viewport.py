@@ -1,4 +1,4 @@
-"""Render a scrolling viewport from independent card surfaces."""
+"""Render a scrolling viewport from cached pane surfaces and a tiled strip."""
 
 from __future__ import annotations
 
@@ -105,6 +105,7 @@ class CardViewport:
         self._failed = 0
         self._worker_retries: set[tuple[int, str]] = set()
         self._layout: StripLayout | None = None
+        self._tiled_strip: Image.Image | None = None
         self._asset_generation = 0
 
     @property
@@ -236,31 +237,30 @@ class CardViewport:
             self._maybe_commit()
 
     def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
-        """Build one viewport from only cards visible at this offset."""
+        """Crop one panel from the cached tiled pane strip."""
         with self._lock:
             layout = self._layout
-            surfaces = dict(self._surfaces)
-            order = self._order
-        image = Image.new("RGB", (width, height), "black")
-        if layout is None or not order:
-            return image
+            strip = self._tiled_strip
+        if layout is None or strip is None:
+            return Image.new("RGB", (width, height), "black")
         position = offset % layout.width
-        start = 0
-        index = 0
-        for index, segment in enumerate(layout.segments):
-            if start + segment.width > position:
-                break
-            start += segment.width
-        x = start - position
-        draw = ImageDraw.Draw(image)
-        while x < width:
-            segment = layout.segments[index % len(layout.segments)]
-            surface = surfaces.get(segment.item_id)
-            draw.line((x, 0, x, height - 1), fill=(45, 45, 45))
-            if surface is not None:
-                image.paste(surface.image, (x + 1, 0), surface.image)
-            x += segment.width
-            index += 1
+        source_height = min(height, strip.height)
+        if position + width <= strip.width:
+            crop = strip.crop((position, 0, position + width, source_height))
+            if source_height == height:
+                return crop
+            image = Image.new("RGB", (width, height), "black")
+            image.paste(crop, (0, 0))
+            return image
+        image = Image.new("RGB", (width, height), "black")
+        destination_x = 0
+        remaining = width
+        while remaining > 0:
+            span = min(remaining, layout.width - position)
+            image.paste(strip.crop((position, 0, position + span, source_height)), (destination_x, 0))
+            destination_x += span
+            remaining -= span
+            position = 0
         return image
 
     def close(self) -> None:
@@ -324,6 +324,7 @@ class CardViewport:
         if not self._desired:
             self._surfaces = {}
             self._layout = None
+            self._tiled_strip = None
             self._generation = self._staging_generation
             return
         all_ready = all(
@@ -341,8 +342,15 @@ class CardViewport:
         layout = self._layout_now(committed)
         if layout is None:
             return
+        previous_surfaces = self._surfaces
+        strip_changed = layout != self._layout or any(
+            previous_surfaces.get(item_id) is not surface
+            for item_id, surface in committed.items()
+        )
         self._surfaces = committed
         self._layout = layout
+        if strip_changed or self._tiled_strip is None:
+            self._tiled_strip = _compose_tiled_strip(layout, committed)
         self._generation = self._staging_generation
 
     def _restart_worker_locked(self) -> None:
@@ -404,6 +412,28 @@ def _matches(request: _CardRequest, surface: _CardSurface) -> bool:
         and request.mode == surface.mode
         and request.asset_generation == surface.asset_generation
     )
+
+
+def _compose_tiled_strip(
+    layout: StripLayout,
+    surfaces: Mapping[str, _CardSurface],
+) -> Image.Image:
+    """Flatten and tile committed panes once after a layout generation completes."""
+    height = max((surface.image.height for surface in surfaces.values()), default=32)
+    pane_strip = Image.new("RGB", (layout.width, height), "black")
+    draw = ImageDraw.Draw(pane_strip)
+    x = 0
+    for segment in layout.segments:
+        draw.line((x, 0, x, height - 1), fill=(45, 45, 45))
+        surface = surfaces.get(segment.item_id)
+        if surface is not None:
+            pane_strip.paste(surface.image, (x + 1, 0), surface.image)
+        x += segment.width
+    repeat_count = (384 + layout.width - 1) // layout.width + 1
+    tiled = Image.new("RGB", (layout.width * repeat_count, height), "black")
+    for index in range(repeat_count):
+        tiled.paste(pane_strip, (index * layout.width, 0))
+    return tiled
 
 
 _PROCESS_CATALOG: ContentRendererCatalog | None = None

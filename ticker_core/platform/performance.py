@@ -195,6 +195,38 @@ class TickerPiLogger:
             record["error"] = _error_text(error)
         self._enqueue(record)
 
+    def record_stream(
+        self,
+        event: str,
+        *,
+        message_type: str | None = None,
+        sequence: int | None = None,
+        response_bytes: int | None = None,
+        apply_ms: float | None = None,
+        reconnect: bool = False,
+        error_type: str | None = None,
+    ) -> None:
+        """Aggregate stream health without writing from the display loop."""
+        if not self._started or event not in {"connected", "connect_failed", "disconnected", "message"}:
+            return
+        now = self._monotonic()
+        wall_time = self._wall_clock()
+        if self._window is None:
+            self._window = _Window(now, wall_time)
+        self._window.add_stream(
+            event=event,
+            message_type=message_type,
+            sequence=sequence,
+            response_bytes=response_bytes,
+            apply_ms=apply_ms,
+            reconnect=reconnect,
+            error_type=error_type,
+            finished_at=now,
+            wall_time=wall_time,
+        )
+        if now - self._window.started_at >= self._window_seconds:
+            self._flush_window()
+
     def record_payload(self, response: object) -> None:
         """Record bounded facts from one accepted backend payload."""
         if not self._started:
@@ -238,7 +270,7 @@ class TickerPiLogger:
 
     def _flush_window(self, *, force: bool = False) -> None:
         window = self._window
-        if window is None or (not window.frames and not window.ticks):
+        if window is None or not window.has_activity:
             return
         if not force and self._monotonic() - window.started_at < self._window_seconds:
             return
@@ -319,6 +351,8 @@ class _Window:
         "interval_ms", "scheduled_ms", "brightness_total", "brightness_min", "brightness_max",
         "kinds", "modes", "inverted", "stale", "connection_lost", "overruns", "samples",
         "width", "height", "viewport", "last_present_age", "ended_at", "wall_ended",
+        "stream_connections", "stream_reconnects", "stream_disconnects", "stream_connect_failures",
+        "stream_messages", "stream_message_bytes", "stream_apply_ms", "stream_last_sequence", "stream_errors",
     )
 
     def __init__(self, started_at: float, wall_started: datetime) -> None:
@@ -348,6 +382,26 @@ class _Window:
         self.last_present_age: float | None = None
         self.ended_at = started_at
         self.wall_ended = wall_started
+        self.stream_connections = 0
+        self.stream_reconnects = 0
+        self.stream_disconnects = 0
+        self.stream_connect_failures = 0
+        self.stream_messages: Counter[str] = Counter()
+        self.stream_message_bytes = 0
+        self.stream_apply_ms = _Metric()
+        self.stream_last_sequence: int | None = None
+        self.stream_errors: Counter[str] = Counter()
+
+    @property
+    def has_activity(self) -> bool:
+        return bool(
+            self.frames
+            or self.ticks
+            or self.stream_connections
+            or self.stream_disconnects
+            or self.stream_connect_failures
+            or self.stream_messages
+        )
 
     def add_tick(
         self,
@@ -368,6 +422,39 @@ class _Window:
         if viewport is not None:
             self.viewport = dict(viewport)
         self.last_present_age = last_present_age
+        self.ended_at = finished_at
+        self.wall_ended = wall_time
+
+    def add_stream(
+        self,
+        *,
+        event: str,
+        message_type: str | None,
+        sequence: int | None,
+        response_bytes: int | None,
+        apply_ms: float | None,
+        reconnect: bool,
+        error_type: str | None,
+        finished_at: float,
+        wall_time: datetime,
+    ) -> None:
+        if event == "connected":
+            self.stream_connections += 1
+            self.stream_reconnects += int(reconnect)
+        elif event == "disconnected":
+            self.stream_disconnects += 1
+        elif event == "connect_failed":
+            self.stream_connect_failures += 1
+        elif event == "message":
+            kind = message_type if message_type in {"snapshot", "delta", "ready"} else "other"
+            self.stream_messages[kind] += 1
+            self.stream_message_bytes += max(0, int(response_bytes or 0))
+            if apply_ms is not None:
+                self.stream_apply_ms.add(max(0.0, float(apply_ms)))
+            if isinstance(sequence, int) and not isinstance(sequence, bool) and sequence >= 0:
+                self.stream_last_sequence = sequence
+        if error_type:
+            self.stream_errors[str(error_type)[:80]] += 1
         self.ended_at = finished_at
         self.wall_ended = wall_time
 
@@ -456,6 +543,17 @@ class _Window:
             },
             "viewport": self.viewport,
             "last_present_age_s": self.last_present_age,
+            "stream": {
+                "connections": self.stream_connections,
+                "reconnects": self.stream_reconnects,
+                "disconnects": self.stream_disconnects,
+                "connect_failures": self.stream_connect_failures,
+                "messages": dict(self.stream_messages),
+                "message_bytes": self.stream_message_bytes,
+                "decode_apply_ms": self.stream_apply_ms.summary(),
+                "last_sequence": self.stream_last_sequence,
+                "errors": dict(self.stream_errors),
+            },
         }
         if system_snapshot is not None:
             try:

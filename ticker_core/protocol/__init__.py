@@ -3,6 +3,7 @@
 from .client import (
     DATA_ENDPOINT_TEMPLATE,
     HEARTBEAT_ENDPOINT_TEMPLATE,
+    STREAM_ENDPOINT_TEMPLATE,
     TICKER_ENDPOINT_TEMPLATE,
     BackendClient,
     BackendError,
@@ -12,6 +13,7 @@ from .client import (
     DeviceRegistration,
     REGISTRATION_ENDPOINT,
 )
+from .stream import DeviceStreamState, StreamMessage
 from .model import (
     Alert,
     ContentItem,
@@ -38,6 +40,7 @@ __all__ = [
     "BackendPayloadError",
     "BackendTransportError",
     "DeviceRegistration",
+    "DeviceStreamState",
     "ContentItem",
     "DisplayDelta",
     "DisplayItemDelta",
@@ -49,6 +52,8 @@ __all__ = [
     "PayloadValidationError",
     "PollBackoff",
     "REGISTRATION_ENDPOINT",
+    "STREAM_ENDPOINT_TEMPLATE",
+    "StreamMessage",
     "TelemetrySnapshot",
     "TICKER_ENDPOINT_TEMPLATE",
     "TickerResponse",

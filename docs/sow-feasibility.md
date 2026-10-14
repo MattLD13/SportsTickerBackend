@@ -19,11 +19,11 @@ Existing manual live delay remains in scope as a behavior to preserve.
 | Repository hygiene and packaging | Partly complete. | Keep existing docs, pytest, Ruff, Mypy, and CI work. Stage package metadata and dependency migration separately. |
 | V1 purge | Incorrect as a blanket delete list. | Preserve active launchers, diagnostics, dashboards, and public demo assets. Remove only paths proven unused. |
 | Renderer ports | Feasible as maintenance work. | Refactor one family at a time and preserve real `384x32` output. |
-| Pre-rendered ribbon | Unproven and partly redundant. | Benchmark against existing asynchronous card surfaces before adoption. |
+| Pane composition | The cached tiled strip is implemented locally. | It cuts Windows p50 composition time by 94.7% at 60 repeated panes. It adds about 1 MiB. Pi hardware measurements remain. |
 | Pillow vectorization | Feasible for measured hot loops. | Preserve alpha rules, edge behavior, and connected-border removal. |
 | Provider demand polling | Feasible with policy tests. | Separate provider scheduling from device transport and record request volume first. |
 | HTTP pooling and caching | Feasible by provider adapter. | Add timeouts and conditional requests only where upstreams support them. |
-| Device WebSocket deltas | Feasible, high integration risk. | Add an ASGI boundary, effective-projection stream, sequence replay, and full-snapshot recovery. |
+| Device WebSocket deltas | Device Stream V1 is implemented locally. | Effective projection, sequence replay, bounded queues, snapshot recovery, and Pi reconnect are covered. Device credentials and deployed proxy tests remain. |
 | Deep-copy-free snapshot history | Partly complete. | Bounded immutable snapshot references exist. Per-game delta history is a separate design. |
 | TV delay calibration | Dropped. | Keep the existing manual delay and overlay behavior. |
 | Cross-platform schemas | Feasible, high value. | Fix current registration mismatch and add request, response, schedule, profile, firmware, and display schemas. |
@@ -33,11 +33,11 @@ Existing manual live delay remains in scope as a behavior to preserve.
 | OTA rollback | Existing foundation. | Retain current dual-slot flow. Add evidence for failure and recovery gates. |
 | iOS modularization | Feasible, medium effort. | Split one screen and service boundary at a time. Keep BLE and token behavior stable. |
 | Pi atomic deployment | Already implemented in substance. | Keep immutable worktrees and rollback. Improve health evidence before replacing deployment. |
-| Backend service migration | Gate 1 implemented in this branch. | Hypercorn serves one ASGI worker. Flask HTTP routes pass through `WsgiToAsgi`. Gate 2 still owns device WebSockets. |
+| Backend service migration | Gates 1 and core Gate 2 are implemented in this branch. | Hypercorn serves HTTP and device WebSockets. Production providers and proxy behavior need deployment checks. |
 | Telemetry and CI | Partly complete. | Add stream and render metrics. Trigger checks on direct main pushes and contract changes. |
 | Quick wins | Mixed. | Require a measured benefit and target hardware evidence for every item. |
-| Thread-to-async publication | Feasible and required for stream safety. | Use `loop.call_soon_threadsafe` or a bounded thread-safe broker. Never write to event-loop queues from provider threads. |
-| WebSocket keepalive | Feasible with proxy validation. | Send Ping frames every 20 seconds, check Pong timeouts, and test reconnect through the deployed proxy. |
+| Thread-to-async publication | Implemented through event-loop projection. | The ASGI projector reads connected ticker projections. Provider threads never write to WebSocket queues. |
+| WebSocket keepalive | Ping and client Pong are implemented. | Hypercorn sends Ping frames every 20 seconds. Hypercorn has no Pong timeout setting. Validate reconnect through the deployed proxy. |
 | Mini TLS and sprite fetches | Feasible with device limits. | Keep Mini on HTTP polling first and serialize TLS work. Measure internal heap before enabling WSS. |
 | Off-hours provider backoff | Feasible with explicit policy. | Respect market calendars and pause flights or golf only when no online or scheduled subscriber needs fresh data. |
 | Xcode state and icon cleanup | Complete at this baseline. | `xcuserdata` is no longer tracked. The duplicate icon is removed and the manifest points to the retained asset. |
@@ -63,15 +63,20 @@ Existing manual live delay remains in scope as a behavior to preserve.
 
 ## Transport decision
 
-The current backend uses Hypercorn with one ASGI worker.
-An outer ASGI application owns runtime lifecycle and adapts Flask HTTP routes with `asgiref.wsgi.WsgiToAsgi`.
-Gate 2 adds the device WebSocket route. The ASGI application currently rejects WebSocket scopes.
+The current work branch uses Hypercorn with one ASGI worker.
+An outer ASGI application owns runtime lifecycle, adapts Flask HTTP routes, and serves the V2 device WebSocket.
+The stream sends projected snapshots and deltas. The Pi uses HTTP for boot and WebSocket for updates.
 The backend runtime starts once. Keep one worker until shared state has a proven design.
 The Pi service remains separate from the backend service.
 
-Provider work runs in standard background threads. WebSocket queues run on the ASGI event loop.
-Use `loop.call_soon_threadsafe` or a bounded thread-safe bridge when providers publish updates.
-Configure 20-second Ping frames and a Pong timeout. Validate actual proxy idle limits instead of promising that connections never drop.
+Provider work runs in standard background threads. Snapshot and API mutation notifications wake active ticker projections.
+The ASGI projector runs reads in a worker thread and writes stream queues on the event loop.
+A one-second check catches schedule and expiry changes without direct notifications.
+Hypercorn sends 20-second Ping frames and the Pi client returns Pong frames. Hypercorn does not configure Pong timeouts.
+Validate proxy idle limits and reconnect behavior before deployment.
+
+The stream route checks registered ticker identity. It keeps the current public data route access policy.
+Add device-specific credentials before the stream becomes a security boundary for private content.
 
 The Mini will use the existing HTTP snapshot path in its first stream release.
 It will serialize sprite downloads and other TLS work.
@@ -90,10 +95,11 @@ The Mini uses small RGB565 logos. The Pi keeps RGBA images and selects outlines 
 The sprite identity must include source bytes, rendering policy, pipeline version, target size, and format.
 The first sprite experiment can target one Mini sports logo family.
 
-The Pi viewport already caches independent card surfaces. A continuous ribbon can reduce composition work but increases memory and rebuild costs.
-Benchmark current surfaces, flattened surfaces, and a bounded ribbon with 1, 10, and 60 cards.
-Record startup, update latency, frame latency percentiles, CPU, and memory.
-Accept a new design only when it improves a recorded measure and preserves card order, wraparound, and failure recovery.
+The Pi viewport caches independent pane surfaces and one flattened tiled strip.
+The Windows benchmark shows a large composition gain and a 1 MiB cache cost at 60 panes.
+The bounded ribbon uses less memory and renders slower in this comparison.
+The benchmark checks startup, pane updates, frame latency, memory, wraparound, and pixel equivalence.
+Pi performance needs measurements on the deployed board.
 
 ## Risks and dependencies
 

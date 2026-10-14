@@ -43,9 +43,11 @@ The Pi service stores runtime data under `/home/mld/ticker` outside each release
 
 ## Device stream status
 
-The current ASGI application serves existing Flask HTTP routes and owns one `BackendRuntime` lifecycle.
+The ASGI application serves Flask HTTP routes and owns one `BackendRuntime` lifecycle.
 `TICKER_HTTP_THREADS` bounds concurrent Flask work through per-request thread-sensitive contexts.
-The WebSocket scope remains closed until Gate 2 defines and implements the device stream.
+`WS /api/v2/tickers/<ticker_id>/stream` sends effective projection snapshots and sequenced deltas.
+The Pi reads an HTTP snapshot at boot, then resumes the stream with `stream_id` and `after_seq`.
+Read [Device Stream V1](docs/contracts/device-stream-v1.md) for replay and recovery rules.
 The service runs one worker until cross-worker snapshot publication has a design and validation.
 The Pi controller service remains a separate process and release.
 

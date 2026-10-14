@@ -46,5 +46,6 @@ Clients consume projected domain facts and explicit family and kind values.
 | Pi polling | `ticker_core/protocol/client.py` and `ticker_core/protocol/polling.py` |
 | Protocol validation coverage | `tests/rewrite/protocol/` |
 
-The current clients poll complete snapshots. Snapshot revisions do not provide delta ordering or replay guarantees.
-Provider WebSocket connections do not define a device-facing WebSocket contract.
+The HTTP snapshot route remains the Pi boot path. The main Pi uses Device Stream V1 for sequenced updates.
+Snapshot revisions do not define stream ordering or replay. Provider WebSockets do not define the device stream contract.
+Read [Device Stream V1](contracts/device-stream-v1.md) for its envelope and recovery rules.

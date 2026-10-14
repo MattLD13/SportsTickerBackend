@@ -38,6 +38,19 @@ class SnapshotStore:
         self._lock = RLock()
         self._snapshots: dict[str, TickerSnapshot] = {}
         self._history: dict[str, deque[_StoredSnapshot]] = {}
+        self._change_listeners: set[Callable[[str], None]] = set()
+
+    def add_change_listener(self, listener: Callable[[str], None]) -> None:
+        """Register one callback for changed ticker snapshots."""
+        if not callable(listener):
+            raise TypeError("snapshot change listener must be callable")
+        with self._lock:
+            self._change_listeners.add(listener)
+
+    def remove_change_listener(self, listener: Callable[[str], None]) -> None:
+        """Remove one registered snapshot callback."""
+        with self._lock:
+            self._change_listeners.discard(listener)
 
     def replace(self, snapshot: TickerSnapshot) -> TickerSnapshot:
         """Atomically replace a ticker snapshot and assign its next revision."""
@@ -57,7 +70,13 @@ class SnapshotStore:
             cutoff = stored_at - self._history_seconds
             while len(history) > 1 and history[0].stored_at < cutoff:
                 history.popleft()
-            return stored
+            listeners = tuple(self._change_listeners)
+        for listener in listeners:
+            try:
+                listener(stored.ticker_id)
+            except Exception:
+                continue
+        return stored
 
     def get(self, ticker_id: str) -> TickerSnapshot | None:
         """Return the latest stable snapshot for a ticker, or None when absent."""

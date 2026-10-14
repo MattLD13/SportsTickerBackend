@@ -1,0 +1,119 @@
+"""Validate and apply sequenced device stream messages."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Any
+
+from .model import PayloadValidationError, TickerResponse
+
+
+@dataclass(frozen=True, slots=True)
+class StreamMessage:
+    """Hold one validated server envelope."""
+
+    kind: str
+    stream_id: str
+    sequence: int
+    base_sequence: int
+    payload: Mapping[str, Any] | None = None
+    changes: Mapping[str, Any] | None = None
+    removed: tuple[str, ...] = ()
+
+    @classmethod
+    def from_payload(cls, value: object) -> "StreamMessage":
+        """Validate the envelope before it changes controller state."""
+        if not isinstance(value, Mapping):
+            raise PayloadValidationError("stream message must be an object")
+        kind = value.get("type")
+        if kind not in {"snapshot", "delta", "ready"}:
+            raise PayloadValidationError("stream message type is invalid")
+        version = value.get("protocol_version")
+        if isinstance(version, bool) or not isinstance(version, int) or version != 1:
+            raise PayloadValidationError("stream protocol version is unsupported")
+        stream_id = value.get("stream_id")
+        if not isinstance(stream_id, str) or not stream_id.strip():
+            raise PayloadValidationError("stream_id must be a non-empty string")
+        sequence = _sequence(value.get("seq"), "seq")
+        base_sequence = _sequence(value.get("base_seq"), "base_seq")
+        if kind in {"snapshot", "ready"} and base_sequence != sequence:
+            raise PayloadValidationError("snapshot and ready base_seq must match seq")
+        if kind == "delta" and sequence != base_sequence + 1:
+            raise PayloadValidationError("delta seq must follow base_seq")
+        if not isinstance(value.get("server_time"), str):
+            raise PayloadValidationError("server_time must be a string")
+        payload = value.get("payload")
+        changes = value.get("changes")
+        removed = value.get("removed", ())
+        if kind == "snapshot" and not isinstance(payload, Mapping):
+            raise PayloadValidationError("snapshot payload must be an object")
+        if kind == "delta" and not isinstance(changes, Mapping):
+            raise PayloadValidationError("delta changes must be an object")
+        if not isinstance(removed, (list, tuple)) or any(not isinstance(item, str) for item in removed):
+            raise PayloadValidationError("delta removed must contain strings")
+        return cls(
+            kind,
+            stream_id.strip(),
+            sequence,
+            base_sequence,
+            dict(payload) if isinstance(payload, Mapping) else None,
+            dict(changes) if isinstance(changes, Mapping) else None,
+            tuple(removed),
+        )
+
+
+class DeviceStreamState:
+    """Apply snapshots and contiguous deltas while rejecting sequence gaps."""
+
+    def __init__(self) -> None:
+        self.stream_id: str | None = None
+        self.sequence: int | None = None
+        self.payload: dict[str, Any] | None = None
+
+    @property
+    def cursor(self) -> tuple[str, int] | None:
+        """Return a reconnect cursor after receiving a full snapshot."""
+        if self.stream_id is None or self.sequence is None or self.payload is None:
+            return None
+        return self.stream_id, self.sequence
+
+    def apply(self, message: StreamMessage) -> TickerResponse | None:
+        """Apply a new message and return changed effective display data."""
+        if message.kind == "ready":
+            if self.cursor != (message.stream_id, message.sequence):
+                raise PayloadValidationError("ready cursor does not match local stream state")
+            return None
+        if message.kind == "snapshot":
+            if (
+                self.stream_id == message.stream_id
+                and self.sequence is not None
+                and message.sequence < self.sequence
+            ):
+                return None
+            payload = deepcopy(dict(message.payload or {}))
+        else:
+            if self.stream_id != message.stream_id or self.sequence is None or self.payload is None:
+                raise PayloadValidationError("delta arrived without its matching snapshot")
+            if message.sequence <= self.sequence:
+                return None
+            if message.base_sequence != self.sequence or message.sequence != self.sequence + 1:
+                raise PayloadValidationError("delta sequence is stale or has a gap")
+            payload = deepcopy(self.payload)
+            payload.update(deepcopy(dict(message.changes or {})))
+            for key in message.removed:
+                payload.pop(key, None)
+        response = TickerResponse.from_payload(payload)
+        self.stream_id = message.stream_id
+        self.sequence = message.sequence
+        self.payload = payload
+        return response
+
+
+def _sequence(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise PayloadValidationError(f"{name} must be a non-negative integer")
+    return value
+
+\n

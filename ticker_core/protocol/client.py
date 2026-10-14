@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -13,6 +14,7 @@ from .model import PayloadValidationError, TickerResponse
 
 
 DATA_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/data"
+STREAM_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/stream"
 REGISTRATION_ENDPOINT = "/api/v2/devices/register"
 TICKER_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}"
 HEARTBEAT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/heartbeat"
@@ -83,6 +85,7 @@ class BackendClient:
         timeout_seconds: float = 5.0,
         verify_tls: bool = True,
         session: requests.Session | None = None,
+        stream_connector: Callable[..., object] | None = None,
     ) -> None:
         if not backend_url.strip():
             raise ValueError("backend_url must not be empty")
@@ -92,6 +95,7 @@ class BackendClient:
         self.timeout_seconds = timeout_seconds
         self.verify_tls = verify_tls
         self.session = session or requests.Session()
+        self._stream_connector = stream_connector
         self._last_data_body: bytes | None = None
         self.last_response_bytes: int | None = None
         self._last_data_response: TickerResponse | None = None
@@ -128,6 +132,67 @@ class BackendClient:
         self._last_data_response = parsed
         self._settings_by_ticker[device_id] = _thaw_settings(parsed.settings.data)
         return parsed
+
+    def open_device_stream(
+        self,
+        device_id: str,
+        *,
+        stream_id: str | None = None,
+        after_seq: int | None = None,
+        timeout_seconds: float = 1.0,
+    ):
+        """Open one version two device WebSocket with an optional replay cursor."""
+        if not device_id.strip():
+            raise ValueError("device_id must not be empty")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if (stream_id is None) != (after_seq is None):
+            raise ValueError("stream_id and after_seq must be provided together")
+        if stream_id is not None and not stream_id.strip():
+            raise ValueError("stream_id must not be empty")
+        if after_seq is not None and (
+            isinstance(after_seq, bool) or not isinstance(after_seq, int) or after_seq < 0
+        ):
+            raise ValueError("after_seq must be a non-negative integer")
+        try:
+            import websocket
+        except ImportError as error:
+            raise BackendTransportError("websocket-client is required for the device stream") from error
+        parsed = urlsplit(self.backend_url)
+        scheme = {"http": "ws", "https": "wss"}.get(parsed.scheme)
+        if scheme is None or not parsed.netloc:
+            raise ValueError("backend_url must use http or https")
+        prefix = parsed.path.rstrip("/")
+        path = f"{prefix}{STREAM_ENDPOINT_TEMPLATE.format(device_id=quote(device_id.strip(), safe=''))}"
+        query = urlencode({"stream_id": stream_id, "after_seq": after_seq}) if stream_id is not None else ""
+        url = urlunsplit((scheme, parsed.netloc, path, query, ""))
+        sslopt = None
+        if scheme == "wss":
+            import ssl
+
+            sslopt = {
+                "cert_reqs": ssl.CERT_REQUIRED if self.verify_tls else ssl.CERT_NONE,
+                "check_hostname": self.verify_tls,
+            }
+        try:
+            connector = self._stream_connector or websocket.create_connection
+            return connector(
+                url,
+                timeout=timeout_seconds,
+                subprotocols=["ticker-v2"],
+                sslopt=sslopt,
+                enable_multithread=True,
+            )
+        except (OSError, websocket.WebSocketException) as error:
+            raise BackendTransportError(f"WebSocket {url} failed: {error}") from error
+
+    def remember_stream_response(self, device_id: str, response: TickerResponse) -> None:
+        """Keep HTTP setting mutations based on the latest streamed projection."""
+        if not device_id.strip():
+            raise ValueError("device_id must not be empty")
+        self._settings_by_ticker[device_id] = _thaw_settings(response.settings.data)
+        self._last_data_response = response
+        self._last_data_body = None
 
     def register_device(
         self,

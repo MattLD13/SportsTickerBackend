@@ -360,6 +360,7 @@ def test_server_bind_configuration_preserves_deployment_settings(monkeypatch, ho
     config = server.server_config()
     assert config.bind == [expected]
     assert config.workers == 1
+    assert config.websocket_ping_interval == 20.0
 
 
 def test_server_main_loads_environment_and_serves_asgi(monkeypatch):

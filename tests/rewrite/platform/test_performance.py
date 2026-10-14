@@ -44,6 +44,10 @@ def test_pi_logger_writes_frame_history_and_events_off_loop(tmp_path) -> None:
         height=32,
     )
     logger.record_poll(success=False, elapsed_ms=502.5, error=TimeoutError("backend timeout"), retry_in=1.0)
+    logger.record_stream("connected")
+    logger.record_stream("message", message_type="snapshot", sequence=1, response_bytes=2500, apply_ms=0.4)
+    logger.record_stream("message", message_type="delta", sequence=2, response_bytes=800, apply_ms=0.2)
+    logger.record_stream("disconnected", reconnect=True, error_type="WebSocketConnectionClosedException")
     logger.record_issue("frame", RuntimeError("render failed"), mode="sports")
     logger.close()
 
@@ -61,6 +65,17 @@ def test_pi_logger_writes_frame_history_and_events_off_loop(tmp_path) -> None:
     assert window["flags"]["stale_frames"] == 1
     assert window["flags"]["connection_lost_frames"] == 1
     assert window["system"]["temperature_c"] == 43.2
+    assert window["stream"] == {
+        "connections": 1,
+        "reconnects": 0,
+        "disconnects": 1,
+        "connect_failures": 0,
+        "messages": {"snapshot": 1, "delta": 1},
+        "message_bytes": 3300,
+        "decode_apply_ms": {"count": 2, "min": 0.2, "avg": 0.3, "max": 0.4},
+        "last_sequence": 2,
+        "errors": {"WebSocketConnectionClosedException": 1},
+    }
     assert poll["success"] is False
     assert poll["error_type"] == "TimeoutError"
     assert issue["source"] == "frame"

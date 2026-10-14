@@ -70,3 +70,31 @@ python tools/benchmarks/pi_viewport_baseline.py --case 1 --frames 10 --paced-fra
 python -m py_compile tools/benchmarks/pi_viewport_baseline.py
 git diff --check
 ```
+
+## Pane composition comparison
+
+Run the composition comparison:
+
+```powershell
+python tools/benchmarks/pi_pane_composition.py
+```
+
+The benchmark compares the prior independent-pane loop, the current cached tiled strip, and a bounded 384x32 ribbon.
+Each method must produce identical 384x32 RGB bytes across wrap points before timing is accepted.
+The report measures 3,000 frames per strategy after warmup for 1, 10, and 60 panes.
+
+The current Windows run records these 60-pane results:
+
+| Composition | Frame p50 | Frame p95 | Retained composition memory |
+| --- | ---: | ---: | ---: |
+| Prior pane loop | 68.0 microseconds | 72.5 microseconds | Pane surfaces only |
+| Cached tiled strip | 3.5 microseconds | 4.5 microseconds | 1.04 MB |
+| Bounded ribbon | 27.6 microseconds | 30.6 microseconds | 36.9 KB |
+
+The tiled strip cuts composition p50 by 94.9 percent. Its 1.44 millisecond rebuild runs only after a pane generation commits.
+The 60-pane case takes about 2.28 seconds to prepare all pane images and 32 milliseconds to prepare one changed pane.
+The scroll fixture uses two unique sports panes repeated with unique IDs for capacity cases.
+These numbers exclude pane rendering, provider work, backend time, and Pi matrix DMA.
+The old composition used about 0.23 percent of a 30 millisecond frame interval. The new composition uses about 0.01 percent.
+This gain reduces CPU work and leaves more headroom. It does not change the configured frame cadence.
+Run the benchmark on a Pi before claiming production frame-speed gains.

@@ -20,11 +20,14 @@ Legacy modules remain output oracles during parity work. The new entry point wil
 
 `platform.performance.TickerPiLogger` writes bounded JSONL history to `<TICKER_DATA_DIR>/logs/ticker-performance.jsonl`.
 
-The logger aggregates frame timing, frame intervals, render work, hardware presentation, percentiles, FPS, brightness, modes, overlays, stale state, inversion, panel size, backend poll timing, response size, and issues.
+The logger aggregates frame timing, render work, hardware presentation, FPS, brightness, modes, overlays, panel size, and system health.
+It also aggregates WebSocket connections, reconnects, message counts, message bytes, sequence progress, and client decode time.
 
 The logger samples process CPU, RSS, load, and Pi temperature in its writer thread. The frame loop performs memory aggregation only, then writes one window record every ten seconds.
 
-The logger rotates five files at ten megabytes each. Read `window`, `poll`, `payload`, and `issue` records with any JSONL tool.
+The logger rotates five files at ten megabytes each. Stream counts appear inside each `window` record.
+The file stays on the Pi. Copy it from `<TICKER_DATA_DIR>/logs/ticker-performance.jsonl` for review.
+Read `window`, `poll`, `payload`, and `issue` records with any JSONL tool.
 
 ## User modes
 
@@ -65,7 +68,8 @@ Hardware profiles declare the logical frame geometry and supported modes. The fu
 
 ## Completion contract
 
-- The backend uses `GET /api/v2/tickers/<ticker_id>/data`, `PATCH /api/v2/tickers/<ticker_id>`, and `POST /api/v2/tickers/<ticker_id>/heartbeat`.
+- The Pi uses `GET /api/v2/tickers/<ticker_id>/data` for boot state and `WS /api/v2/tickers/<ticker_id>/stream` for display updates.
+- The Pi keeps `PATCH /api/v2/tickers/<ticker_id>` and `POST /api/v2/tickers/<ticker_id>/heartbeat` for settings and telemetry.
 - The controller acknowledges reboot commands with `POST /api/v2/tickers/<ticker_id>/commands/reboot/ack` before it restarts.
 - The app keeps mode, brightness, speed, inversion, pairing, sleep, reboot, and update behavior.
 - Every renderer returns the same panel pixels for equivalent deterministic inputs.

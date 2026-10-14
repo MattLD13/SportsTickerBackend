@@ -73,6 +73,22 @@ Render a deterministic V2 snapshot without hardware:
 python tools\render_rewrite.py --snapshot tests\rewrite\debug\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png
 ```
 
+Run the local V2 API, Pi WebSocket client, and matrix bench through online, disconnected, and recovered states:
+
+```powershell
+python tools\virtual_hardware_lab.py
+```
+
+See the [virtual hardware lab guide](docs/virtual-hardware-lab.md) for its coverage and limits.
+
+Compare pane scrolling composition strategies:
+
+```powershell
+python tools\benchmarks\pi_pane_composition.py
+```
+
+See [benchmark notes](tools/benchmarks/README.md) for measured results and limits.
+
 Render from a running backend:
 
 ```powershell

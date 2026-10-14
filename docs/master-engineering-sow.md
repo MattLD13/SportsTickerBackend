@@ -30,10 +30,10 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 
 | Capability | Current owner | Current state |
 |---|---|---|
-| Backend service | `sports_ticker/server.py`, `sports_ticker/asgi.py` | Hypercorn serves one ASGI worker. Flask HTTP routes use `WsgiToAsgi`. Gate 2 WebSocket routes are not implemented yet. |
+| Backend service | `sports_ticker/server.py`, `sports_ticker/asgi.py` | Hypercorn serves one ASGI worker. Flask HTTP routes use `WsgiToAsgi`. Device Stream V1 runs through the outer ASGI layer. |
 | V2 snapshot | `sports_ticker/projections/data_api.py` | Devices read `/api/v2/tickers/<ticker_id>/data`. |
-| Pi delta application | `ticker_core/protocol/model.py` | Deltas update local state after HTTP polling. |
-| Pi card surfaces | `ticker_core/app/viewport.py` | Changed cards render asynchronously and retain separate surfaces. |
+| Pi delta application | `ticker_core/protocol/model.py`, `ticker_core/protocol/stream.py` | HTTP provides boot state. The WebSocket client validates and applies sequenced deltas. |
+| Pi pane surfaces | `ticker_core/app/viewport.py` | Panes render asynchronously. The viewport caches pane surfaces and a tiled strip. |
 | Frame reuse | `ticker_core/app/application.py` | Unchanged visual states skip presentation work. |
 | Snapshot history | `sports_ticker/application/state_store.py` | Immutable snapshots use bounded per-ticker deques. |
 | Fleet storage | `sports_ticker/fleet/repository.py` | SQLite stores device and schedule state. |
@@ -43,7 +43,7 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 | ESP32 update flow | `esp32_hub75/src/mini/platform/firmware_update.inc` | Dual-slot update and boot validation already exist. |
 | CI | `.github/workflows/` | Python static and device build workflows exist. |
 
-These foundations do not provide device-facing WebSocket streaming, replay sequencing, or backend-generated sprites.
+Device Stream V1 now provides projection deltas, bounded replay, and snapshot recovery. Backend-generated sprites remain out of scope.
 
 ## Workstream 1: Maintain an accurate plan
 
@@ -85,9 +85,9 @@ Gate 1 serves the existing Flask HTTP application through Hypercorn and an outer
 `asgiref.wsgi.WsgiToAsgi` adapts Flask HTTP routes. The ASGI lifespan owns one `BackendRuntime` start and stop.
 Keep existing HTTP paths, statuses, authorization, and bodies stable. Keep one worker until shared publication has evidence.
 Preserve `TICKER_HTTP_THREADS` as a bounded concurrent WSGI request limit through per-request thread-sensitive contexts.
-Keep WebSocket queues on the ASGI event loop and bridge runtime threads as Workstream 4 defines.
+Keep WebSocket queues on the ASGI event loop. Projector reads run in worker threads and queue writes stay on the event loop.
 Gate 1 passed HTTP parity, bounded concurrency, runtime lifecycle, and local Hypercorn smoke checks in this branch.
-Gate 2 adds the device WebSocket route. Do not open that route until its protocol and authorization checks pass.
+Gate 2 adds the device WebSocket route and protocol V1. Device credentials and deployed proxy checks remain open.
 Keep `ticker-controller.service` separate from the backend service.
 
 ### Transport references
@@ -97,8 +97,8 @@ Flask HTTP handlers remain WSGI handlers. The outer ASGI layer owns WebSocket pr
 
 ## Workstream 4: Add device snapshot and delta streaming
 
-Retain `GET /api/v2/tickers/<ticker_id>/data` as the boot and recovery snapshot route.
-Add `WS /api/v2/tickers/<ticker_id>/stream` in the ASGI application.
+Retain `GET /api/v2/tickers/<ticker_id>/data` as the boot snapshot route.
+Serve `WS /api/v2/tickers/<ticker_id>/stream` in the ASGI application.
 Publish deltas from the effective device projection after backend policy applies.
 Include mode, schedule, pairing, content order, alerts, news, stale state, and device commands.
 Do not stream raw provider changes around projection or schedule owners.
@@ -112,11 +112,15 @@ Bound each client queue and define slow-client reset behavior.
 Keep health heartbeats and OTA acknowledgements independent from stream traffic.
 Preserve current manual live delay and durable overlay timing.
 
-`BackendRuntime` publishes from background threads. ASGI WebSocket queues belong to the event loop thread.
-Bridge thread updates with `loop.call_soon_threadsafe` or a bounded thread-safe publication queue.
-Never call `asyncio.Queue` methods directly from provider or runtime threads.
-Send a WebSocket Ping every 20 seconds and require a timely Pong.
-Require clients to return Pong frames. Test idle connections through the deployed proxy and reconnect after timeout or network loss.
+`SnapshotStore` and fleet state remain the fact owners. Snapshot writes and HTTP mutations wake active stream projections.
+The ASGI projector reads blocking state with `asyncio.to_thread` and writes bounded queues on the event loop.
+It checks active tickers once per second for schedule and expiry changes without a direct event.
+Never call `asyncio.Queue` methods from provider or runtime threads.
+Hypercorn sends WebSocket Ping frames every 20 seconds. The Pi WebSocket client returns Pong frames.
+Hypercorn does not expose a Pong timeout setting. Validate proxy idle limits and reconnect through the deployed proxy before rollout.
+
+Read [Device Stream V1](contracts/device-stream-v1.md) for envelope, replay, queue, and recovery rules.
+The route validates registered ticker identity and uses the current data endpoint access policy. A device-specific credential remains future security work.
 
 ### Provider backoff
 
@@ -162,10 +166,15 @@ Do not use one universal outlined sprite when outline choice depends on backgrou
 
 ## Workstream 6: Measure and improve rendering efficiency
 
-Benchmark the existing asynchronous card surfaces before changing viewport composition.
-Compare current composition with flattened surfaces and a bounded ribbon.
-Measure startup readiness, card update latency, p50 and p95 frame build time, CPU, and memory.
-Use 1, 10, and 60 card scenarios with fixed input, fonts, assets, and timestamps.
+Keep pane rendering asynchronous and cache each changed pane surface.
+Cache one tiled strip after a pane layout commits. Crop each 384x32 frame from that strip.
+The benchmark compares the prior pane loop, the tiled strip, and a bounded ribbon.
+The Windows fixture records a 94.9 percent p50 composition reduction at 60 panes with identical pixels.
+The 60 pane cache adds about 1.0 MiB. The ribbon uses less memory and renders slower.
+Use the two source panes in the fixture for 1, 10, and 60 capacity scenarios.
+The 60 pane case repeats those two records and does not represent 60 unique games.
+Read `tools/benchmarks/README.md` for measurements and limits.
+Measure startup readiness, pane update latency, p50 and p95 frame build time, CPU, and memory.
 Record actual scroll cadence from runtime configuration instead of assuming 60 FPS.
 Retain card ordering, separators, wraparound, stale-worker protection, and late asset updates.
 Expand cache keys to cover every pixel-affecting setting, asset revision, font, and layout choice.
@@ -230,8 +239,8 @@ Do not delay or recalibrate score alerts beyond current policy.
 |---|---|
 | 0. SOW and contracts | Revised scope, schema inventory, request/response mismatch fixed, offline fixtures pass, Xcode state untracked, duplicate icon removed. |
 | 1. ASGI transport | Existing HTTP checks pass, bounded concurrency remains, health passes, one runtime starts and stops once, no API contract changes. |
-| 2. Device stream | Snapshot handoff, sequence replay, reset, auth, queue bounds, reconnect, and effective projection checks pass. |
-| 3. Pi client | Stream reconnects, recovers snapshots, preserves delay and overlays, and renders real `384x32` frames. |
+| 2. Device stream | V1 projection, sequence replay, queue reset, and route identity checks pass. Device credentials and deployed proxy checks remain open. |
+| 3. Pi client | V1 HTTP boot, WebSocket reconnect, delta application, and real `384x32` frame checks pass. Bounded local logs record stream and frame timings for a deployed Pi run. |
 | 4. Mini client | Cache miss fetches once, reboot reuses validated bytes, same-URL policy changes invalidate, RAM stays bounded. |
 | 5. Rendering efficiency | Benchmark beats the recorded baseline without pixel or lifecycle regressions. |
 | 6. ESP32 and iOS modularization | ESP32 module splits compile and preserve measured memory and frame stability. The iOS app builds in CI and focused schedule and profile serialization checks pass. |
@@ -240,5 +249,6 @@ Do not delay or recalibrate score alerts beyond current policy.
 ## Evidence and change notes
 
 Every gate records owner, former path changed, real input, real output, and test evidence.
+Use the Pi performance log to compare deployed frame and stream behavior after release.
 Use hardware measurements for panel power, refresh stability, and Mini memory claims.
 Use production-shaped API payloads for protocol and projection checks.

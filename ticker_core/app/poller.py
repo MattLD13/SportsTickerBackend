@@ -4,12 +4,23 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import json
 from queue import Queue
 from threading import Event
 from time import monotonic
 from typing import Any, Protocol
 
-from ticker_core.protocol import BackendClient, BackendHttpError, DisplayPayload, PollBackoff, display_delta
+import websocket
+
+from ticker_core.protocol import (
+    BackendClient,
+    BackendHttpError,
+    DisplayPayload,
+    DeviceStreamState,
+    PollBackoff,
+    StreamMessage,
+    display_delta,
+)
 
 
 class Waiter(Protocol):
@@ -45,7 +56,20 @@ class PollConnected:
     response_bytes: int | None = None
 
 
-PollEvent = PollSucceeded | PollFailed | PollConnected
+@dataclass(frozen=True, slots=True)
+class PollStreamEvent:
+    """Report one bounded stream lifecycle or message measurement."""
+
+    event: str
+    message_type: str | None = None
+    sequence: int | None = None
+    response_bytes: int | None = None
+    apply_ms: float | None = None
+    reconnect: bool = False
+    error_type: str | None = None
+
+
+PollEvent = PollSucceeded | PollFailed | PollConnected | PollStreamEvent
 
 
 class BackendPoller:
@@ -59,7 +83,6 @@ class BackendPoller:
         telemetry: Callable[[], object],
         device_name: str = "Ticker",
         profile: Mapping[str, Any] | None = None,
-        success_interval: float = 0.5,
         heartbeat_interval: float = 30.0,
         registration_callback: Callable[[object], None] | None = None,
     ) -> None:
@@ -67,8 +90,6 @@ class BackendPoller:
             raise ValueError("A device id is required.")
         if not device_name.strip():
             raise ValueError("A device name is required.")
-        if success_interval < 0:
-            raise ValueError("The poll interval cannot be negative.")
         if heartbeat_interval <= 0:
             raise ValueError("The heartbeat interval must be positive.")
         self._client = client
@@ -76,20 +97,22 @@ class BackendPoller:
         self._telemetry = telemetry
         self._device_name = device_name.strip()
         self._profile = dict(profile or {})
-        self._success_interval = success_interval
         self._heartbeat_interval = heartbeat_interval
         self._registration_callback = registration_callback
 
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
-        """Poll until the stop event interrupts a delay."""
+        """Bootstrap over HTTP, then receive sequenced updates over WebSocket."""
         backoff = PollBackoff()
-        previous_key: str | None = None
         previous_payload: DisplayPayload | None = None
+        stream_state = DeviceStreamState()
         registered = False
-        next_poll = monotonic()
-        next_heartbeat = next_poll + self._heartbeat_interval
+        bootstrapped = False
+        stream_attempts = 0
+        next_heartbeat = monotonic() + self._heartbeat_interval
         while not stop.is_set():
             request_started = monotonic()
+            connection = None
+            connecting = False
             try:
                 if not registered:
                     registration = {
@@ -102,42 +125,118 @@ class BackendPoller:
                     if self._registration_callback is not None:
                         self._registration_callback(registration_result)
                     registered = True
-                payload = self._client.fetch_data(self._device_id)
-                now = monotonic()
-                if now >= next_heartbeat:
-                    self._send_heartbeat()
-                    next_heartbeat = now + self._heartbeat_interval
+                if not bootstrapped:
+                    payload = self._client.fetch_data(self._device_id)
+                    previous_payload = payload
+                    events.put(PollSucceeded(payload, (monotonic() - request_started) * 1000.0, self._client.last_response_bytes))
+                    bootstrapped = True
+                cursor = stream_state.cursor
+                reconnect = stream_attempts > 0
+                stream_attempts += 1
+                connecting = True
+                connection = self._client.open_device_stream(
+                    self._device_id,
+                    stream_id=cursor[0] if cursor else None,
+                    after_seq=cursor[1] if cursor else None,
+                    timeout_seconds=0.5,
+                )
+                connecting = False
+                events.put(PollStreamEvent("connected", reconnect=reconnect))
             except Exception as error:
+                if connecting:
+                    events.put(PollStreamEvent(
+                        "connect_failed",
+                        reconnect=stream_attempts > 1,
+                        error_type=type(error).__name__,
+                    ))
                 if isinstance(error, BackendHttpError) and error.status_code == 404:
                     registered = False
-                    previous_key = None
                     previous_payload = None
+                    bootstrapped = False
+                    stream_state = DeviceStreamState()
+                    stream_attempts = 0
                 elapsed_ms = (monotonic() - request_started) * 1000.0
                 backoff = backoff.after_failure()
                 events.put(PollFailed(error, backoff.delay_seconds, elapsed_ms))
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    connection = None
                 if stop.wait(backoff.delay_seconds):
                     return
                 continue
-            backoff = backoff.after_success()
-            payload_key = getattr(payload, "payload_key", None)
-            elapsed_ms = (now - request_started) * 1000.0
-            response_bytes = getattr(self._client, "last_response_bytes", None)
-            if payload_key is not None and payload_key == previous_key:
-                events.put(PollConnected(elapsed_ms, response_bytes))
-            else:
-                event_payload = payload if previous_payload is None else display_delta(previous_payload, payload)
-                events.put(PollSucceeded(event_payload, elapsed_ms, response_bytes))
-                previous_key = payload_key
-                previous_payload = payload
-            next_poll += self._success_interval
-            now = monotonic()
-            if next_poll <= now:
-                next_poll = now
-                delay = 0.0
-            else:
-                delay = next_poll - now
-            if stop.wait(delay):
-                return
+            try:
+                backoff = backoff.after_success()
+                while not stop.is_set():
+                    try:
+                        raw = connection.recv()
+                    except websocket.WebSocketTimeoutException:
+                        now = monotonic()
+                        if now >= next_heartbeat:
+                            self._send_heartbeat()
+                            next_heartbeat = now + self._heartbeat_interval
+                        continue
+                    if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2_000_000:
+                        raise ValueError("device stream message is invalid or too large")
+                    message_started = monotonic()
+                    message = StreamMessage.from_payload(json.loads(raw))
+                    current = stream_state.apply(message)
+                    events.put(PollStreamEvent(
+                        "message",
+                        message_type=message.kind,
+                        sequence=message.sequence,
+                        response_bytes=len(raw.encode("utf-8")),
+                        apply_ms=(monotonic() - message_started) * 1000.0,
+                    ))
+                    elapsed_ms = (monotonic() - request_started) * 1000.0
+                    if current is None:
+                        if message.kind == "ready":
+                            events.put(PollConnected(elapsed_ms, len(raw)))
+                    else:
+                        self._client.remember_stream_response(self._device_id, current)
+                        if previous_payload is not None and current.payload_key == previous_payload.payload_key:
+                            events.put(PollConnected(elapsed_ms, len(raw)))
+                        else:
+                            event_payload = current if previous_payload is None else display_delta(previous_payload, current)
+                            events.put(PollSucceeded(event_payload, elapsed_ms, len(raw)))
+                            previous_payload = current
+                    backoff = backoff.after_success()
+                    now = monotonic()
+                    if now >= next_heartbeat:
+                        self._send_heartbeat()
+                        next_heartbeat = now + self._heartbeat_interval
+                    request_started = now
+            except Exception as error:
+                events.put(PollStreamEvent(
+                    "disconnected",
+                    reconnect=stream_attempts > 1,
+                    error_type=type(error).__name__,
+                ))
+                if isinstance(error, BackendHttpError) and error.status_code == 404:
+                    registered = False
+                    previous_payload = None
+                    bootstrapped = False
+                    stream_attempts = 0
+                if isinstance(error, ValueError):
+                    stream_state = DeviceStreamState()
+                elapsed_ms = (monotonic() - request_started) * 1000.0
+                backoff = backoff.after_failure()
+                events.put(PollFailed(error, backoff.delay_seconds, elapsed_ms))
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+                connection = None
+                if stop.wait(backoff.delay_seconds):
+                    return
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
 
     def close(self) -> None:
         """Close the worker-owned HTTP session after a process poller exits."""
