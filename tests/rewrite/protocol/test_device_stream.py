@@ -107,5 +107,3 @@ def test_hub_resets_a_slow_client_with_a_full_snapshot():
     assert reset["type"] == "snapshot"
     assert reset["seq"] == 3
     assert reset["payload"]["settings"]["brightness"] == 60
-
-\n

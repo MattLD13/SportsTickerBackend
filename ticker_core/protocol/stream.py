@@ -115,5 +115,3 @@ def _sequence(value: object, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise PayloadValidationError(f"{name} must be a non-negative integer")
     return value
-
-\n

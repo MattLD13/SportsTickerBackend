@@ -287,5 +287,3 @@ def _server_time() -> str:
 def encode_message(message: dict[str, Any]) -> str:
     """Encode one bounded JSON stream message."""
     return json.dumps(message, separators=(",", ":"), ensure_ascii=False)
-
-\n
