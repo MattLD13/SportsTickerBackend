@@ -1,0 +1,84 @@
+{
+  "paired": false,
+  "pairing_code": "123456",
+  "ticker": {
+    "created_at": 1791994277.1101053,
+    "device": {
+      "last_seen_at": 1786752000.0,
+      "metadata": {
+        "profile": {
+          "capabilities": {
+            "asset_cache": false,
+            "color_depth": 16,
+            "modes": [
+              "sports"
+            ],
+            "ota": true
+          },
+          "display": {
+            "height": 32,
+            "orientation": "landscape",
+            "panel_count": 1,
+            "width": 64
+          },
+          "firmware": "unknown",
+          "hardware": "esp32-s3",
+          "product_family": "mini"
+        }
+      }
+    },
+    "display_settings": {
+      "active_conferences": {},
+      "active_sports": {},
+      "airport_code_iata": "EWR",
+      "airport_code_icao": "KEWR",
+      "airport_name": "Newark Liberty International",
+      "brightness": 100.0,
+      "inverted": false,
+      "live_delay_mode": false,
+      "live_delay_seconds": 45.0,
+      "mode": "sports",
+      "my_teams": [],
+      "pinned_content_id": "",
+      "score_alerts": true,
+      "scroll_seamless": true,
+      "scroll_speed": 0.03,
+      "sports_filter": "all",
+      "sports_presentation": "rotation",
+      "timezone": "",
+      "track_flight_id": "",
+      "track_guest_name": "",
+      "weather_city": "New York",
+      "weather_lat": 40.7128,
+      "weather_lon": -74.006
+    },
+    "name": "Ticker",
+    "pairing": {
+      "paired": false
+    },
+    "profile": {
+      "capabilities": {
+        "asset_cache": false,
+        "color_depth": 16,
+        "modes": [
+          "sports"
+        ],
+        "ota": true
+      },
+      "display": {
+        "height": 32,
+        "orientation": "landscape",
+        "panel_count": 1,
+        "width": 64
+      },
+      "firmware": "unknown",
+      "hardware": "esp32-s3",
+      "product_family": "mini"
+    },
+    "schedule_override": false,
+    "schedule_override_expires_at": null,
+    "ticker_id": "mini-contract",
+    "updated_at": 1791994277.1106434
+  },
+  "ticker_id": "mini-contract"
+}

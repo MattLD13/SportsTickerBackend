@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/hardware-profile-request.json",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "product_family": {},
+    "hardware": {},
+    "firmware": {},
+    "display": {},
+    "capabilities": {}
+  },
+  "required": [],
+  "additionalProperties": true,
+  "description": "Input profile permits defaults, normal alias, case normalization, nested defaults, and model coercion. Domain validation follows parsing."
+}

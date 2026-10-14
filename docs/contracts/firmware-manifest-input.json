@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/firmware-manifest-input.json",
+  "type": "object",
+  "properties": {
+    "version": {},
+    "target": {},
+    "hardware": {},
+    "binary_url": {},
+    "size": {},
+    "sha256": {}
+  },
+  "required": [
+    "version",
+    "target",
+    "hardware",
+    "binary_url",
+    "size",
+    "sha256"
+  ],
+  "additionalProperties": true,
+  "description": "Manifest parser accepts scalar coercion and extra keys. The response contract describes normalized output."
+}

@@ -1,0 +1,547 @@
+{
+  "baseline_commit": "1d38e4f6879141098011fbe2aaf93c630dcc6045",
+  "host": "Windows-11-10.0.26200-SP0",
+  "python": "3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)]",
+  "pillow": "12.0.0",
+  "processor": "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+  "logical_cpus": 24,
+  "limitations": [
+    "Two existing snapshot records repeat with unique card IDs for capacity measurements.",
+    "No asset URLs exist in this snapshot. The prepared asset directory stays empty.",
+    "Windows MemoryFrameSink does not measure Pi matrix DMA or VSync.",
+    "The benchmark calls FrameBuilder and the sink directly, without application event or network work.",
+    "Memory values cover the parent and card worker. Resource tracker overhead is excluded.",
+    "Font resolution follows the host. File hashes identify this baseline.",
+    "Readiness polling follows snapshot scroll cadence. It includes frame-boundary scheduling delay."
+  ],
+  "cases": [
+    {
+      "cards": 1,
+      "source_records": 2,
+      "construction_with_imports_ms": 424.0402000004906,
+      "startup_queue_to_ready_ms": 520.0663000005079,
+      "startup_to_first_present_ms": 944.4673000007242,
+      "status": {
+        "desired": 1,
+        "pending": 0,
+        "ready": 1,
+        "failed": 0,
+        "committed_generation": 3,
+        "staging_generation": 3
+      },
+      "layout_width": 97,
+      "frame_build": {
+        "samples": 6000,
+        "p50_ms": 0.07989999994606478,
+        "p95_ms": 0.08170000000973232,
+        "max_ms": 0.13450000005832408
+      },
+      "memory_sink_present": {
+        "samples": 6000,
+        "p50_ms": 0.0035000002753804438,
+        "p95_ms": 0.0036999999792897142,
+        "max_ms": 0.019799999790848233
+      },
+      "unpaced_wall_seconds": 0.5491511999998693,
+      "unpaced_cpu_seconds_parent_and_worker": 0.546875,
+      "unpaced_cpu_percent_one_core": 99.58550577693906,
+      "paced_frames": 300,
+      "paced_wall_seconds": 9.000028500000553,
+      "measured_memory_sink_fps": 33.333227778109986,
+      "paced_cpu_seconds_parent_and_worker": 0.0625,
+      "paced_cpu_percent_one_core": 0.6944422453772914,
+      "memory_ready": [
+        {
+          "available": true,
+          "cpu_seconds": 0.484375,
+          "working_set_bytes": 54427648,
+          "peak_working_set_bytes": 54427648
+        },
+        {
+          "available": true,
+          "cpu_seconds": 0.46875,
+          "working_set_bytes": 51531776,
+          "peak_working_set_bytes": 51531776
+        }
+      ],
+      "memory_after": [
+        {
+          "available": true,
+          "cpu_seconds": 1.09375,
+          "working_set_bytes": 55320576,
+          "peak_working_set_bytes": 55320576
+        },
+        {
+          "available": true,
+          "cpu_seconds": 0.46875,
+          "working_set_bytes": 51535872,
+          "peak_working_set_bytes": 51535872
+        }
+      ],
+      "one_score_update_enqueue_ms": 0.1160000001618755,
+      "one_score_update_to_present_ms": 30.45639999982086,
+      "full_asset_invalidation_to_ready_ms": 30.83299999980227,
+      "png": "previews/benchmarks/pi-baseline/cards-1.png",
+      "rgb_sha256": "757dc9abc3ffb58e38cd6e66def0c04a846c655f75bfc3be38f9925c0a2dcd7c",
+      "updated_rgb_sha256": "d2f12c8804b26ebb127825a126d571f822d3041a1d3ef93b22dc34eebafdda8c",
+      "png_sha256": "301203be269b5160f5c9b88eb325cecc3a6b280cc5425f02ef267e41c153767c",
+      "snapshot_sha256": "6b237ffe94e2d45926ba6f71ac5fba878cb20bcbd9f340a9c9b6509628cace80",
+      "fonts": [
+        {
+          "role": "normal",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 10,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "medium",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 12,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "big",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 14,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "huge",
+          "name": [
+            "Arial",
+            "Bold"
+          ],
+          "size": 20,
+          "sha256": "e8f4e3baf6cc35fed6fcce3a540e8b39e8f6cda1d22a28f2ec8f526fef7a43f5",
+          "file": "arialbd.ttf"
+        },
+        {
+          "role": "clock",
+          "name": [
+            "Arial",
+            "Bold"
+          ],
+          "size": 28,
+          "sha256": "e8f4e3baf6cc35fed6fcce3a540e8b39e8f6cda1d22a28f2ec8f526fef7a43f5",
+          "file": "arialbd.ttf"
+        },
+        {
+          "role": "tiny",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 9,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "tiny_small",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 8,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "micro",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 7,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "nano",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 5,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "score_default",
+          "name": [
+            "Aileron",
+            "Regular"
+          ],
+          "size": 10,
+          "sha256": "69853909b940023570964e29cffe30da95aea8de3627736b5cd15ab30143169f",
+          "file": "Pillow embedded font"
+        }
+      ],
+      "cadence_seconds": 0.03,
+      "runtime_default_frame_seconds": 0.03333333333333333
+    },
+    {
+      "cards": 10,
+      "source_records": 2,
+      "construction_with_imports_ms": 428.1575000004523,
+      "startup_queue_to_ready_ms": 789.0277999995305,
+      "startup_to_first_present_ms": 1217.666300000019,
+      "status": {
+        "desired": 10,
+        "pending": 0,
+        "ready": 10,
+        "failed": 0,
+        "committed_generation": 3,
+        "staging_generation": 3
+      },
+      "layout_width": 900,
+      "frame_build": {
+        "samples": 6000,
+        "p50_ms": 0.08159999924828298,
+        "p95_ms": 0.08689999958733097,
+        "max_ms": 0.13360000048123766
+      },
+      "memory_sink_present": {
+        "samples": 6000,
+        "p50_ms": 0.0035000002753804438,
+        "p95_ms": 0.0037999998312443495,
+        "max_ms": 0.013500000022759195
+      },
+      "unpaced_wall_seconds": 0.5661323000003904,
+      "unpaced_cpu_seconds_parent_and_worker": 0.5625,
+      "unpaced_cpu_percent_one_core": 99.35840085429008,
+      "paced_frames": 300,
+      "paced_wall_seconds": 9.000030100000004,
+      "measured_memory_sink_fps": 33.33322185222468,
+      "paced_cpu_seconds_parent_and_worker": 0.109375,
+      "paced_cpu_percent_one_core": 1.2152737133623581,
+      "memory_ready": [
+        {
+          "available": true,
+          "cpu_seconds": 0.5,
+          "working_set_bytes": 54439936,
+          "peak_working_set_bytes": 54439936
+        },
+        {
+          "available": true,
+          "cpu_seconds": 0.46875,
+          "working_set_bytes": 51736576,
+          "peak_working_set_bytes": 51736576
+        }
+      ],
+      "memory_after": [
+        {
+          "available": true,
+          "cpu_seconds": 1.171875,
+          "working_set_bytes": 55525376,
+          "peak_working_set_bytes": 55525376
+        },
+        {
+          "available": true,
+          "cpu_seconds": 0.46875,
+          "working_set_bytes": 51757056,
+          "peak_working_set_bytes": 51757056
+        }
+      ],
+      "one_score_update_enqueue_ms": 0.3997999992861878,
+      "one_score_update_to_present_ms": 30.686999999488762,
+      "full_asset_invalidation_to_ready_ms": 300.22530000042025,
+      "png": "previews/benchmarks/pi-baseline/cards-10.png",
+      "rgb_sha256": "1346d1a09764dc10b6093999a0adafd891b5ab9f16e332ee4ad0b2768c47aa40",
+      "updated_rgb_sha256": "b75f8a390a13d6597e24456db2523c6b04c5517495654036a76c2b72a2103221",
+      "png_sha256": "33d9b91bc0e6a3e855ae39f8c5f9d485eba153be66d91cb7cca6b9845f9bd2c7",
+      "snapshot_sha256": "6b237ffe94e2d45926ba6f71ac5fba878cb20bcbd9f340a9c9b6509628cace80",
+      "fonts": [
+        {
+          "role": "normal",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 10,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "medium",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 12,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "big",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 14,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "huge",
+          "name": [
+            "Arial",
+            "Bold"
+          ],
+          "size": 20,
+          "sha256": "e8f4e3baf6cc35fed6fcce3a540e8b39e8f6cda1d22a28f2ec8f526fef7a43f5",
+          "file": "arialbd.ttf"
+        },
+        {
+          "role": "clock",
+          "name": [
+            "Arial",
+            "Bold"
+          ],
+          "size": 28,
+          "sha256": "e8f4e3baf6cc35fed6fcce3a540e8b39e8f6cda1d22a28f2ec8f526fef7a43f5",
+          "file": "arialbd.ttf"
+        },
+        {
+          "role": "tiny",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 9,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "tiny_small",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 8,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "micro",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 7,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "nano",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 5,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "score_default",
+          "name": [
+            "Aileron",
+            "Regular"
+          ],
+          "size": 10,
+          "sha256": "69853909b940023570964e29cffe30da95aea8de3627736b5cd15ab30143169f",
+          "file": "Pillow embedded font"
+        }
+      ],
+      "cadence_seconds": 0.03,
+      "runtime_default_frame_seconds": 0.03333333333333333
+    },
+    {
+      "cards": 60,
+      "source_records": 2,
+      "construction_with_imports_ms": 428.96510000082344,
+      "startup_queue_to_ready_ms": 2289.7627000002103,
+      "startup_to_first_present_ms": 2719.217600000775,
+      "status": {
+        "desired": 60,
+        "pending": 0,
+        "ready": 60,
+        "failed": 0,
+        "committed_generation": 3,
+        "staging_generation": 3
+      },
+      "layout_width": 5400,
+      "frame_build": {
+        "samples": 6000,
+        "p50_ms": 0.08339999931195052,
+        "p95_ms": 0.08919999982026638,
+        "max_ms": 2.5139999997918494
+      },
+      "memory_sink_present": {
+        "samples": 6000,
+        "p50_ms": 0.0035000002753804438,
+        "p95_ms": 0.0037999998312443495,
+        "max_ms": 0.024900000425986946
+      },
+      "unpaced_wall_seconds": 0.5783486999998786,
+      "unpaced_cpu_seconds_parent_and_worker": 0.578125,
+      "unpaced_cpu_percent_one_core": 99.96132091247397,
+      "paced_frames": 300,
+      "paced_wall_seconds": 9.000262500000645,
+      "measured_memory_sink_fps": 33.332361139464375,
+      "paced_cpu_seconds_parent_and_worker": 0.0625,
+      "paced_cpu_percent_one_core": 0.6944241904055078,
+      "memory_ready": [
+        {
+          "available": true,
+          "cpu_seconds": 0.46875,
+          "working_set_bytes": 55504896,
+          "peak_working_set_bytes": 55504896
+        },
+        {
+          "available": true,
+          "cpu_seconds": 0.46875,
+          "working_set_bytes": 51642368,
+          "peak_working_set_bytes": 51642368
+        }
+      ],
+      "memory_after": [
+        {
+          "available": true,
+          "cpu_seconds": 1.125,
+          "working_set_bytes": 56819712,
+          "peak_working_set_bytes": 56819712
+        },
+        {
+          "available": true,
+          "cpu_seconds": 0.53125,
+          "working_set_bytes": 51671040,
+          "peak_working_set_bytes": 51671040
+        }
+      ],
+      "one_score_update_enqueue_ms": 0.21689999994123355,
+      "one_score_update_to_present_ms": 30.603599999267317,
+      "full_asset_invalidation_to_ready_ms": 1800.4704000004494,
+      "png": "previews/benchmarks/pi-baseline/cards-60.png",
+      "rgb_sha256": "1346d1a09764dc10b6093999a0adafd891b5ab9f16e332ee4ad0b2768c47aa40",
+      "updated_rgb_sha256": "b75f8a390a13d6597e24456db2523c6b04c5517495654036a76c2b72a2103221",
+      "png_sha256": "33d9b91bc0e6a3e855ae39f8c5f9d485eba153be66d91cb7cca6b9845f9bd2c7",
+      "snapshot_sha256": "6b237ffe94e2d45926ba6f71ac5fba878cb20bcbd9f340a9c9b6509628cace80",
+      "fonts": [
+        {
+          "role": "normal",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 10,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "medium",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 12,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "big",
+          "name": [
+            "Ubuntu Mono",
+            "Bold"
+          ],
+          "size": 14,
+          "sha256": "11f15c3a6bbd998a8695fdefb3475931c3789aa035d7546f2efe78e83b352f6b",
+          "file": "UbuntuMono-Bold.ttf"
+        },
+        {
+          "role": "huge",
+          "name": [
+            "Arial",
+            "Bold"
+          ],
+          "size": 20,
+          "sha256": "e8f4e3baf6cc35fed6fcce3a540e8b39e8f6cda1d22a28f2ec8f526fef7a43f5",
+          "file": "arialbd.ttf"
+        },
+        {
+          "role": "clock",
+          "name": [
+            "Arial",
+            "Bold"
+          ],
+          "size": 28,
+          "sha256": "e8f4e3baf6cc35fed6fcce3a540e8b39e8f6cda1d22a28f2ec8f526fef7a43f5",
+          "file": "arialbd.ttf"
+        },
+        {
+          "role": "tiny",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 9,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "tiny_small",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 8,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "micro",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 7,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "nano",
+          "name": [
+            "Ubuntu Mono",
+            "Regular"
+          ],
+          "size": 5,
+          "sha256": "b35dd9d2131d5d83a9b87fe9ad22c6288fa3d17688d43302c14da29812417d63",
+          "file": "UbuntuMono-Regular.ttf"
+        },
+        {
+          "role": "score_default",
+          "name": [
+            "Aileron",
+            "Regular"
+          ],
+          "size": 10,
+          "sha256": "69853909b940023570964e29cffe30da95aea8de3627736b5cd15ab30143169f",
+          "file": "Pillow embedded font"
+        }
+      ],
+      "cadence_seconds": 0.03,
+      "runtime_default_frame_seconds": 0.03333333333333333
+    }
+  ]
+}

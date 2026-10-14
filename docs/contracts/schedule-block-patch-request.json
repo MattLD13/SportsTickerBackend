@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/schedule-block-patch-request.json",
+  "type": "object",
+  "properties": {
+    "days_of_week": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 6
+      },
+      "minItems": 1
+    },
+    "start_minute": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1440
+    },
+    "end_minute": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1440
+    },
+    "mode": {
+      "type": "string",
+      "pattern": "^\\s*(?:[sS][pP][oO][rR][tT][sS]|[sS][tT][oO][cC][kK]|[wW][eE][aA][tT][hH][eE][rR]|[mM][uU][sS][iI][cC]|[fF][lL][iI][gG][hH][tT][sS]|[aA][iI][rR][pP][oO][rR][tT][sS]|[cC][lL][oO][cC][kK])\\s*$"
+    },
+    "sports_filter": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^\\s*(?:[aA][lL][lL]|[lL][iI][vV][eE]|[mM][yY]_[tT][eE][aA][mM][sS]|)\\s*$"
+        }
+      ]
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

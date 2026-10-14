@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/device-registration-response.json",
+  "type": "object",
+  "properties": {
+    "ticker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "paired": {
+      "type": "boolean"
+    },
+    "pairing_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ticker": {
+      "type": "object",
+      "properties": {
+        "ticker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "hardware-profile-response.json"
+        },
+        "display_settings": {
+          "$ref": "display-settings-response.json"
+        },
+        "schedule_override": {
+          "type": "boolean"
+        },
+        "schedule_override_expires_at": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pairing": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "paired": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "paired"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "device": {
+          "type": "object",
+          "properties": {
+            "last_seen_at": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "last_seen_at",
+            "metadata"
+          ],
+          "additionalProperties": false
+        },
+        "created_at": {
+          "type": "number"
+        },
+        "updated_at": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "ticker_id",
+        "name",
+        "profile",
+        "display_settings",
+        "schedule_override",
+        "schedule_override_expires_at",
+        "pairing",
+        "device",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "ticker_id",
+    "paired",
+    "pairing_code",
+    "ticker"
+  ],
+  "additionalProperties": false
+}

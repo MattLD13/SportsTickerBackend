@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/firmware-response.json",
+  "type": "object",
+  "properties": {
+    "api_version": {
+      "const": "v2"
+    },
+    "ticker_id": {
+      "type": "string"
+    },
+    "firmware": {
+      "$ref": "firmware-manifest-response.json"
+    }
+  },
+  "required": [
+    "api_version",
+    "ticker_id",
+    "firmware"
+  ],
+  "additionalProperties": false
+}

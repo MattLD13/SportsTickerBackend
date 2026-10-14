@@ -1,0 +1,8 @@
+{
+  "binary_url": "https://example.com/mini.bin",
+  "hardware": " ESP32-S3 ",
+  "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "size": "65536",
+  "target": " ESP32S3 ",
+  "version": "mini-1"
+}

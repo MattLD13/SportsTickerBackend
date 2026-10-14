@@ -1,0 +1,13 @@
+{
+  "action_sports_filter": "live",
+  "created_at": 1786752000.0,
+  "enabled": true,
+  "id": "condition-contract",
+  "ignore_pinned": true,
+  "kind": "live_games",
+  "operator": "gt",
+  "threshold": 2,
+  "ticker_id": "mini-contract",
+  "updated_at": 1786752000.0,
+  "when_mode": "sports"
+}

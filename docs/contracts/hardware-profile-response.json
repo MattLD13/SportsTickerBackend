@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/hardware-profile-response.json",
+  "type": "object",
+  "properties": {
+    "product_family": {
+      "enum": [
+        "full",
+        "mini",
+        "custom"
+      ]
+    },
+    "hardware": {
+      "type": "string"
+    },
+    "firmware": {
+      "type": "string"
+    },
+    "display": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "panel_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "orientation": {
+          "enum": [
+            "landscape",
+            "portrait"
+          ]
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "panel_count",
+        "orientation"
+      ],
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "modes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "asset_cache": {
+          "type": "boolean"
+        },
+        "ota": {
+          "type": "boolean"
+        },
+        "color_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "modes",
+        "asset_cache",
+        "ota",
+        "color_depth"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "product_family",
+    "hardware",
+    "firmware",
+    "display",
+    "capabilities"
+  ],
+  "additionalProperties": false
+}
