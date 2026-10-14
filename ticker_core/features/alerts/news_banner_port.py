@@ -15,6 +15,8 @@ clubs in the header over two lines of detail. Stock news shows the symbol and
 the day's move over three lines of headline.
 """
 
+import json
+
 from PIL import Image, ImageDraw
 
 from ticker_core.rendering.fonts import load_monospace_font
@@ -287,3 +289,15 @@ class NewsBannerMixin:
 
 class PreparedNewsBannerRenderer(NewsBannerMixin):
     """Expose the ported news banner without controller inheritance."""
+
+    def __init__(self) -> None:
+        self._banner_key: str | None = None
+        self._banner_image: Image.Image | None = None
+
+    def draw_news_banner(self, item):
+        """Reuse the one active banner image while its content stays unchanged."""
+        key = json.dumps(item, sort_keys=True, separators=(",", ":"), default=str)
+        if key != self._banner_key or self._banner_image is None:
+            self._banner_key = key
+            self._banner_image = super().draw_news_banner(item)
+        return self._banner_image

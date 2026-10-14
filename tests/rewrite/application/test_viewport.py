@@ -54,6 +54,107 @@ def test_viewport_renders_only_changed_card() -> None:
         viewport.close()
 
 
+def test_viewport_reuses_inflight_render_for_equal_content_in_a_new_generation() -> None:
+    class BlockingCatalog(Catalog):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = Event()
+            self.release = Event()
+
+        def render(self, context, scene):
+            self.calls += 1
+            self.started.set()
+            assert self.release.wait(1)
+            color = (255, 0, 0) if scene.item.get("down") == "1st" else (0, 255, 0)
+            return RenderedContent(Image.new("RGB", (96, 32), color))
+
+    catalog = BlockingCatalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    try:
+        viewport.update((Content("game", "scoreboard", "nfl", {"down": "1st"}),), context, "sports")
+        assert catalog.started.wait(1)
+        viewport.update((Content("game", "scoreboard", "nfl", {"down": "1st"}),), context, "sports")
+        catalog.release.set()
+        _drain(viewport, catalog, 1)
+
+        assert catalog.calls == 1
+        assert viewport.status["committed_generation"] == 2
+        assert viewport.frame(0).getpixel((1, 1)) == (255, 0, 0)
+    finally:
+        catalog.release.set()
+        viewport.close()
+
+
+def test_viewport_reuses_surfaces_for_equal_content_from_a_new_payload() -> None:
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    items = (
+        Content("game", "scoreboard", "nfl", {"down": "1st"}),
+        Content("other", "scoreboard", "nfl", {"down": "2nd"}),
+    )
+    replacement = tuple(
+        Content(item.id, item.type, item.sport, dict(item.data)) for item in items
+    )
+    try:
+        viewport.update(items, context, "sports")
+        _drain(viewport, catalog, 2)
+        viewport.update(replacement, context, "sports")
+        viewport.install_completed()
+
+        assert catalog.calls == 2
+        assert viewport.status["committed_generation"] == 2
+        assert viewport.status["ready"] == 2
+    finally:
+        viewport.close()
+
+
+def test_fifteen_live_games_rerender_only_the_changed_pane() -> None:
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    games = tuple(
+        Content(
+            f"live-{index:02d}",
+            "scoreboard",
+            "nfl",
+            {
+                "state": "in",
+                "away_score": str(index),
+                "home_score": str(index + 3),
+                "down": "1st",
+            },
+        )
+        for index in range(15)
+    )
+    update = tuple(
+        Content(
+            game.id,
+            game.type,
+            game.sport,
+            {**game.data, "away_score": "21", "down": "2nd"} if index == 7 else dict(game.data),
+        )
+        for index, game in enumerate(games)
+    )
+    try:
+        viewport.update(games, context, "sports")
+        _drain(viewport, catalog, 15)
+        viewport.update(update, context, "sports")
+        _drain(viewport, catalog, 16)
+
+        assert catalog.calls == 16
+        assert viewport.status["desired"] == 15
+        assert viewport.status["ready"] == 15
+        assert viewport.status["committed_generation"] == 2
+        layout = viewport.layout
+        assert layout is not None
+        game_start = sum(segment.width for segment in layout.segments[:7])
+        assert viewport.frame(game_start).getpixel((1, 1)) == (0, 255, 0)
+    finally:
+        viewport.close()
+
+
 def test_cached_pane_strip_matches_previous_composition_across_wraps() -> None:
     catalog = Catalog()
     viewport = CardViewport(catalog)

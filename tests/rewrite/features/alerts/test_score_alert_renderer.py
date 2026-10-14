@@ -1,5 +1,7 @@
 """Verify score-alert facts, down colors, and baseball inning markers."""
 
+from PIL import Image
+
 from ticker_core.features.alerts.score_alert_port import (
     PreparedScoreAlertRenderer,
     _score_alert_fact_layout,
@@ -7,6 +9,31 @@ from ticker_core.features.alerts.score_alert_port import (
 )
 from ticker_core.features.alerts.news_banner_port import PreparedNewsBannerRenderer
 from ticker_core.rendering import load_default_font_set
+
+
+def test_news_banner_cache_reuses_pixels_and_keeps_animation_output() -> None:
+    renderer = PreparedNewsBannerRenderer()
+    item = {
+        "kind": "TRADE",
+        "from_abbr": "VAN",
+        "to_abbr": "NYR",
+        "from_color": "#00843D",
+        "to_color": "#C8102E",
+        "text": "Miller for Kakko",
+    }
+    base = Image.new("RGB", (384, 32), (12, 20, 28))
+    banner = renderer.draw_news_banner(item)
+
+    assert renderer.draw_news_banner(dict(item)) is banner
+    for elapsed in (0.0, 0.15, 0.30, 2.0, 6.7):
+        actual = renderer.apply_news_banner(base, item, elapsed)
+        expected = PreparedNewsBannerRenderer().apply_news_banner(base, item, elapsed)
+        assert actual.tobytes() == expected.tobytes()
+
+    changed = {**item, "to_color": "#00A3E0"}
+    changed_banner = renderer.draw_news_banner(changed)
+    assert changed_banner is not banner
+    assert changed_banner.tobytes() != banner.tobytes()
 
 
 class EmptyLogos:

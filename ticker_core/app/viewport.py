@@ -183,7 +183,8 @@ class CardViewport:
         except Exception as error:
             surface = None
             with self._lock:
-                if request.generation == self._staging_generation:
+                desired = self._desired.get(request.item.id)
+                if desired is not None and _same_work_request(request, desired):
                     self._failed += 1
                 self._report_failure(request, error)
                 if isinstance(error, BrokenProcessPool):
@@ -191,13 +192,13 @@ class CardViewport:
                     self._queue_worker_retry_locked(request)
         with self._lock:
             desired = self._desired.get(request.item.id)
-            if surface is not None and desired is not None and request.generation == self._staging_generation:
+            if surface is not None and desired is not None and _same_work_request(request, desired):
                 card = _CardSurface(
                     request.item.id,
                     Image.frombytes("RGBA", (surface.width, surface.height), surface.rgba),
-                    request.item.data,
-                    request.mode,
-                    request.asset_generation,
+                    _content_mapping(desired.item),
+                    desired.mode,
+                    desired.asset_generation,
                 )
                 if _matches(desired, card):
                     self._staging_surfaces[card.item_id] = card
@@ -293,16 +294,14 @@ class CardViewport:
 
     def _queue_worker_retry_locked(self, request: _CardRequest) -> bool:
         """Requeue one current request once after a broken worker."""
-        if request.generation != self._staging_generation:
-            return False
         desired = self._desired.get(request.item.id)
         if desired is None or not _same_work_request(desired, request):
             return False
-        retry_key = (request.generation, request.item.id)
+        retry_key = (desired.generation, desired.item.id)
         if retry_key in self._worker_retries:
             return False
         self._worker_retries.add(retry_key)
-        pending = OrderedDict([(request.item.id, request)])
+        pending = OrderedDict([(desired.item.id, desired)])
         pending.update(self._pending)
         self._pending = pending
         return True
@@ -394,13 +393,12 @@ class CardViewport:
 
 
 def _same_work_request(left: _CardRequest, right: _CardRequest) -> bool:
-    """Return if two worker requests use the same immutable scene."""
+    """Return if two worker requests render the same immutable scene."""
     return (
         left.item.id == right.item.id
-        and left.item.data is right.item.data
+        and _content_mapping(left.item) == _content_mapping(right.item)
         and left.mode == right.mode
         and left.asset_generation == right.asset_generation
-        and left.generation == right.generation
     )
 
 
@@ -408,7 +406,7 @@ def _matches(request: _CardRequest, surface: _CardSurface) -> bool:
     """Return if one card surface matches a renderer scene exactly."""
     return (
         request.item.id == surface.item_id
-        and request.item.data is surface.scene
+        and _content_mapping(request.item) == surface.scene
         and request.mode == surface.mode
         and request.asset_generation == surface.asset_generation
     )
