@@ -30,9 +30,12 @@
       </section>
       <section>
         <h2>Score takeover</h2>
-        <p>Send the V1 full-panel score alert payload.</p>
+        <p>Send a V2 score alert.</p>
         <label>Headline<input id="headline" value="TOUCHDOWN"></label>
-        <label>Detail<input id="detail" value="TEST PLAY"></label>
+        <label>Player<input id="player" value="TEST PLAYER"></label>
+        <label>Data<input id="data" value="23YD"></label>
+        <label>Primary assist<input id="primary-assist" value=""></label>
+        <label>Secondary assist<input id="secondary-assist" value=""></label>
         <label>Status<input id="status" value="Q3 08:12"></label>
         <button class="alert" id="send-alert">Send score alert</button>
       </section>
@@ -78,7 +81,7 @@
         else sessionStorage.removeItem("sportsTicker.controllerToken");
         load().catch(error => show(error.message));
       };
-      document.querySelector("#send-alert").onclick = () => send("/api/v2/events/alerts", { kind: "score_alert", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { headline: document.querySelector("#headline").value, detail: document.querySelector("#detail").value, status: document.querySelector("#status").value, sport: "nfl", big: true, team_abbr: "NYG", team_color: "#0B2265", team_alt_color: "#A71930", home_abbr: "NYG", away_abbr: "DAL", home_score: 14, away_score: 7 } }).catch(error => show(error.message));
+      document.querySelector("#send-alert").onclick = () => send("/api/v2/events/alerts", { kind: "score_alert", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { headline: document.querySelector("#headline").value, player: document.querySelector("#player").value, data: document.querySelector("#data").value, primary_assist: document.querySelector("#primary-assist").value, secondary_assist: document.querySelector("#secondary-assist").value, status: document.querySelector("#status").value, sport: "nfl", big: true, team_abbr: "NYG", team_color: "#0B2265", team_alt_color: "#A71930", home_abbr: "NYG", away_abbr: "DAL", home_score: 14, away_score: 7 } }).catch(error => show(error.message));
       document.querySelector("#send-news").onclick = () => send("/api/v2/events/news", { kind: "news", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { kind: "NEWS", domain: "sports", sport: document.querySelector("#sport").value, from_abbr: "NYG", to_abbr: "", text: document.querySelector("#news-text").value, from_color: "#8B93A3", to_color: "#8B93A3" } }).catch(error => show(error.message));
       ticker.onchange = () => refresh().catch(error => show(error.message));
       document.querySelector("#controller-token").value = controllerToken;

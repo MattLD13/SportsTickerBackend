@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import re
+from hashlib import sha1
 import unicodedata
 from typing import Any
 
@@ -497,7 +498,7 @@ def normalize_soccer_clock(value: object, *, period: int | None = None) -> str:
         .replace("\u200e", "")
         .replace("\u200f", "")
         .replace("\ufffd", "")
-        .replace("’", "'")
+        .replace("ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢", "'")
     )
     text = re.sub(r"\s+", "", text).replace("'", "")
     match = re.fullmatch(
@@ -663,7 +664,7 @@ def soccer_event(
     shot_type: object = "",
     expected_goals: object = "",
 ) -> dict[str, Any]:
-    """Return the V1-equivalent goal or card event consumed by both panel layouts."""
+    """Project soccer player, assist, clock, and goal facts."""
 
     name = str(player or "").strip()
     surname = name.split()[-1].upper()[:8] if name else ""
@@ -674,8 +675,12 @@ def soccer_event(
         "time": clock,
         "own_goal": bool(own_goal),
     }
+    if name:
+        result["alert_player"] = name
     if str(assist or "").strip():
-        result["assist"] = str(assist).strip().split()[-1].upper()[:12]
+        full_assist = str(assist).strip()
+        result["assist"] = full_assist.split()[-1].upper()[:12]
+        result["alert_assist"] = full_assist
     if str(goal_type or "").strip():
         result["goal_type"] = str(goal_type).strip().upper()[:12]
     if str(shot_type or "").strip():
@@ -1006,3 +1011,308 @@ __all__ = [
     "sport_family",
     "sports_content_sort_key",
 ]
+
+
+def _football_name_matches(token: str, name: str) -> bool:
+    """Match a full name or ESPN initials without losing the surname."""
+
+    def without_suffix(value):
+        return re.sub(r"\s+(?:JR|SR|II|III|IV|V)\.?$", "", value, flags=re.IGNORECASE)
+
+    def key(value):
+        return re.sub(r"[\W_]+", "", without_suffix(value).casefold())
+
+    if key(token) == key(name):
+        return True
+    parts = without_suffix(name).split()
+    if not parts:
+        return False
+    initial = re.fullmatch(r"([A-Za-z.]+)\.\s*(.+)", token)
+    if initial:
+        return key(initial[2]) == key(parts[-1]) and key(" ".join(parts[:-1])).startswith(key(initial[1]))
+    return key(token) == key(parts[-1])
+
+
+def normalize_football_turnover_play(
+    play: Mapping[str, Any],
+    *,
+    situation: Mapping[str, Any],
+    competition: Mapping[str, Any],
+    home_abbr: str,
+    away_abbr: str,
+    player_catalog: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Normalize one ESPN interception or fumble play for score alerts."""
+
+    play_type = _mapping(play.get("type"))
+    text = str(play.get("text") or play.get("shortText") or play.get("description") or "").strip()
+    folded = f"{play_type.get('text') or ''} {text}".casefold()
+    name_end = r"(?=(?<=[a-z])\.\s+|\s+(?:at|to|for|return(?:ed)?|ran|runs?)\b|[,;()]|$)"
+    if re.search(r"\bintercept(?:ion|ed)\b", folded):
+        kind = "interception"
+        role_words = ("interceptor", "interception", "defender", "returner")
+        name_match = re.search(
+            r"\b(?:intercepted(?:\s+by)?|interception by)\s+([^,;()]+?)" + name_end,
+            text,
+            re.IGNORECASE,
+        )
+    elif re.search(r"\bfumbl(?:e|es|ed|ing)\b", folded):
+        kind = "fumble"
+        role_words = ("recoverer", "recovery", "fumbler", "rusher", "runner")
+        name_match = re.search(
+            r"\b(?:recovered by|fumbled by|fumble by)\s+([^,;()]+?)" + name_end,
+            text,
+            re.IGNORECASE,
+        )
+    else:
+        return {}
+
+    score_value = play.get("scoreValue", play.get("score_value"))
+    is_scoring = bool(
+        score_value not in (None, "", 0, "0")
+        or re.search(r"\b(touchdown|for a td|safety)\b", folded)
+    )
+    home = home_abbr.upper()
+    away = away_abbr.upper()
+    play_team = _possession(
+        play.get("team") or play.get("teamId") or play.get("possession"),
+        competition,
+        home_abbr,
+        away_abbr,
+    )
+    role_teams = {
+        str(record.get("type") or "").casefold(): _possession(
+            record.get("id") or record.get("team"), competition, home_abbr, away_abbr,
+        )
+        for record in (_mapping(value) for value in _sequence(play.get("teamParticipants")))
+    }
+    start_team = _possession(_mapping(play.get("start")).get("team"), competition, home_abbr, away_abbr)
+    end_team = _possession(_mapping(play.get("end")).get("team"), competition, home_abbr, away_abbr)
+    offense = role_teams.get("offense") or start_team or play_team or _possession(
+        situation.get("possession"), competition, home_abbr, away_abbr
+    )
+    active_possession = _possession(
+        situation.get("possession"), competition, home_abbr, away_abbr
+    )
+    athletes = tuple(
+        _mapping(value)
+        for value in _sequence(play.get("athletesInvolved") or play.get("participants"))
+    )
+    catalog = {
+        str(_mapping(record.get("athlete")).get("id") or ""): record
+        for record in player_catalog
+    }
+    candidates: list[tuple[str, str, str]] = []
+    for record in athletes:
+        athlete = _mapping(record.get("athlete") or record.get("player") or record)
+        catalog_record = _mapping(catalog.get(str(athlete.get("id") or "")))
+        athlete = {**_mapping(catalog_record.get("athlete")), **athlete}
+        name = str(
+            athlete.get("displayName")
+            or athlete.get("fullName")
+            or athlete.get("shortName")
+            or ""
+        ).strip()
+        team = _possession(
+            athlete.get("team") or record.get("team") or catalog_record.get("team"),
+            competition,
+            home_abbr,
+            away_abbr,
+        )
+        role = " ".join(
+            str(record.get(key) or "")
+            for key in ("role", "type", "displayRole", "description")
+        ).casefold()
+        if name:
+            candidates.append((name, team, role))
+
+    named_player = name_match.group(1).strip() if name_match else ""
+    if not named_player:
+        text_prefix = text.split("(", 1)[0].strip()
+        player_match = re.match(r"(.+?)\s+\d+\s+(?:yd|yards?)\b", text_prefix, re.IGNORECASE)
+        if player_match:
+            named_player = player_match.group(1).strip()
+    named_player = re.sub(r"^#\d+\s*", "", named_player).strip(" ,.;")
+    named_team = ""
+    for abbreviation in (home, away):
+        for alias in _TEAM_ALIASES.get(abbreviation, (abbreviation,)):
+            if named_player.startswith(alias + "-"):
+                named_team = abbreviation
+                named_player = named_player[len(alias) + 1:]
+                break
+    catalog_candidates = []
+    for record in player_catalog:
+        athlete = _mapping(record.get("athlete"))
+        name = str(athlete.get("displayName") or athlete.get("fullName") or athlete.get("shortName") or "").strip()
+        team = _possession(record.get("team") or athlete.get("team"), competition, home_abbr, away_abbr)
+        if name:
+            catalog_candidates.append((name, team, ""))
+    preferred_team = named_team or (role_teams.get("defense") if kind == "interception" else "") or end_team or (play_team if is_scoring else "")
+    matches = {
+        candidate for candidate in (*candidates, *catalog_candidates)
+        if named_player and _football_name_matches(named_player, candidate[0])
+        and (not preferred_team or not candidate[1] or candidate[1] == preferred_team)
+    }
+    identities = {(candidate[0], candidate[1]) for candidate in matches}
+    actor = next(iter(matches)) if len(identities) == 1 else None
+    if actor is None:
+        actor = next(
+            (
+                candidate
+                for candidate in candidates
+                if any(word in candidate[2] for word in role_words)
+            ),
+            None,
+        )
+    if actor is None and kind == "interception":
+        actor = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate[1] and candidate[1] != offense
+            ),
+            None,
+        )
+    if actor is None and kind == "fumble":
+        actor = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate[1] == offense
+            ),
+            None,
+        )
+
+    player = actor[0] if actor else named_player
+    actor_team = actor[1] if actor else ""
+    if kind == "interception":
+        team = actor_team or named_team or role_teams.get("defense") or end_team or (
+            play_team if is_scoring else ""
+        ) or (active_possession if active_possession and active_possession != offense else "")
+        if not team and offense in {home, away}:
+            team = away if offense == home else home
+    else:
+        team = actor_team or named_team or end_team or (play_team if is_scoring else "") or offense or active_possession
+
+    period = _mapping(play.get("period"))
+    clock = _mapping(play.get("clock"))
+    period_text = str(
+        period.get("displayValue") or period.get("number") or ""
+    ).strip()
+    clock_text = str(
+        clock.get("displayValue") or clock.get("value") or ""
+    ).strip()
+    return_match = re.search(
+        r"\b(\d+)\s*(?:yd|yard)s?\s*(?:interception\s*)?return\b|"
+        r"\breturn(?:ed)?\s+for\s+(\d+)\s+yards?\b",
+        text,
+        re.IGNORECASE,
+    )
+    return_yards = next(
+        (int(value) for value in return_match.groups() if value),
+        None,
+    ) if return_match else None
+    source_id = str(play.get("id") or "").strip()
+    if not source_id:
+        fingerprint = "|".join((period_text, clock_text, text.casefold()))
+        source_id = sha1(fingerprint.encode("utf-8")).hexdigest()[:16]
+
+    result: dict[str, Any] = {
+        "id": source_id,
+        "kind": kind,
+        "team": team,
+        "player": player,
+        "text": text[:180],
+        "is_scoring": is_scoring,
+    }
+    if return_yards is not None:
+        result["return_yards"] = return_yards
+    if period_text:
+        result["period"] = period_text
+    if clock_text:
+        result["clock"] = clock_text
+    if score_value not in (None, ""):
+        result["score_value"] = score_value
+    down = _integer_or_none(play.get("down") or _mapping(play.get("start")).get("down"))
+    distance = _integer_or_none(
+        play.get("distance") or _mapping(play.get("start")).get("distance")
+    )
+    if down is None:
+        down = _integer_or_none(situation.get("down"))
+    if distance is None:
+        distance = _integer_or_none(situation.get("distance"))
+    if down is not None:
+        result["down"] = down
+    if distance is not None:
+        result["distance"] = distance
+    red_zone = football_red_zone_for_play(
+        play,
+        situation=situation,
+        competition=competition,
+        home_abbr=home_abbr,
+        away_abbr=away_abbr,
+    )
+    if red_zone is not None:
+        result["is_red_zone"] = red_zone
+    return result
+
+
+def football_red_zone_for_play(
+    play: Mapping[str, Any],
+    *,
+    situation: Mapping[str, Any],
+    competition: Mapping[str, Any],
+    home_abbr: str,
+    away_abbr: str,
+) -> bool | None:
+    """Resolve red-zone state from one play before using live situation state."""
+
+    contexts = (
+        play,
+        _mapping(play.get("situation")),
+        _mapping(play.get("start")),
+    )
+    for context in contexts:
+        for key in ("isRedZone", "is_red_zone", "redZone"):
+            if key in context and context[key] is not None:
+                value = context[key]
+                if isinstance(value, str):
+                    return value.strip().casefold() in {"true", "1", "yes"}
+                return bool(value)
+
+    start = _mapping(play.get("start"))
+    yards_to_goal = _integer_or_none(start.get("yardsToEndzone"))
+    if yards_to_goal is not None:
+        return yards_to_goal <= 20
+    raw_line = next(
+        (
+            value for value in (
+                start.get("yardLine"),
+                start.get("yardLineText"),
+                play.get("yardLine"),
+                play.get("yardLineText"),
+            )
+            if value not in (None, "")
+        ),
+        None,
+    )
+    if isinstance(raw_line, Mapping):
+        raw_line = raw_line.get("text") or raw_line.get("displayValue") or raw_line.get("value")
+    if isinstance(raw_line, str) and re.search(r"[A-Z]{2,4}", raw_line, re.IGNORECASE):
+        text = raw_line if " at " in raw_line.casefold() else f"at {raw_line}"
+        yard_line = _yard_line(text, home_abbr, away_abbr)
+    else:
+        yard_line = _integer_or_none(raw_line)
+
+    possession = _possession(
+        play.get("possession") or play.get("team") or situation.get("possession"),
+        competition,
+        home_abbr,
+        away_abbr,
+    )
+    if yard_line is not None and possession in {home_abbr, away_abbr}:
+        yards_to_goal = yard_line if possession == away_abbr else 100 - yard_line
+        return yards_to_goal <= 20
+
+    current = situation.get("isRedZone")
+    return bool(current) if current is not None else None

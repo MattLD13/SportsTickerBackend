@@ -32,6 +32,8 @@ from .sports_display import (
     assign_active_team,
     baseball_player_stats,
     display_situation,
+    football_red_zone_for_play,
+    normalize_football_turnover_play,
     normalize_rank,
     soccer_event,
     sports_content_sort_key,
@@ -2033,7 +2035,7 @@ def _normalize_team_name(value: Any) -> str:
     """Normalize school names for conservative exact matching."""
 
     text = str(value or "").lower().replace("&", " and ")
-    text = re.sub(r"['’]", "", text)
+    text = re.sub(r"['ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢]", "", text)
     return " ".join(re.findall(r"[a-z0-9]+", text))
 
 
@@ -2195,7 +2197,7 @@ def _soccer_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, An
         participants = _event_participant_names(play, summary)
         event = soccer_event(
             is_home=team == home_abbr,
-            player=_event_player(play),
+            player=participants[0] if participants else _event_player_full(play, summary, sport="soccer"),
             minute=_event_clock(play),
             own_goal="own goal" in text,
             assist=participants[1] if len(participants) > 1 else "",
@@ -2285,13 +2287,21 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
         if not is_scoring:
             continue
         team = _event_team_abbr(play, competition, home_abbr, away_abbr)
+        football_play = None
+        if league in {"nfl", "ncf_fbs", "ncf_fcs"}:
+            football_play = _normalize_football_play(
+                play, competition, home_abbr, away_abbr, summary, force_scoring=bool(raw_scoring),
+            )
+            if football_play and football_play.get("team"):
+                team = football_play["team"]
         if not team:
             continue
         play_type = play.get("type")
         play_type_text = _mapping(play_type).get("text")
         if not play_type_text and isinstance(play_type, str):
             play_type_text = play_type
-        athlete = _event_player(play, summary)
+        athlete_full = _event_player_full(play, summary, sport=league) or _event_text_player_full(text, sport=league)
+        athlete = _compact_event_name(athlete_full)
         scoring_type = str(
             _mapping(play.get("scoringType")).get("displayName")
             or (
@@ -2328,10 +2338,14 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             "team": team,
             "scorer": athlete,
             "player": athlete,
-            "type": scoring_type[:18],
-            "event_type": event_type[:18],
-            "text": text[:48],
+            "type": scoring_type,
+            "event_type": event_type,
+            "text": text[:180],
         }
+        if athlete_full:
+            normalized["scorer_full"] = athlete_full
+        if league in {"nfl", "ncf_fbs", "ncf_fcs"}:
+            normalized["passer_full"] = _event_passer_full(text)
         raw_score_value = play.get("scoreValue", play.get("score_value"))
         if raw_score_value not in (None, ""):
             normalized["score_value"] = raw_score_value
@@ -2347,6 +2361,7 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
                 normalized["scorer"] = text_player
                 normalized["player"] = text_player
         if league in {"nba", "march_madness"} and len(participant_names) > 1:
+            normalized["assists_full"] = participant_names[1:]
             normalized["assists"] = tuple(
                 _compact_event_name(name) for name in participant_names[1:]
             )
@@ -2355,7 +2370,8 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
                 normalized["is_home"] = team.upper() == home_abbr.upper()
             assists = _event_assist_names(play, summary, athlete)
             if assists:
-                normalized["assists"] = assists
+                normalized["assists_full"] = assists
+                normalized["assists"] = tuple(_compact_event_name(name) for name in assists)
             play_id = str(play.get("id") or play.get("sequenceNumber") or "").strip()
             if play_id:
                 normalized["play_id"] = play_id
@@ -2385,14 +2401,6 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             passer = _event_passer(text)
             if passer:
                 normalized["passer"] = passer
-            football_play = _normalize_football_play(
-                play,
-                competition,
-                home_abbr,
-                away_abbr,
-                summary,
-                force_scoring=True,
-            )
             if football_play:
                 normalized.update(
                     {
@@ -2445,6 +2453,7 @@ def _event_football_details(payload: Any, item: Mapping[str, Any]) -> dict[str, 
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
     plays: list[dict[str, Any]] = []
+    scoring_ids = {str(_mapping(play).get("id") or "") for play in _sequence(summary.get("scoringPlays"))}
     for raw_play in _event_drive_plays(summary):
         normalized = _normalize_football_play(
             raw_play,
@@ -2452,6 +2461,7 @@ def _event_football_details(payload: Any, item: Mapping[str, Any]) -> dict[str, 
             home_abbr,
             away_abbr,
             summary,
+            force_scoring=str(raw_play.get("id") or "") in scoring_ids,
         )
         if normalized and normalized.get("football_kind"):
             plays.append(normalized)
@@ -2526,6 +2536,17 @@ def _normalize_football_play(
         scorer = recoverer
     if not scorer:
         scorer = _event_text_player(text)
+    full_player = _event_player_full(play, summary, sport="nfl") or _event_text_player_full(text)
+    if kind:
+        identity = normalize_football_turnover_play(
+            play, situation={}, competition=competition, home_abbr=home_abbr, away_abbr=away_abbr,
+            player_catalog=_event_boxscore_players(summary),
+        )
+        if identity.get("player"):
+            full_player = identity["player"]
+            scorer = _compact_event_name(full_player)
+        if identity.get("team"):
+            team = identity["team"]
 
     period = _mapping(play.get("period"))
     period_text = str(period.get("displayValue") or period.get("number") or "").strip()
@@ -2539,8 +2560,10 @@ def _normalize_football_play(
         "team": team,
         "scorer": scorer,
         "player": scorer,
-        "event_type": type_text[:24],
-        "text": text[:80],
+        "scorer_full": full_player,
+        "player_full": full_player,
+        "event_type": type_text,
+        "text": text[:180],
         "is_scoring": is_scoring,
         "is_turnover": _event_boolean(play.get("isTurnover")) or kind == "interception",
     }
@@ -2568,6 +2591,9 @@ def _normalize_football_play(
             pass
     if return_yards is not None:
         result["yards"] = return_yards
+    result["is_red_zone"] = football_red_zone_for_play(
+        play, situation={}, competition=competition, home_abbr=home_abbr, away_abbr=away_abbr,
+    )
     return result
 
 
@@ -2691,34 +2717,7 @@ def _event_player(
 ) -> str:
     """Return the scorer or carded player's compact surname."""
 
-    athlete = _mapping(play.get("athlete") or play.get("player"))
-    text = str(
-        athlete.get("displayName")
-        or athlete.get("shortName")
-        or play.get("athleteName")
-        or play.get("playerName")
-        or ""
-    ).strip()
-    if not text:
-        preferred = {
-            "scorer", "shooter", "batter", "kicker", "rusher", "receiver",
-            "goal-scorer", "goal scorer", "player",
-        }
-        participants = tuple(_mapping(value) for value in _sequence(play.get("participants")))
-        ordered = tuple(
-            record for record in participants
-            if str(record.get("type") or "").strip().lower() in preferred
-        ) + tuple(
-            record for record in participants
-            if str(record.get("type") or "").strip().lower() not in preferred
-        )
-        athletes = _event_boxscore_athletes(summary) if summary else {}
-        for record in ordered:
-            participant_athlete = _mapping(record.get("athlete"))
-            text = _event_person_name(participant_athlete, athletes)
-            if text:
-                break
-    return _compact_event_name(text)
+    return _compact_event_name(_event_player_full(play, summary))
 
 
 def _event_boxscore_athletes(
@@ -2726,23 +2725,13 @@ def _event_boxscore_athletes(
 ) -> dict[str, str]:
     """Index ESPN boxscore athlete names for play participant IDs."""
 
-    if not summary:
-        return {}
     result: dict[str, str] = {}
-    boxscore = _mapping(summary.get("boxscore"))
-    for group in _sequence(boxscore.get("players")):
-        for statistics in _sequence(_mapping(group).get("statistics")):
-            for record in _sequence(_mapping(statistics).get("athletes")):
-                athlete = _mapping(_mapping(record).get("athlete"))
-                identifier = str(athlete.get("id") or "").strip()
-                name = str(
-                    athlete.get("displayName")
-                    or athlete.get("fullName")
-                    or athlete.get("shortName")
-                    or ""
-                ).strip()
-                if identifier and name:
-                    result[identifier] = name
+    for record in _event_boxscore_players(summary):
+        athlete = _mapping(record.get("athlete"))
+        identifier = str(athlete.get("id") or "").strip()
+        name = _event_person_name(athlete, {})
+        if identifier and name:
+            result[identifier] = name
     return result
 
 
@@ -2764,12 +2753,19 @@ def _event_person_name(
 def _event_participant_names(
     play: Mapping[str, Any],
     summary: Mapping[str, Any] | None,
+    *,
+    sport: str = "",
 ) -> tuple[str, ...]:
-    """Return scorer-first full participant names from one ESPN play."""
+    """Return role-ordered full participant names from one ESPN play."""
 
     athletes = _event_boxscore_athletes(summary)
+    records = tuple(_mapping(value) for value in _sequence(play.get("participants")))
+    ordered = sorted(
+        enumerate(records),
+        key=lambda pair: (_event_role_priority(pair[1], sport), pair[0]),
+    )
     result: list[str] = []
-    for participant in _sequence(play.get("participants")):
+    for _, participant in ordered:
         name = _event_person_name(_mapping(_mapping(participant).get("athlete")), athletes)
         if name and name not in result:
             result.append(name)
@@ -2794,7 +2790,7 @@ def _event_assist_names(
         if not re.search(r"\bassist(?:er)?\b", role):
             continue
         name = _event_person_name(_mapping(participant.get("athlete")), athletes)
-        compact = _compact_event_name(name)
+        compact = name.strip()
         if compact and compact not in tagged:
             tagged.append(compact)
     if tagged:
@@ -2807,8 +2803,8 @@ def _event_assist_names(
         names: list[str] = []
         for value in match.group(1).split(","):
             name = re.sub(r"\s*\([^)]*\)", "", value).strip(" .;:")
-            compact = _compact_event_name(name)
-            if compact and compact != scorer_name and compact not in names:
+            compact = name.strip()
+            if compact and _compact_event_name(compact) != scorer_name and compact not in names:
                 names.append(compact)
         return tuple(names)
     if has_roles:
@@ -2817,7 +2813,7 @@ def _event_assist_names(
     return tuple(dict.fromkeys(
         compact
         for name in _event_participant_names(play, summary)
-        if (compact := _compact_event_name(name)) and compact != scorer_name
+        if (compact := name.strip()) and _compact_event_name(compact) != scorer_name
     ))
 
 
@@ -2846,24 +2842,13 @@ def _event_yards(text: str) -> int | None:
 def _event_passer(text: str) -> str:
     """Read a quarterback name from one ESPN passing touchdown description."""
 
-    match = re.search(r"\bpass from\s+([^()]+)", text, re.IGNORECASE)
-    if match:
-        return _compact_event_name(match.group(1))
-    match = re.search(r"\b([A-Z][A-Za-z.'-]*)\s+pass\b", text, re.IGNORECASE)
-    return _compact_event_name(match.group(1)) if match else ""
+    return _compact_event_name(_event_passer_full(text))
 
 
 def _event_text_player(text: str) -> str:
-    """Read the primary scorer from ESPN scoring text without participants."""
+    """Read the compact scorer name from ESPN scoring text."""
 
-    prefix = text.split("(", 1)[0].strip()
-    match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
-    if match:
-        return _compact_event_name(match.group(1))
-    match = re.search(r"(?:,|^)\s*([^,]+?)\s+returns?\s+for\s+\d+\s+yds?\s+for\s+a\s+TD", text, re.IGNORECASE)
-    if match:
-        return _compact_event_name(match.group(1))
-    return ""
+    return _compact_event_name(_event_text_player_full(text))
 
 
 def _soccer_goal_type(text: str) -> str:
@@ -3631,3 +3616,120 @@ def _text(value: Any, default: str = "") -> str:
 
 
 __all__ = ["EspnScoreboardProvider"]
+
+
+def _event_player_full(
+    play: Mapping[str, Any],
+    summary: Mapping[str, Any] | None = None,
+    *,
+    sport: str = "",
+) -> str:
+    """Return the full name of the primary participant in one play."""
+
+    athlete = _mapping(play.get("athlete") or play.get("player"))
+    text = str(
+        athlete.get("displayName")
+        or athlete.get("fullName")
+        or athlete.get("shortName")
+        or play.get("athleteName")
+        or play.get("playerName")
+        or ""
+    ).strip()
+    if not text:
+        names = _event_participant_names(play, summary, sport=sport)
+        if names:
+            text = names[0]
+    return text.strip()
+
+
+def _event_boxscore_players(summary: Mapping[str, Any] | None) -> tuple[Mapping[str, Any], ...]:
+    """Index boxscore names and teams for turnover identity resolution."""
+
+    result: dict[tuple[str, str], Mapping[str, Any]] = {}
+    boxscore = _mapping(_mapping(summary).get("boxscore"))
+    for group in _sequence(boxscore.get("players")):
+        team = _mapping(_mapping(group).get("team"))
+        for statistics in _sequence(_mapping(group).get("statistics")):
+            for record in _sequence(_mapping(statistics).get("athletes")):
+                athlete = _mapping(_mapping(record).get("athlete"))
+                identifier = str(athlete.get("id") or "").strip()
+                if identifier:
+                    result[(str(team.get("id") or ""), identifier)] = {"athlete": athlete, "team": team}
+    return tuple(result.values())
+
+
+def _event_role_priority(participant: Mapping[str, Any], sport: str) -> int:
+    """Sort scorers before helpers, and helpers before unrelated participants."""
+
+    del sport
+    role = " ".join(
+        str(participant.get(key) or "")
+        for key in ("type", "role", "displayRole", "description")
+    ).casefold().replace("_", " ")
+    primary = (
+        "scorer", "goal scorer", "goalscorer", "batter", "shooter",
+        "receiver", "rusher", "runner", "interceptor", "recoverer",
+    )
+    if any(value in role for value in primary):
+        return 0
+    if any(value in role for value in ("assist", "passer", "goalkeeper")):
+        return 2
+    return 1
+
+
+def _event_text_player_full(text: str, *, sport: str = "") -> str:
+    """Read a full primary scorer name from common ESPN play descriptions."""
+
+    prefix = text.split("(", 1)[0].strip()
+    match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    match = re.search(
+        r"(?:,|^)\s*([^,]+?)\s+returns?\s+for\s+\d+\s+yds?\s+for\s+a\s+TD",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        return match.group(1).strip()
+    if sport in {"mlb", "baseball"}:
+        match = re.match(
+            r"(.+?)\s+(?:singled|doubled|tripled|homers?|homered|walked|walks?|"
+            r"strikes? out|grounds? out|flies? out|lines? out|hits? a home run)\b",
+            prefix,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).strip()
+        match = re.search(
+            r"\b(?:single|double|triple|home run) by\s+([^,.;()]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).strip()
+    if sport in {"nba", "march_madness", "basketball"}:
+        match = re.match(r"(.+?)\s+(?:makes?|made|hits?)\b", prefix, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    if sport == "nhl":
+        match = re.search(r"\bgoal\s+by\s+([^,.;()]+)", text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+        match = re.match(r"(.+?)\s+(?:scores?|scored)\b", prefix, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    if sport.startswith("soccer"):
+        match = re.search(r"\bscorer\s*[:=]\s*([^,.;()]+)", text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _event_passer_full(text: str) -> str:
+    """Read a quarterback's full name from one ESPN passing-play description."""
+
+    match = re.search(r"\bpass from\s+([^()]+)", text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"\b([A-Z][A-Za-z.'-]*)\s+pass\b", text, re.IGNORECASE)
+    return match.group(1).strip() if match else ""

@@ -24,7 +24,9 @@ def test_score_alert_enrichment_details() -> None:
     assert len(nhl_alerts) == 1
     assert nhl_alerts[0]["team_abbr"] == "NYR"
     assert nhl_alerts[0]["headline"] == "POWER PLAY GOAL"
-    assert nhl_alerts[0]["detail"] == "PANARIN | ASSISTS: FOX, ZIBANEJAD"
+    assert nhl_alerts[0]["player"] == "Panarin"
+    assert nhl_alerts[0]["primary_assist"] == "Fox"
+    assert nhl_alerts[0]["secondary_assist"] == "Zibanejad"
 
     # 2. Soccer header goal
     game_soc_p1 = {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_epl", "state": "in", "status": "35'", "home_abbr": "ARS", "away_abbr": "TOT", "home_score": 0, "away_score": 0}
@@ -36,7 +38,8 @@ def test_score_alert_enrichment_details() -> None:
     tracker.ingest([game_soc_p2])
     soc_alerts = tracker.recent()
     soc_alert = next(a for a in soc_alerts if a["sport"] == "soccer_epl")
-    assert soc_alert["detail"] == "SAKA 38' (HEADER)"
+    assert soc_alert["player"] == "Saka"
+    assert soc_alert["data"] == "38' HEADER"
 
     # 3. Generic ESPN scoring play detail, including baseball.
     game_mlb_p1 = {
@@ -51,7 +54,7 @@ def test_score_alert_enrichment_details() -> None:
     }
     tracker.ingest([game_mlb_p2])
     mlb_alert = next(a for a in tracker.recent() if a["sport"] == "mlb")
-    assert mlb_alert["detail"] == "JUDGE"
+    assert mlb_alert["player"] == "Judge"
 
 
 def test_hockey_score_alert_hydrates_when_summary_detail_arrives_after_score() -> None:
@@ -69,7 +72,7 @@ def test_hockey_score_alert_hydrates_when_summary_detail_arrives_after_score() -
     }
     tracker.ingest([baseline])
     tracker.ingest([{**baseline, "home_score": 1, "status": "P2 09:42"}])
-    assert tracker.recent()[0]["detail"] == ""
+    assert tracker.recent()[0]["player"] == ""
 
     tracker.ingest([{
         **baseline,
@@ -90,7 +93,8 @@ def test_hockey_score_alert_hydrates_when_summary_detail_arrives_after_score() -
 
     alert = tracker.recent()[0]
     assert alert["headline"] == "GOAL"
-    assert alert["detail"] == "RADDYSH | ASSISTS: SMITS"
+    assert alert["player"] == "RADDYSH"
+    assert alert["primary_assist"] == "SMITS"
 
 
 def test_hockey_goal_alerts_match_each_goal_and_hydrate_assists() -> None:
@@ -109,7 +113,7 @@ def test_hockey_goal_alerts_match_each_goal_and_hydrate_assists() -> None:
         "home_score": 1,
         "situation": {"scoring_plays": [first_goal]},
     }])
-    assert tracker.recent()[0]["detail"] == "FIRST"
+    assert tracker.recent()[0]["player"] == "FIRST"
 
     tracker.ingest([{
         **baseline,
@@ -118,7 +122,7 @@ def test_hockey_goal_alerts_match_each_goal_and_hydrate_assists() -> None:
     }])
     alerts = tracker.recent()
     assert len(alerts) == 2
-    assert alerts[1]["detail"] == ""
+    assert alerts[1]["player"] == ""
 
     first_goal_with_assists = {
         **first_goal,
@@ -136,8 +140,12 @@ def test_hockey_goal_alerts_match_each_goal_and_hydrate_assists() -> None:
     }])
 
     first_alert, second_alert = tracker.recent()
-    assert first_alert["detail"] == "FIRST | ASSISTS: HELPERONE, HELPERTWO"
-    assert second_alert["detail"] == "SECOND | ASSISTS: PASSERONE, PASSERTWO"
+    assert first_alert["player"] == "FIRST"
+    assert first_alert["primary_assist"] == "HELPERONE"
+    assert first_alert["secondary_assist"] == "HELPERTWO"
+    assert second_alert["player"] == "SECOND"
+    assert second_alert["primary_assist"] == "PASSERONE"
+    assert second_alert["secondary_assist"] == "PASSERTWO"
     assert first_alert["scoring_play_id"] == "goal-1"
     assert second_alert["scoring_play_id"] == "goal-2"
 
@@ -161,7 +169,8 @@ def test_football_score_alert_uses_the_scoring_play() -> None:
 
     alert = tracker.recent()[0]
     assert alert["headline"] == "RUSH TD"
-    assert alert["detail"] == "WILLIAMS 1YD"
+    assert alert["player"] == "WILLIAMS"
+    assert alert["data"] == "RUSH 1YD"
 
 
 def test_football_turnover_alerts_include_player_context_and_deduplicate() -> None:
@@ -177,12 +186,12 @@ def test_football_turnover_alerts_include_player_context_and_deduplicate() -> No
         "situation": {"football_plays": [
             {
                 "event_id": "pick-1", "football_kind": "interception", "team": "NYG",
-                "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
+                "scorer": "THOMAS", "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
                 "is_scoring": False,
             },
             {
                 "event_id": "fumble-1", "football_kind": "fumble", "team": "DAL",
-                "fumbler": "LAMB", "recoverer": "LAWRENCE", "forced_by": "THOMAS",
+                "scorer": "LAWRENCE", "fumbler": "LAMB", "recoverer": "LAWRENCE", "forced_by": "THOMAS",
                 "is_scoring": False,
             },
         ]},
@@ -191,12 +200,14 @@ def test_football_turnover_alerts_include_player_context_and_deduplicate() -> No
 
     alerts = tracker.recent()
     assert len(alerts) == 2
-    assert alerts[0]["headline"] == "PICK"
-    assert alerts[0]["detail"] == "THOMAS 12YD | PRESCOTT"
+    assert alerts[0]["headline"] == "INTERCEPTION"
+    assert alerts[0]["player"] == "THOMAS"
+    assert alerts[0]["data"] == "INTERCEPTION 12YD RET"
     assert alerts[0]["points"] == 0
     assert alerts[0]["event_id"] == "nfl-turnovers:football:pick-1"
     assert alerts[1]["headline"] == "FUMBLE"
-    assert alerts[1]["detail"] == "LAMB FUM | REC LAWRENCE"
+    assert alerts[1]["player"] == "LAWRENCE"
+    assert alerts[1]["data"] == "FUMBLE"
     assert alerts[1]["team_abbr"] == "DAL"
     assert len(
         alerts_for_settings(
@@ -222,13 +233,14 @@ def test_football_pick_six_detail_uses_returner_and_quarterback() -> None:
         "situation": {"scoring_plays": [{
             "team": "NYG", "scorer": "THOMAS", "type": "Touchdown",
             "event_type": "Interception Return Touchdown", "football_kind": "interception",
-            "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
+            "scorer": "THOMAS", "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
         }]},
     }])
 
     alert = tracker.recent()[0]
-    assert alert["headline"] == "PICK SIX"
-    assert alert["detail"] == "THOMAS 12YD | PRESCOTT"
+    assert alert["headline"] == "INTERCEPTION TD"
+    assert alert["player"] == "THOMAS"
+    assert alert["data"] == "INTERCEPTION 12YD RET"
 
 
 def test_basketball_scores_never_create_alerts() -> None:
@@ -283,7 +295,8 @@ def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
         },
     }])
 
-    assert tracker.recent()[0]["detail"] == "LEE 2/4 .298 | 96 SLIDER"
+    assert tracker.recent()[0]["player"] == "Lee"
+    assert tracker.recent()[0]["data"] == "2/4 .298 96 Slider"
 
 
 def test_mlb_home_run_detail_shows_statcast_metrics() -> None:
@@ -304,7 +317,8 @@ def test_mlb_home_run_detail_shows_statcast_metrics() -> None:
 
     alert = tracker.recent()[0]
     assert alert["headline"] == "2-RUN HOME RUN"
-    assert alert["detail"] == "ALTUVE 353FT | 94EV 37LA"
+    assert alert["player"] == "Altuve"
+    assert alert["data"] == "353FT 94EV 37LA"
 
 
 def test_mlb_score_alert_does_not_infer_home_run_from_runs_scored() -> None:

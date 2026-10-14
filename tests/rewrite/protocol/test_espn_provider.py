@@ -1719,6 +1719,7 @@ def test_espn_event_scoring_details_normalize_team_and_scorer() -> None:
     assert details["scoring_plays"] == [{
         "team": "NYY",
         "scorer": "JUDGE",
+        "scorer_full": "Aaron Judge",
         "player": "JUDGE",
         "type": "Home Run",
         "event_type": "Home Run",
@@ -1835,6 +1836,7 @@ def test_espn_event_football_details_extract_turnovers_from_drive_plays() -> Non
     assert [play["event_id"] for play in plays] == ["pick-1", "fumble-1"]
     assert plays[0]["team"] == "NYG"
     assert plays[0]["interceptor"] == "THOMAS"
+    assert plays[0]["scorer_full"] == "A.Thomas"
     assert plays[0]["passer"] == "PRESCOTT"
     assert plays[0]["return_yards"] == 12
     assert plays[0]["period"] == "Q2"
@@ -1923,9 +1925,11 @@ def test_espn_soccer_details_keep_goal_type_and_assist() -> None:
     assert details["goal_events"] == [{
         "is_home": True,
         "player": "SAKA",
+        "alert_player": "Bukayo Saka",
         "time": "38'",
         "own_goal": False,
         "assist": "ODEGAARD",
+        "alert_assist": "Martin Odegaard",
         "goal_type": "HEADER",
     }]
 
@@ -1970,6 +1974,7 @@ def test_espn_mlb_scoring_details_use_summary_play_type_and_run_count() -> None:
     assert details["scoring_plays"] == [{
         "team": "NYY",
         "scorer": "WELLS",
+        "scorer_full": "Austin Wells",
         "player": "WELLS",
         "player_id": "123",
         "type": "Single",
@@ -2568,6 +2573,7 @@ def test_espn_mlb_scoring_details_preserve_rbi_type_from_live_play() -> None:
     assert details["scoring_plays"] == [{
         "team": "NYY",
         "scorer": "LEE",
+        "scorer_full": "Jung Hoo Lee",
         "player": "LEE",
         "type": "Double",
         "event_type": "double",

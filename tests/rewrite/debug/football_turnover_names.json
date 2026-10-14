@@ -1,0 +1,916 @@
+[
+  {
+    "sport": "nfl",
+    "event_id": "401220252",
+    "play_id": "401220252645",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401220252",
+    "player": "James Bradberry IV",
+    "team": "NYG",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "19",
+                  "abbreviation": "NYG"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "28",
+                  "abbreviation": "WSH"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "19",
+              "abbreviation": "NYG"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "2572841",
+                      "displayName": "James Bradberry IV",
+                      "firstName": "James",
+                      "lastName": "Bradberry IV",
+                      "jersey": "24"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "plays": [
+        {
+          "id": "401220252645",
+          "type": {
+            "id": "26",
+            "text": "Pass Interception Return",
+            "abbreviation": "INTR"
+          },
+          "text": "(2:41) (Shotgun) K.Allen pass deep left intended for T.McLaurin INTERCEPTED by J.Bradberry at WAS 46. J.Bradberry to WAS 27 for 19 yards (T.McLaurin).",
+          "awayScore": 0,
+          "homeScore": 3,
+          "period": {
+            "number": 1
+          },
+          "clock": {
+            "displayValue": "2:41"
+          },
+          "scoringPlay": false,
+          "teamParticipants": [
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2020/teams/19?lang=en&region=us"
+              },
+              "id": "19",
+              "order": 1,
+              "type": "defense"
+            },
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2020/teams/28?lang=en&region=us"
+              },
+              "id": "28",
+              "order": 2,
+              "type": "offense"
+            }
+          ],
+          "statYardage": 19,
+          "start": {
+            "down": 2,
+            "distance": 10,
+            "yardLine": 72,
+            "yardsToEndzone": 72,
+            "downDistanceText": "2nd & 10 at WSH 28",
+            "shortDownDistanceText": "2nd & 10",
+            "possessionText": "WSH 28",
+            "team": {
+              "id": "28"
+            }
+          },
+          "end": {
+            "down": 1,
+            "distance": 10,
+            "yardLine": 73,
+            "yardsToEndzone": 27,
+            "downDistanceText": "1st & 10 at WSH 27",
+            "shortDownDistanceText": "1st & 10",
+            "possessionText": "WSH 27",
+            "team": {
+              "id": "19"
+            }
+          },
+          "isTurnover": true
+        }
+      ]
+    }
+  },
+  {
+    "sport": "nfl",
+    "event_id": "401671715",
+    "play_id": "401671715917",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401671715",
+    "player": "Bobby Wagner",
+    "team": "WSH",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "28",
+                  "abbreviation": "WSH"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "6",
+                  "abbreviation": "DAL"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "28",
+              "abbreviation": "WSH"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "14979",
+                      "displayName": "Bobby Wagner",
+                      "firstName": "Bobby",
+                      "lastName": "Wagner",
+                      "jersey": "54"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "plays": [
+        {
+          "id": "401671715917",
+          "type": {
+            "id": "29",
+            "text": "Fumble Recovery (Opponent)"
+          },
+          "text": "(Shotgun) R.Dowdle left guard to DAL 47 for 6 yards (B.Wagner, J.Newton). FUMBLES (J.Newton), RECOVERED by WAS-B.Wagner at DAL 47.",
+          "awayScore": 0,
+          "homeScore": 3,
+          "period": {
+            "number": 1
+          },
+          "clock": {
+            "displayValue": "0:45"
+          },
+          "scoringPlay": false,
+          "teamParticipants": [
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2024/teams/28?lang=en&region=us"
+              },
+              "id": "28",
+              "order": 1,
+              "type": "defense"
+            },
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2024/teams/6?lang=en&region=us"
+              },
+              "id": "6",
+              "order": 2,
+              "type": "offense"
+            }
+          ],
+          "statYardage": 6,
+          "start": {
+            "down": 1,
+            "distance": 10,
+            "yardLine": 59,
+            "yardsToEndzone": 59,
+            "downDistanceText": "1st & 10 at DAL 41",
+            "shortDownDistanceText": "1st & 10",
+            "possessionText": "DAL 41",
+            "team": {
+              "id": "6"
+            }
+          },
+          "end": {
+            "down": 1,
+            "distance": 10,
+            "yardLine": 53,
+            "yardsToEndzone": 47,
+            "downDistanceText": "1st & 10 at DAL 47",
+            "shortDownDistanceText": "1st & 10",
+            "possessionText": "DAL 47",
+            "team": {
+              "id": "28"
+            }
+          },
+          "isTurnover": true
+        }
+      ]
+    }
+  },
+  {
+    "sport": "nfl",
+    "event_id": "401671889",
+    "play_id": "4016718891468",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401671889",
+    "player": "Cooper DeJean",
+    "team": "PHI",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "21",
+                  "abbreviation": "PHI"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "12",
+                  "abbreviation": "KC"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "21",
+              "abbreviation": "PHI"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "4682618",
+                      "displayName": "Cooper DeJean",
+                      "firstName": "Cooper",
+                      "lastName": "DeJean",
+                      "jersey": "33"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "plays": [
+        {
+          "id": "4016718891468",
+          "type": {
+            "id": "36",
+            "text": "Interception Return Touchdown",
+            "abbreviation": "TD"
+          },
+          "text": "(Shotgun) P.Mahomes pass short right intended for D.Hopkins INTERCEPTED by C.DeJean at KC 38. C.DeJean for 38 yards, TOUCHDOWN. J.Elliott extra point is GOOD, Center-R.Lovato, Holder-B.Mann. ** Injury Update: PHI-M.Becton has returned to the game.",
+          "awayScore": 0,
+          "homeScore": 17,
+          "period": {
+            "number": 2
+          },
+          "clock": {
+            "displayValue": "7:03"
+          },
+          "scoringPlay": true,
+          "teamParticipants": [
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2024/teams/21?lang=en&region=us"
+              },
+              "id": "21",
+              "order": 1,
+              "type": "defense"
+            },
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2024/teams/12?lang=en&region=us"
+              },
+              "id": "12",
+              "order": 2,
+              "type": "offense"
+            }
+          ],
+          "statYardage": 38,
+          "start": {
+            "down": 3,
+            "distance": 16,
+            "yardLine": 76,
+            "yardsToEndzone": 76,
+            "downDistanceText": "3rd & 16 at KC 24",
+            "shortDownDistanceText": "3rd & 16",
+            "possessionText": "KC 24",
+            "team": {
+              "id": "12"
+            }
+          },
+          "end": {
+            "down": -1,
+            "distance": 10,
+            "yardLine": 100,
+            "yardsToEndzone": 0,
+            "team": {
+              "id": "21"
+            }
+          },
+          "scoringType": {
+            "name": "touchdown",
+            "displayName": "Touchdown",
+            "abbreviation": "TD"
+          },
+          "pointAfterAttempt": {
+            "id": 61,
+            "text": "Extra Point Good",
+            "abbreviation": "Extra Point Good",
+            "value": 1
+          },
+          "isTurnover": true
+        }
+      ]
+    }
+  },
+  {
+    "sport": "nfl",
+    "event_id": "401671889",
+    "play_id": "4016718891886",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401671889",
+    "player": "Zack Baun",
+    "team": "PHI",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "21",
+                  "abbreviation": "PHI"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "12",
+                  "abbreviation": "KC"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "21",
+              "abbreviation": "PHI"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "3917657",
+                      "displayName": "Zack Baun",
+                      "firstName": "Zack",
+                      "lastName": "Baun",
+                      "jersey": "53"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "plays": [
+        {
+          "id": "4016718891886",
+          "type": {
+            "id": "26",
+            "text": "Pass Interception Return",
+            "abbreviation": "INTR"
+          },
+          "text": "(Shotgun) P.Mahomes pass short middle intended for M.Brown INTERCEPTED by Z.Baun at KC 14. Z.Baun to KC 14 for no gain.",
+          "awayScore": 0,
+          "homeScore": 17,
+          "period": {
+            "number": 2
+          },
+          "clock": {
+            "displayValue": "1:49"
+          },
+          "scoringPlay": false,
+          "teamParticipants": [
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2024/teams/21?lang=en&region=us"
+              },
+              "id": "21",
+              "order": 1,
+              "type": "defense"
+            },
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2024/teams/12?lang=en&region=us"
+              },
+              "id": "12",
+              "order": 2,
+              "type": "offense"
+            }
+          ],
+          "statYardage": 0,
+          "start": {
+            "down": 1,
+            "distance": 10,
+            "yardLine": 94,
+            "yardsToEndzone": 94,
+            "downDistanceText": "1st & 10 at KC 6",
+            "shortDownDistanceText": "1st & 10",
+            "possessionText": "KC 6",
+            "team": {
+              "id": "12"
+            }
+          },
+          "end": {
+            "down": 1,
+            "distance": 10,
+            "yardLine": 86,
+            "yardsToEndzone": 14,
+            "downDistanceText": "1st & 10 at KC 14",
+            "shortDownDistanceText": "1st & 10",
+            "possessionText": "KC 14",
+            "team": {
+              "id": "21"
+            }
+          },
+          "isTurnover": true
+        }
+      ]
+    }
+  },
+  {
+    "sport": "nfl",
+    "event_id": "401220263",
+    "play_id": "4012202634659",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401220263",
+    "player": "J.J. Arcega-Whiteside",
+    "team": "PHI",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "21",
+                  "abbreviation": "PHI"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "33",
+                  "abbreviation": "BAL"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "21",
+              "abbreviation": "PHI"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "3931397",
+                      "displayName": "J.J. Arcega-Whiteside",
+                      "firstName": "J.J.",
+                      "lastName": "Arcega-Whiteside",
+                      "jersey": "19"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "scoringPlays": [
+        {
+          "id": "4012202634659",
+          "type": {
+            "id": "39",
+            "text": "Fumble Return Touchdown",
+            "abbreviation": "TD"
+          },
+          "text": "J.J. Arcega-Whiteside 0 Yd Fumble Recovery (Two-Point Run Conversion Failed)",
+          "awayScore": 17,
+          "homeScore": 6,
+          "period": {
+            "number": 3
+          },
+          "clock": {
+            "value": 437.0,
+            "displayValue": "7:17"
+          },
+          "team": {
+            "id": "21",
+            "uid": "s:20~l:28~t:21",
+            "displayName": "Philadelphia Eagles",
+            "abbreviation": "PHI",
+            "links": [
+              {
+                "href": "https://www.espn.com/nfl/team/_/name/phi/philadelphia-eagles",
+                "text": "Clubhouse"
+              },
+              {
+                "href": "https://www.espn.com/nfl/team/schedule/_/name/phi",
+                "text": "Schedule"
+              }
+            ],
+            "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/phi.png",
+            "logos": [
+              {
+                "href": "https://a.espncdn.com/i/teamlogos/nfl/500/phi.png",
+                "width": 500,
+                "height": 500,
+                "alt": "",
+                "rel": [
+                  "full",
+                  "default"
+                ],
+                "lastUpdated": "2024-06-25T18:55Z"
+              },
+              {
+                "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/phi.png",
+                "width": 500,
+                "height": 500,
+                "alt": "",
+                "rel": [
+                  "full",
+                  "dark"
+                ],
+                "lastUpdated": "2024-06-25T18:56Z"
+              },
+              {
+                "href": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/phi.png",
+                "width": 500,
+                "height": 500,
+                "alt": "",
+                "rel": [
+                  "full",
+                  "scoreboard"
+                ],
+                "lastUpdated": "2024-06-25T18:56Z"
+              },
+              {
+                "href": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/phi.png",
+                "width": 500,
+                "height": 500,
+                "alt": "",
+                "rel": [
+                  "full",
+                  "scoreboard",
+                  "dark"
+                ],
+                "lastUpdated": "2024-06-25T18:56Z"
+              }
+            ]
+          },
+          "scoringType": {
+            "name": "touchdown",
+            "displayName": "Touchdown",
+            "abbreviation": "TD"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sport": "nfl",
+    "event_id": "401437825",
+    "play_id": "4014378253568",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401437825",
+    "player": "Jonathan Jones",
+    "team": "NE",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "17",
+                  "abbreviation": "NE"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "11",
+                  "abbreviation": "IND"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "17",
+              "abbreviation": "NE"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "4241464",
+                      "displayName": "Mac Jones",
+                      "firstName": "Mac",
+                      "lastName": "Jones",
+                      "jersey": "10"
+                    }
+                  },
+                  {
+                    "athlete": {
+                      "id": "2971027",
+                      "displayName": "Jonathan Jones",
+                      "firstName": "Jonathan",
+                      "lastName": "Jones",
+                      "jersey": "31"
+                    }
+                  },
+                  {
+                    "athlete": {
+                      "id": "4035686",
+                      "displayName": "Jack Jones",
+                      "firstName": "Jack",
+                      "lastName": "Jones",
+                      "jersey": "13"
+                    }
+                  },
+                  {
+                    "athlete": {
+                      "id": "4241720",
+                      "displayName": "Marcus Jones",
+                      "firstName": "Marcus",
+                      "lastName": "Jones",
+                      "jersey": "25"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "plays": [
+        {
+          "id": "4014378253568",
+          "type": {
+            "id": "36",
+            "text": "Interception Return Touchdown",
+            "abbreviation": "TD"
+          },
+          "text": "(4:07) (Shotgun) S.Ehlinger pass short left intended for K.Granson INTERCEPTED by Jo.Jones at IND 17. Jo.Jones for 17 yards, TOUCHDOWN.N.Folk extra point is GOOD, Center-J.Cardona, Holder-J.Bailey.",
+          "awayScore": 3,
+          "homeScore": 26,
+          "period": {
+            "number": 4
+          },
+          "clock": {
+            "displayValue": "3:59"
+          },
+          "scoringPlay": true,
+          "teamParticipants": [
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2022/teams/17?lang=en&region=us"
+              },
+              "id": "17",
+              "order": 1,
+              "type": "defense"
+            },
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/nfl/seasons/2022/teams/11?lang=en&region=us"
+              },
+              "id": "11",
+              "order": 2,
+              "type": "offense"
+            }
+          ],
+          "statYardage": 17,
+          "start": {
+            "down": 3,
+            "distance": 15,
+            "yardLine": 94,
+            "yardsToEndzone": 94,
+            "downDistanceText": "3rd & 15 at IND 6",
+            "shortDownDistanceText": "3rd & 15",
+            "possessionText": "IND 6",
+            "team": {
+              "id": "11"
+            }
+          },
+          "end": {
+            "down": -1,
+            "distance": 7,
+            "yardLine": 100,
+            "yardsToEndzone": 15,
+            "team": {
+              "id": "17"
+            }
+          },
+          "scoringType": {
+            "name": "touchdown",
+            "displayName": "Touchdown",
+            "abbreviation": "TD"
+          },
+          "pointAfterAttempt": {
+            "id": 61,
+            "text": "Extra Point Good",
+            "abbreviation": "Extra Point Good",
+            "value": 1
+          },
+          "isTurnover": true
+        }
+      ]
+    }
+  },
+  {
+    "sport": "ncf_fcs",
+    "event_id": "401867834",
+    "play_id": "401867834642",
+    "source_url": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401867834",
+    "player": "DJ Brown",
+    "team": "LEH",
+    "payload": {
+      "header": {
+        "competitions": [
+          {
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "id": "2329",
+                  "abbreviation": "LEH"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "id": "159",
+                  "abbreviation": "DART"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "boxscore": {
+        "players": [
+          {
+            "team": {
+              "id": "2329",
+              "abbreviation": "LEH"
+            },
+            "statistics": [
+              {
+                "athletes": [
+                  {
+                    "athlete": {
+                      "id": "5152700",
+                      "displayName": "DJ Brown",
+                      "firstName": "DJ",
+                      "lastName": "Brown",
+                      "jersey": "20"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "plays": [
+        {
+          "id": "401867834642",
+          "type": {
+            "id": "63",
+            "text": "Interception",
+            "abbreviation": "INT"
+          },
+          "text": "(00:19) No Huddle-Shotgun #16 G.Saunier pass intercepted by #20 D.Brown at Lehigh05, End Of Play",
+          "awayScore": 20,
+          "homeScore": 24,
+          "period": {
+            "number": 4
+          },
+          "clock": {
+            "displayValue": "0:13"
+          },
+          "scoringPlay": false,
+          "teamParticipants": [
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/college-football/seasons/2026/teams/2329?lang=en&region=us"
+              },
+              "id": "2329",
+              "order": 1,
+              "type": "defense"
+            },
+            {
+              "team": {
+                "$ref": "http://sports.core.api.espn.pvt/v2/sports/football/leagues/college-football/seasons/2026/teams/159?lang=en&region=us"
+              },
+              "id": "159",
+              "order": 2,
+              "type": "offense"
+            }
+          ],
+          "statYardage": 0,
+          "start": {
+            "down": 2,
+            "distance": 10,
+            "yardLine": 26,
+            "yardsToEndzone": 26,
+            "downDistanceText": "2nd & 10 at LEH 26",
+            "shortDownDistanceText": "2nd & 10",
+            "possessionText": "LEH 26",
+            "team": {
+              "id": "159"
+            }
+          },
+          "end": {
+            "down": 1,
+            "distance": 10,
+            "yardLine": 5,
+            "yardsToEndzone": 95,
+            "downDistanceText": "1st & 10 at LEH 5",
+            "shortDownDistanceText": "1st & 10",
+            "possessionText": "LEH 5",
+            "team": {
+              "id": "2329"
+            }
+          },
+          "isTurnover": false
+        }
+      ]
+    }
+  }
+]

@@ -54,6 +54,10 @@ _FLAP_SIZES = (20, 16, 13)
 # basketball score at 12px, and a status like "P3 11:47" underneath.
 SCORE_PANEL_W = 96
 LOGO_PANEL_W = 38
+FACT_BOX_TOP = 21
+FACT_BOX_HEIGHT = 9
+FACT_BOX_PAD_X = 5
+FACT_BOX_GAP = 2
 
 _DIM_GREY = (110, 110, 118)
 
@@ -82,6 +86,101 @@ def _readable_team_color(color):
 def score_alert_duration(alert):
     """Total on-screen time for one alert, in seconds."""
     return DEFAULT_SCORE_ALERT_DURATION
+
+
+def _compact_fact_name(value):
+    """Keep a full surname when the metadata row needs a shorter name."""
+    parts = str(value or "").upper().split()
+    if len(parts) < 2:
+        return "".join(parts)
+    return " ".join([*(f"{part[0]}." for part in parts[:-1]), parts[-1]])
+
+
+def _score_alert_fact_layout(alert, left, right):
+    """Fit separate player, play, and assist boxes into the center row."""
+    headline_words = set(re.findall(r"[A-Z0-9]+", str(alert.get("headline") or "").upper()))
+    player_words = str(alert.get("player") or "").upper().split()
+    data_words = str(alert.get("data") or "").strip().split()
+    if player_words and data_words:
+        folded_words = [re.sub(r"[^A-Z0-9]", "", word.upper()) for word in data_words]
+        player_folded = [re.sub(r"[^A-Z0-9]", "", word) for word in player_words]
+        for start in range(len(folded_words) - len(player_folded) + 1):
+            if folded_words[start:start + len(player_folded)] == player_folded:
+                del data_words[start:start + len(player_folded)]
+                break
+    data_words = [
+        word for word in data_words
+        if re.sub(r"[^A-Z0-9]", "", word.upper()) not in headline_words
+    ]
+    data = " ".join(data_words)
+    assists = [
+        str(alert.get(key) or "").strip().upper().rsplit(" ", 1)[-1]
+        for key in ("primary_assist", "secondary_assist")
+        if str(alert.get(key) or "").strip()
+    ]
+    assist_prefix = "ASSIST: " if len(assists) == 1 else "ASSISTS: "
+    fields = [
+        ("player", str(alert.get("player") or "").strip()),
+        ("data", data),
+        ("assists", assist_prefix + ", ".join(assists) if assists else ""),
+    ]
+    fields = [(kind, value.upper()) for kind, value in fields if value]
+    if not fields:
+        return []
+
+    def total_width(items):
+        return sum(len(value) * 5 + 2 * FACT_BOX_PAD_X for _, value in items) + FACT_BOX_GAP * (len(items) - 1)
+
+    if total_width(fields) > right - left:
+        compacted = []
+        for kind, value in fields:
+            if kind == "player":
+                value = _compact_fact_name(value)
+            compacted.append((kind, value))
+        fields = compacted
+
+    if total_width(fields) > right - left:
+        fields = [
+            (kind, value.rsplit(" ", 1)[-1] if kind == "player" else value)
+            for kind, value in fields
+        ]
+    available_chars = (
+        right - left - 2 * FACT_BOX_PAD_X * len(fields) - FACT_BOX_GAP * (len(fields) - 1)
+    ) // 5
+    limits = [len(value) for _, value in fields]
+    while sum(limits) > available_chars:
+        index = max(range(len(limits)), key=limits.__getitem__)
+        limits[index] -= 1
+    def fit_text(value, limit):
+        if len(value) <= limit:
+            return value
+        return value[:limit] if limit < 3 else value[:limit - 2].rstrip() + ".."
+
+    fitted = []
+    for (kind, value), limit in zip(fields, limits):
+        if kind == "assists" and len(value) > limit:
+            name_limits = [len(name) for name in assists]
+            available_names = limit - len(assist_prefix) - 2 * (len(assists) - 1)
+            while sum(name_limits) > available_names:
+                index = max(range(len(name_limits)), key=name_limits.__getitem__)
+                name_limits[index] -= 1
+            value = assist_prefix + ", ".join(
+                fit_text(name, name_limit)
+                for name, name_limit in zip(assists, name_limits)
+            )
+        else:
+            value = fit_text(value, limit)
+        fitted.append((kind, value))
+    fields = fitted
+
+    widths = [len(value) * 5 + 2 * FACT_BOX_PAD_X for _, value in fields]
+    total = sum(widths) + FACT_BOX_GAP * (len(widths) - 1)
+    x = left + max(0, (right - left - total) // 2)
+    layout = []
+    for (kind, value), width in zip(fields, widths):
+        layout.append((kind, value, x, width))
+        x += width + FACT_BOX_GAP
+    return layout
 
 
 class ScoreAlertMixin:
@@ -163,10 +262,8 @@ class ScoreAlertMixin:
         """Away/home rows plus the game status line, in their own column.
 
         The score is the one thing here read from across a room, so it gets a
-        real 12px face rather than the 4x5 pixel font — the abbreviation beside
-        it can afford to stay small, because context already tells you which
-        two teams are playing. A colour tab marks the team that just scored;
-        white-versus-grey alone is too subtle at this size.
+        real 12px face rather than the 4x5 pixel font. The scoring team's
+        abbreviation uses a readable tint of its primary color.
         """
         d = ImageDraw.Draw(img, "RGBA")
         x0 = PANEL_W - SCORE_PANEL_W
@@ -207,6 +304,37 @@ class ScoreAlertMixin:
             x += 7
         if status:
             draw_tiny_text(d, x, 25, status, (200, 200, 210))
+        self._draw_alert_down_distance(
+            d,
+            str(alert.get("down_distance") or "").strip(),
+            PANEL_W - 3,
+            alert.get("is_red_zone"),
+        )
+
+    def _draw_alert_down_distance(self, draw, value, right, is_red_zone):
+        """Show one red-zone-colored down value beside the clock."""
+        match = re.fullmatch(r"\s*(\d+)\s*&\s*(\d+)\s*", value)
+        if not match:
+            return
+        down_distance = f"{match.group(1)}&{match.group(2)}"
+        text_width = len(down_distance) * 5
+        box_width = text_width + 6
+        x = right - box_width
+        color = (
+            (255, 91, 104)
+            if is_red_zone is True
+            else (69, 220, 120)
+            if is_red_zone is False
+            else (220, 224, 230)
+        )
+        draw.rounded_rectangle(
+            (x, 23, right, 31),
+            radius=1,
+            fill=(0, 0, 0, 230),
+            outline=(105, 112, 120, 210),
+            width=1,
+        )
+        draw_tiny_text(draw, x + 3, 25, down_distance, color)
 
     def _alert_status_label(self, alert):
         """Return ``(arrow, text)`` for the status line.
@@ -268,8 +396,6 @@ class ScoreAlertMixin:
         center = (left + right) // 2
 
         headline = str(alert.get('headline', 'SCORE')).upper()
-        detail = str(alert.get('detail', '')).upper()
-
         font = self._flap_fonts()[-1]
         for candidate in self._flap_fonts():
             if d.textlength(headline, font=candidate) <= width:
@@ -277,28 +403,35 @@ class ScoreAlertMixin:
                 break
         # Every headline in the vocabulary fits at one of these sizes; a longer
         # one from a future sport gets clipped rather than overrunning the logo.
-        baseline_y = 10 if detail else PANEL_H // 2 - 1
+        baseline_y = 10 if any(alert.get(key) for key in (
+            "player", "data", "primary_assist", "secondary_assist"
+        )) else PANEL_H // 2 - 1
 
         shown = self._flap_headline(headline, phase)
         self.draw_outlined_text(d, center, baseline_y, shown, font,
                                 (255, 255, 255), (0, 0, 0), anchor="mm")
 
-        # The name lands once the flaps have stopped, so the two reveals read as
-        # one sequence rather than competing for attention.
-        if detail and shown == headline:
-            detail_w = len(detail) * 5 - 1
-            x = center - detail_w // 2
-            pad_x = 5
-            pill_x0 = x - pad_x
-            pill_x1 = x + detail_w + pad_x
-            pill_y0 = 21
-            pill_y1 = 29
-            d.rounded_rectangle([pill_x0 - 1, pill_y0, pill_x1 + 1, pill_y1 + 1], radius=2,
-                                fill=(0, 0, 0, 180))
-            d.rounded_rectangle([pill_x0, pill_y0, pill_x1, pill_y1], radius=2,
-                                fill=(12, 14, 20, 240),
-                                outline=_mix(accent, (255, 255, 255), 0.4), width=1)
-            draw_tiny_text(d, x, 23, detail, (255, 255, 255))
+        if shown == headline:
+            self._draw_alert_fact_boxes(img, alert, accent, left, right)
+
+    def _draw_alert_fact_boxes(self, img, alert, accent, left, right):
+        """Draw each player, play, and assist fact once in its own box."""
+        draw = ImageDraw.Draw(img, "RGBA")
+        border = _mix(accent, (255, 255, 255), 0.4)
+        for kind, value, x, width in _score_alert_fact_layout(alert, left, right):
+            draw.rounded_rectangle(
+                (x - 1, FACT_BOX_TOP, x + width, FACT_BOX_TOP + FACT_BOX_HEIGHT),
+                radius=2,
+                fill=(0, 0, 0, 180),
+            )
+            draw.rounded_rectangle(
+                (x, FACT_BOX_TOP, x + width - 1, FACT_BOX_TOP + FACT_BOX_HEIGHT - 1),
+                radius=2,
+                fill=(12, 14, 20, 240),
+                outline=border,
+                width=1,
+            )
+            draw_tiny_text(draw, x + FACT_BOX_PAD_X, FACT_BOX_TOP + 2, value, (255, 255, 255))
 
     # ── frame ────────────────────────────────────────────────────────────────
     def draw_score_alert(self, alert, elapsed, under=None):

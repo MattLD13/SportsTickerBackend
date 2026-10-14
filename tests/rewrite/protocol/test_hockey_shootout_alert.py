@@ -83,5 +83,5 @@ def test_hockey_shootout_winner_reaches_the_v2_alert_contract_once() -> None:
         assert alert["status"] == "FINAL S/O"
         assert alert["points"] == 1
         assert alert["big"] is True
-        assert alert["detail"] == ""
+        assert all(alert[key] == "" for key in ("player", "data", "primary_assist", "secondary_assist"))
         assert sorted((alert["home_score"], alert["away_score"])) == [3, 4]

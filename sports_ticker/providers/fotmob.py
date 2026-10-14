@@ -730,7 +730,7 @@ def _logo(team_id: str) -> str:
 def _event_player(event: Mapping[str, Any]) -> str:
     player = _mapping(event.get("player"))
     name = str(player.get("name") or event.get("nameStr") or "").strip()
-    return name.split()[-1].upper()[:8] if name else ""
+    return name
 
 
 def _event_minute(event: Mapping[str, Any]) -> str:

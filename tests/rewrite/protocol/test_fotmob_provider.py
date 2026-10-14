@@ -182,11 +182,11 @@ def test_fotmob_soccer_events_match_the_v1_renderer_contract() -> None:
     situation = _situation(detail)
 
     assert situation["goal_events"] == [
-        {"is_home": False, "player": "MORGAN", "time": "13'", "own_goal": False},
-        {"is_home": True, "player": "SMITH", "time": "45+2'", "own_goal": True},
+        {"is_home": False, "player": "MORGAN", "time": "13'", "own_goal": False, "alert_player": "Alex Morgan"},
+        {"is_home": True, "player": "SMITH", "time": "45+2'", "own_goal": True, "alert_player": "Jamie Smith"},
     ]
     assert situation["red_cards"] == [
-        {"is_home": False, "player": "REED", "time": "71'", "own_goal": False}
+        {"is_home": False, "player": "REED", "time": "71'", "own_goal": False, "alert_player": "Taylor Reed"}
     ]
 
 
@@ -209,9 +209,11 @@ def test_fotmob_soccer_goal_keeps_assist_and_shot_facts() -> None:
     assert situation["goal_events"] == [{
         "is_home": True,
         "player": "GYOKERES",
+        "alert_player": "Viktor Gyokeres",
         "time": "46'",
         "own_goal": False,
         "assist": "EZE",
+        "alert_assist": "Eberechi Eze",
         "goal_type": "HEADER",
         "shot_type": "HEADER",
         "expected_goals": 0.46,
@@ -668,7 +670,8 @@ def test_fotmob_score_alert_uses_canonical_soccer_event_time() -> None:
     tracker.ingest([base])
     tracker.ingest([updated])
 
-    assert tracker.recent()[0]["detail"] == "SMITH 45+2'"
+    assert tracker.recent()[0]["player"] == "SMITH"
+    assert tracker.recent()[0]["data"] == "45+2'"
 
 
 def test_fotmob_partial_date_failure_preserves_alert_memory_and_recovery_baseline() -> None:
