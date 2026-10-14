@@ -5,6 +5,7 @@
 This assessment uses repository baseline `a74596046a3672a912ade0dbc7b112d7c167a9d0`.
 It replaces claims from the original attachment with current code evidence and revised gates.
 The active plan lives in [master-engineering-sow.md](master-engineering-sow.md).
+The first-wave platform findings live in [platform-modularization-map.md](research/platform-modularization-map.md).
 
 ## Summary
 

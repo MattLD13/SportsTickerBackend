@@ -182,6 +182,7 @@ Create explicit PNG or pixel-hash baselines with fixed fonts, Pillow version, as
 
 Split `.inc` modules only with explicit interfaces and stable initialization order.
 Keep matrix refresh, network work, buffers, and mutex ownership unchanged during the first split.
+Use [the platform module map](research/platform-modularization-map.md) to select the first pure drawing split.
 Measure memory and frame stability on the target board before changing task placement.
 Retain existing dual-slot OTA and boot validation while adding focused recovery checks.
 Add native parsing tests only when the PlatformIO target can run them reliably.
@@ -190,6 +191,7 @@ Add native parsing tests only when the PlatformIO target can run them reliably.
 
 Split `ContentView.swift` by screen while retaining state ownership and current request timing.
 Extract HTTP and WebSocket clients behind tested service interfaces.
+Use [the platform module map](research/platform-modularization-map.md) to sequence BLE and model extraction.
 Preserve token auth, BLE provisioning, schedules, and update flows.
 Add simulator build and focused serialization tests before each screen migration.
 
