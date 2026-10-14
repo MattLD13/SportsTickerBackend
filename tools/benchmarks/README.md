@@ -1,0 +1,72 @@
+# Pi viewport baseline
+
+The benchmark measures existing code at commit `1d38e4f6879141098011fbe2aaf93c630dcc6045`.
+`CardViewport` owns card readiness and surfaces.
+`FrameBuilder` owns panel composition.
+`MemoryFrameSink` presents the desktop frames.
+This change replaces no production code.
+
+Run from the repository root:
+
+```powershell
+python tools/benchmarks/pi_viewport_baseline.py
+```
+
+The default run uses 6,000 measured frames, 30 warmup frames, and 300 paced frames per case.
+Each case starts a fresh interpreter and uses the existing spawned card process.
+Readiness polling installs one completed card at each configured frame boundary.
+The fixed render time is `2026-08-13T00:00:00+00:00`.
+The script records resolved font names, sizes, and SHA-256 hashes.
+
+The source is `tests/rewrite/debug/v2_render_snapshot.json`.
+It contains two sports records and no asset URLs.
+The 1, 10, and 60 card cases repeat those records with unique card identities.
+These capacity cases do not represent 60 distinct live games.
+The script uses an empty prepared asset cache and performs no prefetch.
+A production workload with diverse cards and prepared external assets needs another captured V2 snapshot and its assets.
+
+The score update increases the first source card's away score by one.
+The benchmark requires changed presented RGB bytes after that update.
+It also measures complete asset invalidation and checks all desired cards commit without failures.
+This script calls the frame builder and sink directly.
+It excludes application events, backend polling, network time, and matrix hardware.
+
+The snapshot configures a 30 ms scroll interval, or 33.33 presentation decisions per second.
+`RuntimeConfig` separately defaults general frames to 1/30 second.
+The real scrolling runtime selects the snapshot interval.
+The benchmark measures approximately 33.33 desktop presentations per second with this interval.
+This measurement does not establish Pi matrix presentation rate or 60 FPS.
+
+`pi_viewport_windows_baseline.json` records the completed Windows host run.
+The table rounds measured values.
+
+| Cards | Queue to ready ms | Startup to first presentation ms | Build p50/p95 ms | Score update to presentation ms | Full invalidation ms | Paced CPU percent | Parent and worker memory MiB |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | 520.07 | 944.47 | 0.0799 / 0.0817 | 30.46 | 30.83 | 0.69 | 101.91 |
+| 10 | 789.03 | 1217.67 | 0.0816 / 0.0869 | 30.69 | 300.23 | 1.22 | 102.31 |
+| 60 | 2289.76 | 2719.22 | 0.0834 / 0.0892 | 30.60 | 1800.47 | 0.69 | 103.46 |
+
+CPU values sum parent and card worker CPU time, relative to one logical CPU.
+Windows CPU accounting is coarse, so brief samples can report zero or exceed 100 percent.
+The memory measurements sum process working sets and can count shared pages twice.
+Each process also reports its peak working set.
+The resource tracker is excluded.
+The measured host uses Windows 11, Python 3.13, Ubuntu Mono, Arial Bold, and Pillow's embedded Aileron font.
+Pi measurements need the deployed Pi fonts and hardware.
+
+Each case saves actual 384x32 initial and updated PNGs under `previews/benchmarks/pi-baseline/`.
+Raw RGB and PNG hashes remain in the JSON report.
+The report stores preview paths relative to the repository and font filenames without host directory paths.
+Process metrics exclude transient process IDs.
+A separate short run reproduced the 1-card initial and updated RGB hashes and font manifest.
+The 60-card frame passed visual inspection.
+PNG artifacts remain ignored.
+
+Validation commands:
+
+```powershell
+python tools/benchmarks/pi_viewport_baseline.py
+python tools/benchmarks/pi_viewport_baseline.py --case 1 --frames 10 --paced-frames 2 --output previews/benchmarks/pi-baseline/repeat-check
+python -m py_compile tools/benchmarks/pi_viewport_baseline.py
+git diff --check
+```
