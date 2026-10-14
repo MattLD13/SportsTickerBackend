@@ -40,6 +40,16 @@ Snapshot revisions identify backend replacements. They do not define a replayabl
 The Pi service stores runtime data under `/home/mld/ticker` outside each release.
 `updater.py` manages release updates. Existing deployment workflows remain in `.github/workflows/`.
 
+## Planned stream transport
+
+The revised SOW replaces Waitress with Hypercorn as the backend transport target.
+An outer ASGI application will own WebSocket routes and will adapt existing Flask HTTP routes through `asgiref.wsgi.WsgiToAsgi`.
+The ASGI application must start one `BackendRuntime` owner and stop it during shutdown.
+The service must run one worker until cross-worker snapshot publication has a design and validation.
+The Pi controller service remains a separate process and release.
+
+Read [the revised engineering SOW](docs/master-engineering-sow.md) for stream ownership, rollout gates, and replay requirements.
+
 ## Contracts
 
 Read [V2 contracts](docs/v2-contracts.md) for the current data envelope and source definitions.

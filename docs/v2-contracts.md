@@ -3,6 +3,9 @@
 This document describes the current contract. Source definitions remain authoritative.
 It does not introduce runtime validation, generated models, or a new protocol.
 
+The registration schema is not authoritative yet. It differs from defaults and accepted fields in the active registration route.
+Read [the revised engineering SOW](master-engineering-sow.md) before adding runtime schema gates.
+
 ## Data response
 
 Devices read `GET /api/v2/tickers/<ticker-id>/data`.
