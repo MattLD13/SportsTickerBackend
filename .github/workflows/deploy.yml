@@ -44,7 +44,6 @@ jobs:
               - 'requirements-backend.txt'
               - '*.json'
               - 'ticker.service'
-              - '.github/workflows/deploy.yml'
             mini:
               - 'esp32_hub75/**'
               - 'tools/generate_mini_logo_overrides.py'
@@ -74,21 +73,36 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # Deploy backend to server (only when backend files changed)
   # ─────────────────────────────────────────────────────────────────────────
-  verify-public-demo:
+  verify-runtime:
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
+    if: needs.changes.outputs.fresh == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Install test dependencies
-        run: pip install -r requirements-backend.txt pytest
+        run: python -m pip install -r requirements-backend.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
+      - name: Compile Python sources
+        run: python -m compileall -q sports_ticker ticker_core
+      - name: Check Python correctness
+        run: python -m ruff check sports_ticker ticker_core
+      - name: Check scoped Python types
+        run: python -m mypy
       - name: Verify approved public demo assets
         run: python tools/verify_public_demo.py
       - name: Verify public demo route
         run: python -m pytest -q tests/rewrite/api/test_public_demo.py
+      - name: Run full test suite
+        run: python -m pytest -q
+      - name: Compare pane render paths
+        run: python tools/benchmarks/pi_pane_composition.py --frames 1000 --output artifacts/pane-composition
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-validation-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
 
   build-mini-firmware:
     runs-on: ubuntu-latest
@@ -194,8 +208,8 @@ jobs:
 
   deploy-backend:
     runs-on: ubuntu-latest
-    needs: [changes, signal-fleet, verify-public-demo, deploy-mini-firmware]
-    if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') && (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped') && needs.verify-public-demo.result == 'success' && (needs.deploy-mini-firmware.result == 'success' || needs.deploy-mini-firmware.result == 'skipped')
+    needs: [changes, signal-fleet, verify-runtime, deploy-mini-firmware]
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') && (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped') && needs.verify-runtime.result == 'success' && (needs.deploy-mini-firmware.result == 'success' || needs.deploy-mini-firmware.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
@@ -267,8 +281,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   signal-fleet:
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.fresh == 'true' && needs.changes.outputs.controller == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.recovery_only == true)
+    needs: [changes, verify-runtime]
+    if: always() && needs.changes.result == 'success' && needs.verify-runtime.result == 'success' && needs.changes.outputs.fresh == 'true' && needs.changes.outputs.controller == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.recovery_only == true)
     steps:
       - uses: actions/checkout@v4
         with:
