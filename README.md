@@ -2,6 +2,8 @@
 
 Sports Ticker serves live content to 384x32 Raspberry Pi LED matrices. The backend and Pi controller use only API V2.
 
+Read [Architecture](ARCHITECTURE.md), [Contributing](CONTRIBUTING.md), and [V2 contracts](docs/v2-contracts.md) for ownership, development setup, and contract sources.
+
 ## Architecture
 
 ```text

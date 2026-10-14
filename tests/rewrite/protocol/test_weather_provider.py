@@ -162,13 +162,15 @@ def test_hybrid_weather_reports_nws_uv_failure() -> None:
     assert data["situation"]["stats"]["uv"] == "--"
 
 
-def test_weather_renderer_keeps_provider_calendar_labels() -> None:
-    from ticker_core.features.weather.legacy_port import _forecast_day_label
+def test_weather_provider_uses_source_calendar_labels() -> None:
+    from sports_ticker.providers.weather import _forecast
 
-    now = datetime(2026, 8, 26, tzinfo=timezone.utc)
+    forecast = _forecast(
+        {"time": ["2026-08-26", "2026-08-27"]},
+        today=date(2026, 8, 26),
+    )
 
-    assert _forecast_day_label({"day": "TODAY"}, 0, now) == "TODAY"
-    assert _forecast_day_label({"day": "MON"}, 1, now) == "MON"
+    assert [day["day"] for day in forecast] == ["TODAY", "THU"]
 
 
 def test_nws_forecast_uses_observation_day_when_tonight_is_first() -> None:

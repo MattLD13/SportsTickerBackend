@@ -49,6 +49,7 @@ build/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 *.secret
 
 # OS
@@ -60,6 +61,7 @@ Thumbs.db
 .idea/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
+xcuserdata/
 DerivedData/
 
 # pytest / coverage

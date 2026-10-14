@@ -313,4 +313,3 @@ def test_asset_planner_recognizes_family_and_kind_without_explicit_type() -> Non
     for req in requests:
         assert req.size == (42, 42)
         assert req.processor == "logo"
-

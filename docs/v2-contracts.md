@@ -1,0 +1,47 @@
+# Existing V2 contracts
+
+This document describes the current contract. Source definitions remain authoritative.
+It does not introduce runtime validation, generated models, or a new protocol.
+
+## Data response
+
+Devices read `GET /api/v2/tickers/<ticker-id>/data`.
+`sports_ticker/projections/data_api.py` owns the JSON envelope.
+`sports_ticker/api/routes.py` owns route authorization and response construction.
+
+| Field | Current meaning |
+|---|---|
+| `api_version` | The string `v2`. |
+| `snapshot` | Ticker ID, revision, observation time, and stale state. |
+| `settings` | Effective ticker display settings. |
+| `content` | Content family keys containing ordered item lists. |
+| `events` | Separate `alerts` and `news` overlay lists. |
+| `health` | Provider health information. |
+| `meta` | Backend metadata supplied to the projection. |
+
+Each content item contains `id`, `family`, `kind`, `is_shown`, and `data`.
+Each overlay contains `event_id`, `kind`, and `payload`.
+Family data varies with the content kind. Read the projector and provider definitions before changing those fields.
+
+## Settings and presentation
+
+Stored selectable modes are `sports`, `stock`, `weather`, `music`, `flights`, `airports`, and `clock`.
+Pairing is an effective output state. A pinned game uses `sports_presentation: pinned` within sports mode.
+Alerts, news, connection loss, and updates use overlays.
+Clients consume projected domain facts and explicit family and kind values.
+
+## Source definitions
+
+| Boundary | Source |
+|---|---|
+| Domain models | `sports_ticker/domain/models.py` and `sports_ticker/domain/snapshot.py` |
+| Overlay events | `sports_ticker/domain/events.py` |
+| Fleet persistence | `sports_ticker/fleet/repository.py` |
+| JSON projection | `sports_ticker/projections/data_api.py` |
+| HTTP routes | `sports_ticker/api/routes.py` |
+| Pi response parsing | `ticker_core/protocol/model.py` |
+| Pi polling | `ticker_core/protocol/client.py` and `ticker_core/protocol/polling.py` |
+| Protocol validation coverage | `tests/rewrite/protocol/` |
+
+The current clients poll complete snapshots. Snapshot revisions do not provide delta ordering or replay guarantees.
+Provider WebSocket connections do not define a device-facing WebSocket contract.

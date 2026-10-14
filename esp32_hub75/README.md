@@ -65,6 +65,40 @@ python tools\generate_mini_logo_overrides.py
 
 Do not edit `src/mini/assets/logo_overrides_generated.h` by hand.
 
+## Logo workbench
+
+Run `python tools\mini_logo_workbench_web.py` from the repository root. Open `http://127.0.0.1:8765` in a browser.
+
+The page loads team logos from the ticker server's V2 catalog. It lists teams across supported leagues and saves completion state in the local app folder.
+
+The page connects to `COM11` automatically. If the device uses another port, enter that port and select **Connect**.
+
+Choose full-screen or scrolling to match the big ticker's prepared logo path.
+
+Full-screen football logos render at 20×20 pixels. Other full-screen sports logos render at 24×24 pixels. Scrolling sports logos render at 22×22 pixels.
+
+Both workbench previews center the logo on black.
+
+The big panel uses P3 pixels. The mini panel uses P2.5 pixels. The mini preview scales native pixels by 1.2.
+
+Nearest-neighbor scaling preserves source colors. The mini rounds its logo dimensions to whole pixels.
+
+Use the arrow keys to select a logo. Press `O` to cycle ticker default, off, complete inner, and inner darkness outlines.
+
+The initial ticker default uses the production contrast rule. If you adjust the cutoff, the page selects the darkness rule.
+
+The darkness rule adds a complete inner contour when the mean silhouette brightness is at or below the cutoff.
+
+Higher cutoffs include lighter logos. Each contour pixel stays inside the opaque silhouette. The contour follows every edge and hole.
+
+Press `Enter` to toggle completion.
+
+Select **Add image** to load a file from the computer. The mini shows a final 64×32 black frame with only the selected logo.
+
+The server uses shared sports logo preparation and rendering. It sends final RGB pixels without another resize or alpha conversion.
+
+The mini verifies each frame checksum and draws RGB888 pixels. Firmware `mini-1.2.8` supports this frame protocol at full panel brightness.
+
 ## Configure Wi-Fi and the backend
 
 Edit these constants in `src/mini/platform/config.h` before the first flash:

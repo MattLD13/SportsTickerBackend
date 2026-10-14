@@ -106,7 +106,9 @@
             <div class="tab-row" role="tablist"><button class="tab is-active" type="button" data-overlay-tab="alert">Score alert</button><button class="tab" type="button" data-overlay-tab="news">News</button></div>
             <form class="overlay-form" data-overlay-form="alert">
               <label>Headline<input name="headline" type="text" placeholder="POWER PLAY GOAL" required></label>
-              <div class="form-grid compact"><label>Detail<input name="detail" type="text" placeholder="PANARIN"></label><label>Status<input name="status" type="text" placeholder="P2 6:03"></label></div>
+              <div class="form-grid compact"><label>Player<input name="player" type="text" placeholder="Mika Zibanejad"></label><label>Data<input name="data" type="text" placeholder="3YD PASS Derek Morgan"></label></div>
+              <div class="form-grid compact"><label>Primary assist<input name="primary_assist" type="text" placeholder="Adam Fox"></label><label>Secondary assist<input name="secondary_assist" type="text" placeholder="Mika Zibanejad"></label></div>
+              <div class="form-grid compact"><label>Down and distance<input name="down_distance" type="text" placeholder="4&7"></label><label>Status<input name="status" type="text" placeholder="P2 6:03"></label></div>
               <label>TTL seconds<input name="ttl_seconds" type="number" value="60" min="1" step="1"></label>
               <button class="button button-alert" type="submit">Send score alert</button>
             </form>

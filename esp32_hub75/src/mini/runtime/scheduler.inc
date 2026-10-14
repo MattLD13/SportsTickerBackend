@@ -114,6 +114,8 @@ bool fetchData() {
   return message.length() == 0;
 }
 
+void pollLogoWorkbenchSerial();
+
 void connectWifi() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
@@ -131,6 +133,8 @@ void connectWifi() {
   }
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) {
+    pollLogoWorkbenchSerial();
+    if (logoWorkbenchMode) return;
     if (!wifiPairingMode) drawMessage("WIFI...");
     delay(250);
   }
@@ -191,7 +195,9 @@ void applyPendingWifiCredentials() {
 
 void miniSetup() {
   Serial.begin(115200);
+  Serial.setTimeout(1000);
   Serial0.begin(115200);
+  Serial0.setTimeout(1000);
   delay(5000);
   const uint32_t serialWaitStartedAt = millis();
   while (!Serial && millis() - serialWaitStartedAt < 5000) delay(10);
@@ -227,6 +233,11 @@ void miniSetup() {
   } else {
     Serial.println("Logo worker creation failed");
   }
+  pollLogoWorkbenchSerial();
+  if (logoWorkbenchMode) {
+    Serial.println("Logo workbench active. Wi-Fi polling is paused.");
+    return;
+  }
   if (FORCE_PAIRING_TEST) {
     startPairingMode();
     lastWifiRetryAt = millis();
@@ -245,7 +256,63 @@ void miniSetup() {
   }
 }
 
+void renderLogoWorkbenchFrame() {
+  matrix->fillScreen(color(0, 0, 0));
+  for (uint16_t y = 0; y < 32; ++y) {
+    for (uint16_t x = 0; x < 64; ++x) {
+      const size_t offset = (static_cast<size_t>(y) * 64 + x) * 3;
+      matrix->drawPixelRGB888(x, y, logoWorkbenchFrameRgb[offset], logoWorkbenchFrameRgb[offset + 1], logoWorkbenchFrameRgb[offset + 2]);
+    }
+  }
+  presentFrame();
+}
+
+void pollLogoWorkbenchSerial() {
+  Stream* input = Serial.available() ? static_cast<Stream*>(&Serial) : nullptr;
+  if (input == nullptr && Serial0.available()) input = static_cast<Stream*>(&Serial0);
+  if (input == nullptr) return;
+  String command = input->readStringUntil('\n');
+  command.trim();
+  if (command == "PING") {
+    logoWorkbenchMode = true;
+    matrix->fillScreen(color(0, 0, 0));
+    presentFrame();
+    input->printf("MINI_READY:%s\n", MINI_FIRMWARE_VERSION);
+    return;
+  }
+  if (command == "EXITLOGO") {
+    logoWorkbenchMode = false;
+    input->println("LOGO_EXITED");
+    renderCurrent();
+    return;
+  }
+  if (!command.startsWith("FRAME64:")) return;
+  const String encoded = command.substring(8);
+  size_t decodedLength = 0;
+  const size_t expectedLength = sizeof(logoWorkbenchFrameRgb);
+  const int result = mbedtls_base64_decode(
+    logoWorkbenchFrameRgb, expectedLength, &decodedLength,
+    reinterpret_cast<const unsigned char*>(encoded.c_str()), encoded.length()
+  );
+  if (result != 0 || decodedLength != expectedLength) {
+    input->println("FRAME_ERROR");
+    return;
+  }
+  logoWorkbenchMode = true;
+  renderLogoWorkbenchFrame();
+  uint32_t checksum = 2166136261UL;
+  for (const uint8_t value : logoWorkbenchFrameRgb) {
+    checksum = (checksum ^ value) * 16777619UL;
+  }
+  input->printf("FRAME_OK:%08lx\n", static_cast<unsigned long>(checksum));
+}
+
 void miniTick() {
+  pollLogoWorkbenchSerial();
+  if (logoWorkbenchMode) {
+    delay(1);
+    return;
+  }
   const uint32_t now = millis();
   firmwareUpdateTick(now);
   if (firmwareUpdateTransferActive()) {

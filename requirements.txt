@@ -7,4 +7,5 @@ FlightRadarAPI==1.5.1
 cryptography
 dbus-next
 Pillow
+pyserial>=3.5,<4
 websocket-client>=1.8,<2

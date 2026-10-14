@@ -277,6 +277,21 @@ def test_followed_team_receives_its_major_trade_and_all_blockbusters():
     assert sum(record["impact_tier"] == "BLOCKBUSTER" for record in records["news"]) == 5
 
 
+def test_trade_request_followed_by_injured_reserve_move_is_an_injury_alert():
+    article = _article(
+        "larkin-ir",
+        "Amid trade request, Red Wings move Larkin to injured reserve",
+        "Detroit places captain Dylan Larkin on injured reserve.",
+        ("DET", "NYR"),
+        "Dylan Larkin",
+    )
+
+    record = _classify_espn_news_article(article, "nhl", set())
+
+    assert record["kind"] == "INJURY"
+    assert record["distribution"] == "followed_teams"
+
+
 @pytest.mark.parametrize(
     "headline",
     (

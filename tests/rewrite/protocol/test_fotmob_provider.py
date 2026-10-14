@@ -212,6 +212,7 @@ def test_fotmob_soccer_goal_keeps_assist_and_shot_facts() -> None:
         "alert_player": "Viktor Gyokeres",
         "time": "46'",
         "own_goal": False,
+        "alert_player": "Viktor Gyokeres",
         "assist": "EZE",
         "alert_assist": "Eberechi Eze",
         "goal_type": "HEADER",

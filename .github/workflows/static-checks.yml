@@ -1,0 +1,30 @@
+name: Static checks
+
+on:
+  pull_request:
+    paths:
+      - 'sports_ticker/**'
+      - 'ticker_core/**'
+      - 'pyproject.toml'
+      - '.github/workflows/static-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install static check tools
+        run: python -m pip install 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
+      - name: Compile Python sources
+        run: python -m compileall -q sports_ticker ticker_core
+      - name: Check Python correctness
+        run: python -m ruff check sports_ticker ticker_core
+      - name: Check scoped Python types
+        run: python -m mypy

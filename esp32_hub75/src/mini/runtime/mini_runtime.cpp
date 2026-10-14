@@ -70,6 +70,8 @@ portMUX_TYPE bleProvisioningMux = portMUX_INITIALIZER_UNLOCKED;
 char pendingWifiSsid[33] = {};
 char pendingWifiPassword[65] = {};
 bool pendingWifiReady = false;
+bool logoWorkbenchMode = false;
+static uint8_t logoWorkbenchFrameRgb[64 * 32 * 3] = {};
 
 static constexpr char BLE_SERVICE_UUID[] = "8F8B0001-6E2A-4D8A-9F31-8D4B77F0B001";
 static constexpr char BLE_CHALLENGE_UUID[] = "8F8B0002-6E2A-4D8A-9F31-8D4B77F0B001";

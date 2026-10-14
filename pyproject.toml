@@ -1,0 +1,30 @@
+[dependency-groups]
+dev = ["pytest>=8,<9", "ruff>=0.14,<0.15", "mypy>=1.18,<2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/rewrite"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "critical: Essential core invariants, contracts, and lifecycle tests that must run before every push",
+    "domain: Domain-specific or feature-specific provider and renderer tests",
+]
+
+[tool.ruff]
+target-version = "py310"
+extend-exclude = ["pytest-temp*", "ticker_data", "hardware", "sports_ticker/fetchers"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.ruff.lint.per-file-ignores]
+# dbus-next uses D-Bus signature strings as annotations in this module.
+"ticker_core/platform/ble.py" = ["F722", "F821"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["sports_ticker/markets.py"]
+follow_imports = "skip"
+check_untyped_defs = true
+warn_unused_ignores = true

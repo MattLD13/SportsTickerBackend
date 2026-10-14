@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import math
-import random
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -17,10 +14,7 @@ from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 from .news_banner_port import PreparedNewsBannerRenderer
 from .score_alert_port import PreparedScoreAlertRenderer
 
-PANEL_W = 384
 PANEL_H = 32
-WIPE_IN = 0.40
-WIPE_OUT = 0.35
 SLIDE = 0.30
 BANNER_W = 192
 
@@ -58,13 +52,6 @@ def news_banner_duration(item: Mapping[str, Any] | None) -> float:
     return SLIDE + hold + SLIDE
 
 
-def _status_label(value: Any, sport: Any) -> str:
-    text = str(value or "").upper().strip()
-    text = text.replace("PERIOD", "P").replace("QUARTER", "Q")
-    text = text.replace("TOP ", "T").replace("BOT ", "B")
-    return text[:16]
-
-
 class ScoreAlertRenderer:
     """Render a full-panel score alert over an optional prior frame."""
 
@@ -80,7 +67,6 @@ class NewsBannerRenderer:
     """Render the left-half live-news overlay."""
 
     def __init__(self, fonts: FontSet) -> None:
-        self._fonts = fonts
         self._port = PreparedNewsBannerRenderer()
 
     def render(self, item: Mapping[str, Any]) -> Image.Image:
