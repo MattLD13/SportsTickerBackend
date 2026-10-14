@@ -2178,6 +2178,7 @@ def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
     )
     if shootout is not None:
         details["shootout"] = shootout
+        details["shootout_state"] = "active"
     return details
 
 

@@ -46,6 +46,20 @@ class SportsDisplayProjector:
         if prior.get("clock"):
             situation["clock"] = prior["clock"]
         data["status"] = _status(league, state, event, competition, data)
+        if league == "nhl":
+            shootout = _nhl_has_shootout_marker(event, competition)
+            completed = state in {"post", "final"}
+            situation["shootout_state"] = (
+                "completed" if shootout and completed else "active" if shootout else "none"
+            )
+            situation["shootout_winner"] = next(
+                (
+                    str(competitor.get("homeAway") or "").lower()
+                    for competitor in _sequence(competition.get("competitors"))
+                    if isinstance(competitor, Mapping) and competitor.get("winner") is True
+                ),
+                "",
+            ) if shootout and completed else ""
         situation = self._stable_situation(
             item.id, league, state, str(data["status"]), situation
         )
@@ -147,7 +161,7 @@ def _status(
         return str(data.get("status") or detail or "TBD")
     if "POSTPON" in upper or "CANCEL" in upper or "SUSPEND" in upper or "DELAY" in upper:
         return detail.split(",", 1)[0].title()
-    if league == "nhl" and state in {"in", "half", "crit"} and _nhl_shootout_active(
+    if league == "nhl" and state in {"in", "half", "crit"} and _nhl_has_shootout_marker(
         event, competition
     ):
         return "S/O"
@@ -457,7 +471,7 @@ def _final_status(league: str, detail: str, period: int) -> str:
     """Keep final overtime and shootout labels visible on compact cards."""
 
     if league == "nhl":
-        if "SO" in detail or "SHOOTOUT" in detail or period >= 5:
+        if re.search(r"\bS/?O\b|SHOOTOUT", detail):
             return "FINAL S/O"
         if period >= 4:
             return f"FINAL OT{period - 3 if period > 4 else ''}"
@@ -475,7 +489,7 @@ def _period_status(prefix: str, period: int, clock: str, *, overtime_base: int) 
     return f"{label} {clock}".strip()
 
 
-def _nhl_shootout_active(
+def _nhl_has_shootout_marker(
     event: Mapping[str, Any], competition: Mapping[str, Any]
 ) -> bool:
     """Detect explicit NHL shootout markers without treating overtime as a shootout."""
@@ -499,7 +513,7 @@ def _nhl_shootout_active(
                 return True
         for key in ("shortDetail", "detail", "altDetail", "displayValue", "text"):
             value = str(source.get(key) or "").strip().upper()
-            if value in {"SO", "S/O", "SHOOTOUT"} or "SHOOTOUT" in value:
+            if re.search(r"\bS/?O\b|SHOOTOUT", value):
                 return True
         period = _mapping(source.get("period"))
         if str(period.get("displayValue") or "").strip().upper() == "SO":

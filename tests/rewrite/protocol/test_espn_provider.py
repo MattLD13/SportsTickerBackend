@@ -884,6 +884,7 @@ def test_espn_nhl_shootout_attempts_come_from_live_play_stream() -> None:
     details = _nhl_event_details(update, item_data)
 
     assert details["shootout"] == {"home": ["goal"], "away": ["miss"]}
+    assert details["shootout_state"] == "active"
 
     provider = EspnScoreboardProvider(
         {"nhl": "https://example.test/hockey/nhl/scoreboard"},
@@ -907,6 +908,7 @@ def test_espn_nhl_shootout_attempts_come_from_live_play_stream() -> None:
     enriched = provider._enrich_live_item("nhl", live_item, update=update)
 
     assert enriched.data["status"] == "S/O"
+    assert enriched.data["situation"]["shootout_state"] == "active"
     assert enriched.data["situation"]["shootout"] == {
         "home": ("goal",),
         "away": ("miss",),

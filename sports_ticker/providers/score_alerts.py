@@ -33,6 +33,7 @@ _BIG_KINDS = frozenset(
         "penalty_shot",
         "power_play_goal",
         "safety",
+        "shootout_winner",
     )
 )
 _MAX_ALERTS = 64
@@ -599,7 +600,17 @@ class ScoreAlertTracker:
                     seed_football_events = True
                 elif projection_ready:
                     self._football_projection_ready[game_id] = True
-                if state not in _LIVE_STATES:
+                shootout_winner = str(situation.get("shootout_winner") or "")
+                shootout_completed = (
+                    family == "hockey"
+                    and situation.get("shootout_state") == "completed"
+                    and shootout_winner in {"home", "away"}
+                    and previous[3] in _LIVE_STATES
+                    and state in {"post", "final"}
+                )
+                if family == "hockey" and situation.get("shootout_state") == "active":
+                    continue
+                if state not in _LIVE_STATES and not shootout_completed:
                     seen_football_events.update(
                         _football_event_identity(play)
                         for play in football_events
@@ -651,6 +662,16 @@ class ScoreAlertTracker:
                         }
                     )
 
+                if shootout_completed:
+                    append_alert(
+                        shootout_winner,
+                        "shootout_winner",
+                        "SHOOTOUT WINNER",
+                        "",
+                        1,
+                        event_id=f"{game_id}:shootout:{shootout_winner}",
+                    )
+                    continue
                 if family == "football":
                     for play in football_events:
                         identifier = _football_event_identity(play)
