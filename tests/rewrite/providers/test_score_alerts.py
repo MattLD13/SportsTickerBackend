@@ -231,132 +231,36 @@ def test_football_pick_six_detail_uses_returner_and_quarterback() -> None:
     assert alert["detail"] == "THOMAS 12YD | PRESCOTT"
 
 
-def test_basketball_score_alerts_report_q4_scores_lead_changes_and_final_scores() -> None:
-    tracker = ScoreAlertTracker(clock=lambda: 100.0)
-    baseline = {
-        "kind": "scoreboard", "id": "nba-coalesced", "sport": "nba", "state": "in",
-        "home_abbr": "CLE", "away_abbr": "NY", "home_score": 10, "away_score": 8,
-    }
-    tracker.ingest([baseline])
-    tracker.ingest([{
-        **baseline,
-        "home_score": 12,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MOBLEY", "type": "Turnaround Fade Away Jump Shot",
-            "score_value": 2,
-        }]},
-    }])
-    assert tracker.recent() == ()
-
-    tracker.ingest([{
-        **baseline,
-        "home_score": 12,
-        "away_score": 13,
-        "situation": {"scoring_plays": [{
-            "team": "NY", "scorer": "BRUNSON", "type": "Jump Shot",
-            "text": "Brunson makes 25-foot three point jumper", "score_value": 3,
-            "period": "2nd",
-        }]},
-    }])
-    alerts = tracker.recent()
-    assert len(alerts) == 1
-    assert alerts[0]["team_abbr"] == "NY"
-    assert alerts[0]["headline"] == "3-POINTER"
-    assert alerts[0]["points"] == 5
-
-    tracker.ingest([{
-        **baseline,
-        "home_score": 14,
-        "away_score": 13,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
-            "score_value": 2, "period": "3rd",
-        }]},
-    }])
-    alerts = tracker.recent()
-    assert len(alerts) == 2
-    assert alerts[-1]["team_abbr"] == "CLE"
-    assert alerts[-1]["headline"] == "LEAD TAKING DUNK"
-    assert alerts[-1]["points"] == 2
-
-    tracker.ingest([{
-        **baseline,
-        "state": "post",
-        "home_score": 14,
-        "away_score": 13,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
-            "score_value": 2, "period": "4th",
-        }]},
-    }])
-    alerts = tracker.recent()
-    assert len(alerts) == 2
-    assert alerts[-1]["headline"] == "LEAD TAKING DUNK"
-    assert alerts[-1]["points"] == 2
-
-    tracker.ingest([{
-        **baseline,
-        "state": "post",
-        "home_score": 14,
-        "away_score": 13,
-    }])
-    assert len(tracker.recent()) == 2
-
-    final_tracker = ScoreAlertTracker(clock=lambda: 100.0)
-    final_baseline = {
-        **baseline,
-        "id": "nba-final-dunk",
-        "home_score": 100,
-        "away_score": 101,
-    }
-    final_tracker.ingest([final_baseline])
-    final_tracker.ingest([{
-        **final_baseline,
-        "state": "post",
-        "home_score": 102,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
-            "score_value": 2,
-        }]},
-    }])
-    final_alerts = final_tracker.recent()
-    assert len(final_alerts) == 1
-    assert final_alerts[0]["headline"] == "GAME WINNING DUNK"
-    assert final_alerts[0]["points"] == 2
-
-
-def test_basketball_non_lead_scores_alert_only_in_q4() -> None:
-    tracker = ScoreAlertTracker(clock=lambda: 100.0)
-    baseline = {
-        "kind": "scoreboard", "id": "nba-q4-only", "sport": "nba", "state": "in",
-        "status": "Q3 04:00", "home_abbr": "CLE", "away_abbr": "NY",
-        "home_score": 20, "away_score": 18,
-    }
-    tracker.ingest([baseline])
-    tracker.ingest([{
-        **baseline,
-        "home_score": 22,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MOBLEY", "type": "Jump Shot",
-            "score_value": 2, "period": "3rd",
-        }]},
-    }])
-    assert tracker.recent() == ()
-
-    tracker.ingest([{
-        **baseline,
-        "status": "Q4 08:33",
-        "home_score": 24,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MOBLEY", "type": "Jump Shot",
-            "score_value": 2, "period": "4th",
-        }]},
-    }])
-
-    alerts = tracker.recent()
-    assert len(alerts) == 1
-    assert alerts[0]["team_abbr"] == "CLE"
-    assert alerts[0]["points"] == 2
+def test_basketball_scores_never_create_alerts() -> None:
+    sports = ("nba", "wnba", "ncb", "ncw", "march_madness", "mens_basketball")
+    cases = (
+        ("in", "Q3 04:00", 22, 18, "Jump Shot", 2),
+        ("in", "Q4 08:33", 24, 18, "Jump Shot", 2),
+        ("in", "Q4 00:30", 24, 25, "Three Point Jumper", 3),
+        ("in", "Q4 00:10", 26, 25, "Dunk", 2),
+        ("in", "OT 00:05", 26, 28, "Three Point Jumper", 3),
+        ("post", "FINAL", 30, 28, "Dunk", 2),
+        ("final", "FINAL", 30, 28, "Dunk", 2),
+    )
+    for sport in sports:
+        tracker = ScoreAlertTracker(clock=lambda: 100.0)
+        baseline = {
+            "kind": "scoreboard", "id": f"{sport}-disabled", "sport": sport,
+            "state": "in", "status": "Q3 04:00", "home_abbr": "CLE",
+            "away_abbr": "NY", "home_score": 20, "away_score": 18,
+        }
+        tracker.ingest([baseline])
+        for state, status, home, away, play_type, points in cases:
+            tracker.ingest([{
+                **baseline,
+                "state": state, "status": status,
+                "home_score": home, "away_score": away,
+                "situation": {"scoring_plays": [{
+                    "team": "CLE", "scorer": "MOBLEY", "type": play_type,
+                    "score_value": points, "period": "4th",
+                }]},
+            }])
+            assert tracker.recent() == (), (sport, state, status, play_type)
 
 
 def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
@@ -546,7 +450,7 @@ def test_score_alerts_filtering_and_team_matching() -> None:
         {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_mls", "state": "in", "home_abbr": "SEA", "away_abbr": "VAN", "home_score": 1, "away_score": 0},
     ])
     raw_alerts = tracker.recent()
-    assert len(raw_alerts) == 3
+    assert len(raw_alerts) == 2
 
     # Followed NYR -> Included
     settings_followed = DisplaySettings(mode="sports", score_alerts=True, my_teams=("nhl:nyr", "nfl:dal"))
@@ -560,11 +464,10 @@ def test_score_alerts_filtering_and_team_matching() -> None:
     settings_disabled = DisplaySettings(mode="sports", score_alerts=False, my_teams=("nhl:nyr",))
     assert len(alerts_for_settings(raw_alerts, settings_disabled)) == 0
 
-    # nba:NY matches NYK
+    # Basketball alerts stay disabled for followed teams.
     settings_nba_alias = DisplaySettings(mode="sports", score_alerts=True, my_teams=("nba:NY",))
     matched_nba = alerts_for_settings(raw_alerts, settings_nba_alias)
-    assert len(matched_nba) == 1
-    assert matched_nba[0]["team_abbr"] == "NYK"
+    assert matched_nba == ()
 
     # soccer_mls:SEA matches soccer_mls
     settings_mls = DisplaySettings(mode="sports", score_alerts=True, my_teams=("soccer_mls:SEA",))

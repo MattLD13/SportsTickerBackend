@@ -813,7 +813,7 @@ def sport_family(sport: object) -> str:
         return "football"
     if value in {"nhl"} or "hockey" in value:
         return "hockey"
-    if value in {"nba", "wnba"} or value.startswith(("ncb", "ncw")) or "basketball" in value:
+    if value in {"nba", "wnba", "march_madness"} or value.startswith(("ncb", "ncw")) or "basketball" in value:
         return "basketball"
     if value.startswith("soccer") or value in {"mls", "epl", "championship", "champions_league"}:
         return "soccer"
