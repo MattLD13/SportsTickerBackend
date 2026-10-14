@@ -29,6 +29,10 @@ The logger rotates five files at ten megabytes each. Stream counts appear inside
 The file stays on the Pi. Copy it from `<TICKER_DATA_DIR>/logs/ticker-performance.jsonl` for review.
 Read `window`, `poll`, `payload`, and `issue` records with any JSONL tool.
 
+## Device install dependencies
+
+The Pi updater watches `requirements.txt`. Keep this file Pi-compatible. Backend-only ASGI packages live in `requirements-backend.txt`. CI installs the backend file on the server.
+
 ## User modes
 
 The application exposes seven modes: `sports`, `weather`, `music`, `flights`, `airports`, `stock`, and `clock`.

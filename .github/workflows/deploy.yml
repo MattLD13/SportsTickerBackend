@@ -41,6 +41,7 @@ jobs:
             backend:
               - 'sports_ticker/**'
               - 'requirements.txt'
+              - 'requirements-backend.txt'
               - '*.json'
               - 'ticker.service'
               - '.github/workflows/deploy.yml'
@@ -83,7 +84,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install test dependencies
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements-backend.txt pytest
       - name: Verify approved public demo assets
         run: python tools/verify_public_demo.py
       - name: Verify public demo route
@@ -210,7 +211,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "sports_ticker/**,requirements.txt,ticker.service,VERSION"
+          source:   "sports_ticker/**,requirements.txt,requirements-backend.txt,ticker.service,VERSION"
           target:   "/home/${{ secrets.SSH_USER }}/"
 
       - name: Write backend environment and restart backend
@@ -252,8 +253,8 @@ jobs:
             sudo systemctl daemon-reload
 
             # ── Install deps ──────────────────────────────────────────────
-            pip3 install -r requirements.txt --break-system-packages 2>/dev/null \
-              || pip3 install -r requirements.txt
+            pip3 install -r requirements-backend.txt --break-system-packages 2>/dev/null \
+              || pip3 install -r requirements-backend.txt
 
             # ── Restart backend ───────────────────────────────────────────
             echo "Restarting ticker (backend)..."
