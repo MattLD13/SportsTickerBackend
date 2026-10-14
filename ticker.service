@@ -1,4 +1,4 @@
-# Sports Ticker backend (Flask API) — the unit the deploy workflow restarts
+# Sports Ticker backend (Hypercorn ASGI) — the unit the deploy workflow restarts
 # with `sudo systemctl restart ticker`.
 #
 # Install on the VPS:
@@ -8,7 +8,7 @@
 # The deploy workflow copies the code to /home/ubuntu/.
 
 [Unit]
-Description=Sports Ticker Backend (Flask API)
+Description=Sports Ticker Backend (Hypercorn ASGI)
 After=network-online.target
 Wants=network-online.target
 

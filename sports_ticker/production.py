@@ -95,7 +95,6 @@ def create_production_application(
         application.event_service,
         poll_interval=_positive_float(os.environ.get("TICKER_REFRESH_TICK_SECONDS", "0.2")),
     )
-    application.runtime = runtime
     firmware_manifest = FirmwareManifest.from_environment()
     firmware_directory = Path(
         os.environ.get("TICKER_FIRMWARE_DIR", path.parent / "firmware")
