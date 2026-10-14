@@ -1,0 +1,105 @@
+{
+  "source_url": "https://api-web.nhle.com/v1/gamecenter/2026020095/play-by-play",
+  "replay_note": "Reconstruct P1 16:27 from the recorded shot and active two-minute penalty. This is a historical replay.",
+  "penalty": {
+    "eventId": 96,
+    "periodDescriptor": {
+      "number": 1,
+      "periodType": "REG",
+      "maxRegulationPeriods": 3
+    },
+    "timeInPeriod": "03:03",
+    "timeRemaining": "16:57",
+    "situationCode": "1551",
+    "homeTeamDefendingSide": "right",
+    "typeCode": 509,
+    "typeDescKey": "penalty",
+    "sortOrder": 45,
+    "details": {
+      "xCoord": -84,
+      "yCoord": 1,
+      "zoneCode": "D",
+      "typeCode": "MIN",
+      "descKey": "slashing",
+      "duration": 2,
+      "committedByPlayerId": 8474590,
+      "drawnByPlayerId": 8476459,
+      "eventOwnerTeamId": 14
+    }
+  },
+  "play": {
+    "eventId": 101,
+    "periodDescriptor": {
+      "number": 1,
+      "periodType": "REG",
+      "maxRegulationPeriods": 3
+    },
+    "timeInPeriod": "03:33",
+    "timeRemaining": "16:27",
+    "situationCode": "1451",
+    "homeTeamDefendingSide": "right",
+    "typeCode": 506,
+    "typeDescKey": "shot-on-goal",
+    "sortOrder": 50,
+    "details": {
+      "xCoord": -67,
+      "yCoord": -4,
+      "zoneCode": "O",
+      "shotType": "tip-in",
+      "shootingPlayerId": 8482109,
+      "goalieInNetId": 8476883,
+      "eventOwnerTeamId": 3,
+      "awaySOG": 1,
+      "homeSOG": 2
+    }
+  },
+  "penalized_player": {
+    "teamId": 14,
+    "playerId": 8474590,
+    "firstName": {
+      "default": "John"
+    },
+    "lastName": {
+      "default": "Carlson"
+    },
+    "sweaterNumber": 74,
+    "positionCode": "D",
+    "headshot": "https://assets.nhle.com/mugs/nhl/20262027/TBL/8474590.png"
+  },
+  "facts": {
+    "phase": "regulation",
+    "situationCode": "1451",
+    "homePowerPlay": true,
+    "awayPowerPlay": false,
+    "powerPlaySecondsRemaining": 90,
+    "penaltyBox": {
+      "away": [
+        {
+          "jerseyNumber": 74,
+          "secondsRemaining": 90,
+          "kind": "MIN"
+        }
+      ],
+      "home": []
+    }
+  },
+  "item": {
+    "id": "rangers-pp-oct13",
+    "family": "sports",
+    "kind": "scoreboard",
+    "is_shown": true,
+    "data": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P1 16:27",
+      "away_abbr": "TB",
+      "home_abbr": "NYR",
+      "away_score": 0,
+      "home_score": 1,
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+      "away_color": "002868",
+      "home_color": "0038A8"
+    }
+  }
+}

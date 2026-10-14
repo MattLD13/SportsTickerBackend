@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import re
+import unicodedata
 from typing import Any
 
 from sports_ticker.domain import ContentItem
@@ -233,50 +234,7 @@ def display_situation(
                 result[f"{role}_name"] = name
         return result
     if league == "nhl":
-        result = {
-            "possession": possession,
-            "powerPlay": _boolean_any(source, "powerPlay", "isPowerPlay", "hasPowerPlay"),
-            "emptyNet": _boolean_any(source, "emptyNet", "isEmptyNet"),
-            "emptyNetSide": _possession(
-                source.get("emptyNetSide") or source.get("emptyNetTeam"),
-                competition,
-                home_abbr,
-                away_abbr,
-            ),
-            "shootout": _shootout(source.get("shootout") or source.get("shootoutDetails")),
-        }
-        power_play_team = _possession(
-            source.get("powerPlayTeam") or source.get("advantageTeam"),
-            competition,
-            home_abbr,
-            away_abbr,
-        )
-        code = str(source.get("situationCode") or "").strip()
-        if len(code) == 4 and code.isdigit():
-            away_goalie, away_skaters, home_skaters, home_goalie = map(int, code)
-            result["awaySkaters"] = away_skaters
-            result["homeSkaters"] = home_skaters
-            if away_goalie == 0 or home_goalie == 0:
-                result["emptyNet"] = True
-                result["emptyNetSide"] = away_abbr if away_goalie == 0 else home_abbr
-
-            if away_skaters != home_skaters:
-                advantage_side = "away" if away_skaters > home_skaters else "home"
-                short_side = "home" if advantage_side == "away" else "away"
-                advantage_goalie = away_goalie if advantage_side == "away" else home_goalie
-                short_box_count = _integer(source.get(f"{short_side}PenaltyBoxCount"))
-                result["powerPlay"] = bool(advantage_goalie or short_box_count)
-                power_play_team = away_abbr if advantage_side == "away" else home_abbr
-            else:
-                result["powerPlay"] = _boolean_any(
-                    source, "powerPlay", "isPowerPlay", "hasPowerPlay"
-                )
-                if not result["powerPlay"]:
-                    power_play_team = ""
-
-        if result["powerPlay"] and power_play_team:
-            result["powerPlayTeam"] = power_play_team
-        return result
+        return _nhl_situation(source, possession, home_abbr, away_abbr)
     if league.startswith("soccer"):
         return {
             "possession": possession,
@@ -353,8 +311,8 @@ _LIVE_PLAY_KEYS = frozenset(
         "last_pitch_type",
         "powerPlay",
         "powerPlayTeam",
-        "awaySkaters",
-        "homeSkaters",
+        "manpower",
+        "hockeyGoals",
         "emptyNet",
         "emptyNetSide",
     }
@@ -577,7 +535,6 @@ def normalize_soccer_clock(value: object, *, period: int | None = None) -> str:
         added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
         return f"90'+{added}'"
     return f"{minute}'"
-
 
 
 def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
@@ -857,8 +814,189 @@ def matches_followed_team(sport: str, team_abbr: str, followed_entries: set[str]
     return False
 
 
+def _nhl_situation(
+    source: Mapping[str, Any],
+    possession: str,
+    home_abbr: str,
+    away_abbr: str,
+) -> dict[str, Any]:
+    """Project manpower, power-play ownership, empty-net, and shootout facts."""
+
+    result = nhl_manpower_situation(source, home_abbr=home_abbr, away_abbr=away_abbr)
+    result["possession"] = possession
+    result["shootout"] = nhl_shootout_display(source)
+    return result
+
+
+def nhl_manpower_situation(
+    source: Mapping[str, Any],
+    *,
+    home_abbr: str,
+    away_abbr: str,
+) -> dict[str, Any]:
+    """Own current NHL counts, badge ownership, and count-label visibility."""
+
+    phase = str(source.get("phase") or "unavailable")
+    manpower: dict[str, Any] = {
+        "phase": phase,
+        "state": "unavailable" if phase == "unavailable" else "inactive",
+        "awaySkaters": None,
+        "homeSkaters": None,
+        "label": "",
+        "scrollLabel": "",
+        "powerPlayTimeRemaining": "",
+        "penaltyNumbers": [],
+        "penalties": [],
+    }
+    result: dict[str, Any] = {
+        "powerPlay": False,
+        "powerPlayTeam": "",
+        "emptyNet": False,
+        "emptyNetSide": "",
+        "manpower": manpower,
+    }
+    if phase not in {"regulation", "overtime"}:
+        return result
+    manpower["state"] = "unavailable"
+    code = str(source.get("situationCode") or "").strip()
+    if not re.fullmatch(r"[01][3-6][3-6][01]", code):
+        return result
+    away_goalie, away_skaters, home_skaters, home_goalie = map(int, code)
+    manpower.update(awaySkaters=away_skaters, homeSkaters=home_skaters)
+    away_pp = source.get("awayPowerPlay") is True
+    home_pp = source.get("homePowerPlay") is True
+    result["powerPlay"] = away_pp != home_pp
+    if result["powerPlay"]:
+        result["powerPlayTeam"] = away_abbr if away_pp else home_abbr
+    result["emptyNet"] = not away_goalie or not home_goalie
+    if away_goalie != home_goalie:
+        result["emptyNetSide"] = away_abbr if not away_goalie else home_abbr
+    if result["emptyNet"]:
+        manpower["state"] = "empty_net"
+    elif result["powerPlay"]:
+        manpower["state"] = "power_play"
+    elif away_skaters != home_skaters:
+        manpower["state"] = "unequal_strength"
+    elif phase == "regulation" and away_skaters < 5:
+        manpower["state"] = "reduced_strength"
+    else:
+        manpower["state"] = "even_strength"
+    if manpower["state"] in {"empty_net", "power_play", "unequal_strength", "reduced_strength"}:
+        manpower["label"] = f"{away_skaters}v{home_skaters}"
+    remaining = source.get("powerPlaySecondsRemaining")
+    if result["powerPlay"]:
+        if isinstance(remaining, int) and not isinstance(remaining, bool) and 0 <= remaining <= 1200:
+            manpower["powerPlayTimeRemaining"] = f"{remaining // 60}:{remaining % 60:02d}"
+        short_side = "home" if away_pp else "away"
+        advantage_count = (away_skaters - (not away_goalie)) if away_pp else (home_skaters - (not home_goalie))
+        short_count = (home_skaters - (not home_goalie)) if away_pp else (away_skaters - (not away_goalie))
+        penalty_count = max(0, min(2, advantage_count - short_count))
+        candidates = []
+        for entry in _sequence(_mapping(source.get("penaltyBox")).get(short_side)):
+            penalty = _mapping(entry)
+            jersey = _integer_or_none(penalty.get("jerseyNumber"))
+            seconds = penalty.get("secondsRemaining")
+            kind = str(penalty.get("kind") or "").upper()
+            if jersey is None or not 0 <= jersey <= 99:
+                continue
+            if not isinstance(seconds, int) or isinstance(seconds, bool) or not 0 < seconds <= 1200:
+                continue
+            if kind not in {"MIN", "MAJ"}:
+                continue
+            candidates.append({"jerseyNumber": jersey, "secondsRemaining": seconds, "timeRemaining": f"{seconds // 60}:{seconds % 60:02d}"})
+        candidates.sort(key=lambda penalty: (penalty["secondsRemaining"] != remaining, penalty["secondsRemaining"], penalty["jerseyNumber"]))
+        selected = []
+        seen = set()
+        for penalty in candidates:
+            if penalty["jerseyNumber"] not in seen and len(selected) < penalty_count:
+                selected.append(penalty)
+                seen.add(penalty["jerseyNumber"])
+        selected.sort(key=lambda penalty: (penalty["secondsRemaining"], penalty["jerseyNumber"]))
+        manpower["penalties"] = selected
+        manpower["penaltyNumbers"] = [penalty["jerseyNumber"] for penalty in selected]
+        groups: dict[str, list[str]] = {}
+        for penalty in selected:
+            groups.setdefault(penalty["timeRemaining"], []).append(f"#{penalty['jerseyNumber']}")
+        manpower["scrollLabel"] = " | ".join(f"{clock} {'/'.join(numbers)}" for clock, numbers in groups.items())
+        if not groups:
+            manpower["scrollLabel"] = manpower["powerPlayTimeRemaining"]
+    else:
+        manpower["scrollLabel"] = manpower["label"]
+    return result
+
+
+def nhl_goal_display(source: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Build complete goal labels with three surname letters and jersey numbers."""
+
+    goals = []
+    for goal in _sequence(source.get("goals")):
+        record = _mapping(goal)
+        if record.get("side") not in {"away", "home"}:
+            continue
+        name = unicodedata.normalize("NFKD", str(record.get("lastName") or ""))
+        letters = "".join(character for character in name.upper() if character.isascii() and character.isalpha())[:3]
+        jersey = _integer_or_none(record.get("jerseyNumber"))
+        player_label = letters or "---"
+        if jersey is not None:
+            player_label = f"{letters}#{jersey}"
+        period = _integer(record.get("period"))
+        clock = str(record.get("clock") or "")
+        goals.append({
+            "id": str(record.get("id") or ""),
+            "side": record["side"],
+            "playerLabel": player_label,
+            "label": f"{player_label} {period} {clock}".strip(),
+        })
+    return goals
+
+
+def nhl_shootout_display(source: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Own NHL shootout lifecycle and one aligned three-round display window."""
+
+    raw = _mapping(source.get("shootout"))
+    state = str(raw.get("state") or "")
+    if state not in {"active", "complete"}:
+        return None
+    attempts = {side: _results(raw.get(side)) for side in ("away", "home")}
+    current_round = max(1, len(attempts["away"]), len(attempts["home"]))
+    first_side = str(raw.get("firstSide") or "")
+    next_side = ""
+    if state == "active" and first_side in attempts:
+        second_side = "home" if first_side == "away" else "away"
+        first_count = len(attempts[first_side])
+        second_count = len(attempts[second_side])
+        if first_count == second_count:
+            next_side = first_side
+            current_round = first_count + 1
+        elif first_count == second_count + 1:
+            next_side = second_side
+            current_round = first_count
+    last_round = max(3, current_round)
+    first_round = last_round - 2
+    rounds = []
+    for number in range(first_round, last_round + 1):
+        row: dict[str, Any] = {"round": number, "nextSide": next_side if number == current_round else ""}
+        for side, results in attempts.items():
+            row[side] = results[number - 1] if number <= len(results) else "pending" if state == "active" else "not_taken"
+        rounds.append(row)
+    return {
+        **attempts,
+        "state": state,
+        "round": current_round,
+        "stage": "sudden_death" if current_round > 3 else "initial",
+        "nextSide": next_side,
+        "awayGoals": attempts["away"].count("goal"),
+        "homeGoals": attempts["home"].count("goal"),
+        "roundLabel": f"R{first_round}-{last_round}",
+        "displayRounds": rounds,
+    }
+
+
 __all__ = [
     "SportsDisplayProjector",
+    "nhl_manpower_situation",
+    "nhl_goal_display",
+    "nhl_shootout_display",
     "assign_active_team",
     "display_situation",
     "matches_followed_team",

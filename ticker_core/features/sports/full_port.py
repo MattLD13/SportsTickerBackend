@@ -5,7 +5,8 @@ from PIL import Image, ImageDraw, ImageStat
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
-from .logo_rendering import get_prepared_team_logo
+from .logo_rendering import get_prepared_team_logo, team_logo_layout
+from .stadium_port import draw_hockey_so_column
 
 PANEL_W = 384
 PANEL_H = 32
@@ -30,15 +31,6 @@ class SportsMixin:
                 if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
                 elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
 
-    def draw_shootout_indicators(self, draw, results, start_x, y):
-        display_results = results[-3:]
-        while len(display_results) < 3: display_results.append('pending')
-        x_off = start_x
-        for res in display_results:
-            if res == 'pending': draw.rectangle((x_off, y, x_off+3, y+3), outline=(80,80,80))
-            elif res == 'miss': draw.line((x_off, y, x_off+3, y+3), fill=(255,0,0)); draw.line((x_off, y+3, x_off+3, y), fill=(255,0,0))
-            elif res == 'goal': draw.rectangle((x_off, y, x_off+3, y+3), fill=(0,255,0))
-            x_off += 6
 
     def draw_soccer_shootout(self, draw, results, start_x, y):
         display_results = results[-5:]
@@ -92,7 +84,7 @@ class SportsMixin:
             sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
         img.alpha_composite(scrim)
 
-    def draw_sport_full_bleed(self, game):
+    def draw_sport_full_bleed(self, game, page_tick=0):
         W = PANEL_W; H = PANEL_H
         img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img, "RGBA")
@@ -109,6 +101,7 @@ class SportsMixin:
         game = _g
 
         sport    = str(game.get('sport', '')).lower()
+        logo_layout = team_logo_layout("full_screen", sport)
         is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
         is_nhl   = 'hockey' in sport or 'nhl' in sport
         is_mlb   = 'baseball' in sport or 'mlb' in sport
@@ -799,39 +792,19 @@ class SportsMixin:
         # ── NHL / NBA: side scrims (alpha_composite) then text on top ────────
 
         # Hockey PP / EN badges
-        h_badges: list[str] = []
-        a_badges: list[str] = []
-        home_power_play = False
-        away_power_play = False
-        try:
-            away_count = int(sit.get('awaySkaters'))
-            home_count = int(sit.get('homeSkaters'))
-            counts_valid = True
-        except (TypeError, ValueError):
-            away_count = home_count = 0
-            counts_valid = False
-        power_play_team = str(sit.get('powerPlayTeam') or '').upper()
-        empty_net_side = str(sit.get('emptyNetSide') or '').upper()
+        h_badge = a_badge = ''
         if is_nhl and sit.get('emptyNet'):
+            empty_net_side = str(sit.get('emptyNetSide') or '').upper()
             if empty_net_side == home_ab:
-                h_badges.append('EN')
+                h_badge = 'EN'
             elif empty_net_side == away_ab:
-                a_badges.append('EN')
-        if is_nhl and sit.get('powerPlay') and not sit.get('emptyNet'):
+                a_badge = 'EN'
+        elif is_nhl and sit.get('powerPlay'):
+            power_play_team = str(sit.get('powerPlayTeam') or '').upper()
             if power_play_team == home_ab:
-                label = 'PP'
-                if counts_valid and (away_count, home_count) != (5, 4):
-                    label = f'{away_count}v{home_count}'
-                h_badges.append(label)
-                home_power_play = True
+                h_badge = 'PP'
             elif power_play_team == away_ab:
-                label = 'PP'
-                if counts_valid and (home_count, away_count) != (5, 4):
-                    label = f'{home_count}v{away_count}'
-                a_badges.append(label)
-                away_power_play = True
-        h_badge = '+'.join(h_badges)
-        a_badge = '+'.join(a_badges)
+                a_badge = 'PP'
 
         # Side scrims via alpha_composite (correct blending)
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -878,97 +851,32 @@ class SportsMixin:
         a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
         if h_badge:
-            h_col = (255, 204, 0) if home_power_play else (255, 90, 90)
+            h_col = (255, 204, 0) if h_badge == 'PP' else (255, 90, 90)
             h_badge_x = int(h_sc_x + h_sc_w + 9)
             self.draw_outlined_text(d, h_badge_x, H // 2, h_badge,
                                     self.tiny, h_col, (0, 0, 0, 220), anchor='mm')
         if a_badge:
-            a_col = (255, 204, 0) if away_power_play else (255, 90, 90)
+            a_col = (255, 204, 0) if a_badge == 'PP' else (255, 90, 90)
             a_badge_x = int(a_sc_x - a_sc_w - 9)
             self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
 
-        if is_nhl and counts_valid:
-            if (away_count, home_count) != (5, 5) and not (home_power_play or away_power_play):
-                manpower = f'{away_count}v{home_count}'
-                self.draw_outlined_text(
-                    d,
-                    cx,
-                    H - 3,
-                    manpower,
-                    self.tiny,
-                    (240, 240, 240),
-                    (0, 0, 0, 220),
-                    anchor='mm',
-                )
-
-        if is_nhl and sit.get('scoring_plays'):
-            self._draw_hockey_goal_events(
-                d,
-                sit.get('scoring_plays') or (),
-                center_x=cx,
-                period_text=prd,
-                home_score_x=h_sc_x,
-                home_score_width=h_sc_w,
-                away_score_x=a_sc_x,
-                away_score_width=a_sc_w,
-            )
+        if is_nhl:
+            shootout = sit.get('shootout')
+            if shootout:
+                left_x = int(h_sc_x + h_sc_w + 7)
+                right_x = int(a_sc_x - a_sc_w - 12)
+                draw_hockey_so_column(d, left_x, 6, shootout, 'away')
+                draw_hockey_so_column(d, right_x, 6, shootout, 'home')
+                round_label = str(shootout.get('roundLabel') or '')
+                draw_tiny_text(d, W // 2 - len(round_label) * 5 // 2, 1, round_label, (20, 25, 35))
+            else:
+                self._draw_hockey_context(d, sit, page_tick)
 
         # No possession arrow for hockey/basketball full-bleed mode.
 
         return img
 
-    def _draw_hockey_goal_events(
-        self,
-        draw,
-        plays,
-        *,
-        center_x,
-        period_text,
-        home_score_x,
-        home_score_width,
-        away_score_x,
-        away_score_width,
-    ):
-        """Show recent hockey scorers in the lanes beside the period clock."""
-
-        left_events = [play for play in plays if play.get('is_home') is False][-2:]
-        right_events = [play for play in plays if play.get('is_home') is True][-2:]
-        status_width = draw.textlength(str(period_text or ''), font=self.big_font)
-        left_start = int(home_score_x + home_score_width) + 3
-        left_end = int(center_x - status_width / 2) - 4
-        right_start = int(center_x + status_width / 2) + 4
-        right_end = int(away_score_x - away_score_width) - 3
-        for events, start, end in (
-            (left_events, left_start, left_end),
-            (right_events, right_start, right_end),
-        ):
-            if not events or end <= start:
-                continue
-            lane_center = (start + end) // 2
-            line_height = 9
-            first_y = PANEL_H // 2 - (len(events) - 1) * line_height // 2
-            for index, play in enumerate(events):
-                scorer = str(play.get('scorer') or play.get('player') or '').strip()[:6]
-                period = str(play.get('period') or '').strip().upper()
-                if period.isdigit():
-                    period = f'P{period}'
-                elif period in {'1ST', '2ND', '3RD'}:
-                    period = f'P{period[0]}'
-                clock = str(play.get('clock') or '').strip()
-                label = ' '.join(value for value in (scorer, period, clock) if value)
-                if not label:
-                    continue
-                self.draw_outlined_text(
-                    draw,
-                    lane_center,
-                    first_y + index * line_height,
-                    label,
-                    self.micro,
-                    (235, 235, 235),
-                    (0, 0, 0, 220),
-                    anchor='mm',
-                )
 
     # ── Sport background helpers — exact ports of the HTML JS functions ──────
 
@@ -1216,6 +1124,21 @@ class SportsMixin:
         d.line([(px_r, H * 0.33), (px_r, H * 0.67)], fill=(220, 220, 220, 165), width=1)
 
 
+    def _draw_hockey_context(self, draw, situation, page_tick):
+        """Draw every backend goal label across aligned team pages."""
+        goals = situation.get('hockeyGoals', ())
+        sides = {side: [goal for goal in goals if goal.get('side') == side] for side in ('away', 'home')}
+        pages = hockey_page_count(situation)
+        page = page_tick % pages
+        for side, cx in (('away', 108), ('home', 276)):
+            if pages > 1:
+                self.draw_outlined_text(draw, cx, 2, f'{page + 1}/{pages}', self.micro,
+                                        (200, 210, 225), (0, 0, 0, 220))
+            for row, goal in enumerate(sides[side][page * 3:page * 3 + 3]):
+                self.draw_outlined_text(draw, cx, 8 + row * 8, str(goal.get('label') or ''), self.micro,
+                                        (255, 255, 255), (0, 0, 0, 220))
+
+
 class PreparedSportsFullRenderer(SportsMixin):
     """Provide the explicit dependencies for full sports rendering."""
 
@@ -1327,3 +1250,13 @@ class PreparedSportsFullRenderer(SportsMixin):
         draw.rectangle([cx - 1, by + 8, cx, by + 9], fill=(220, 180, 120))
         draw.rectangle([cx - 1, by + 10, cx, by + 15], fill=(180, 135, 65))
         draw.rectangle([cx - 2, by + 16, cx + 1, by + 17], fill=(150, 105, 40))
+
+
+def hockey_page_count(situation):
+    """Return the number of full-screen hockey layout pages."""
+    if situation.get('shootout'):
+        return 1
+    goals = situation.get('hockeyGoals', ())
+    count = max(sum(goal.get('side') == side for goal in goals) for side in ('away', 'home'))
+    return max(1, (count + 2) // 3)
+

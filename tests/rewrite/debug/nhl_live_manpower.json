@@ -1,0 +1,77 @@
+{
+  "id": 2026020100,
+  "startTimeUTC": "2026-10-14T00:30:00Z",
+  "gameType": 2,
+  "gameState": "LIVE",
+  "periodDescriptor": {
+    "number": 3,
+    "periodType": "REG",
+    "maxRegulationPeriods": 3
+  },
+  "clock": {
+    "timeRemaining": "14:57",
+    "secondsRemaining": 897,
+    "running": true,
+    "inIntermission": false
+  },
+  "situation": {
+    "homeTeam": {
+      "abbrev": "DAL",
+      "strength": 4
+    },
+    "awayTeam": {
+      "abbrev": "COL",
+      "situationDescriptions": [
+        "PP"
+      ],
+      "strength": 5
+    },
+    "situationCode": "1541",
+    "timeRemaining": "01:47",
+    "secondsRemaining": 107
+  },
+  "plays": [
+    {
+      "eventId": 891,
+      "periodDescriptor": {
+        "number": 3,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "04:50",
+      "timeRemaining": "15:10",
+      "situationCode": "1551",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 509,
+      "typeDescKey": "penalty",
+      "sortOrder": 640,
+      "details": {
+        "xCoord": 40,
+        "yCoord": 17,
+        "zoneCode": "D",
+        "typeCode": "MIN",
+        "descKey": "holding",
+        "duration": 2,
+        "committedByPlayerId": 8481581,
+        "drawnByPlayerId": 8486171,
+        "eventOwnerTeamId": 25
+      }
+    }
+  ],
+  "summary": {
+    "iceSurface": {
+      "awayTeam": {
+        "penaltyBox": []
+      },
+      "homeTeam": {
+        "penaltyBox": [
+          {
+            "playerId": 8481581,
+            "sweaterNumber": 55,
+            "secondsRemaining": 107
+          }
+        ]
+      }
+    }
+  }
+}

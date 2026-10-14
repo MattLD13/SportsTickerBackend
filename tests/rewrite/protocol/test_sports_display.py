@@ -177,112 +177,6 @@ def test_hockey_second_overtime_stays_overtime_without_shootout_marker() -> None
     assert hockey.data["status"] == "OT2 0:00"
 
 
-@pytest.mark.critical
-def test_nhl_situation_code_projects_power_play_owner() -> None:
-    hockey = SportsDisplayProjector().project(
-        _item("hockey-pp", "nhl"),
-        _event("2nd period", {
-            "situationCode": "1541",
-            "homePenaltyBoxCount": 1,
-            "awayPenaltyBoxCount": 0,
-        }),
-    )
-
-    assert hockey.data["situation"]["powerPlay"] is True
-    assert hockey.data["situation"]["powerPlayTeam"] == "AWY"
-    assert hockey.data["situation"]["activeTeam"] == "AWY"
-    assert hockey.data["situation"]["possession"] == ""
-    assert hockey.data["situation"]["awaySkaters"] == 5
-    assert hockey.data["situation"]["homeSkaters"] == 4
-
-
-@pytest.mark.critical
-def test_nhl_four_on_four_projects_counts_without_a_power_play() -> None:
-    hockey = SportsDisplayProjector().project(
-        _item("hockey-four-on-four", "nhl"),
-        _event("2nd period", {"situationCode": "1441"}),
-    )
-
-    assert hockey.data["situation"]["awaySkaters"] == 4
-    assert hockey.data["situation"]["homeSkaters"] == 4
-    assert hockey.data["situation"]["powerPlay"] is False
-    assert "powerPlayTeam" not in hockey.data["situation"]
-    assert "activeTeam" not in hockey.data["situation"]
-
-
-@pytest.mark.critical
-def test_nhl_power_play_owner_does_not_replace_puck_possession() -> None:
-    hockey = SportsDisplayProjector().project(
-        _item("hockey-pp-possession", "nhl"),
-        _event("2nd period", {
-            "possession": "1",
-            "situationCode": "1541",
-            "homePenaltyBoxCount": 0,
-            "awayPenaltyBoxCount": 1,
-        }),
-    )
-
-    situation = hockey.data["situation"]
-    assert situation["powerPlayTeam"] == "AWY"
-    assert situation["possession"] == "HOM"
-    assert situation["activeTeam"] == "AWY"
-
-
-@pytest.mark.critical
-def test_nhl_empty_net_owner_does_not_become_a_power_play() -> None:
-    hockey = SportsDisplayProjector().project(
-        _item("hockey-empty-net", "nhl"),
-        _event("3rd period", {
-            "situationCode": "0651",
-            "homePenaltyBoxCount": 0,
-            "awayPenaltyBoxCount": 0,
-        }),
-    )
-
-    assert hockey.data["situation"]["emptyNet"] is True
-    assert hockey.data["situation"]["emptyNetSide"] == "AWY"
-    assert hockey.data["situation"]["activeTeam"] == "AWY"
-    assert hockey.data["situation"]["powerPlay"] is False
-    assert "powerPlayTeam" not in hockey.data["situation"]
-
-
-@pytest.mark.critical
-def test_nhl_home_empty_net_routes_active_team_without_puck_possession() -> None:
-    hockey = SportsDisplayProjector().project(
-        _item("hockey-home-empty-net", "nhl"),
-        _event("3rd period", {"situationCode": "1560"}),
-    )
-
-    situation = hockey.data["situation"]
-    assert situation["awaySkaters"] == 5
-    assert situation["homeSkaters"] == 6
-    assert situation["emptyNetSide"] == "HOM"
-    assert situation["activeTeam"] == "HOM"
-    assert situation["possession"] == ""
-    assert situation["powerPlay"] is False
-
-
-@pytest.mark.critical
-def test_nhl_empty_net_and_penalty_keep_both_team_facts() -> None:
-    hockey = SportsDisplayProjector().project(
-        _item("hockey-empty-net-power-play", "nhl"),
-        _event("3rd period", {
-            "situationCode": "0651",
-            "homePenaltyBoxCount": 1,
-            "awayPenaltyBoxCount": 0,
-        }),
-    )
-
-    situation = hockey.data["situation"]
-    assert situation["awaySkaters"] == 6
-    assert situation["homeSkaters"] == 5
-    assert situation["emptyNetSide"] == "AWY"
-    assert situation["powerPlay"] is True
-    assert situation["powerPlayTeam"] == "AWY"
-    assert situation["activeTeam"] == "AWY"
-    assert situation["possession"] == ""
-
-
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
     event = _event("93'", {}, "in")
     event["status"]["displayClock"] = "93\u200e\u200e'"
@@ -330,3 +224,73 @@ def test_espn_soccer_first_half_stoppage_projection() -> None:
 
     soccer = SportsDisplayProjector().project(_item("soccer", "soccer_epl"), event)
     assert soccer.data["status"] == "45'+1:20'"
+
+
+def test_nhl_shootout_status_uses_explicit_shootout_marker() -> None:
+    event = _event("Shootout", {})
+    event["status"]["period"] = 5
+    event["competitions"][0]["status"] = {
+        "type": {"state": "in", "shortDetail": "Shootout"}
+    }
+
+    hockey = SportsDisplayProjector().project(_item("hockey-so", "nhl"), event)
+
+    assert hockey.data["status"] == "S/O"
+
+
+def test_nhl_second_overtime_is_not_mistaken_for_a_shootout() -> None:
+    event = _event("2nd OT", {})
+    event["status"]["period"] = 5
+    event["status"]["type"]["state"] = "in"
+
+    hockey = SportsDisplayProjector().project(_item("hockey-ot2", "nhl"), event)
+
+    assert hockey.data["status"] == "OT2"
+
+
+def test_nhl_manpower_projects_counts_and_hides_unneeded_labels() -> None:
+    cases = (
+        ("regulation", "1551", False, False, "even_strength", "", "", ""),
+        ("overtime", "1331", False, False, "even_strength", "", "", ""),
+        ("overtime", "1441", False, False, "even_strength", "", "", ""),
+        ("overtime", "1551", False, False, "even_strength", "", "", ""),
+        ("regulation", "1441", False, False, "reduced_strength", "4v4", "", ""),
+        ("regulation", "1331", False, False, "reduced_strength", "3v3", "", ""),
+        ("regulation", "1451", False, True, "power_play", "4v5", "HOM", ""),
+        ("regulation", "1531", True, False, "power_play", "5v3", "AWY", ""),
+        ("overtime", "1431", True, False, "power_play", "4v3", "AWY", ""),
+        ("regulation", "0651", False, False, "empty_net", "6v5", "", "AWY"),
+        ("regulation", "1560", False, False, "empty_net", "5v6", "", "HOM"),
+        ("regulation", "0641", True, False, "empty_net", "6v4", "AWY", "AWY"),
+        ("regulation", "0541", False, False, "empty_net", "5v4", "", "AWY"),
+        ("regulation", "0660", False, False, "empty_net", "6v6", "", ""),
+        ("regulation", "1541", False, False, "unequal_strength", "5v4", "", ""),
+        ("regulation", "1991", True, False, "unavailable", "", "", ""),
+        ("regulation", "bad", True, False, "unavailable", "", "", ""),
+        ("shootout", "1331", True, False, "inactive", "", "", ""),
+        ("intermission", "1541", True, False, "inactive", "", "", ""),
+        ("unavailable", "1541", True, False, "unavailable", "", "", ""),
+    )
+    for phase, code, away_pp, home_pp, state, label, pp_team, en_team in cases:
+        situation = SportsDisplayProjector().project(
+            _item("hockey", "nhl"),
+            _event("2nd period", {
+                "phase": phase,
+                "situationCode": code,
+                "awayPowerPlay": away_pp,
+                "homePowerPlay": home_pp,
+                "powerPlay": True,
+                "emptyNet": True,
+                "homePenaltyBoxCount": 2,
+                "awayPenaltyBoxCount": 2,
+            }),
+        ).data["situation"]
+        assert situation["manpower"]["state"] == state, (phase, code)
+        assert situation["manpower"]["label"] == label, (phase, code)
+        assert situation["powerPlayTeam"] == pp_team
+        assert situation["emptyNetSide"] == en_team
+        assert situation["powerPlay"] == bool(pp_team)
+        if state not in {"inactive", "unavailable"}:
+            assert situation["manpower"]["awaySkaters"] == int(code[1])
+            assert situation["manpower"]["homeSkaters"] == int(code[2])
+

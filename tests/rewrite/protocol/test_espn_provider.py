@@ -842,79 +842,6 @@ def test_espn_nhl_goal_details_keep_assist_roles_and_goal_score_identity() -> No
     assert (scoring_play["home_score"], scoring_play["away_score"]) == (2, 0)
 
 
-def test_espn_nhl_shootout_attempts_come_from_live_play_stream() -> None:
-    fallback = _event("nhl-shootout", "2026-08-16T18:00:00Z", state="in")
-    competition = deepcopy(fallback["competitions"][0])
-    competition["situation"] = {}
-    period = {"number": 5, "displayValue": "SO"}
-    update = {
-        "header": {"competitions": [competition]},
-        "plays": [
-            {
-                "type": {"text": "Period Start"},
-                "text": "Start of Shootout",
-                "period": period,
-            },
-            {
-                "id": "shot-away",
-                "type": {"text": "Shot"},
-                "text": "Away player shot saved by goalie",
-                "period": period,
-                "shootingPlay": True,
-                "team": {"abbreviation": "DAL"},
-            },
-            {
-                "id": "goal-home",
-                "type": {"text": "Goal"},
-                "text": "Home player Goal Wrist Shot",
-                "period": period,
-                "scoringPlay": True,
-                "shootingPlay": True,
-                "team": {"abbreviation": "NYG"},
-            },
-            {
-                "type": {"text": "Shootout End"},
-                "text": "End of Shootout",
-                "period": period,
-            },
-        ],
-    }
-    item_data = {"home_abbr": "NYG", "away_abbr": "DAL"}
-
-    details = _nhl_event_details(update, item_data)
-
-    assert details["shootout"] == {"home": ["goal"], "away": ["miss"]}
-    assert details["shootout_state"] == "active"
-
-    provider = EspnScoreboardProvider(
-        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
-        client=RecordingClient({}),
-    )
-    live_item = ContentItem(
-        "nhl-shootout",
-        "sports",
-        "scoreboard",
-        True,
-        {
-            "sport": "nhl",
-            "state": "in",
-            "status": "OT2 0:00",
-            "home_abbr": "NYG",
-            "away_abbr": "DAL",
-            "situation": {},
-        },
-    )
-
-    enriched = provider._enrich_live_item("nhl", live_item, update=update)
-
-    assert enriched.data["status"] == "S/O"
-    assert enriched.data["situation"]["shootout_state"] == "active"
-    assert enriched.data["situation"]["shootout"] == {
-        "home": ("goal",),
-        "away": ("miss",),
-    }
-
-
 def test_espn_nhl_live_refresh_uses_scoreboard_clock_before_summary_detail() -> None:
     scheduled = _event("nhl-1", "2026-08-16T18:00:00Z")
     live = deepcopy(scheduled)
@@ -2649,3 +2576,86 @@ def test_espn_mlb_scoring_details_preserve_rbi_type_from_live_play() -> None:
         "rbi": 1,
         "walk_off": False,
     }]
+
+
+def test_espn_period_five_plays_do_not_own_nhl_shootout_results() -> None:
+    summary = {
+        "header": {"competitions": [{"competitors": [
+            {"homeAway": "home", "team": {"id": "13", "abbreviation": "NYR"}},
+            {"homeAway": "away", "team": {"id": "11", "abbreviation": "NJD"}},
+        ]}]},
+        "plays": [{
+            "type": {"text": "Shot"}, "period": {"number": 5},
+            "team": {"id": "11"}, "shootingPlay": True,
+        }],
+    }
+    details = _nhl_event_details(summary, {"home_abbr": "NYR", "away_abbr": "NJD"})
+    assert details["shootout"] is None
+
+
+def test_live_nhl_source_enriches_even_when_espn_detail_poll_is_suppressed() -> None:
+    class SituationSource:
+        def snapshot(self):
+            return {("NYR", "NYI"): {
+                "situationCode": "1451",
+                "phase": "regulation",
+                "homePowerPlay": True,
+            }}
+
+    provider = EspnScoreboardProvider(
+        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
+        client=RecordingClient({}),
+        nhl_situation_source=SituationSource(),
+    )
+    item = ContentItem(
+        "hockey-pp",
+        "sports",
+        "scoreboard",
+        True,
+        {
+            "sport": "nhl",
+            "state": "in",
+            "status": "P2 8:00",
+            "home_abbr": "NYI",
+            "away_abbr": "NYR",
+            "situation": {},
+        },
+    )
+
+    enriched = provider._enrich_live_items(
+        (item,), suppressed_update_ids={("nhl", "hockey-pp")}
+    )[0]
+
+    assert enriched.data["situation"]["powerPlay"] is True
+    assert enriched.data["situation"]["powerPlayTeam"] == "NYI"
+
+
+def test_sparse_espn_hockey_details_clear_unverified_power_play() -> None:
+    provider = EspnScoreboardProvider(
+        {"nhl": "https://example.test/hockey/nhl/scoreboard"},
+        client=RecordingClient({}),
+    )
+    item = ContentItem(
+        "hockey-pp",
+        "sports",
+        "scoreboard",
+        True,
+        {
+            "sport": "nhl",
+            "state": "in",
+            "status": "P2 8:00",
+            "home_abbr": "NYI",
+            "away_abbr": "NYR",
+            "situation": {"powerPlay": True, "powerPlayTeam": "NYI"},
+        },
+    )
+    sparse_summary = {"header": {"competitions": [{"competitors": [
+        {"homeAway": "home", "team": {"id": "12", "abbreviation": "NYI"}},
+        {"homeAway": "away", "team": {"id": "13", "abbreviation": "NYR"}},
+    ]}]}}
+
+    enriched = provider._enrich_live_item("nhl", item, update=sparse_summary)
+
+    assert enriched.data["situation"]["powerPlay"] is False
+    assert enriched.data["situation"]["powerPlayTeam"] == ""
+

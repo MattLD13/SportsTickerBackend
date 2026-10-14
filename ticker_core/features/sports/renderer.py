@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
@@ -12,11 +13,11 @@ from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
-from .full_port import PreparedSportsFullRenderer
+from .full_port import PreparedSportsFullRenderer, hockey_page_count
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo
-from .stadium_port import PreparedStadiumRenderer
+from .stadium_port import PreparedStadiumRenderer, draw_hockey_so_column
 
 PANEL_W = 384
 PANEL_H = 32
@@ -159,8 +160,9 @@ class SportsRenderer:
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render one score card or a 384 pixel full display."""
         if scene.item.get("sports_presentation") == "pinned":
-            return RenderedContent(self.render_full(scene.item))
+            return RenderedContent(self.render_full(scene.item, page_tick=int(context.now.timestamp()) // 5))
         return RenderedContent(self.render_strip((scene.item,)))
+
 
     def render_strip(self, games: Sequence[Mapping[str, Any]], repeat: int = 1) -> Image.Image:
         """Render a gap-separated sequence of normal score cards."""
@@ -281,14 +283,13 @@ class SportsRenderer:
         sit = game["sit"]
         shootout = sit.get("shootout")
         if shootout:
-            for x, results in ((25, shootout.get("away", [])), (width - 30, shootout.get("home", []))):
-                for index, result in enumerate((list(results) + ["pending"] * 3)[:3]):
-                    color = (50, 200, 70) if result == "goal" else (220, 55, 55) if result == "miss" else (55, 55, 55)
-                    draw.rectangle((x, 9 + index * 7, x + 4, 13 + index * 7), fill=color)
+            draw_hockey_so_column(draw, 25, 9, shootout, "away")
+            draw_hockey_so_column(draw, width - 30, 9, shootout, "home")
             return
         badge = "EN" if sit.get("emptyNet") else "PP" if sit.get("powerPlay") else ""
         if badge:
             pixel_text(draw, badge, width - pixel_width(badge) - 2, 2, (255, 100, 100) if badge == "EN" else (255, 220, 0))
+
 
     def _draw_baseball(self, draw: ImageDraw.ImageDraw, width: int, center: int, game: Mapping[str, Any]) -> None:
         sit = game["sit"]
@@ -322,9 +323,10 @@ class SportsRenderer:
                 if count > 1:
                     pixel_text(draw, min(count, 9), x + 1, 1, (255, 255, 255))
 
-    def render_full(self, game: Mapping[str, Any]) -> Image.Image:
+    def render_full(self, game: Mapping[str, Any], *, page_tick: int = 0) -> Image.Image:
         """Render the 384 by 32 sport-specific full display."""
-        return self._full.draw_sport_full_bleed(dict(game)).convert("RGB")
+        return self._full.draw_sport_full_bleed(dict(game), page_tick=page_tick).convert("RGB")
+
 
     def _render_full_implementation(self, game: Mapping[str, Any]) -> Image.Image:
         """Render a full card without the exact full-screen port."""
@@ -411,3 +413,13 @@ class SportsRenderer:
             draw.line((x, 0, x, 31), fill=(0, 0, 0, alpha))
             draw.line((383 - x, 0, 383 - x, 31), fill=(0, 0, 0, alpha))
         image.alpha_composite(overlay)
+
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        """Invalidate paged hockey frames at the same cadence as their renderer."""
+        pages = 1
+        if scene.item.get("sports_presentation") == "pinned" and str(scene.item.get("sport") or "").lower() in {"nhl", "hockey"}:
+            pages = hockey_page_count(scene.item.get("situation") or {})
+        phase = (int(context.now.timestamp()) // 5) % pages if pages > 1 else None
+        return ("scoreboard", json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":")), scene.mode, asset_revision, phase)
+

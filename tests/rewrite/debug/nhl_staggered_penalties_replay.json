@@ -1,0 +1,140 @@
+{
+  "penalty_events": [
+    {
+      "eventId": 266,
+      "periodDescriptor": {
+        "number": 1,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "11:33",
+      "timeRemaining": "08:27",
+      "situationCode": "1541",
+      "homeTeamDefendingSide": "left",
+      "typeCode": 509,
+      "typeDescKey": "penalty",
+      "sortOrder": 166,
+      "details": {
+        "xCoord": 56,
+        "yCoord": 5,
+        "zoneCode": "D",
+        "typeCode": "MIN",
+        "descKey": "slashing",
+        "duration": 2,
+        "committedByPlayerId": 8484958,
+        "drawnByPlayerId": 8481605,
+        "eventOwnerTeamId": 20
+      }
+    },
+    {
+      "eventId": 294,
+      "periodDescriptor": {
+        "number": 1,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "13:23",
+      "timeRemaining": "06:37",
+      "situationCode": "1451",
+      "homeTeamDefendingSide": "left",
+      "typeCode": 509,
+      "typeDescKey": "penalty",
+      "sortOrder": 189,
+      "details": {
+        "xCoord": 59,
+        "yCoord": 15,
+        "zoneCode": "D",
+        "typeCode": "MIN",
+        "descKey": "slashing",
+        "duration": 2,
+        "committedByPlayerId": 8481068,
+        "drawnByPlayerId": 8478421,
+        "eventOwnerTeamId": 20
+      }
+    }
+  ],
+  "play": {
+    "eventId": 290,
+    "periodDescriptor": {
+      "number": 1,
+      "periodType": "REG",
+      "maxRegulationPeriods": 3
+    },
+    "timeInPeriod": "13:23",
+    "timeRemaining": "06:37",
+    "situationCode": "1351",
+    "homeTeamDefendingSide": "left",
+    "typeCode": 502,
+    "typeDescKey": "faceoff",
+    "sortOrder": 193,
+    "details": {
+      "eventOwnerTeamId": 24,
+      "losingPlayerId": 8474150,
+      "winningPlayerId": 8475798,
+      "xCoord": 69,
+      "yCoord": 22,
+      "zoneCode": "O"
+    }
+  },
+  "facts": {
+    "phase": "regulation",
+    "situationCode": "1351",
+    "awayPowerPlay": false,
+    "homePowerPlay": true,
+    "powerPlaySecondsRemaining": 10,
+    "penaltyBox": {
+      "away": [
+        {
+          "jerseyNumber": 72,
+          "secondsRemaining": 10,
+          "kind": "MIN"
+        },
+        {
+          "jerseyNumber": 17,
+          "secondsRemaining": 120,
+          "kind": "MIN"
+        }
+      ],
+      "home": []
+    },
+    "goals": [
+      {
+        "id": "221",
+        "side": "away",
+        "lastName": "Klapka",
+        "jerseyNumber": 43,
+        "period": 1,
+        "clock": "08:32"
+      },
+      {
+        "id": "272",
+        "side": "home",
+        "lastName": "Sennecke",
+        "jerseyNumber": 45,
+        "period": 1,
+        "clock": "12:09"
+      }
+    ],
+    "shootout": null
+  },
+  "item": {
+    "type": "scoreboard",
+    "sport": "nhl",
+    "id": "401892501",
+    "state": "in",
+    "status": "P1 06:37",
+    "startTimeUTC": "2026-10-14T01:45Z",
+    "estimated_duration": 180,
+    "home_abbr": "ANA",
+    "home_score": 1,
+    "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/ana.png",
+    "home_color": "#FC4C02",
+    "home_alt_color": "",
+    "away_abbr": "CGY",
+    "away_score": 1,
+    "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/cgy.png",
+    "away_color": "#DD1A32",
+    "away_alt_color": "",
+    "situation": {}
+  }
+}

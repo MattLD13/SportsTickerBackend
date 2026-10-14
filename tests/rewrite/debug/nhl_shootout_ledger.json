@@ -1,0 +1,619 @@
+{
+  "id": 2026020094,
+  "startTimeUTC": "2026-10-13T23:00:00Z",
+  "gameType": 2,
+  "gameState": "OFF",
+  "periodDescriptor": {
+    "number": 5,
+    "periodType": "SO",
+    "maxRegulationPeriods": 3
+  },
+  "clock": {
+    "timeRemaining": "00:00",
+    "secondsRemaining": 0,
+    "running": false,
+    "inIntermission": false
+  },
+  "awayTeam": {
+    "id": 55,
+    "commonName": {
+      "default": "Kraken"
+    },
+    "abbrev": "SEA",
+    "score": 3,
+    "sog": 31,
+    "logo": "https://assets.nhle.com/logos/nhl/svg/SEA_light.svg",
+    "darkLogo": "https://assets.nhle.com/logos/nhl/svg/SEA_dark.svg",
+    "placeName": {
+      "default": "Seattle"
+    },
+    "placeNameWithPreposition": {
+      "default": "Seattle",
+      "fr": "de Seattle"
+    }
+  },
+  "homeTeam": {
+    "id": 4,
+    "commonName": {
+      "default": "Flyers"
+    },
+    "abbrev": "PHI",
+    "score": 2,
+    "sog": 26,
+    "logo": "https://assets.nhle.com/logos/nhl/svg/PHI_light.svg",
+    "darkLogo": "https://assets.nhle.com/logos/nhl/svg/PHI_dark.svg",
+    "placeName": {
+      "default": "Philadelphia",
+      "fr": "Philadelphie"
+    },
+    "placeNameWithPreposition": {
+      "default": "Philadelphia",
+      "fr": "de Philadelphie"
+    }
+  },
+  "rosterSpots": [
+    {
+      "teamId": 4,
+      "playerId": 8477989,
+      "firstName": {
+        "default": "Christian"
+      },
+      "lastName": {
+        "default": "Dvorak"
+      },
+      "sweaterNumber": 22,
+      "positionCode": "C",
+      "headshot": "https://assets.nhle.com/mugs/nhl/20262027/PHI/8477989.png"
+    },
+    {
+      "teamId": 4,
+      "playerId": 8481533,
+      "firstName": {
+        "default": "Trevor"
+      },
+      "lastName": {
+        "default": "Zegras"
+      },
+      "sweaterNumber": 46,
+      "positionCode": "C",
+      "headshot": "https://assets.nhle.com/mugs/nhl/20262027/PHI/8481533.png"
+    },
+    {
+      "teamId": 55,
+      "playerId": 8482259,
+      "firstName": {
+        "default": "Bobby"
+      },
+      "lastName": {
+        "default": "McMann"
+      },
+      "sweaterNumber": 74,
+      "positionCode": "C",
+      "headshot": "https://assets.nhle.com/mugs/nhl/20262027/SEA/8482259.png"
+    },
+    {
+      "teamId": 55,
+      "playerId": 8482665,
+      "firstName": {
+        "default": "Matty"
+      },
+      "lastName": {
+        "default": "Beniers"
+      },
+      "sweaterNumber": 10,
+      "positionCode": "C",
+      "headshot": "https://assets.nhle.com/mugs/nhl/20262027/SEA/8482665.png"
+    },
+    {
+      "teamId": 55,
+      "playerId": 8482866,
+      "firstName": {
+        "default": "Ville"
+      },
+      "lastName": {
+        "default": "Ottavainen"
+      },
+      "sweaterNumber": 46,
+      "positionCode": "D",
+      "headshot": "https://assets.nhle.com/mugs/nhl/20262027/SEA/8482866.png"
+    },
+    {
+      "teamId": 4,
+      "playerId": 8484387,
+      "firstName": {
+        "default": "Matvei",
+        "cs": "Matvej",
+        "sk": "Matvej"
+      },
+      "lastName": {
+        "default": "Michkov",
+        "cs": "Mi\u010dkov",
+        "fi": "Mitshkov",
+        "sk": "Mi\u010dkov"
+      },
+      "sweaterNumber": 39,
+      "positionCode": "R",
+      "headshot": "https://assets.nhle.com/mugs/nhl/20262027/PHI/8484387.png"
+    }
+  ],
+  "plays": [
+    {
+      "eventId": 167,
+      "periodDescriptor": {
+        "number": 1,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "07:57",
+      "timeRemaining": "12:03",
+      "situationCode": "1541",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 116,
+      "details": {
+        "xCoord": 72,
+        "yCoord": -14,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "scoringPlayerId": 8482259,
+        "scoringPlayerTotal": 3,
+        "assist1PlayerId": 8474586,
+        "assist1PlayerTotal": 3,
+        "assist2PlayerId": 8476905,
+        "assist2PlayerTotal": 6,
+        "eventOwnerTeamId": 55,
+        "goalieInNetId": 8478435,
+        "awayScore": 1,
+        "homeScore": 0,
+        "highlightClipSharingUrl": "https://nhl.com/video/sea-phi-mcmann-scores-ppg-against-dan-vladar-6406798304112",
+        "highlightClipSharingUrlFr": "https://nhl.com/fr/video/sea-phi-mcmann-marque-un-but-en-a-n-contre-dan-vladar-6406797534112",
+        "highlightClip": 6406798304112,
+        "highlightClipFr": 6406797534112,
+        "discreteClip": 6406798139112,
+        "discreteClipFr": 6406799875112
+      },
+      "pptReplayUrl": "https://wsr.nhle.com/sprites/20262027/2026020094/ev167.json"
+    },
+    {
+      "eventId": 661,
+      "periodDescriptor": {
+        "number": 2,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "08:54",
+      "timeRemaining": "11:06",
+      "situationCode": "1551",
+      "homeTeamDefendingSide": "left",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 408,
+      "details": {
+        "xCoord": -48,
+        "yCoord": 3,
+        "zoneCode": "O",
+        "shotType": "snap",
+        "scoringPlayerId": 8482866,
+        "scoringPlayerTotal": 1,
+        "assist1PlayerId": 8482713,
+        "assist1PlayerTotal": 1,
+        "assist2PlayerId": 8479372,
+        "assist2PlayerTotal": 2,
+        "eventOwnerTeamId": 55,
+        "goalieInNetId": 8478435,
+        "awayScore": 2,
+        "homeScore": 0,
+        "highlightClipSharingUrl": "https://nhl.com/video/sea-phi-ottavainen-scores-goal-against-dan-vladar-6406804874112",
+        "highlightClipSharingUrlFr": "https://nhl.com/fr/video/sea-phi-ottavainen-marque-un-but-contre-dan-vladar-6406804250112",
+        "highlightClip": 6406804874112,
+        "highlightClipFr": 6406804250112,
+        "discreteClip": 6406803089112,
+        "discreteClipFr": 6406804765112
+      },
+      "pptReplayUrl": "https://wsr.nhle.com/sprites/20262027/2026020094/ev661.json"
+    },
+    {
+      "eventId": 910,
+      "periodDescriptor": {
+        "number": 3,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "06:07",
+      "timeRemaining": "13:53",
+      "situationCode": "1551",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 639,
+      "details": {
+        "xCoord": -64,
+        "yCoord": 13,
+        "zoneCode": "O",
+        "shotType": "snap",
+        "scoringPlayerId": 8477989,
+        "scoringPlayerTotal": 2,
+        "assist1PlayerId": 8484148,
+        "assist1PlayerTotal": 1,
+        "assist2PlayerId": 8478435,
+        "assist2PlayerTotal": 1,
+        "eventOwnerTeamId": 4,
+        "goalieInNetId": 8475831,
+        "awayScore": 2,
+        "homeScore": 1,
+        "highlightClipSharingUrl": "https://nhl.com/video/sea-phi-dvorak-scores-goal-against-philipp-grubauer-6406809813112",
+        "highlightClipSharingUrlFr": "https://nhl.com/fr/video/sea-phi-dvorak-marque-un-but-contre-philipp-grubauer-6406808134112",
+        "highlightClip": 6406809813112,
+        "highlightClipFr": 6406808134112,
+        "discreteClip": 6406809621112,
+        "discreteClipFr": 6406808621112
+      },
+      "pptReplayUrl": "https://wsr.nhle.com/sprites/20262027/2026020094/ev910.json"
+    },
+    {
+      "eventId": 936,
+      "periodDescriptor": {
+        "number": 3,
+        "periodType": "REG",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "07:20",
+      "timeRemaining": "12:40",
+      "situationCode": "1441",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 659,
+      "details": {
+        "xCoord": -69,
+        "yCoord": -5,
+        "zoneCode": "O",
+        "shotType": "snap",
+        "scoringPlayerId": 8481533,
+        "scoringPlayerTotal": 1,
+        "assist1PlayerId": 8477948,
+        "assist1PlayerTotal": 2,
+        "assist2PlayerId": 8480015,
+        "assist2PlayerTotal": 1,
+        "eventOwnerTeamId": 4,
+        "goalieInNetId": 8475831,
+        "awayScore": 2,
+        "homeScore": 2,
+        "highlightClipSharingUrl": "https://nhl.com/video/trevor-zegras-with-a-goal-vs-seattle-kraken-6406811681112",
+        "highlightClipSharingUrlFr": "https://nhl.com/fr/video/trevor-zegras-with-a-but-vs-le-kraken-de-seattle-6406810217112",
+        "highlightClip": 6406811681112,
+        "highlightClipFr": 6406810217112,
+        "discreteClip": 6406809348112,
+        "discreteClipFr": 6406811687112
+      },
+      "pptReplayUrl": "https://wsr.nhle.com/sprites/20262027/2026020094/ev936.json"
+    },
+    {
+      "eventId": 521,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "1010",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 520,
+      "typeDescKey": "period-start",
+      "sortOrder": 889
+    },
+    {
+      "eventId": 522,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "1010",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 892,
+      "details": {
+        "xCoord": -68,
+        "yCoord": 4,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "shootingPlayerId": 8481533,
+        "goalieInNetId": 8475831,
+        "eventOwnerTeamId": 4,
+        "awaySOG": 29,
+        "homeSOG": 25
+      }
+    },
+    {
+      "eventId": 523,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 893,
+      "details": {
+        "xCoord": 67,
+        "yCoord": 4,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "scoringPlayerId": 8482665,
+        "eventOwnerTeamId": 55,
+        "goalieInNetId": 8478435,
+        "awayScore": 2,
+        "homeScore": 2
+      }
+    },
+    {
+      "eventId": 524,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "1010",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 894,
+      "details": {
+        "xCoord": -78,
+        "yCoord": 3,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "scoringPlayerId": 8484387,
+        "eventOwnerTeamId": 4,
+        "goalieInNetId": 8475831,
+        "awayScore": 2,
+        "homeScore": 2
+      }
+    },
+    {
+      "eventId": 525,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 895,
+      "details": {
+        "xCoord": 67,
+        "yCoord": -4,
+        "zoneCode": "O",
+        "shotType": "snap",
+        "shootingPlayerId": 8484800,
+        "goalieInNetId": 8478435,
+        "eventOwnerTeamId": 55,
+        "awaySOG": 30,
+        "homeSOG": 25
+      }
+    },
+    {
+      "eventId": 526,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "1010",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 896,
+      "details": {
+        "xCoord": -64,
+        "yCoord": 8,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "shootingPlayerId": 8482159,
+        "goalieInNetId": 8475831,
+        "eventOwnerTeamId": 4,
+        "awaySOG": 30,
+        "homeSOG": 26
+      }
+    },
+    {
+      "eventId": 527,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 897,
+      "details": {
+        "xCoord": 81,
+        "yCoord": 7,
+        "zoneCode": "O",
+        "shotType": "backhand",
+        "shootingPlayerId": 8477919,
+        "goalieInNetId": 8478435,
+        "eventOwnerTeamId": 55,
+        "awaySOG": 31,
+        "homeSOG": 26
+      }
+    },
+    {
+      "eventId": 528,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "1010",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 898,
+      "details": {
+        "xCoord": -75,
+        "yCoord": -9,
+        "zoneCode": "O",
+        "shotType": "backhand",
+        "shootingPlayerId": 8485406,
+        "goalieInNetId": 8475831,
+        "eventOwnerTeamId": 4,
+        "awaySOG": 31,
+        "homeSOG": 27
+      }
+    },
+    {
+      "eventId": 529,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 899,
+      "details": {
+        "xCoord": 78,
+        "yCoord": -10,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "shootingPlayerId": 8482713,
+        "goalieInNetId": 8478435,
+        "eventOwnerTeamId": 55,
+        "awaySOG": 32,
+        "homeSOG": 27
+      }
+    },
+    {
+      "eventId": 530,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "1010",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 506,
+      "typeDescKey": "shot-on-goal",
+      "sortOrder": 900,
+      "details": {
+        "xCoord": -70,
+        "yCoord": -7,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "shootingPlayerId": 8484142,
+        "goalieInNetId": 8475831,
+        "eventOwnerTeamId": 4,
+        "awaySOG": 32,
+        "homeSOG": 28
+      }
+    },
+    {
+      "eventId": 531,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 505,
+      "typeDescKey": "goal",
+      "sortOrder": 901,
+      "details": {
+        "xCoord": 71,
+        "yCoord": -8,
+        "zoneCode": "O",
+        "shotType": "wrist",
+        "scoringPlayerId": 8482259,
+        "eventOwnerTeamId": 55,
+        "goalieInNetId": 8478435,
+        "awayScore": 2,
+        "homeScore": 2,
+        "highlightClipSharingUrl": "https://nhl.com/video/mcmann-scores-shootout-winner-against-flyers-6406813372112",
+        "highlightClipSharingUrlFr": "https://nhl.com/fr/video/mcmann-marque-le-but-decisif-en-tir-de-barrage-contre-les-flyers-6406814461112",
+        "highlightClip": 6406813372112,
+        "highlightClipFr": 6406814461112,
+        "discreteClip": 6406815423112,
+        "discreteClipFr": 6406813778112
+      }
+    },
+    {
+      "eventId": 532,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 523,
+      "typeDescKey": "shootout-complete",
+      "sortOrder": 902
+    },
+    {
+      "eventId": 533,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 521,
+      "typeDescKey": "period-end",
+      "sortOrder": 903
+    },
+    {
+      "eventId": 537,
+      "periodDescriptor": {
+        "number": 5,
+        "periodType": "SO",
+        "maxRegulationPeriods": 3
+      },
+      "timeInPeriod": "00:00",
+      "timeRemaining": "00:00",
+      "situationCode": "0101",
+      "homeTeamDefendingSide": "right",
+      "typeCode": 524,
+      "typeDescKey": "game-end",
+      "sortOrder": 907
+    }
+  ]
+}

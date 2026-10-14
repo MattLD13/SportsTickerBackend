@@ -22,9 +22,13 @@ from .contracts import ProviderHealth, ProviderResult
 from .espn_fastcast import EspnFastcastSource
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
+from .nhl_live import nhl_team_key
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .sports_display import (
     SportsDisplayProjector,
+    nhl_manpower_situation,
+    nhl_goal_display,
+    nhl_shootout_display,
     assign_active_team,
     baseball_player_stats,
     display_situation,
@@ -1351,49 +1355,44 @@ class EspnScoreboardProvider:
         try:
             snapshot = source.snapshot()
         except Exception:
-            return list(items)
-        if not isinstance(snapshot, Mapping) or not snapshot:
-            return list(items)
+            snapshot = {}
+        if not isinstance(snapshot, Mapping):
+            snapshot = {}
         result = list(items)
         for index, item in enumerate(result):
             data = item.data
             if (
                 str(data.get("sport") or "") != "nhl"
-                or str(data.get("state") or "").lower() not in {"in", "half", "crit"}
+                or str(data.get("state") or "").lower() not in {"in", "half", "crit", "post"}
             ):
                 continue
-            away = str(data.get("away_abbr") or "").strip().upper()
-            home = str(data.get("home_abbr") or "").strip().upper()
-            facts = snapshot.get((away, home))
-            if not away or not home or not isinstance(facts, Mapping):
-                continue
-            details = display_situation(
-                "nhl",
-                {"situation": facts},
-                home_abbr=home,
-                away_abbr=away,
+            key = (
+                nhl_team_key(data.get("away_abbr")),
+                nhl_team_key(data.get("home_abbr")),
+            )
+            facts = snapshot.get(key)
+            if not isinstance(facts, Mapping):
+                facts = {}
+            start = _event_time(data.get("startTimeUTC"))
+            fact_start = _event_time(facts.get("startTimeUTC"))
+            if start and fact_start and start.date() != fact_start.date():
+                facts = {}
+            if str(data.get("status") or "") == "S/O":
+                facts = {**facts, "phase": "shootout"}
+            details = nhl_manpower_situation(
+                facts,
+                home_abbr=str(data.get("home_abbr") or ""),
+                away_abbr=str(data.get("away_abbr") or ""),
             )
             updated = dict(data)
             situation = dict(_mapping(data.get("situation")))
-            for key in (
-                "powerPlay",
-                "powerPlayTeam",
-                "awaySkaters",
-                "homeSkaters",
-                "emptyNet",
-                "emptyNetSide",
-            ):
-                situation.pop(key, None)
-                if key in details:
-                    situation[key] = details[key]
-            situation = assign_active_team(
-                "nhl",
-                str(data.get("state") or ""),
-                str(data.get("status") or ""),
-                situation,
-                home_abbr=home,
-                away_abbr=away,
-            )
+            situation.update(details)
+            if "goals" in facts:
+                situation["hockeyGoals"] = nhl_goal_display(facts)
+            if "shootout" in facts:
+                situation["shootout"] = nhl_shootout_display(facts)
+                if situation["shootout"] is not None:
+                    updated["status"] = "FINAL S/O" if data.get("state") == "post" else "S/O"
             updated["situation"] = situation
             result[index] = ContentItem(
                 id=item.id,
@@ -1403,7 +1402,6 @@ class EspnScoreboardProvider:
                 data=updated,
             )
         return result
-
 
 
 def _events(payload: Any) -> tuple[Mapping[str, Any], ...]:
@@ -2156,7 +2154,7 @@ def _resolve_college_football_rankings(
 
 
 def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
-    """Read power-play, empty-net, and shootout state from a live NHL event."""
+    """Read ESPN NHL context before the league source supplies live display facts."""
 
     summary = _mapping(payload)
     competition = _event_competition(summary)
@@ -2165,79 +2163,12 @@ def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
         return {}
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
-    situation_competition = dict(competition)
-    situation_competition["situation"] = source
+    projected_competition = dict(competition)
+    projected_competition["situation"] = source
     details = display_situation(
-        "nhl",
-        situation_competition,
-        home_abbr=home_abbr,
-        away_abbr=away_abbr,
+        "nhl", projected_competition, home_abbr=home_abbr, away_abbr=away_abbr
     )
-    shootout = _shootout_details(summary) or _nhl_shootout_from_plays(
-        summary, item, competition
-    )
-    if shootout is not None:
-        details["shootout"] = shootout
-        details["shootout_state"] = "active"
     return details
-
-
-def _nhl_shootout_from_plays(
-    summary: Mapping[str, Any],
-    item: Mapping[str, Any],
-    competition: Mapping[str, Any],
-) -> dict[str, list[str]] | None:
-    """Read current NHL shootout state and attempts from ESPN's play stream."""
-
-    plays = tuple(
-        _mapping(value)
-        for value in _sequence(summary.get("plays"))
-        if isinstance(value, Mapping)
-    ) or _event_plays(summary)
-    home_abbr = str(item.get("home_abbr") or "")
-    away_abbr = str(item.get("away_abbr") or "")
-    outcomes: dict[str, list[str]] = {"home": [], "away": []}
-    active = False
-    seen: set[str] = set()
-    for play in plays:
-        period = _mapping(play.get("period"))
-        period_label = str(period.get("displayValue") or "").strip().upper()
-        shot_info = _mapping(play.get("shotInfo"))
-        kind = _mapping(play.get("type"))
-        kind_text = str(kind.get("text") or kind.get("abbreviation") or "").strip().lower()
-        text = str(play.get("text") or play.get("shortText") or "").strip().lower()
-        is_shootout = (
-            period_label == "SO"
-            or "shootout" in str(shot_info.get("text") or "").lower()
-            or "shootout" in kind_text
-            or "shootout" in text
-        )
-        if not is_shootout:
-            continue
-        active = True
-        identifier = str(play.get("id") or "")
-        if identifier and identifier in seen:
-            continue
-        if identifier:
-            seen.add(identifier)
-        if "start" in kind_text or "end" in kind_text or "period" in kind_text:
-            continue
-        if bool(play.get("scoringPlay")) or "goal" in kind_text:
-            result = "goal"
-        elif (
-            bool(play.get("shootingPlay"))
-            or "shot" in kind_text
-            or "saved" in text
-            or "missed" in text
-        ):
-            result = "miss"
-        else:
-            continue
-        team = _event_team_abbr(play, competition, home_abbr, away_abbr)
-        side = "home" if team.upper() == home_abbr.upper() else "away" if team.upper() == away_abbr.upper() else ""
-        if side:
-            outcomes[side].append(result)
-    return outcomes if active else None
 
 
 def _soccer_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:

@@ -63,7 +63,8 @@ PF = {
     '/':[[0,0,1],[0,0,1],[0,1,0],[1,0,0],[1,0,0]],
     '+':[[0,0,0],[0,1,0],[1,1,1],[0,1,0],[0,0,0]],
     '&':[[0,1,0],[1,0,1],[0,1,0],[1,0,1],[0,1,1]],
-    '#':[[1,0,1],[1,1,1],[1,0,1],[1,1,1],[1,0,1]],
+    '#':[[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0]],
+    '|':[[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
     '▲':[[0,1,0],[1,1,1],[1,1,1],[0,0,0],[0,0,0]],
     '▼':[[0,0,0],[0,0,0],[1,1,1],[1,1,1],[0,1,0]],
     ' ':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
@@ -123,15 +124,16 @@ def hex_to_rgb(hex_str):
 # ── Pixel font ────────────────────────────────────────────────────────────────
 
 def pf_char(d, ch, x, y, r, g, b, sc=1):
-    """Draw one pixel-font glyph; returns width consumed."""
+    """Draw one pixel-font glyph and return its advance."""
     bm = PF.get(ch.upper(), PF[' '])
     col = (_clamp(r), _clamp(g), _clamp(b), 255)
     for row in range(5):
-        for col_idx in range(3):
+        for col_idx in range(len(bm[row])):
             if bm[row][col_idx]:
                 fx, fy = x + col_idx * sc, y + row * sc
                 d.rectangle([fx, fy, fx + sc - 1, fy + sc - 1], fill=col)
-    return 4 * sc
+    return (len(bm[0]) + 1) * sc
+
 
 def pf_text(d, text, x, y, r, g, b, sc=1):
     """Draw pixel-font string; returns total width."""
@@ -141,8 +143,9 @@ def pf_text(d, text, x, y, r, g, b, sc=1):
     return cx - x
 
 def pf_w(text, sc=1):
-    """Width of pixel-font string."""
-    return len(str(text)) * 4 * sc
+    """Measure the pixel-font glyph advances."""
+    return sum(len(PF.get(ch.upper(), PF[' '])[0]) + 1 for ch in str(text)) * sc
+
 
 
 def draw_hybrid_text(draw, x, y, text_str, color):
@@ -281,6 +284,8 @@ def calc_card_width(g):
 
     if (is_nhl or sport == 'soccer') and is_so:
         center = max(center, score_w + 14)
+    if is_nhl:
+        center = max(center, pf_w(str(sit.get('manpower', {}).get('scrollLabel') or '')))
 
     total = ZONE + 4 + center + 4 + ZONE
     return min(160, int((total + 1) // 2 * 2))
@@ -464,54 +469,30 @@ class StadiumRenderer:
                 pf_text(d, dd, cCX - pf_w(dd) // 2, 23, *dd_color)
 
         # ══ NHL ══════════════════════════════════════════════════════════════
-        if is_nhl and is_active and not is_so:
-            is_pp       = sit.get('powerPlay',  False) or g.get('pp', False)
-            is_en       = sit.get('emptyNet',   False) or g.get('en', False)
-            badges = {'home': [], 'away': []}
-            power_play_displayed = False
-            try:
-                away_count = int(sit.get('awaySkaters'))
-                home_count = int(sit.get('homeSkaters'))
-                counts_valid = True
-            except (TypeError, ValueError):
-                away_count = home_count = 5
-                counts_valid = False
-            power_play_side = _side_from_value(sit.get('powerPlayTeam')) if is_pp else None
-            empty_net_side = _side_from_value(sit.get('emptyNetSide')) if is_en else None
+        if is_nhl and g['state'] in {'in', 'crit'} and not is_so:
+            is_pp = bool(sit.get('powerPlay'))
+            is_en = bool(sit.get('emptyNet'))
 
-            if empty_net_side:
-                badges[empty_net_side].append('EN')
-
-            if is_pp and not is_en and power_play_side:
-                advantaged_count, short_count = (
-                    (home_count, away_count)
-                    if power_play_side == 'home'
-                    else (away_count, home_count)
-                )
-                label = 'PP' if (advantaged_count, short_count) == (5, 4) else f'{advantaged_count}v{short_count}'
-                badges[power_play_side].append(label)
-                power_play_displayed = True
-            for side, labels in badges.items():
-                if not labels:
-                    continue
-                team_x = h_logo_x + LOGO_SZ // 2 if side == 'home' else a_logo_x + LOGO_SZ // 2
-                label = '+'.join(labels)
-                is_power_play_side = not is_en and side == power_play_side
-                color = (255, 220, 0) if is_power_play_side else (255, 100, 100)
-                badge_y = 1 if is_power_play_side else 2
-                pf_text(d, label, team_x - pf_w(label) // 2, badge_y, *color)
-
-            if counts_valid and (away_count, home_count) != (5, 5) and (is_en or not power_play_displayed):
-                manpower = f'{away_count}v{home_count}'
-                pf_text(d, manpower, cCX - pf_w(manpower) // 2, 25, 235, 235, 235)
+            if is_en:
+                en_side = _side_from_value(sit.get('emptyNetSide'))
+                if en_side:
+                    en_hdr_x = h_logo_x + LOGO_SZ // 2 if en_side == 'home' else a_logo_x + LOGO_SZ // 2
+                    pf_text(d, 'EN', en_hdr_x - pf_w('EN') // 2, 2, 255, 100, 100)
+            elif is_pp:
+                pp_side = _side_from_value(sit.get('powerPlayTeam'))
+                if pp_side:
+                    pp_hdr_x = h_logo_x + LOGO_SZ // 2 if pp_side == 'home' else a_logo_x + LOGO_SZ // 2
+                    pf_text(d, 'PP', pp_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
+            label = str(sit.get('manpower', {}).get('scrollLabel') or '')
+            if label:
+                color = (255, 220, 0) if is_pp else (255, 100, 100) if is_en else (200, 210, 225)
+                pf_text(d, label, cCX - pf_w(label) // 2, 23, *color)
 
         if is_nhl and is_so:
-            so_a = shootout.get('away', [])
-            so_h = shootout.get('home', [])
-            draw_so_column(d, a_logo_x + LOGO_SZ + 2, 9, so_a,
-                           vertical=True, size=5, stride=7, max_show=3)
-            draw_so_column(d, h_logo_x - 7, 9, so_h,
-                           vertical=True, size=5, stride=7, max_show=3)
+            draw_hockey_so_column(d, a_logo_x + LOGO_SZ + 2, 9, shootout, 'away')
+            draw_hockey_so_column(d, h_logo_x - 7, 9, shootout, 'home')
+            round_label = str(shootout.get('roundLabel') or '')
+            pf_text(d, round_label, cCX - pf_w(round_label) // 2, 23, 200, 210, 225)
 
         # ══ MLB ══════════════════════════════════════════════════════════════
         if is_mlb and is_active and not is_delay:
@@ -722,3 +703,18 @@ def build_strip(games, logo_cache=None, repeat=1):
         strip.paste(c, (x, 0), c)
         x += c.width
     return strip
+
+
+def draw_hockey_so_column(draw, x, y, shootout, side):
+    """Draw the backend's three NHL rounds without changing their order."""
+    for index, row in enumerate(shootout.get('displayRounds', ())):
+        dy = y + index * 7
+        result = row[side]
+        if result == 'not_taken':
+            fi(draw, x, dy, 5, 5, 20, 25, 32)
+            fi(draw, x + 1, dy + 2, 3, 1, 65, 70, 80)
+        else:
+            draw_shootout_dot(draw, x, dy, result, size=5)
+        if row.get('nextSide') == side:
+            draw.rectangle((x - 1, dy - 1, x + 5, dy + 5), outline=(90, 190, 255))
+

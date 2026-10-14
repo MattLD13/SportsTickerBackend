@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 from datetime import datetime, timezone
+import json
+from pathlib import Path
 
 import pytest
+from sports_ticker.providers.nhl_live import _game_events
+from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
@@ -38,301 +42,6 @@ def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) 
     second = sports.render(context, ContentScene(item=game, mode="sports")).image
     assert first.height == 32
     assert first.tobytes() == second.tobytes()
-
-
-@pytest.mark.critical
-def test_hockey_power_play_renders_on_owner_without_possession(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    game = {
-        "sport": "nhl",
-        "state": "in",
-        "status": "P2 8:00",
-        "away_abbr": "NYR",
-        "home_abbr": "NYI",
-        "away_score": 1,
-        "home_score": 0,
-        "situation": {
-            "powerPlay": True,
-            "powerPlayTeam": "NYR",
-            "awaySkaters": 5,
-            "homeSkaters": 4,
-        },
-    }
-    scroll_labels: list[int] = []
-    original_pixel_text = sports_stadium_port.pf_text
-
-    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text == "PP":
-            scroll_labels.append(x)
-        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
-
-    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
-    sports.render_card(game)
-    assert len(scroll_labels) == 1
-    assert scroll_labels[0] < 80
-
-    full_labels: list[int] = []
-    original_full_text = sports._full.draw_outlined_text
-
-    def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text == "PP":
-            full_labels.append(x)
-        return original_full_text(draw, x, y, text, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-    image = sports.render_full(game)
-
-    assert image.size == (384, 32)
-    assert len(full_labels) == 1
-    assert full_labels[0] < 192
-
-
-@pytest.mark.critical
-def test_hockey_power_play_shows_manpower_on_scroll_and_full_frames(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    game = {
-        "sport": "nhl",
-        "state": "in",
-        "status": "P2 8:00",
-        "away_abbr": "NYR",
-        "home_abbr": "NYI",
-        "away_score": 1,
-        "home_score": 0,
-        "situation": {
-            "powerPlay": True,
-            "powerPlayTeam": "NYR",
-            "awaySkaters": 5,
-            "homeSkaters": 3,
-        },
-    }
-    scroll_labels: list[tuple[int, int, tuple[int, int, int]]] = []
-    original_pixel_text = sports_stadium_port.pf_text
-
-    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text == "5v3":
-            scroll_labels.append((x, y, (red, green, blue)))
-        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
-
-    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
-    sports.render_card(game)
-    assert len(scroll_labels) == 1
-    assert scroll_labels[0][0] < 80
-    assert scroll_labels[0][1] == 1
-    assert scroll_labels[0][2] == (255, 220, 0)
-
-    full_labels: list[tuple[str, tuple[int, int, int]]] = []
-    original_full_text = sports._full.draw_outlined_text
-
-    def capture_full_text(draw, x, y, text, font, fill, *args, **kwargs):
-        if text == "5v3":
-            full_labels.append((text, fill))
-        return original_full_text(draw, x, y, text, font, fill, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-    image = sports.render_full(game)
-
-    assert image.size == (384, 32)
-    assert full_labels == [("5v3", (255, 204, 0))]
-
-
-@pytest.mark.critical
-def test_hockey_four_on_four_stays_centered_without_power_play(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    game = {
-        "sport": "nhl",
-        "state": "in",
-        "status": "P2 8:00",
-        "away_abbr": "NYR",
-        "home_abbr": "NYI",
-        "away_score": 1,
-        "home_score": 0,
-        "situation": {"powerPlay": False, "awaySkaters": 4, "homeSkaters": 4},
-    }
-    labels: list[str] = []
-    original_pixel_text = sports_stadium_port.pf_text
-
-    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text in {"PP", "4v4"}:
-            labels.append(text)
-        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
-
-    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
-    sports.render_card(game)
-
-    assert labels == ["4v4"]
-
-    full_labels: list[str] = []
-    original_full_text = sports._full.draw_outlined_text
-
-    def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text in {"PP", "4v4"}:
-            full_labels.append(text)
-        return original_full_text(draw, x, y, text, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-    image = sports.render_full(game)
-
-    assert image.size == (384, 32)
-    assert full_labels == ["4v4"]
-
-
-@pytest.mark.critical
-def test_hockey_empty_net_shows_en_above_manpower_even_with_power_play(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    game = {
-        "sport": "nhl",
-        "state": "in",
-        "status": "P3 1:12",
-        "away_abbr": "NYR",
-        "home_abbr": "NYI",
-        "away_score": 1,
-        "home_score": 2,
-        "situation": {
-            "powerPlay": True,
-            "powerPlayTeam": "NYR",
-            "emptyNet": True,
-            "emptyNetSide": "NYR",
-            "awaySkaters": 6,
-            "homeSkaters": 5,
-        },
-    }
-    scroll_labels: list[tuple[str, int]] = []
-    original_pixel_text = sports_stadium_port.pf_text
-
-    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text in {"EN", "6v5"}:
-            scroll_labels.append((text, y))
-        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
-
-    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
-    sports.render_card(game)
-    assert scroll_labels == [("EN", 2), ("6v5", 25)]
-
-    labels: list[tuple[str, int]] = []
-    original_draw_text = sports._full.draw_outlined_text
-
-    def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text in {"EN", "6v5"}:
-            labels.append((text, y))
-        return original_draw_text(draw, x, y, text, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-
-    image = sports.render_full(game)
-
-    assert image.size == (384, 32)
-    assert labels == [("EN", 16), ("6v5", 29)]
-
-
-@pytest.mark.critical
-def test_hockey_full_frame_shows_goal_scorer_and_period_clock(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    game = {
-        "sport": "nhl",
-        "state": "in",
-        "status": "P2 8:00",
-        "away_abbr": "NYR",
-        "home_abbr": "NYI",
-        "away_score": 1,
-        "home_score": 2,
-        "situation": {
-            "scoring_plays": [
-                {
-                    "team": "NYR",
-                    "scorer": "FOX",
-                    "is_home": False,
-                    "period": "1st",
-                    "clock": "12:34",
-                },
-                {
-                    "team": "NYI",
-                    "scorer": "TROCHE",
-                    "is_home": True,
-                    "period": "2nd",
-                    "clock": "3:21",
-                },
-            ]
-        },
-    }
-    labels: list[str] = []
-    original_draw_text = sports._full.draw_outlined_text
-
-    def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text in {"FOX P1 12:34", "TROCHE P2 3:21"}:
-            labels.append(text)
-        return original_draw_text(draw, x, y, text, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-
-    image = sports.render_full(game)
-
-    assert image.size == (384, 32)
-    assert labels == ["FOX P1 12:34", "TROCHE P2 3:21"]
-
-
-@pytest.mark.parametrize(("empty_net_side", "on_home_side"), [("NYI", True), ("NYR", False)])
-@pytest.mark.critical
-def test_hockey_empty_net_renders_on_explicit_side(
-    sports: SportsRenderer,
-    monkeypatch: pytest.MonkeyPatch,
-    empty_net_side: str,
-    on_home_side: bool,
-) -> None:
-    game = {
-        "sport": "nhl",
-        "state": "in",
-        "status": "P3 1:12",
-        "away_abbr": "NYR",
-        "home_abbr": "NYI",
-        "away_score": 1,
-        "home_score": 2,
-        "situation": {
-            "emptyNet": True,
-            "emptyNetSide": empty_net_side,
-            "awaySkaters": 6 if empty_net_side == "NYR" else 5,
-            "homeSkaters": 6 if empty_net_side == "NYI" else 5,
-        },
-    }
-    scroll_labels: list[tuple[str, int, int]] = []
-    original_pixel_text = sports_stadium_port.pf_text
-
-    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
-        if text in {"EN", "5v6", "6v5"}:
-            scroll_labels.append((text, x, y))
-        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
-
-    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
-    card = sports.render_card(game)
-    expected_manpower = "5v6" if on_home_side else "6v5"
-    assert [text for text, _, _ in scroll_labels] == ["EN", expected_manpower]
-    assert scroll_labels[0][2] == 2
-    assert scroll_labels[1][2] == 25
-    if on_home_side:
-        assert scroll_labels[0][1] > card.width // 2
-    else:
-        assert scroll_labels[0][1] < card.width // 2
-
-    labels: list[tuple[str, int, int]] = []
-    original_full_text = sports._full.draw_outlined_text
-
-    def capture_full_text(draw, x, y, text, *args, **kwargs):
-        if text in {"EN", "5v6", "6v5"}:
-            labels.append((text, x, y))
-        return original_full_text(draw, x, y, text, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-    image = sports.render_full(game)
-
-    assert image.size == (384, 32)
-    assert [text for text, _, _ in labels] == ["EN", expected_manpower]
-    assert labels[0][2] == 16
-    assert labels[1][2] == 29
-    assert (labels[0][1] > 192) is on_home_side
 
 
 def test_campaign_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:
@@ -842,3 +551,159 @@ def test_news_banner_keeps_live_frame_geometry() -> None:
     second = renderer.apply(frame, item, 1.0)
     assert first.size == (384, 32)
     assert first.tobytes() == second.tobytes()
+
+
+@pytest.mark.parametrize("power_play_team", ["NYR", "NYI"])
+def test_hockey_power_play_renders_for_its_team_in_both_layouts(
+    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch, power_play_team: str
+) -> None:
+    game = {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P2 8:00",
+        "away_abbr": "NYR",
+        "home_abbr": "NYI",
+        "away_score": 1,
+        "home_score": 0,
+        "situation": {"powerPlay": True, "powerPlayTeam": power_play_team, "activeTeam": "NYI" if power_play_team == "NYR" else "NYR", "manpower": {"scrollLabel": "1:47 #55"}},
+    }
+    scroll_labels: list[str] = []
+    scroll_positions: list[tuple[str, int, int]] = []
+    original_pixel_text = sports_stadium_port.pf_text
+
+    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
+        scroll_labels.append(str(text))
+        scroll_positions.append((str(text), x, y))
+        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
+
+    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
+    card = sports.render_card(game)
+    assert "1:47 #55" in scroll_labels
+    logo_x = card.width - sports_stadium_port.LOGO_SZ - 1 if power_play_team == "NYI" else sports_stadium_port.team_logo_layout("scrolling", "nhl").x
+    badge_x = logo_x + sports_stadium_port.LOGO_SZ // 2 - sports_stadium_port.pf_w("PP") // 2
+    assert ("PP", badge_x, 2) in scroll_positions
+    assert len([entry for entry in scroll_positions if entry[0] == "PP"]) == 1
+    assert any(text == "1:47 #55" and y == 23 for text, x, y in scroll_positions)
+
+    full_labels: list[str] = []
+
+    def capture_full_text(draw, x, y, text, *args, **kwargs):
+        full_labels.append(str(text))
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
+    image = sports.render_full(game)
+
+    assert image.size == (384, 32)
+    assert "PP" in full_labels
+    assert "1:47 #55" not in full_labels
+
+
+def test_hockey_full_screen_pages_every_real_goal(
+    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Path(__file__).parents[2] / "debug"
+    goals = nhl_goal_display(_game_events(json.loads((fixture / "nhl_goal_ledger.json").read_text())))
+    game = {
+        "sport": "nhl", "state": "in", "status": "P3 7:00",
+        "away_abbr": "TOR", "home_abbr": "UTA", "away_score": 3, "home_score": 5,
+        "sports_presentation": "pinned", "situation": {"hockeyGoals": goals},
+    }
+    labels: list[str] = []
+    original = sports._full.draw_outlined_text
+
+    def capture(draw, x, y, text, *args, **kwargs):
+        labels.append(str(text))
+        return original(draw, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture)
+    scene = ContentScene(game, "sports")
+    keys = []
+    for tick in (0, 5):
+        context = RenderContext(datetime.fromtimestamp(tick, timezone.utc))
+        keys.append(sports.visual_key(context, scene))
+        image = sports.render(context, scene).image
+        assert image.size == (384, 32)
+    assert keys[0] != keys[1]
+    assert all(goal["label"] in labels for goal in goals)
+    assert "1/2" in labels and "2/2" in labels
+
+
+def test_hockey_shootout_columns_use_three_shared_rounds_without_covering_scores(
+    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Path(__file__).parents[2] / "debug" / "nhl_shootout_ledger.json"
+    display = nhl_shootout_display(_game_events(json.loads(fixture.read_text())))
+    assert display is not None
+    game = {
+        "sport": "nhl", "state": "post", "status": "FINAL S/O",
+        "away_abbr": "SEA", "home_abbr": "PHI", "away_score": 3, "home_score": 2,
+        "situation": {"shootout": display},
+    }
+    baseline = sports.render_full({**game, "situation": {}})
+    calls: list[tuple[int, int, str, object]] = []
+    original = sports_full_port.draw_hockey_so_column
+
+    def capture(draw, x, y, shootout, side):
+        calls.append((x, y, side, shootout["displayRounds"]))
+        return original(draw, x, y, shootout, side)
+
+    monkeypatch.setattr(sports_full_port, "draw_hockey_so_column", capture)
+    full = sports.render_full(game)
+    assert full.size == (384, 32)
+    assert [call[2] for call in calls] == ["away", "home"]
+    assert all(len(call[3]) == 3 for call in calls)
+    for crop in ((30, 0, 52, 32), (335, 0, 353, 32)):
+        assert full.crop(crop).tobytes() == baseline.crop(crop).tobytes()
+    left_x = calls[0][0]
+    right_x = calls[1][0]
+    assert full.getpixel((left_x, 20)) == (50, 200, 70)
+    assert full.getpixel((left_x, 6)) == (220, 55, 55)
+    assert full.getpixel((right_x, 20)) == (220, 55, 55)
+    calls.clear()
+    monkeypatch.setattr(sports_stadium_port, "draw_hockey_so_column", capture)
+    card = sports.render_card(game)
+    assert card.height == 32
+    assert [call[2] for call in calls] == ["away", "home"]
+    assert all(call[3] == display["displayRounds"] for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("empty_net_side", "expected_badge_side"),
+    [("NYI", "home"), ("NYR", "away")],
+)
+def test_full_hockey_card_uses_empty_net_side(
+    sports: SportsRenderer,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_net_side: str,
+    expected_badge_side: str,
+) -> None:
+    game = {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 1:12",
+        "away_abbr": "NYR",
+        "home_abbr": "NYI",
+        "away_score": 1,
+        "home_score": 2,
+        "situation": {"emptyNet": True, "emptyNetSide": empty_net_side},
+    }
+    labels: list[int] = []
+    original_draw_text = sports._full.draw_outlined_text
+
+    def capture_full_text(draw, x, y, text, *args, **kwargs):
+        if text == "EN":
+            labels.append(x)
+        return original_draw_text(draw, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
+
+    image = sports.render_full(game)
+
+    assert image.size == (384, 32)
+    assert len(labels) == 1
+    if expected_badge_side == "home":
+        assert labels[0] > 192
+    else:
+        assert labels[0] < 192
+
+
