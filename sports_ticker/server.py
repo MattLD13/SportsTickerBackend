@@ -1,29 +1,37 @@
-"""Run the complete v2 backend with one refresh runtime and Waitress."""
+"""Run the V2 backend through one Hypercorn ASGI worker."""
 
 from __future__ import annotations
 
-import atexit
+import asyncio
 import os
 
 from dotenv import load_dotenv
-from waitress import serve
+from hypercorn.asyncio import serve
+from hypercorn.config import Config
 
-from .production import create_production_application, start_runtime
+from .asgi import create_asgi_application
+
+
+def server_config() -> Config:
+    """Read the existing deployment bind settings for one ASGI worker."""
+
+    config = Config()
+    host = os.environ.get("TICKER_BIND_HOST", "127.0.0.1")
+    port = int(os.environ.get("TICKER_PORT", "5000"))
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    config.bind = [f"{host}:{port}"]
+    config.workers = 1
+    return config
 
 
 def main() -> None:
-    """Load deployment configuration, start refresh work, and serve v2 HTTP."""
+    """Load deployment settings and let ASGI lifespan own refresh work."""
 
     load_dotenv()
-    app = create_production_application()
-    stop = start_runtime(app)
-    atexit.register(stop)
-    serve(
-        app,
-        host=os.environ.get("TICKER_BIND_HOST", "127.0.0.1"),
-        port=int(os.environ.get("TICKER_PORT", "5000")),
-        threads=int(os.environ.get("TICKER_HTTP_THREADS", "8")),
-    )
+    config = server_config()
+    app = create_asgi_application()
+    asyncio.run(serve(app, config, mode="asgi"))
 
 
 if __name__ == "__main__":

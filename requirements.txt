@@ -1,5 +1,6 @@
 flask
-waitress
+hypercorn>=0.17,<1
+asgiref>=3.12.1,<4
 requests
 python-dotenv
 tzdata
