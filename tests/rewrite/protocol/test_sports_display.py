@@ -144,6 +144,36 @@ def test_finished_game_has_no_live_play_context() -> None:
     assert ended.data["situation"] == {}
 
 
+@pytest.mark.parametrize("clock", ("0:00", "00:00", "0.0", "0", "0:00.0"))
+def test_basketball_zero_clock_uses_period_end_label(clock: str) -> None:
+    event = _event("1st quarter", {})
+    event["status"].update({"period": 1, "displayClock": clock})
+
+    basketball = SportsDisplayProjector().project(_item("basketball", "nba"), event)
+
+    assert basketball.data["status"] == "Q1 END"
+
+
+def test_basketball_numeric_zero_clock_uses_period_end_label() -> None:
+    event = _event("1st quarter", {})
+    event["status"].update({"period": 1, "clock": 0.0})
+
+    basketball = SportsDisplayProjector().project(_item("basketball", "nba"), event)
+
+    assert basketball.data["status"] == "Q1 END"
+
+
+def test_college_basketball_zero_clock_keeps_half_label() -> None:
+    event = _event("2nd half", {})
+    event["status"].update({"period": 2, "displayClock": "0.0"})
+
+    basketball = SportsDisplayProjector().project(
+        _item("basketball", "march_madness"), event
+    )
+
+    assert basketball.data["status"] == "H2 END"
+
+
 def test_hockey_period_end_uses_end_label() -> None:
     event = _event("End of 1st", {}, "in")
     event["status"]["period"] = 1

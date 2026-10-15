@@ -153,7 +153,10 @@ def _status(
     detail = str(
         kind.get("shortDetail") or kind.get("detail") or data.get("status") or ""
     ).strip()
-    clock = str(status.get("displayClock") or status.get("clock") or "").strip()
+    raw_clock = status.get("displayClock")
+    if raw_clock is None or not str(raw_clock).strip():
+        raw_clock = status.get("clock")
+    clock = str(raw_clock if raw_clock is not None else "").strip()
     period = _integer(status.get("period"), _integer(kind.get("period"), 0))
     if not clock:
         clock = str(_mapping(competition.get("situation")).get("clock") or "").strip()
@@ -173,6 +176,10 @@ def _status(
         return "Half" if league.startswith("soccer") else "Halftime"
     if "FINAL" in upper or state in {"post", "final"}:
         return _final_status(league, upper, period)
+    if league in _BASKETBALL and _is_zero_clock(clock):
+        if league == "march_madness" and period in {1, 2}:
+            return f"H{period} END"
+        return _period_status("Q", period, "END", overtime_base=4)
     if league in _FOOTBALL:
         return _period_status("Q", period, clock, overtime_base=4)
     if league in _BASKETBALL:
@@ -446,6 +453,12 @@ def _period_status(prefix: str, period: int, clock: str, *, overtime_base: int) 
     else:
         label = f"{prefix}{period}" if period else prefix
     return f"{label} {clock}".strip()
+
+
+def _is_zero_clock(value: str) -> bool:
+    """Return whether one provider value represents zero seconds remaining."""
+
+    return re.fullmatch(r"0+(?::0+)?(?:\.0+)?", value.strip()) is not None
 
 
 def _nhl_has_shootout_marker(
