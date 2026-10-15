@@ -13,6 +13,7 @@ Redraws of the same pane retain its start time.
 A different pane closes the previous visit and starts a new visit.
 The history retains 16 completed visits. Lifetime counters continue after older visits leave the history.
 Timestamps use 64-bit monotonic microseconds.
+The timestamp records the driver buffer flip. Optical presentation includes the panel scan latency.
 The statistics include current pane age, completed durations, render time, loop gaps, and memory.
 `late_visits` counts timed visits that exceed their configured duration by more than 100 milliseconds.
 Single-pane modes and overlays have no automatic duration target.
@@ -26,6 +27,7 @@ The heartbeat does not include screen pixels or visit history.
 `STATS` returns one `MINI_STATS:` line followed by JSON.
 The object contains `v`, `firmware`, and `display`.
 The display object includes the current pane, lifetime counters, and recent visits.
+Pane indices start at zero. Gallery page numbers start at one.
 
 `CAPTURE` snapshots the last presented frame without changing the display or scheduler.
 It returns these records:
