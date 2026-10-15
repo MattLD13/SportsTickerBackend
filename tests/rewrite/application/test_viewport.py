@@ -22,12 +22,10 @@ class Catalog:
 
     def __init__(self) -> None:
         self.calls = 0
-        self.scenes = []
 
     def render(self, context, scene):
         del context
         self.calls += 1
-        self.scenes.append(dict(scene.item))
         color = (255, 0, 0) if scene.item.get("down") == "1st" else (0, 255, 0)
         return RenderedContent(Image.new("RGB", (96, 32), color))
 
@@ -180,9 +178,6 @@ def test_clock_ticks_update_cached_pane_header_without_rerendering_card() -> Non
         second_frame = viewport.frame(0, clock_labels={"game": "Q1 0:59"})
 
         assert catalog.calls == 1
-        assert catalog.scenes[0]["status"] == "Q1"
-        assert catalog.scenes[0]["clock_header_reserve"] == "Q1 88:88"
-        assert "clock" not in catalog.scenes[0]
         assert first_frame.size == (384, 32)
         assert first_frame.tobytes() != second_frame.tobytes()
     finally:

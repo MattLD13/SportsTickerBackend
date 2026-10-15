@@ -277,7 +277,7 @@ def calc_card_width(g):
     if is_mlb and is_active and not is_delay:
         center = max(center, score_w + 2)
     else:
-        center = max(center, pf_w(status), pf_w(g.get('clock_header_reserve', '')))
+        center = max(center, pf_w(status))
 
     if is_nfl and is_active and dd:
         center = max(center, pf_w(dd))
