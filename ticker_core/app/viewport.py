@@ -527,7 +527,8 @@ def _content_mapping(content: Content) -> dict[str, Any]:
     if isinstance(clock, Mapping) and clock.get("direction") == "down":
         period = str(clock.get("period_label") or "").strip()
         if period:
-            data["status"] = f"{period} 88:88"
+            data["status"] = period
+            data["clock_header_reserve"] = f"{period} 88:88"
         data.pop("clock", None)
     return data
 
