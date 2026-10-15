@@ -6,6 +6,11 @@ enum FirmwareUpdateState : uint8_t {
   FIRMWARE_UPDATE_FAILED = 4,
 };
 
+static constexpr char FIRMWARE_PENDING_NVS_KEY[] = "ota_pending";
+static constexpr char FIRMWARE_FAILED_NVS_KEY[] = "ota_failed";
+static_assert(sizeof(FIRMWARE_PENDING_NVS_KEY) <= 16, "NVS keys allow 15 characters");
+static_assert(sizeof(FIRMWARE_FAILED_NVS_KEY) <= 16, "NVS keys allow 15 characters");
+
 struct FirmwareManifestPayload {
   String version;
   String target;
@@ -27,6 +32,8 @@ bool firmwareUpdateTaskRunning = false;
 bool firmwareUpdateBootChecked = false;
 bool firmwareUpdateBootValidated = false;
 bool firmwareUpdateAcknowledged = false;
+String firmwareUpdateReceiptCommandId;
+uint32_t firmwareUpdateLastAckAt = 0;
 uint32_t firmwareUpdateFailureAt = 0;
 uint32_t firmwareUpdateLastFrameAt = 0;
 TaskHandle_t firmwareUpdateTaskHandle = nullptr;
@@ -286,7 +293,20 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
     valid = false;
   }
   mbedtls_md_free(&digest);
-  if (!valid || received != manifest.size || !constantTimeEqual(actualSha256, manifest.sha256, sizeof(actualSha256)) || !Update.end()) {
+  if (!valid || received != manifest.size || !constantTimeEqual(actualSha256, manifest.sha256, sizeof(actualSha256))) {
+    http.end();
+    abortFirmwareWrite();
+    releaseNetwork();
+    return false;
+  }
+  if (preferences.putString(FIRMWARE_PENDING_NVS_KEY, manifest.version) == 0) {
+    http.end();
+    abortFirmwareWrite();
+    releaseNetwork();
+    return false;
+  }
+  if (!Update.end()) {
+    preferences.remove(FIRMWARE_PENDING_NVS_KEY);
     http.end();
     abortFirmwareWrite();
     releaseNetwork();
@@ -297,12 +317,12 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
   const bool bootSet = imageValid && esp_ota_set_boot_partition(target) == ESP_OK;
   if (!bootSet) {
     esp_ota_set_boot_partition(esp_ota_get_running_partition());
+    preferences.remove(FIRMWARE_PENDING_NVS_KEY);
   }
   releaseNetwork();
   if (!bootSet) {
     return false;
   }
-  preferences.putString("ota_pending_version", manifest.version);
   return true;
 }
 
@@ -361,7 +381,15 @@ void firmwareUpdateObserve(JsonVariantConst command) {
     return;
   }
   const String requested = update["version"] | "";
-  if (!isSafeFirmwareVersion(requested) || requested == MINI_FIRMWARE_VERSION) {
+  if (!isSafeFirmwareVersion(requested)) {
+    return;
+  }
+  if (requested == MINI_FIRMWARE_VERSION) {
+    const String commandId = update["id"] | "";
+    if (commandId.length() == 0 || commandId == firmwareUpdateReceiptCommandId) return;
+    firmwareUpdateReceiptCommandId = commandId;
+    firmwareUpdateAcknowledged = false;
+    setFirmwareUpdateVersion(firmwareUpdateConfirmedVersion, sizeof(firmwareUpdateConfirmedVersion), requested);
     return;
   }
   char failedVersion[sizeof(firmwareUpdateFailedVersion)] = {};
@@ -380,7 +408,7 @@ void firmwareUpdateObserve(JsonVariantConst command) {
     firmwareUpdateFailedVersion[0] = '\0';
     portEXIT_CRITICAL(&firmwareUpdateMux);
   }
-  const String persistedFailure = preferences.getString("ota_failed_version", "");
+  const String persistedFailure = preferences.getString(FIRMWARE_FAILED_NVS_KEY, "");
   if (persistedFailure == requested) {
     setFirmwareUpdateDetail("RETRY BLOCKED");
     setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
@@ -402,13 +430,13 @@ void firmwareUpdateObserve(JsonVariantConst command) {
 }
 
 void firmwareUpdateInitialize() {
-  String pending = preferences.getString("ota_pending_version", "");
+  String pending = preferences.getString(FIRMWARE_PENDING_NVS_KEY, "");
   pending.trim();
   if (pending == MINI_FIRMWARE_VERSION) {
     pending.toCharArray(firmwareUpdateConfirmedVersion, sizeof(firmwareUpdateConfirmedVersion));
   } else if (pending.length() > 0) {
-    preferences.putString("ota_failed_version", pending);
-    preferences.remove("ota_pending_version");
+    preferences.putString(FIRMWARE_FAILED_NVS_KEY, pending);
+    preferences.remove(FIRMWARE_PENDING_NVS_KEY);
     firmwareUpdateConfirmedVersion[0] = '\0';
     setFirmwareUpdateDetail("ROLLBACK");
     setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
@@ -423,6 +451,9 @@ void acknowledgeConfirmedFirmware() {
       WiFi.status() != WL_CONNECTED) {
     return;
   }
+  const uint32_t now = millis();
+  if (now - firmwareUpdateLastAckAt < 5000) return;
+  firmwareUpdateLastAckAt = now;
   if (!acquireNetwork(1000)) {
     return;
   }
@@ -443,16 +474,21 @@ void acknowledgeConfirmedFirmware() {
     serializeJson(request, body);
     http.addHeader("Content-Type", "application/json");
     const int status = http.POST(body);
-    acknowledged = status == HTTP_CODE_OK;
+    if (status == HTTP_CODE_OK) {
+      JsonDocument response;
+      acknowledged = !deserializeJson(response, http.getString()) && response["acknowledged"].is<bool>() &&
+                     response["acknowledged"].as<bool>();
+    }
     if (!acknowledged) {
-      logSecureHttpError("Firmware acknowledgement", status, client);
+      if (status == HTTP_CODE_OK) Serial.println("Firmware acknowledgement declined");
+      else logSecureHttpError("Firmware acknowledgement", status, client);
     }
     http.end();
   }
   releaseNetwork();
   if (acknowledged) {
     firmwareUpdateAcknowledged = true;
-    preferences.remove("ota_pending_version");
+    preferences.remove(FIRMWARE_PENDING_NVS_KEY);
     firmwareUpdateConfirmedVersion[0] = '\0';
     Serial.println("Firmware boot confirmed and acknowledged");
   }

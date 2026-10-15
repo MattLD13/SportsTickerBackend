@@ -111,3 +111,22 @@ The secure `mini-1.3.3` development image downloaded and verified all 1,347,568 
 Serial output reported `Firmware update verified: mini-1.2.8` before the USB port reset.
 The published older image booted, reconnected to guest Wi-Fi, registered, and fetched data with HTTP 200.
 The new `mini-1.3.4` release will replace that older image through the normal deployment command.
+
+
+## Update receipt correction
+
+The deployed `mini-1.3.4` image downloaded, verified, restarted, and registered on the physical Mini.
+Serial output reported 1,288,752 verified bytes and then `Mini firmware: mini-1.3.4 sprite_protocol=1`.
+The ESP32 NVS key limit is 15 characters.
+The former `ota_pending_version` and `ota_failed_version` keys exceed that limit and cannot persist.
+The client now uses `ota_pending` and `ota_failed`. Compile-time checks enforce their key lengths.
+The downloader writes and checks pending state before it activates the new image.
+A matching server update command identifies the running version for boot acknowledgement.
+The client clears its local pending state only after the server returns `acknowledged: true`.
+Receipt retries wait five seconds. A new command ID permits a new receipt for the current version.
+The release target is now `mini-1.3.5`.
+
+Owner: Mini OTA owns update persistence and receipts. The backend command owns the requested version.
+Former path: Remove oversized NVS keys, ignored persistence failures, and HTTP-status-only receipt acceptance.
+Real input: A verified firmware image and a server command that matches the running release.
+Real output: Bounded durable keys and an explicit acknowledged receipt after boot validation.

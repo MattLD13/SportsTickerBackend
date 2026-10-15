@@ -179,7 +179,8 @@ The PlatformIO build uses 73,892 bytes of static RAM and 1,223,605 bytes of appl
 USB upload to the connected ESP32-S3 completed with a verified flash hash. Serial output confirms `mini-1.3.0` boots.
 The Mini now connects to `lehigh-guest` with an empty password. The user confirmed app pairing.
 Live sprite downloads, reboot reuse, and TLS heap measurements pass on the physical Mini.
-The release target is `mini-1.3.4`. OTA reboot and acknowledgement require final release validation.
+The `mini-1.3.4` image passes physical OTA download and reboot checks.
+The `mini-1.3.5` target corrects update receipt persistence and requires final acknowledgement validation.
 The local firmware release remains unpublished while these hardware checks remain open.
 
 Hardware provisioning exposed a cross-core NimBLE shutdown crash and an unsigned timer error.
