@@ -321,7 +321,9 @@ class TickerRuntime:
             if previous is None or previous.period_label != period_label:
                 observed[identifier] = _GameClock(period_label, seconds, now, 0.5)
             elif seconds > previous.seconds:
-                observed[identifier] = _GameClock(period_label, seconds, now, 0.5)
+                observed[identifier] = _GameClock(
+                    period_label, seconds, now, previous.phase_elapsed
+                )
             else:
                 elapsed = now - previous.observed_at
                 if seconds == previous.seconds:
@@ -338,7 +340,9 @@ class TickerRuntime:
 
                 ticks = previous.seconds - seconds
                 if not previous.running:
-                    observed[identifier] = _GameClock(period_label, seconds, now, 0.5)
+                    observed[identifier] = _GameClock(
+                        period_label, seconds, now, previous.phase_elapsed
+                    )
                     continue
                 phase_elapsed = previous.phase_elapsed + elapsed - ticks
                 if not 0.0 <= phase_elapsed < 1.0:
@@ -349,16 +353,7 @@ class TickerRuntime:
                         current_high = prior_high + elapsed - ticks
                         phase_elapsed = (current_low + current_high) / 2.0
                     else:
-                        phase_elapsed = 0.5
-                        if ticks + 1.0 <= elapsed:
-                            observed[identifier] = _GameClock(
-                                period_label,
-                                seconds,
-                                now,
-                                phase_elapsed,
-                                False,
-                            )
-                            continue
+                        phase_elapsed = previous.phase_elapsed
                 observed[identifier] = _GameClock(
                     period_label,
                     seconds,
