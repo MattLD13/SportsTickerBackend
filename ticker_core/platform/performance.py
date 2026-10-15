@@ -102,6 +102,7 @@ class TickerPiLogger:
         height: int,
         viewport: Mapping[str, object] | None = None,
         last_present_age: float | None = None,
+        work_stages: tuple[float, float, float] | None = None,
     ) -> None:
         """Record one frame without performing disk, JSON, or system work."""
         if not self._started:
@@ -133,6 +134,7 @@ class TickerPiLogger:
             wall_time=wall_time,
             viewport=viewport,
             last_present_age=last_present_age,
+            work_stages=work_stages,
         )
         if finished_at - self._window.started_at >= self._window_seconds:
             self._flush_window()
@@ -350,6 +352,7 @@ class _Window:
         "started_at", "wall_started", "frames", "ticks", "skipped_ticks", "total_ms", "work_ms", "present_ms",
         "interval_ms", "scheduled_ms", "brightness_total", "brightness_min", "brightness_max",
         "kinds", "modes", "inverted", "stale", "connection_lost", "overruns", "samples",
+        "work_stages", "overrun_frames",
         "width", "height", "viewport", "last_present_age", "ended_at", "wall_ended",
         "stream_connections", "stream_reconnects", "stream_disconnects", "stream_connect_failures",
         "stream_messages", "stream_message_bytes", "stream_apply_ms", "stream_last_sequence", "stream_errors",
@@ -375,6 +378,8 @@ class _Window:
         self.stale = 0
         self.connection_lost = 0
         self.overruns = 0
+        self.work_stages = (_Metric(), _Metric(), _Metric())
+        self.overrun_frames: list[tuple[float, ...]] = []
         self.samples: list[float] = []
         self.width = 0
         self.height = 0
@@ -478,6 +483,7 @@ class _Window:
         wall_time: datetime,
         viewport: Mapping[str, object] | None,
         last_present_age: float | None,
+        work_stages: tuple[float, float, float] | None = None,
     ) -> None:
         self.frames += 1
         self.total_ms.add(total_ms)
@@ -496,7 +502,14 @@ class _Window:
         self.inverted += int(inverted)
         self.stale += int(stale)
         self.connection_lost += int(connection_lost)
-        self.overruns += int(total_ms > scheduled_ms > 0)
+        if work_stages is not None:
+            for metric, value in zip(self.work_stages, work_stages):
+                metric.add(max(0.0, value))
+        if total_ms > scheduled_ms > 0:
+            self.overruns += 1
+            self.overrun_frames.append((total_ms, work_ms, present_ms, *(work_stages or (0.0, 0.0, 0.0))))
+            self.overrun_frames.sort(reverse=True)
+            del self.overrun_frames[8:]
         self.width = width
         self.height = height
         self.viewport = dict(viewport or {})
@@ -527,6 +540,17 @@ class _Window:
             "present_ms": self.present_ms.summary(),
             "interval_ms": self.interval_ms.summary(),
             "scheduled_ms": self.scheduled_ms.summary(),
+            "work_stages_ms": {
+                name: metric.summary()
+                for name, metric in zip(("updates", "preparation", "composition"), self.work_stages)
+            },
+            "overrun_frames_ms": [
+                dict(zip(
+                    ("total", "work", "present", "updates", "preparation", "composition"),
+                    (round(value, 3) for value in sample),
+                ))
+                for sample in self.overrun_frames
+            ],
             "brightness": {
                 "min": self.brightness_min if self.frames else None,
                 "max": self.brightness_max if self.frames else None,

@@ -92,6 +92,32 @@ def test_pi_logger_rotates_bounded_files(tmp_path) -> None:
     assert len(files) <= 3
 
 
+def test_pi_logger_keeps_bounded_overrun_details_and_stage_totals(tmp_path) -> None:
+    logger = TickerPiLogger(tmp_path, window_seconds=60)
+    logger.start()
+    for index in range(12):
+        logger.record_frame(
+            started_at=float(index),
+            present_started_at=index + 0.025,
+            finished_at=index + 0.04 + index / 1000,
+            interval=0.03,
+            kind="scroll", mode="sports", brightness=100,
+            inverted=False, stale=False, connection_lost=False,
+            wall_time=datetime(2026, 10, 14, tzinfo=timezone.utc),
+            width=384, height=32, work_stages=(20.0, 2.0, 3.0),
+        )
+    logger.close()
+    records = [json.loads(line) for line in (tmp_path / "ticker-performance.jsonl").read_text().splitlines()]
+    window = next(record for record in records if record["kind"] == "window")
+    assert window["flags"]["overruns"] == 12
+    assert len(window["overrun_frames_ms"]) == 8
+    assert window["overrun_frames_ms"][0] == {
+        "total": 51.0, "work": 25.0, "present": 26.0,
+        "updates": 20.0, "preparation": 2.0, "composition": 3.0,
+    }
+    assert window["work_stages_ms"]["updates"]["avg"] == 20.0
+
+
 def test_pi_logger_records_idle_ticks_and_viewport_age(tmp_path) -> None:
     clock = [10.0]
     logger = TickerPiLogger(tmp_path, window_seconds=60, monotonic=lambda: clock[0])

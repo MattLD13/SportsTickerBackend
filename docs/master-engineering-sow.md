@@ -185,6 +185,14 @@ Preserve connected-border logo removal because global color masks erase enclosed
 Debug JSON files are render inputs, not pixel-golden images.
 Create explicit PNG or pixel-hash baselines with fixed fonts, Pillow version, assets, and render time.
 
+The Pi stream parser now freezes incoming replacements once and shares unchanged immutable sections.
+Captured live-message replay on the real Pi reduces median delta processing from 457.757 ms to 64.337 ms.
+The output and 12 rendered sports frames retain identical hashes.
+Short live overlay runs reduce observed overruns from 1.057 percent to 0.806 percent at the same frame cadence.
+The physical 15-game test passes. Occasional long frames remain during live update processing.
+Bounded frame logs now split update acceptance, preparation, and composition work.
+Read [the Pi stream report](research/pi-stream-overruns-2026-10-14.md) for evidence and measurement limits.
+
 ## Workstream 7: Modernize ESP32 modules and resource use
 
 Split `.inc` modules only with explicit interfaces and stable initialization order.

@@ -200,6 +200,7 @@ class TickerApplication:
         if not self._started:
             self.start()
         self.process_events()
+        updates_finished_at = monotonic()
         self._refresh_local_hardware_content()
         self._install_completed_cards()
         self._refresh_cards_after_asset_change()
@@ -214,6 +215,7 @@ class TickerApplication:
                 wifi_state=wifi_state,
                 connection_lost=False,
             )
+        preparation_finished_at = monotonic()
         try:
             base_visual_key = self._frame_visual_key(decision)
             visual_key = (base_visual_key, decision.brightness, decision.inverted)
@@ -269,6 +271,11 @@ class TickerApplication:
             height=getattr(self._sink, "height", 0),
             viewport=getattr(self._viewport, "status", None),
             last_present_age=0.0,
+            work_stages=(
+                (updates_finished_at - started_at) * 1000.0,
+                (preparation_finished_at - updates_finished_at) * 1000.0,
+                (present_started_at - preparation_finished_at) * 1000.0,
+            ),
         )
         self._complete_step(decision)
         return decision
