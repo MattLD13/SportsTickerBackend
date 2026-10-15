@@ -58,6 +58,7 @@ void sendHeartbeat() {
   heartbeat["metadata"]["sprite_cache"]["heap_during_tls"] = spriteHeapDuringTls;
   heartbeat["metadata"]["sprite_cache"]["heap_after_tls"] = spriteHeapAfterTls;
   heartbeat["metadata"]["sprite_cache"]["largest_during_tls"] = spriteLargestDuringTls;
+  populateDisplayMetrics(heartbeat["metadata"]["display_metrics"].to<JsonObject>(), false);
   String body;
   serializeJson(heartbeat, body);
   http.addHeader("Content-Type", "application/json");
@@ -123,7 +124,7 @@ bool fetchData() {
   return message.length() == 0;
 }
 
-void pollLogoWorkbenchSerial();
+void pollMiniSerial();
 
 void connectWifi() {
   WiFi.mode(WIFI_STA);
@@ -142,7 +143,7 @@ void connectWifi() {
   }
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) {
-    pollLogoWorkbenchSerial();
+    pollMiniSerial();
     if (logoWorkbenchMode) return;
     if (!wifiPairingMode) drawMessage("WIFI...");
     delay(250);
@@ -204,9 +205,7 @@ void applyPendingWifiCredentials(uint32_t now) {
 
 void miniSetup() {
   Serial.begin(115200);
-  Serial.setTimeout(1000);
   Serial0.begin(115200);
-  Serial0.setTimeout(1000);
   delay(5000);
   const uint32_t serialWaitStartedAt = millis();
   while (!Serial && millis() - serialWaitStartedAt < 5000) delay(10);
@@ -236,7 +235,7 @@ void miniSetup() {
   } else {
     Serial.println("Logo worker creation failed");
   }
-  pollLogoWorkbenchSerial();
+  pollMiniSerial();
   if (logoWorkbenchMode) {
     Serial.println("Logo workbench active. Wi-Fi polling is paused.");
     return;
@@ -260,6 +259,7 @@ void miniSetup() {
 }
 
 void renderLogoWorkbenchFrame() {
+  beginFrame("workbench");
   matrix->fillScreen(color(0, 0, 0));
   for (uint16_t y = 0; y < 32; ++y) {
     for (uint16_t x = 0; x < 64; ++x) {
@@ -270,14 +270,19 @@ void renderLogoWorkbenchFrame() {
   presentFrame();
 }
 
-void pollLogoWorkbenchSerial() {
-  Stream* input = Serial.available() ? static_cast<Stream*>(&Serial) : nullptr;
-  if (input == nullptr && Serial0.available()) input = static_cast<Stream*>(&Serial0);
-  if (input == nullptr) return;
-  String command = input->readStringUntil('\n');
-  command.trim();
+void processMiniSerialCommand(Stream* input, const String& command) {
+  if (command == "STATS") {
+    JsonDocument document;
+    document["v"] = 1;
+    document["firmware"] = MINI_FIRMWARE_VERSION;
+    populateDisplayMetrics(document["display"].to<JsonObject>(), true);
+    writeDiagnosticJson(*input, "MINI_STATS:", document);
+    return;
+  }
+  if (command == "CAPTURE") { startFrameCapture(*input); return; }
   if (command == "PING") {
     logoWorkbenchMode = true;
+    beginFrame("workbench");
     matrix->fillScreen(color(0, 0, 0));
     presentFrame();
     input->printf("MINI_READY:%s\n", MINI_FIRMWARE_VERSION);
@@ -310,8 +315,37 @@ void pollLogoWorkbenchSerial() {
   input->printf("FRAME_OK:%08lx\n", static_cast<unsigned long>(checksum));
 }
 
+
+void pollMiniSerial() {
+  static String commands[2];
+  static bool discard[2] = {};
+  Stream* inputs[] = {&Serial, &Serial0};
+  for (unsigned index = 0; index < 2; ++index) {
+    Stream* input = inputs[index];
+    unsigned budget = 256;
+    while (budget-- && input->available()) {
+      const int value = input->read();
+      if (value < 0) break;
+      if (value == '\r') continue;
+      if (value == '\n') {
+        if (!discard[index]) processMiniSerialCommand(input, commands[index]);
+        commands[index] = String();
+        discard[index] = false;
+      } else if (!discard[index]) {
+        if (commands[index].length() >= 8300) {
+          commands[index] = String();
+          discard[index] = true;
+          input->println("MINI_ERROR:command_too_long");
+        } else commands[index] += static_cast<char>(value);
+      }
+    }
+  }
+  pumpFrameCapture();
+}
+
 void miniTick() {
-  pollLogoWorkbenchSerial();
+  displayMetrics.loop(esp_timer_get_time());
+  pollMiniSerial();
   if (logoWorkbenchMode) {
     delay(1);
     return;

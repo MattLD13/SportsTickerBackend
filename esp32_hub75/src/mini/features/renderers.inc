@@ -26,6 +26,7 @@ bool firstShownModeItem(const char* family, JsonObjectConst& data) {
     if (!shownItem(item)) {
       continue;
     }
+    beginFrame(family, item["id"] | "", 0, 1);
     data = item["data"].as<JsonObjectConst>();
     return !data.isNull();
   }
@@ -197,6 +198,7 @@ void drawStock(JsonObjectConst stock) {
 }
 
 void drawClock(const struct tm& localTime, bool clockReady) {
+  beginFrame("clock", "", 0, 1);
   MiniCanvas canvas;
   ticker_ui::ClockPane view;
   view.ready = clockReady;
@@ -250,6 +252,10 @@ void renderCurrent() {
       return;
     }
     prepareSelectedGameLogoSources(game);
+    JsonObjectConst selected;
+    selectedSportsItem(selected);
+    beginFrame("sports", selected["id"] | "", pageIndex, pageCount,
+               pageCount > 1 ? pageHoldMillis(pageHoldSeconds) : 0);
     drawGame(game, preparedGameLogos);
     return;
   }

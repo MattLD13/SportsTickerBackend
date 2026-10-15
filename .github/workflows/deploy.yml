@@ -104,6 +104,10 @@ jobs:
           /tmp/mini-sprite-check artifacts/mini-sprite-vectors /tmp/mini-sprite-cache
       - name: Compare pane render paths
         run: python tools/benchmarks/pi_pane_composition.py --frames 1000 --output artifacts/pane-composition
+      - name: Verify Mini display metrics and frame mirror
+        run: |
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_display_metrics.cpp -o /tmp/mini-display-check
+          /tmp/mini-display-check
       - uses: actions/upload-artifact@v4
         with:
           name: runtime-validation-${{ github.sha }}

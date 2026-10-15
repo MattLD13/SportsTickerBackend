@@ -229,6 +229,13 @@ The Mini uses 16x16 RAM marks, clear score bounds, and two rows for long center 
 Twelve native Mini previews include a production V2 record and local layout examples beside real 384x32 main ticker frames.
 The Mini runs the UI build through USB. Live backend, pairing, sprite transfer, and reboot cache checks pass. Read [Mini display style](research/mini-ui-unification-2026-10-15.md) for owners and limits.
 
+### Mini display observation
+
+The `mini-1.3.6` target adds actual pane-duration measurements and serial capture of the displayed 64x32 pixel matrix.
+It includes render durations, loop gaps, bounded visit history, and normal heartbeat aggregates.
+The physical development build passes live image capture and an exact RGB888 round trip.
+Read [Mini display diagnostics](research/mini-display-diagnostics-2026-10-15.md) for measured results and pixel limits.
+
 ## Workstream 7: Modernize ESP32 modules and resource use
 
 Split `.inc` modules only with explicit interfaces and stable initialization order.

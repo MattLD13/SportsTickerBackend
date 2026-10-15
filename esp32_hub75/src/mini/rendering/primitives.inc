@@ -77,7 +77,7 @@ uint32_t sportsRotationSignature() {
   return hashBody(sequence);
 }
 
-bool selectedGame(JsonObjectConst& selected) {
+bool selectedSportsItem(JsonObjectConst& selected) {
   uint16_t index = 0;
   JsonObjectConst content = payload["content"].as<JsonObjectConst>();
   JsonArrayConst items = content["sports"].as<JsonArrayConst>();
@@ -86,12 +86,19 @@ bool selectedGame(JsonObjectConst& selected) {
       continue;
     }
     if (index == pageIndex) {
-      selected = item["data"].as<JsonObjectConst>();
-      return !selected.isNull();
+      selected = item;
+      return true;
     }
     ++index;
   }
   return false;
+}
+
+bool selectedGame(JsonObjectConst& selected) {
+  JsonObjectConst item;
+  if (!selectedSportsItem(item)) return false;
+  selected = item["data"].as<JsonObjectConst>();
+  return !selected.isNull();
 }
 
 uint32_t pageHoldMillis(float scrollSpeed) {
@@ -107,6 +114,7 @@ uint32_t pageHoldMillis(float scrollSpeed) {
 }
 
 void drawMessage(const String& value) {
+  beginFrame("message", value.c_str());
   matrix->fillScreen(0);
   matrix->drawFastHLine(0, 0, 64, color(30, 150, 220));
   drawTextFit(value, 2, 13, color(255, 220, 80), 60);
@@ -114,6 +122,7 @@ void drawMessage(const String& value) {
 }
 
 void drawDownloadingProgress(uint16_t complete, uint16_t total) {
+  beginFrame("loading", "sprites");
   if (matrix == nullptr) {
     return;
   }
@@ -142,6 +151,7 @@ void drawDownloadingProgress(uint16_t complete, uint16_t total) {
 }
 
 void drawFirmwareUpdate(uint8_t state, uint32_t complete, uint32_t total, const char* detail) {
+  beginFrame("firmware_update");
   if (matrix == nullptr) {
     return;
   }
@@ -171,6 +181,7 @@ void drawFirmwareUpdate(uint8_t state, uint32_t complete, uint32_t total, const 
 }
 
 void drawSolidColorTest() {
+  beginFrame("test", "solid_color");
   const uint16_t colors[] = {
     color(255, 0, 0),
     color(0, 255, 0),
@@ -186,6 +197,7 @@ void drawSolidColorTest() {
 }
 
 void drawPairingCode() {
+  beginFrame("pairing", wifiPairingMode ? "wifi" : "app");
   struct Canvas {
     void pixel(int x, int y, ticker_ui::Rgb ink) { matrix->drawPixel(x, y, color(ink.r, ink.g, ink.b)); }
     void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) { matrix->fillRect(x, y, width, height, color(ink.r, ink.g, ink.b)); }

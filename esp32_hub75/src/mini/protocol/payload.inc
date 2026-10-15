@@ -14,18 +14,11 @@ void updateFromPayload(const String& body) {
   filter["content"]["sports"][0]["id"] = true;
   filter["content"]["sports"][0]["identifier"] = true;
   filter["content"]["sports"][0]["key"] = true;
-  filter["content"]["weather"][0]["is_shown"] = true;
-  filter["content"]["weather"][0]["data"] = true;
-  filter["content"]["music"][0]["is_shown"] = true;
-  filter["content"]["music"][0]["data"] = true;
-  filter["content"]["flights"][0]["is_shown"] = true;
-  filter["content"]["flights"][0]["data"] = true;
-  filter["content"]["airports"][0]["is_shown"] = true;
-  filter["content"]["airports"][0]["data"] = true;
-  filter["content"]["stock"][0]["is_shown"] = true;
-  filter["content"]["stock"][0]["data"] = true;
-  filter["content"]["clock"][0]["is_shown"] = true;
-  filter["content"]["clock"][0]["data"] = true;
+  for (const char* family : {"weather", "music", "flights", "airports", "stock", "clock"}) {
+    filter["content"][family][0]["is_shown"] = true;
+    filter["content"][family][0]["id"] = true;
+    filter["content"][family][0]["data"] = true;
+  }
   JsonObject filterGame = filter["content"]["sports"][0]["data"].to<JsonObject>();
   filterGame["sport"] = true;
   filterGame["league"] = true;

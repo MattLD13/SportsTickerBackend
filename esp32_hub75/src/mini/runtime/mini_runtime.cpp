@@ -12,6 +12,7 @@
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/gcm.h>
 #include <mbedtls/hkdf.h>
@@ -186,5 +187,6 @@ void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
 #include "../rendering/primitives.inc"
 #include "../assets/sprite_pipeline.inc"
 #include "../features/renderers.inc"
+#include "diagnostics.inc"
 #include "../protocol/payload.inc"
 #include "scheduler.inc"
