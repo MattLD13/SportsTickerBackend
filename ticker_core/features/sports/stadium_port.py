@@ -4,7 +4,8 @@ import re
 
 from PIL import Image, ImageDraw
 
-from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP
+from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP, PANE as PF
+from ticker_core.rendering.style import HEADER_RULE, STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import SCROLLING_TEAM_LOGO_SIZE, get_prepared_team_logo, team_logo_layout
@@ -17,58 +18,6 @@ LOGO_SZ = 22    # logo square size in pixels
 LOGO_PAD = 2    # gap between logo edge and center content zone
 ZONE = LOGO_SZ + LOGO_PAD  # space each side takes = 24px
 FOOTBALL_RANK_COLOR = (255, 220, 80)
-
-# ── 3×5 pixel font ────────────────────────────────────────────────────────────
-PF = {
-    '0':[[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
-    '1':[[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
-    '2':[[1,1,1],[0,0,1],[1,1,1],[1,0,0],[1,1,1]],
-    '3':[[1,1,1],[0,0,1],[0,1,1],[0,0,1],[1,1,1]],
-    '4':[[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
-    '5':[[1,1,1],[1,0,0],[1,1,1],[0,0,1],[1,1,1]],
-    '6':[[1,1,1],[1,0,0],[1,1,1],[1,0,1],[1,1,1]],
-    '7':[[1,1,1],[0,0,1],[0,1,0],[0,1,0],[0,1,0]],
-    '8':[[1,1,1],[1,0,1],[1,1,1],[1,0,1],[1,1,1]],
-    '9':[[1,1,1],[1,0,1],[1,1,1],[0,0,1],[1,1,1]],
-    'A':[[0,1,0],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
-    'B':[[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,1,0]],
-    'C':[[0,1,1],[1,0,0],[1,0,0],[1,0,0],[0,1,1]],
-    'D':[[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,1,0]],
-    'E':[[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,1,1]],
-    'F':[[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,0,0]],
-    'G':[[0,1,1],[1,0,0],[1,0,1],[1,0,1],[0,1,1]],
-    'H':[[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
-    'I':[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
-    'J':[[0,0,1],[0,0,1],[0,0,1],[1,0,1],[0,1,1]],
-    'K':[[1,0,1],[1,1,0],[1,0,0],[1,1,0],[1,0,1]],
-    'L':[[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],
-    'M':[[1,0,1],[1,1,1],[1,0,1],[1,0,1],[1,0,1]],
-    'N':[[1,0,1],[1,1,1],[1,1,1],[1,0,1],[1,0,1]],
-    'O':[[0,1,0],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
-    'P':[[1,1,0],[1,0,1],[1,1,0],[1,0,0],[1,0,0]],
-    'Q':[[0,1,0],[1,0,1],[1,0,1],[1,1,1],[0,1,1]],
-    'R':[[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,0,1]],
-    'S':[[0,1,1],[1,0,0],[0,1,0],[0,0,1],[1,1,0]],
-    'T':[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
-    'U':[[1,0,1],[1,0,1],[1,0,1],[1,0,1],[0,1,1]],
-    'V':[[1,0,1],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
-    'W':[[1,0,1],[1,0,1],[1,0,1],[1,1,1],[1,0,1]],
-    'X':[[1,0,1],[1,0,1],[0,1,0],[1,0,1],[1,0,1]],
-    'Y':[[1,0,1],[1,0,1],[0,1,0],[0,1,0],[0,1,0]],
-    'Z':[[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
-    '-':[[0,0,0],[0,0,0],[1,1,1],[0,0,0],[0,0,0]],
-    ':':[[0,0,0],[0,1,0],[0,0,0],[0,1,0],[0,0,0]],
-    '.':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,1,0]],
-    "'":[[0,1,0],[0,1,0],[0,0,0],[0,0,0],[0,0,0]],
-    '/':[[0,0,1],[0,0,1],[0,1,0],[1,0,0],[1,0,0]],
-    '+':[[0,0,0],[0,1,0],[1,1,1],[0,1,0],[0,0,0]],
-    '&':[[0,1,0],[1,0,1],[0,1,0],[1,0,1],[0,1,1]],
-    '#':[[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0]],
-    '|':[[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
-    '▲':[[0,1,0],[1,1,1],[1,1,1],[0,0,0],[0,0,0]],
-    '▼':[[0,0,0],[0,0,0],[1,1,1],[1,1,1],[0,1,0]],
-    ' ':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
-}
 
 def inning_half(status, game=None):
     """Which half of the inning it is: 'top', 'bot', or 'break'.
@@ -386,12 +335,12 @@ class StadiumRenderer:
 
         # ── Background + header line ──────────────────────────────────────────
         fi(d, 0, 0, CW, H,  0, 0, 0)
-        fi(d, 0, 7, CW, 1,  55, 76, 130)
+        fi(d, 0, 7, CW, 1, *HEADER_RULE)
 
         st = status[:12]
         if not (is_mlb and is_active and not is_delay):
             self._draw_header_text(img, CW, st)
-            fi(d, 0, 7, CW, 1, 55, 76, 130)
+            fi(d, 0, 7, CW, 1, *HEADER_RULE)
 
         # ── Logos ─────────────────────────────────────────────────────────────
         a_logo_x = 1
@@ -440,9 +389,9 @@ class StadiumRenderer:
             total_sw = a_sw + dash_sw + h_sw
             score_layer = Image.new('RGBA', (total_sw, 10), (0, 0, 0, 0))
             score_draw = ImageDraw.Draw(score_layer, 'RGBA')
-            pf_text(score_draw, a_score, 0,                0, 255, 255, 255, sc=2)
-            pf_text(score_draw, '-',     a_sw,             0, 255, 255, 255, sc=2)
-            pf_text(score_draw, h_score, a_sw + dash_sw,   0, 255, 255, 255, sc=2)
+            pf_text(score_draw, a_score, 0,                0, *SCORE_TEXT, sc=2)
+            pf_text(score_draw, '-',     a_sw,             0, *SCORE_TEXT, sc=2)
+            pf_text(score_draw, h_score, a_sw + dash_sw,   0, *SCORE_TEXT, sc=2)
             score_layer = score_layer.resize((total_sw, 11), Image.Resampling.NEAREST)
             layer_x = int(round(center_x - total_sw / 2.0))
             img.alpha_composite(score_layer, (layer_x, 9))
@@ -465,7 +414,7 @@ class StadiumRenderer:
                 d.rectangle([0, 0, CW - 1, H - 1], outline=(255, 40, 40, 153), width=1)
 
             if dd:
-                dd_color = (235, 70, 70) if rz else (0, 200, 60)
+                dd_color = RED_ZONE_TEXT if rz else PLAY_TEXT
                 pf_text(d, dd, cCX - pf_w(dd) // 2, 23, *dd_color)
 
         # ══ NHL ══════════════════════════════════════════════════════════════
@@ -508,7 +457,7 @@ class StadiumRenderer:
             is_bot = half == 'bot'
 
             fi(d, 0, 0, CW, 8, 0, 0, 0)
-            fi(d, 0, 7, CW, 1, 55, 76, 130)
+            fi(d, 0, 7, CW, 1, *HEADER_RULE)
 
             inn_match = re.search(r'\d+', status)
             inn_num = inn_match.group() if inn_match else ''
@@ -605,7 +554,7 @@ class StadiumRenderer:
         tx = max(1, (card_w - tw) // 2)
         ty = 1
         draw_hybrid_text(d, tx + 1, ty + 1, label, (8, 8, 8, 180))
-        draw_hybrid_text(d, tx, ty, label, (255, 240, 150, 255))
+        draw_hybrid_text(d, tx, ty, label, (*STATUS_TEXT, 255))
 
     def _draw_soccer_so_col(self, d, x, y, results):
         n_show = 5

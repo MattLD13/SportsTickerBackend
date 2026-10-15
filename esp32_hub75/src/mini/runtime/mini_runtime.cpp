@@ -24,6 +24,7 @@
 #include "../platform/config.h"
 #include "../platform/matrix_driver.h"
 #include "../assets/logo_sources.h"
+#include "../rendering/sports_pane.h"
 
 JsonDocument payload;
 uint32_t rotationSignature = 0;
@@ -132,6 +133,8 @@ uint32_t lastAssetFrameAt = 0;
 uint32_t assetLoadingStartedAt = 0;
 struct tm preparedClock = {};
 bool preparedClockValid = false;
+int lastPresentedClockSecond = -1;
+bool lastPresentedClockReady = false;
 PreparedGameLogos preparedGameLogos;
 String configuredTimezone = DEFAULT_TIMEZONE;
 String appliedTimezone;

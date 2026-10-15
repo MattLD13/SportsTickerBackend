@@ -34,19 +34,6 @@ String shortValue(JsonVariantConst value, const char* fallback, size_t limit) {
   return result;
 }
 
-String sportName(JsonObjectConst game) {
-  String sport = game["sport"] | game["league"] | "SPORTS";
-  sport.trim();
-  sport.toUpperCase();
-  if (sport == "NFL") return "FOOTBALL";
-  if (sport == "NHL") return "HOCKEY";
-  if (sport == "MLB") return "BASEBALL";
-  if (sport == "NBA") return "BASKETBALL";
-  if (sport.length() == 0) return "SPORTS";
-  if (sport.length() > 10) sport.remove(10);
-  return sport;
-}
-
 bool shownItem(JsonObjectConst item) {
   return item["is_shown"].isNull() || item["is_shown"].as<bool>();
 }
@@ -208,50 +195,13 @@ void drawPairingCode() {
 }
 
 const char* pixelGlyph(char value) {
-  switch (toupper(value)) {
-    case '0': return "111101101101111";
-    case '1': return "010110010010111";
-    case '2': return "111001111100111";
-    case '3': return "111001111001111";
-    case '4': return "101101111001001";
-    case '5': return "111100111001111";
-    case '6': return "111100111101111";
-    case '7': return "111001010010010";
-    case '8': return "111101111101111";
-    case '9': return "111101111001111";
-    case 'A': return "010101111101101";
-    case 'B': return "110101110101110";
-    case 'C': return "011100100100011";
-    case 'D': return "110101101101110";
-    case 'E': return "111100110100111";
-    case 'F': return "111100110100100";
-    case 'G': return "011100101101011";
-    case 'H': return "101101111101101";
-    case 'I': return "111010010010111";
-    case 'J': return "001001001101010";
-    case 'K': return "101110100110101";
-    case 'L': return "100100100100111";
-    case 'M': return "101111101101101";
-    case 'N': return "101111111111101";
-    case 'O': return "010101101101010";
-    case 'P': return "110101110100100";
-    case 'Q': return "010101101111011";
-    case 'R': return "110101110101101";
-    case 'S': return "011100010001110";
-    case 'T': return "111010010010010";
-    case 'U': return "101101101101011";
-    case 'V': return "101101101101010";
-    case 'W': return "101101101111101";
-    case 'X': return "101101010101101";
-    case 'Y': return "101101010010010";
-    case 'Z': return "111001010100111";
-    case '&': return "010101010101011";
-    case '-': return "000000111000000";
-    case ':': return "000010000010000";
-    case '/': return "001001010100100";
-    case '.': return "000000000000010";
-    default: return "000000000000000";
+  static char bits[16];
+  const uint8_t* rows = ticker_ui::pane[ticker_ui::glyphIndex(value)];
+  for (uint8_t row = 0; row < 5; ++row) {
+    for (uint8_t column = 0; column < 3; ++column) bits[row * 3 + column] = rows[row] & (1 << (2 - column)) ? '1' : '0';
   }
+  bits[15] = '\0';
+  return bits;
 }
 
 void drawPixelText(const String& value, int16_t x, int16_t y, uint16_t foreground, uint8_t scale = 1) {
@@ -269,68 +219,6 @@ void drawPixelText(const String& value, int16_t x, int16_t y, uint16_t foregroun
   }
 }
 
-int16_t compactPixelTextWidth(const String& value, uint8_t scale) {
-  if (value.length() == 0) return 0;
-  return static_cast<int16_t>((value.length() - 1) * (3 * scale + 1) + 3 * scale);
-}
-
-const char* mediumScoreGlyph(char value) {
-  switch (value) {
-    case '0': return "1111100110011001100110011111";
-    case '1': return "0110111001100110011001101111";
-    case '2': return "1111000100011111100010001111";
-    case '3': return "1111000100011111000100011111";
-    case '4': return "1001100110011111000100010001";
-    case '5': return "1111100010001111000100011111";
-    case '6': return "1111100010001111100110011111";
-    case '7': return "1111000100100010010001000100";
-    case '8': return "1111100110011111100110011111";
-    case '9': return "1111100110011111000100011111";
-    case '-': return "0000000000001111000000000000";
-    default: return "0000000000000000000000000000";
-  }
-}
-
-int16_t mediumScoreTextWidth(const String& value) {
-  if (value.length() == 0) return 0;
-  return static_cast<int16_t>(value.length() * 5 - 1);
-}
-
-void drawMediumScoreText(const String& value, int16_t x, int16_t y, uint16_t foreground) {
-  int16_t cursor = x + CONTENT_X_OFFSET;
-  for (size_t characterIndex = 0; characterIndex < value.length(); ++characterIndex) {
-    const char* glyph = mediumScoreGlyph(value[characterIndex]);
-    for (uint8_t row = 0; row < 7; ++row) {
-      for (uint8_t column = 0; column < 4; ++column) {
-        if (glyph[row * 4 + column] == '1') {
-          matrix->drawPixel(cursor + column, y + row, foreground);
-        }
-      }
-    }
-    cursor += 5;
-  }
-}
-
-int16_t centeredPixelX(int16_t width) {
-  // Match the large ticker's rounded half-pixel placement on odd-width text.
-  return (64 - width + 1) / 2;
-}
-
-void drawCompactPixelText(const String& value, int16_t x, int16_t y, uint16_t foreground, uint8_t scale = 1) {
-  int16_t cursor = x + CONTENT_X_OFFSET;
-  for (size_t characterIndex = 0; characterIndex < value.length(); ++characterIndex) {
-    const char* glyph = pixelGlyph(value[characterIndex]);
-    for (uint8_t row = 0; row < 5; ++row) {
-      for (uint8_t column = 0; column < 3; ++column) {
-        if (glyph[row * 3 + column] == '1') {
-          matrix->fillRect(cursor + column * scale, y + row * scale, scale, scale, foreground);
-        }
-      }
-    }
-    cursor += 3 * scale + 1;
-  }
-}
-
 void drawPixelTextFit(const String& value, int16_t x, int16_t y, uint16_t foreground, uint8_t scale, int16_t width) {
   String clipped = value;
   const size_t maximumCharacters = width > 0 ? static_cast<size_t>(width / (4 * scale)) : 0;
@@ -340,23 +228,4 @@ void drawPixelTextFit(const String& value, int16_t x, int16_t y, uint16_t foregr
   drawPixelText(clipped, x, y, foreground, scale);
 }
 
-void drawPixelTextRight(const String& value, int16_t right, int16_t y, uint16_t foreground, uint8_t scale, int16_t left) {
-  String clipped = value;
-  const int16_t width = right - left;
-  const size_t maximumCharacters = width > 0 ? static_cast<size_t>(width / (4 * scale)) : 0;
-  if (clipped.length() > maximumCharacters) {
-    clipped.remove(maximumCharacters);
-  }
-  const int16_t x = right - static_cast<int16_t>(clipped.length() * 4 * scale);
-  drawPixelText(clipped, x, y, foreground, scale);
-}
-
-uint16_t teamColor(JsonVariantConst value, uint16_t fallback) {
-  String raw = value | "";
-  raw.trim();
-  if (raw.startsWith("#")) raw.remove(0, 1);
-  if (raw.length() != 6) return fallback;
-  const uint32_t rgb = strtoul(raw.c_str(), nullptr, 16);
-  return color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
-}
 // Owns pixel primitives, status panels, geometry helpers, and page timing helpers.

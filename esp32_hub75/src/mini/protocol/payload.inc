@@ -39,6 +39,8 @@ void updateFromPayload(const String& body) {
   filterGame["home_color"] = true;
   filterGame["status"] = true;
   filterGame["state"] = true;
+  filterGame["away_rank"] = true;
+  filterGame["home_rank"] = true;
   JsonObject filterSituation = filterGame["situation"].to<JsonObject>();
   filterSituation["downDist"] = true;
   filterSituation["activeTeam"] = true;
@@ -50,6 +52,10 @@ void updateFromPayload(const String& body) {
   filterSituation["onSecond"] = true;
   filterSituation["onThird"] = true;
   filterSituation["powerPlay"] = true;
+  filterSituation["powerPlayTeam"] = true;
+  filterSituation["manpower"]["scrollLabel"] = true;
+  filterSituation["shootout"] = true;
+  filterSituation["isRedZone"] = true;
   filterSituation["emptyNet"] = true;
   filterSituation["emptyNetSide"] = true;
   filterSituation["red_cards"][0]["is_home"] = true;

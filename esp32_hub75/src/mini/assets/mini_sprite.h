@@ -61,11 +61,22 @@ inline bool validate(const uint8_t* bytes, size_t length, const Reference& refer
   return difference == 0;
 }
 
-inline void decode(const uint8_t* bytes, uint16_t* pixels, uint8_t* mask) {
-  for (size_t index = 0; index < kPixels; ++index) {
-    pixels[index] = little16(bytes + kHeader + index * 2);
-    mask[index] = (bytes[kHeader + kPixels * 2 + index / 8] >> (index % 8)) & 1;
+inline void decodeScaled(const uint8_t* bytes, uint16_t* pixels, uint8_t* mask, size_t targetSize) {
+  if (targetSize == 0 || targetSize > kSize) return;
+  for (size_t y = 0; y < targetSize; ++y) {
+    for (size_t x = 0; x < targetSize; ++x) {
+      const size_t sourceY = (2 * y + 1) * kSize / (2 * targetSize);
+      const size_t sourceX = (2 * x + 1) * kSize / (2 * targetSize);
+      const size_t source = sourceY * kSize + sourceX;
+      const size_t target = y * targetSize + x;
+      pixels[target] = little16(bytes + kHeader + source * 2);
+      mask[target] = (bytes[kHeader + kPixels * 2 + source / 8] >> (source % 8)) & 1;
+    }
   }
+}
+
+inline void decode(const uint8_t* bytes, uint16_t* pixels, uint8_t* mask) {
+  decodeScaled(bytes, pixels, mask, kSize);
 }
 
 class Store {

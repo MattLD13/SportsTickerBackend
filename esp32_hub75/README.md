@@ -62,6 +62,34 @@ The backend owns source selection and image preparation. The Mini reads versione
 Each asset contains an 18x18 RGB565 image and a coverage mask. The complete file contains 705 bytes.
 Read [Mini Sprite V1](../docs/contracts/mini-sprite-v1.md) for the binary format and identity rules.
 
+## Shared display style
+
+The main ticker owns compact glyphs in `ticker_core/rendering/pixels.py` and shared colors in `ticker_core/rendering/style.py`.
+`tools/generate_mini_ui.py` exports these definitions into `src/mini/rendering/ui_generated.h`.
+If either Python owner changes, regenerate the header before building firmware:
+
+```powershell
+python tools/generate_mini_ui.py
+```
+
+`src/mini/rendering/sports_pane.h` draws the compact sports layout. `src/mini/protocol/panels.h` reads the V2 fields.
+The worker prepares 16x16 RAM marks from the validated 18x18 wire sprites.
+The layout centers each mark in the game body. Scores fit between the logo bounds.
+Long down-and-distance text uses two center rows. It does not cover either logo.
+Baseball keeps the backend status text and explicit `activeTeam` ownership. The Mini does not infer inning state from a status label.
+Hockey reads `powerPlayTeam`, `emptyNetSide`, `manpower.scrollLabel`, and the backend shootout window.
+`utility_panels.h` owns the compact stock and clock layouts.
+Clock mode shows seconds and a one-pixel progress rail. Sports clocks continue to show backend values.
+
+Render the firmware sports, stock, and clock code beside main ticker frames:
+
+```powershell
+python tools/render_mini_ui.py --snapshot PATH_TO_V2_SNAPSHOT --output previews/mini-ui --ssh mld@ticker2.local --identity "$env:USERPROFILE/.ssh/ticker2_codex"
+```
+
+The tool compiles a native preview under `/tmp/mini-ui-preview`. It does not change the Pi display service or settings.
+It requires the PlatformIO ArduinoJson dependency and an SSH host with `g++`.
+
 ## Logo workbench
 
 Run `python tools\mini_logo_workbench_web.py` from the repository root. Open `http://127.0.0.1:8765` in a browser.

@@ -173,7 +173,7 @@ RuntimeLogo* ensureRuntimeLogo(const String& key) {
   if (result != nullptr) {
     result->valid = false;
     result->url = key;
-    mini_sprite::decode(bytes, result->pixels, result->mask);
+    mini_sprite::decodeScaled(bytes, result->pixels, result->mask, RUNTIME_LOGO_SIZE);
     result->valid = true;
     result->pinned = false;
   }
@@ -207,7 +207,7 @@ bool drawLogoAsset(const String& key, int16_t x, int16_t y) {
   xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
   RuntimeLogo* logo = findCachedLogo(key);
   if (logo != nullptr) {
-    for (uint16_t index = 0; index < mini_sprite::kPixels; ++index) {
+    for (uint16_t index = 0; index < LOGO_PIXEL_COUNT; ++index) {
       const int16_t tx = x + index % RUNTIME_LOGO_SIZE;
       const int16_t ty = y + index / RUNTIME_LOGO_SIZE;
       if (logo->mask[index] && tx >= 0 && tx < 64 && ty >= 0 && ty < 32) matrix->drawPixel(tx, ty, logo->pixels[index]);
@@ -215,12 +215,6 @@ bool drawLogoAsset(const String& key, int16_t x, int16_t y) {
   }
   xSemaphoreGive(logoCacheMutex);
   return logo != nullptr;
-}
-
-void drawFallbackLogo(const String& abbreviation, int16_t x, int16_t y, uint16_t background);
-
-void drawLogoWithBadge(const String& key, const String& abbreviation, int16_t x, int16_t y, uint16_t background) {
-  if (!drawLogoAsset(key, x, y)) drawFallbackLogo(abbreviation, x, y, background);
 }
 
 void prepareSelectedGameLogoSources(JsonObjectConst game) {
@@ -316,41 +310,6 @@ void logoWorkerTask(void* parameter) {
     }
   }
 }
-
-void drawFallbackLogo(const String& abbreviation, int16_t x, int16_t y, uint16_t background) {
-  const uint8_t red = ((background >> 11) & 0x1F) * 255 / 31;
-  const uint8_t green = ((background >> 5) & 0x3F) * 255 / 63;
-  const uint8_t blue = (background & 0x1F) * 255 / 31;
-  const uint16_t dark = color(red / 2, green / 2, blue / 2);
-  const uint16_t inner = color(red * 9 / 10, green * 9 / 10, blue * 9 / 10);
-  const uint16_t highlight = color(
-    red + (255 - red) / 4,
-    green + (255 - green) / 4,
-    blue + (255 - blue) / 4
-  );
-  if (abbreviation.length() > 0) {
-    String label = abbreviation;
-    label.toUpperCase();
-    if (label.length() > 3) label.remove(3);
-    const int16_t labelWidth = compactPixelTextWidth(label, 1);
-    matrix->fillRect(x, y, 18, 18, dark);
-    matrix->drawFastHLine(x, y, 18, background);
-    matrix->drawFastHLine(x, y + 17, 18, background);
-    matrix->drawFastVLine(x, y, 18, background);
-    matrix->drawFastVLine(x + 17, y, 18, background);
-    drawCompactPixelText(label, x - CONTENT_X_OFFSET + (18 - labelWidth) / 2, y + 6, highlight, 1);
-    return;
-  }
-  matrix->fillRect(x, y, 18, 18, dark);
-  matrix->fillRect(x + 2, y + 2, 14, 14, inner);
-  matrix->drawFastHLine(x, y, 18, background);
-  matrix->drawFastHLine(x, y + 17, 18, background);
-  matrix->drawFastVLine(x, y, 18, background);
-  matrix->drawFastVLine(x + 17, y, 18, background);
-  matrix->drawFastHLine(x + 1, y + 1, 16, highlight);
-  matrix->drawFastVLine(x + 1, y + 1, 16, highlight);
-}
-
 
 void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
   if (logoCacheMutex != nullptr) {

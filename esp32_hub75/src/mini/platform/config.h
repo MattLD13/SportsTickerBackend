@@ -1,4 +1,5 @@
 #pragma once
+#include "../rendering/ui_generated.h"
 
 // Set these network values before flashing the ESP32.
 static const char* WIFI_SSID = "MattsWifi2.4";
@@ -7,7 +8,7 @@ static const char* BACKEND_URL = "https://ticker.mattdicks.org";
 static const char* DEVICE_NAME = "MiniTicker";
 static const char* DEFAULT_TIMEZONE = "America/New_York";
 static const char* DEFAULT_TIMEZONE_SPEC = "EST5EDT,M3.2.0,M11.1.0";
-static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.3.0";
+static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.3.1";
 static constexpr char MINI_FIRMWARE_TARGET[] = "esp32s3";
 static constexpr char MINI_FIRMWARE_HARDWARE[] = "esp32-s3";
 
@@ -47,7 +48,7 @@ static constexpr size_t FIRMWARE_MIN_IMAGE_SIZE = 64 * 1024;
 static constexpr size_t FIRMWARE_MAX_IMAGE_SIZE = 2 * 1024 * 1024 - 4096;
 
 // Logo cache and decoder limits.
-static constexpr uint8_t RUNTIME_LOGO_SIZE = 18;
+static constexpr uint8_t RUNTIME_LOGO_SIZE = ticker_ui::MINI_LOGO_SIZE;
 static constexpr uint8_t RUNTIME_LOGO_SLOTS = 32;
 static constexpr uint8_t LOGO_FOREGROUND_GAMES = 2;
 static constexpr uint8_t LOGO_FAILURE_SLOTS = 64;

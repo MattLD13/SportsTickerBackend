@@ -219,6 +219,14 @@ Its overrun rate falls from 3.337 percent to 1.614 percent. Its longest frame fa
 Bounded frame logs now split update acceptance, preparation, and composition work.
 Read [the Pi stream report](research/pi-stream-overruns-2026-10-14.md) for evidence and measurement limits.
 
+### Mini display style
+
+The local `mini-1.3.1` build adapts the main scrolling pane to 64x32.
+The main ticker owns shared glyphs and colors. Generated C++ data keeps the Mini definitions aligned.
+The Mini uses 16x16 RAM marks, clear score bounds, and two rows for long center labels.
+Twelve native Mini previews include a production V2 record and local layout examples beside real 384x32 main ticker frames.
+The UI build remains local until hardware review. Read [Mini display style](research/mini-ui-unification-2026-10-15.md) for owners and limits.
+
 ## Workstream 7: Modernize ESP32 modules and resource use
 
 Split `.inc` modules only with explicit interfaces and stable initialization order.

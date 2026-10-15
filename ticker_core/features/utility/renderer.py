@@ -12,6 +12,8 @@ from ticker_core.context import RenderContext
 from ticker_core.platform.wifi import WiFiSetupState
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 
+from ticker_core.rendering.style import STOCK_GAIN, STOCK_LOSS
+
 from .primitives import PANEL_H, PANEL_W, tiny_text
 
 
@@ -82,7 +84,7 @@ class UtilityRenderer:
             change_amt = change_amt.replace("-", "-$", 1)
         logo = self._logos.get(game.get("home_logo"), (24, 24))
         is_up = not change_pct.startswith("-")
-        color = (0, 255, 0) if is_up else (255, 0, 0)
+        color = STOCK_GAIN if is_up else STOCK_LOSS
         if logo is not None:
             image.paste(logo, (2, 4), logo)
         x_text_start = 28 if logo is not None else 2

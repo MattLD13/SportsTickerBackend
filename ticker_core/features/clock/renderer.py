@@ -7,14 +7,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 from ...context import RenderContext
 from .scene import ClockScene
+from ticker_core.rendering.style import CLOCK_DATE, SCORE_TEXT, CLOCK_RAIL, CLOCK_PROGRESS
 
 
 PANEL_WIDTH = 384
 PANEL_HEIGHT = 32
-DATE_COLOR = (200, 200, 200)
-TIME_COLOR = (255, 255, 255)
-RAIL_COLOR = (30, 30, 30)
-PROGRESS_COLOR = (0, 200, 255)
+DATE_COLOR = CLOCK_DATE
+TIME_COLOR = SCORE_TEXT
+RAIL_COLOR = CLOCK_RAIL
+PROGRESS_COLOR = CLOCK_PROGRESS
 Font: TypeAlias = ImageFont.ImageFont | ImageFont.FreeTypeFont
 
 

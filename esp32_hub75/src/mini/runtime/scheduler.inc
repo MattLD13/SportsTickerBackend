@@ -322,6 +322,11 @@ void miniTick() {
     return;
   }
   refreshPreparedClock();
+  if (displayMode == "clock" && !pairingMode && message.length() == 0 && !firmwareUpdateDisplayActive() &&
+      (preparedClockValid != lastPresentedClockReady ||
+       (preparedClockValid && preparedClock.tm_sec != lastPresentedClockSecond))) {
+    renderCurrent();
+  }
 
   bool workerFinished = false;
   uint32_t workerGeneration = 0;
