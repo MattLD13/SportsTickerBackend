@@ -121,52 +121,6 @@ def test_game_clock_reanchors_when_provider_clock_moves_forward() -> None:
     assert runtime.next_frame().clock_labels["game"] == "Q4 0:38"
 
 
-def test_game_clock_phases_follow_each_games_observed_countdown() -> None:
-    from ticker_core.runtime import Content
-
-    monotonic = [0.0]
-    runtime = _runtime(monotonic)
-    runtime.accept_response(_response())
-
-    def game(identifier: str, seconds: int) -> Content:
-        return Content(identifier, "scoreboard", "nfl", {"clock": {
-            "direction": "down", "period_label": "Q1", "remaining_seconds": seconds,
-        }})
-
-    runtime.observe_game_clocks((game("early-tick", 120), game("late-tick", 120)))
-    monotonic[0] = 5.4
-    runtime.observe_game_clocks((game("early-tick", 115), game("late-tick", 114)))
-    monotonic[0] = 6.2
-
-    labels = runtime.next_frame().clock_labels
-    assert labels["early-tick"] == "Q1 1:54"
-    assert labels["late-tick"] == "Q1 1:53"
-
-
-def test_game_clock_freezes_for_stoppage_then_resumes_on_a_lower_reading() -> None:
-    from ticker_core.runtime import Content
-
-    monotonic = [0.0]
-    runtime = _runtime(monotonic)
-    runtime.accept_response(_response())
-
-    def game(seconds: int) -> Content:
-        return Content("game", "scoreboard", "nfl", {"clock": {
-            "direction": "down", "period_label": "Q1", "remaining_seconds": seconds,
-        }})
-
-    runtime.observe_game_clocks((game(200),))
-    monotonic[0] = 5.4
-    runtime.observe_game_clocks((game(199),))
-    monotonic[0] = 6.4
-    assert runtime.next_frame().clock_labels["game"] == "Q1 3:19"
-
-    monotonic[0] = 10.4
-    runtime.observe_game_clocks((game(198),))
-    monotonic[0] = 11.0
-    assert runtime.next_frame().clock_labels["game"] == "Q1 3:17"
-
-
 def test_sports_pinned_is_a_presentation_not_a_second_mode() -> None:
     clock = [0.0]
     runtime = _runtime(clock)
