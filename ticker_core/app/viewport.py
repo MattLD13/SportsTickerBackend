@@ -16,7 +16,6 @@ from typing import Any, Callable
 from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
-from ticker_core.features.sports.clock_overlay import draw_clock_header
 from ticker_core.rendering import ContentRendererCatalog, ContentScene
 from ticker_core.runtime import Content, StripLayout, StripSegment
 
@@ -238,72 +237,32 @@ class CardViewport:
             self._start_next()
             self._maybe_commit()
 
-    def frame(
-        self,
-        offset: int,
-        width: int = 384,
-        height: int = 32,
-        *,
-        clock_labels: Mapping[str, str] | None = None,
-    ) -> Image.Image:
+    def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
         """Crop one panel from the cached tiled pane strip."""
         with self._lock:
             layout = self._layout
             strip = self._tiled_strip
-            desired = dict(self._desired)
         if layout is None or strip is None:
             return Image.new("RGB", (width, height), "black")
         position = offset % layout.width
         source_height = min(height, strip.height)
         if position + width <= strip.width:
             crop = strip.crop((position, 0, position + width, source_height))
-            if source_height != height:
-                image = Image.new("RGB", (width, height), "black")
-                image.paste(crop, (0, 0))
-                crop = image
-        else:
+            if source_height == height:
+                return crop
             image = Image.new("RGB", (width, height), "black")
-            destination_x = 0
-            remaining = width
-            while remaining > 0:
-                span = min(remaining, layout.width - position)
-                image.paste(strip.crop((position, 0, position + span, source_height)), (destination_x, 0))
-                destination_x += span
-                remaining -= span
-                position = 0
-            crop = image
-        if clock_labels:
-            self._draw_clock_headers(crop, offset, width, layout, desired, clock_labels)
-        image = crop
+            image.paste(crop, (0, 0))
+            return image
+        image = Image.new("RGB", (width, height), "black")
+        destination_x = 0
+        remaining = width
+        while remaining > 0:
+            span = min(remaining, layout.width - position)
+            image.paste(strip.crop((position, 0, position + span, source_height)), (destination_x, 0))
+            destination_x += span
+            remaining -= span
+            position = 0
         return image
-
-    @staticmethod
-    def _draw_clock_headers(
-        frame: Image.Image,
-        offset: int,
-        width: int,
-        layout: StripLayout,
-        desired: Mapping[str, _CardRequest],
-        clock_labels: Mapping[str, str],
-    ) -> None:
-        """Overlay labels for visible panes without changing their cached pixels."""
-
-        position = offset % layout.width
-        pane_start = 0
-        for segment in layout.segments:
-            label = clock_labels.get(segment.item_id)
-            if label:
-                request = desired.get(segment.item_id)
-                if request is not None:
-                    card_width = segment.width - 1
-                    screen_x = pane_start - position
-                    if screen_x < 0:
-                        screen_x += layout.width
-                    while screen_x < width:
-                        if screen_x + segment.width > 0:
-                            draw_clock_header(frame, screen_x + 1, card_width, label)
-                        screen_x += layout.width
-            pane_start += segment.width
 
     def close(self) -> None:
         """Stop the owned card renderer."""
@@ -523,12 +482,6 @@ def _content_mapping(content: Content) -> dict[str, Any]:
     data.setdefault("id", content.id)
     data.setdefault("type", content.type)
     data.setdefault("sport", content.sport)
-    clock = data.get("clock")
-    if isinstance(clock, Mapping) and clock.get("direction") == "down":
-        period = str(clock.get("period_label") or "").strip()
-        if period:
-            data["status"] = f"{period} 88:88"
-        data.pop("clock", None)
     return data
 
 

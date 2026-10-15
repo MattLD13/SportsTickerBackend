@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 import hashlib
@@ -174,15 +174,6 @@ class _ActiveEvent:
     data: Mapping[str, Any]
 
 
-@dataclass(slots=True)
-class _GameClock:
-    period_label: str
-    seconds: int
-    anchor_at: float
-    observed_at: float
-    running: bool = True
-
-
 class TickerRuntime:
     """Own controller state without device, network, or thread ownership."""
 
@@ -225,7 +216,6 @@ class TickerRuntime:
         self._seen_news: dict[str, float] = {}
         self._active_alert: _ActiveEvent | None = None
         self._active_news: _ActiveEvent | None = None
-        self._game_clocks: dict[str, _GameClock] = {}
 
     @property
     def running(self) -> bool:
@@ -296,43 +286,6 @@ class TickerRuntime:
         self._disconnected_at = None
         self._content_expires_at = None
 
-    def observe_game_clocks(self, content: Iterable[object]) -> None:
-        """Update local countdown anchors from one complete fresh response."""
-
-        now = self._monotonic()
-        observed: dict[str, _GameClock] = {}
-        for source in content:
-            data = _mapping(source)
-            raw_clock = data.get("clock")
-            if not isinstance(raw_clock, Mapping) or raw_clock.get("direction") != "down":
-                continue
-            identifier = str(_value(source, "id", data.get("id", ""))).strip()
-            period_label = str(raw_clock.get("period_label") or "").strip()
-            raw_seconds = raw_clock.get("remaining_seconds")
-            if not identifier or not period_label or isinstance(raw_seconds, bool):
-                continue
-            try:
-                seconds = int(raw_seconds)
-            except (TypeError, ValueError):
-                continue
-            if seconds < 0:
-                continue
-            previous = self._game_clocks.get(identifier)
-            if previous is None or previous.period_label != period_label or seconds > previous.seconds:
-                observed[identifier] = _GameClock(period_label, seconds, now, now)
-            elif seconds < previous.seconds:
-                observed[identifier] = _GameClock(period_label, seconds, now, now)
-            else:
-                elapsed = now - previous.observed_at
-                observed[identifier] = _GameClock(
-                    period_label,
-                    seconds,
-                    previous.anchor_at,
-                    now,
-                    previous.running if elapsed < 0.75 else False,
-                )
-        self._game_clocks = observed
-
     def mark_disconnected(self, *, expires_in: float) -> None:
         """Show connection loss while retaining valid content until expiry."""
         if expires_in < 0:
@@ -376,8 +329,6 @@ class TickerRuntime:
         if isinstance(source_content, Mapping):
             source_content = source_content.get("sports", ())
         content = tuple(_content(item) for item in source_content if _mapping(item))
-        if not stale:
-            self.observe_game_clocks(content)
         previous_mode = self._mode
         previous_classification = self._classification
         server_mode = _canonical_mode(str(_value(settings, "mode", "sports")))
@@ -625,10 +576,6 @@ class TickerRuntime:
         selected_brightness = brightness
         if selected_brightness is None:
             selected_brightness = round((snapshot.brightness if snapshot else 1.0) * 100)
-        clock_labels = self._clock_labels(
-            self._monotonic(),
-            running=snapshot is not None and not snapshot.stale and self._disconnected_at is None,
-        )
         return FrameDecision(
             kind=kind,
             interval=interval,
@@ -643,22 +590,8 @@ class TickerRuntime:
             stale_for=max(0.0, self._monotonic() - snapshot.source_received_at) if snapshot else 0.0,
             connection_lost=self._disconnected_at is not None,
             disconnected_for=max(0.0, self._monotonic() - self._disconnected_at) if self._disconnected_at is not None else 0.0,
-            clock_labels=clock_labels,
             **values,
         )
-
-    def _clock_labels(self, now: float, *, running: bool) -> Mapping[str, str]:
-        """Format locally interpolated countdown labels for the frame renderer."""
-
-        labels: dict[str, str] = {}
-        for identifier, clock in self._game_clocks.items():
-            elapsed = now - clock.anchor_at
-            if running and clock.running and now - clock.observed_at <= 15.0:
-                seconds = max(0, clock.seconds - int(max(0.0, elapsed)))
-            else:
-                seconds = clock.seconds
-            labels[identifier] = f"{clock.period_label} {seconds // 60}:{seconds % 60:02d}"
-        return labels
 
     def _clear_strip(self) -> None:
         self._strip = None

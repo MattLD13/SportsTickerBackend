@@ -33,40 +33,6 @@ def test_active_team_belongs_to_the_backend_sports_contract() -> None:
     assert baseball_bottom.data["situation"]["activeTeam"] == "HOM"
 
 
-@pytest.mark.parametrize(
-    ("sport", "period", "expected"),
-    (("nfl", 3, "Q3"), ("nba", 2, "Q2"), ("nhl", 1, "P1"), ("march_madness", 2, "H2")),
-)
-def test_live_timed_sports_publish_structured_countdown_clock(
-    sport: str, period: int, expected: str
-) -> None:
-    event = _event("live", {})
-    event["status"].update({"period": period, "displayClock": "8:12"})
-
-    item = SportsDisplayProjector().project(_item("clock-game", sport), event)
-
-    assert item.data["clock"] == {
-        "direction": "down",
-        "period_label": expected,
-        "remaining_seconds": 492,
-    }
-
-
-@pytest.mark.parametrize(
-    ("sport", "state", "detail"),
-    (("nfl", "half", "Halftime"), ("soccer", "in", "45'"), ("mlb", "in", "Top 5th")),
-)
-def test_non_countdown_scenes_do_not_publish_countdown_clock(
-    sport: str, state: str, detail: str
-) -> None:
-    event = _event(detail, {}, state)
-    event["status"]["displayClock"] = "8:12"
-
-    item = SportsDisplayProjector().project(_item("no-clock", sport, state), event)
-
-    assert "clock" not in item.data
-
-
 def test_baseball_projects_live_player_names_from_scoreboard_situation() -> None:
     event = _event(
         "Top 5th",

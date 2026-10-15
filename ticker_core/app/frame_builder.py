@@ -20,14 +20,7 @@ from ticker_core.runtime import Content, FrameDecision, FrameKind
 class ViewportSource(Protocol):
     """Provide a frame from the current card surfaces."""
 
-    def frame(
-        self,
-        offset: int,
-        width: int = 384,
-        height: int = 32,
-        *,
-        clock_labels: Mapping[str, str] | None = None,
-    ) -> Image.Image:
+    def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
         """Return one scrolling viewport frame."""
 
 
@@ -63,8 +56,6 @@ class FrameBuilder:
             key.append(self._catalog.visual_key(context, scene, asset_revision))
         elif decision.kind is FrameKind.SCROLL:
             key.append(decision.scroll_offset)
-            if decision.clock_labels:
-                key.append(tuple(sorted(decision.clock_labels.items())))
         elif decision.kind is FrameKind.EMPTY:
             key.append(int(timestamp * self._geometry.width / 60.0))
         elif decision.kind is FrameKind.PAIRING:
@@ -166,13 +157,6 @@ class FrameBuilder:
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
         offset = max(0, decision.scroll_offset or 0)
-        if decision.clock_labels:
-            return self._viewport.frame(
-                offset,
-                width=self._geometry.width,
-                height=self._geometry.height,
-                clock_labels=decision.clock_labels,
-            )
         return self._viewport.frame(offset, width=self._geometry.width, height=self._geometry.height)
 
 

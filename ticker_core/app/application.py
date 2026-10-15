@@ -454,7 +454,6 @@ class TickerApplication:
         """Persist, prefetch, accept, and render one validated backend response."""
         previous = self._runtime.snapshot
         if previous is not None and previous.key == response.payload_key:
-            self._runtime.observe_game_clocks(response.content)
             refresh = getattr(self._cache, "refresh", None)
             if callable(refresh):
                 refresh()
