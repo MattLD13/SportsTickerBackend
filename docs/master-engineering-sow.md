@@ -189,7 +189,10 @@ The Pi stream parser now freezes incoming replacements once and shares unchanged
 Captured live-message replay on the real Pi reduces median delta processing from 457.757 ms to 64.337 ms.
 The output and 12 rendered sports frames retain identical hashes.
 Short live overlay runs reduce observed overruns from 1.057 percent to 0.806 percent at the same frame cadence.
-The physical 15-game test passes. Occasional long frames remain during live update processing.
+The first candidate passes the physical 15-game test. The final pane change passes deterministic 15-pane checks.
+Pane cache comparisons now retain immutable scenes. Identical captured nine-pane cache checks fall from 124.567 ms to 0.715 ms.
+The physical application replay processes 120 identical messages per release at the same frame cadence.
+Its overrun rate falls from 3.337 percent to 1.614 percent. Its longest frame falls from 180.087 ms to 80.385 ms.
 Bounded frame logs now split update acceptance, preparation, and composition work.
 Read [the Pi stream report](research/pi-stream-overruns-2026-10-14.md) for evidence and measurement limits.
 

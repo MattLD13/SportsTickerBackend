@@ -37,7 +37,7 @@ These measurements describe parsing work. They do not establish a frame overrun 
 
 ## Validation
 
-- All 565 tests pass.
+- All 566 tests pass.
 - The 240 critical tests pass.
 - New boundary checks cover shared immutable sections, caller mutation, rejected replacement recovery, optional field removal, and canonical fingerprints.
 - Process transfer, reconnect, overlays, commands, and application lifecycle checks pass.
@@ -101,3 +101,40 @@ The runtime remains the owner of immutable content. Rendering and pixel output r
 The former comparison-time `_content_mapping` path is removed.
 The cache regression check proves unchanged updates perform no additional scene serialization.
 Worker recovery, stale completion, late assets, changed panes, and strip wrap checks continue to pass.
+
+The same nine captured panes undergo 30 unchanged cache updates on the physical Pi.
+Median cache update time falls from 124.567 ms to 0.715 ms. The p95 falls from 125.607 ms to 0.858 ms.
+Both versions produce RGB digest `33acc6a9a93dcc38d7818e401c78a12d52f463ddfd0da687868aaa5439bf72f6`.
+
+## Equal traffic through the physical display pipeline
+
+`tools/benchmarks/pi_stream_replay.py` replays the captured messages at two messages per second.
+Each release warms up for 20 seconds and then measures 60 seconds on the same Pi and matrix.
+The production poller, decoder, application, runtime, pane worker, and matrix driver run normally.
+The injected transport replaces network delivery. Platform actions remain disabled, and temporary content stays outside normal runtime storage.
+The source digest matches across both runs: `f5bd23b0bd7d4b58f1871df4d1deb6ad06b78dbbbe7eb7d02c44eff8a758782e`.
+
+| Controlled replay measurement | Baseline `d13bf4d6` | Final code `e34eccc6` |
+|---|---:|---:|
+| Duration | 59.979 s | 59.966 s |
+| Stream messages | 120 | 120 |
+| Frames | 1,858 | 1,983 |
+| FPS | 30.978 | 33.069 |
+| Overruns | 62 | 32 |
+| Overrun rate | 3.337% | 1.614% |
+| Largest window frame p95 | 28.542 ms | 21.285 ms |
+| Longest frame | 180.087 ms | 80.385 ms |
+
+The measured overrun rate falls 51.6 percent. The longest frame falls 55.4 percent.
+The configured 30 ms frame interval remains unchanged.
+This short replay establishes improvement under identical captured traffic. It excludes network, proxy, and live provider timing.
+The separate final live smoke passes delivery, expiry, and clearing on the real controller.
+The final live feed receives fewer provider changes than the baseline. Its overrun count is not an equal-load comparison.
+
+The physical 15-game run above uses the first parser candidate, before the pane comparison change.
+The final pane change passes the deterministic 15-pane test and the nine-pane physical replay.
+Further display takeover tests stop when the owner resumes manual app control.
+The normal controller resumes after each replay through the shell EXIT trap.
+
+The smoke reader now handles null sequence values in windows that receive no stream message.
+The null value denotes no observation during that window. The reader retains the latest sequence from other observed windows.

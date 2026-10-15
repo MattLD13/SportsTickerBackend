@@ -51,7 +51,7 @@ def _records(text: str) -> list[dict[str, Any]]:
 def _baseline(records: list[dict[str, Any]]) -> tuple[int, int]:
     sequence = max(
         (
-            int(record.get("stream", {}).get("last_sequence", 0))
+            int(record.get("stream", {}).get("last_sequence") or 0)
             for record in records
             if record.get("kind") == "window"
         ),
@@ -78,7 +78,7 @@ def _post_records(
         and _timestamp(record.get("finished_at")) >= started_at
     ]
     sequence = max(
-        (int(record.get("stream", {}).get("last_sequence", 0)) for record in windows),
+        (int(record.get("stream", {}).get("last_sequence") or 0) for record in windows),
         default=0,
     )
     display_window = next(

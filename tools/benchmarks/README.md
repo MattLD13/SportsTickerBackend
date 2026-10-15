@@ -107,3 +107,24 @@ Its digest covers accepted cursors, raw payloads, fingerprints, rendered item da
 Use identical capture files and repeat counts when comparing implementations.
 Keep live captures outside committed source.
 Read [the Pi stream report](../../docs/research/pi-stream-overruns-2026-10-14.md) for physical Pi measurements.
+
+## Captured stream replay on the physical matrix
+
+`pi_stream_replay.py` uses the real Pi poller, protocol, application, runtime, pane workers, and RGB matrix driver.
+Its transport supplies the same captured messages every 0.5 seconds and repeats the capture with a new stream identity.
+It removes update and reboot commands from replayed metadata. It keeps temporary display state outside normal runtime storage.
+It uses the normal durable asset cache.
+
+Run this utility on the physical Pi only.
+Before running the replay, stop `ticker-controller.service`.
+Use an EXIT trap to restore the controller after success or failure.
+
+```sh
+sudo env PYTHONDONTWRITEBYTECODE=1 python3 tools/benchmarks/pi_stream_replay.py \
+  --repository /opt/sports-ticker/current --messages capture.json --output report.json
+```
+
+The default run warms up for 20 seconds and measures 60 seconds.
+Compare the same capture, message interval, warmup, and measurement duration across releases.
+The report includes the source digest, message count, frame timings, and overrun rate.
+This replay measures the physical display pipeline. It excludes Wi-Fi, proxy behavior, and live provider timing.
