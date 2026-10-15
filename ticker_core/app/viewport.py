@@ -6,11 +6,12 @@ from collections import OrderedDict
 from collections.abc import Iterable, Mapping
 from concurrent.futures import Executor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from multiprocessing import get_context
 import os
 from pathlib import Path
 from threading import Lock
+from types import MappingProxyType
 from typing import Any, Callable
 
 from PIL import Image, ImageDraw
@@ -29,6 +30,10 @@ class _CardRequest:
     context: RenderContext
     asset_generation: int
     generation: int
+    scene: Mapping[str, Any] = field(init=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "scene", _scene_mapping(self.item))
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,16 +141,12 @@ class CardViewport:
     def update(self, items: Iterable[Content], context: RenderContext, mode: str) -> StripLayout | None:
         """Queue only cards whose full renderer scene changed."""
         content = tuple(items)[:60]
-        requests = tuple(
-            _CardRequest(item, mode, context, self._asset_generation, self._staging_generation + 1)
-            for item in content
-        )
         with self._lock:
             self._staging_generation += 1
             generation = self._staging_generation
             requests = tuple(
-                _CardRequest(request.item, request.mode, request.context, request.asset_generation, generation)
-                for request in requests
+                _CardRequest(item, mode, context, self._asset_generation, generation)
+                for item in content
             )
             self._order = tuple(request.item.id for request in requests)
             self._desired = {request.item.id: request for request in requests}
@@ -196,7 +197,7 @@ class CardViewport:
                 card = _CardSurface(
                     request.item.id,
                     Image.frombytes("RGBA", (surface.width, surface.height), surface.rgba),
-                    _content_mapping(desired.item),
+                    desired.scene,
                     desired.mode,
                     desired.asset_generation,
                 )
@@ -277,7 +278,7 @@ class CardViewport:
             if desired is None or not _same_work_request(desired, request):
                 continue
             self._active_request = request
-            job = _CardJob(request.item.id, _content_mapping(request.item), request.mode, request.context)
+            job = _CardJob(request.item.id, _plain_mapping(request.scene), request.mode, request.context)
             try:
                 self._future = self._worker.submit(self._render_job, job)
                 return
@@ -396,7 +397,7 @@ def _same_work_request(left: _CardRequest, right: _CardRequest) -> bool:
     """Return if two worker requests render the same immutable scene."""
     return (
         left.item.id == right.item.id
-        and _content_mapping(left.item) == _content_mapping(right.item)
+        and left.scene == right.scene
         and left.mode == right.mode
         and left.asset_generation == right.asset_generation
     )
@@ -406,7 +407,7 @@ def _matches(request: _CardRequest, surface: _CardSurface) -> bool:
     """Return if one card surface matches a renderer scene exactly."""
     return (
         request.item.id == surface.item_id
-        and _content_mapping(request.item) == surface.scene
+        and request.scene == surface.scene
         and request.mode == surface.mode
         and request.asset_generation == surface.asset_generation
     )
@@ -476,13 +477,13 @@ def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     return {str(key): _plain(item) for key, item in value.items()}
 
 
-def _content_mapping(content: Content) -> dict[str, Any]:
-    """Expose explicit content identity and family facts to the card worker."""
-    data = _plain_mapping(content.data)
+def _scene_mapping(content: Content) -> Mapping[str, Any]:
+    """Retain immutable scene facts without serializing nested content for comparisons."""
+    data = dict(content.data)
     data.setdefault("id", content.id)
     data.setdefault("type", content.type)
     data.setdefault("sport", content.sport)
-    return data
+    return MappingProxyType(data)
 
 
 def _plain(value: Any) -> Any:

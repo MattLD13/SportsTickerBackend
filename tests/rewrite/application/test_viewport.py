@@ -10,6 +10,7 @@ from PIL import Image
 import pytest
 
 from ticker_core.app.viewport import CardViewport
+from ticker_core.app import viewport as viewport_module
 from ticker_core.context import RenderContext
 from ticker_core.rendering import RenderedContent
 from ticker_core.runtime import Content
@@ -106,6 +107,34 @@ def test_viewport_reuses_surfaces_for_equal_content_from_a_new_payload() -> None
         assert catalog.calls == 2
         assert viewport.status["committed_generation"] == 2
         assert viewport.status["ready"] == 2
+    finally:
+        viewport.close()
+
+
+def test_unchanged_cached_panes_do_not_serialize_scenes_again(monkeypatch) -> None:
+    calls = []
+    serialize = viewport_module._plain_mapping
+
+    def capture(value):
+        calls.append(value)
+        return serialize(value)
+
+    monkeypatch.setattr(viewport_module, "_plain_mapping", capture)
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 10, 14, tzinfo=timezone.utc))
+    data = {"down": "1st", "situation": {"count": (1, 2), "nested": {"live": True}}}
+    try:
+        viewport.update((Content("game", "scoreboard", "nfl", data),), context, "sports")
+        _drain(viewport, catalog, 1)
+        initial_calls = len(calls)
+        for _ in range(20):
+            viewport.update((Content("game", "scoreboard", "nfl", dict(data)),), context, "sports")
+            viewport.install_completed()
+        assert initial_calls > 0
+        assert len(calls) == initial_calls
+        assert catalog.calls == 1
+        assert viewport.status["committed_generation"] == 21
     finally:
         viewport.close()
 

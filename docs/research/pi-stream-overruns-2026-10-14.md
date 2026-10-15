@@ -37,8 +37,8 @@ These measurements describe parsing work. They do not establish a frame overrun 
 
 ## Validation
 
-- All 564 tests pass.
-- The 239 critical tests pass.
+- All 565 tests pass.
+- The 240 critical tests pass.
 - New boundary checks cover shared immutable sections, caller mutation, rejected replacement recovery, optional field removal, and canonical fingerprints.
 - Process transfer, reconnect, overlays, commands, and application lifecycle checks pass.
 - The pane composition benchmark preserves identical pixels across all compared strategies.
@@ -86,3 +86,18 @@ It covers 1.2 full scroll cycles, one score change, and 15 simultaneous score ch
 The three phases report zero, zero, and one frame overruns. All phases retain at least 33.2 FPS.
 One changed pane becomes ready in 142 ms. All 15 changed panes become ready in 1.434 seconds.
 The controller resumes its normal live feed after the check.
+
+## Pane cache comparisons
+
+Stage samples identify another display-loop cost after the parser change.
+One live window spends 152.589 ms accepting an update. Another frame spends 124.201 ms preparing panes.
+These samples spend less than 14 ms composing pixels and about 12 to 23 ms presenting them.
+Pane cache comparisons repeatedly convert immutable nested game data into mutable dictionaries.
+Completion checks and generation commits repeat this conversion across the desired pane set.
+
+`CardViewport` now retains one immutable scene mapping per request and surface.
+Cache comparisons use that mapping directly. Worker dispatch converts a scene once for its process transfer.
+The runtime remains the owner of immutable content. Rendering and pixel output retain their existing contracts.
+The former comparison-time `_content_mapping` path is removed.
+The cache regression check proves unchanged updates perform no additional scene serialization.
+Worker recovery, stale completion, late assets, changed panes, and strip wrap checks continue to pass.
