@@ -149,7 +149,7 @@ def register_routes(
             {
                 "tickers": [
                     _ticker_value(item, application)
-                    for item in tickers
+                    for item in application.visible_tickers(tickers)
                 ]
             }
         )
