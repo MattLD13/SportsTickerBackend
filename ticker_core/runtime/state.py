@@ -178,8 +178,8 @@ class _ActiveEvent:
 class _GameClock:
     period_label: str
     seconds: int
-    anchor_at: float
     observed_at: float
+    phase_elapsed: float
     running: bool = True
 
 
@@ -318,18 +318,53 @@ class TickerRuntime:
             if seconds < 0:
                 continue
             previous = self._game_clocks.get(identifier)
-            if previous is None or previous.period_label != period_label or seconds > previous.seconds:
-                observed[identifier] = _GameClock(period_label, seconds, now, now)
-            elif seconds < previous.seconds:
-                observed[identifier] = _GameClock(period_label, seconds, now, now)
+            if previous is None or previous.period_label != period_label:
+                observed[identifier] = _GameClock(period_label, seconds, now, 0.5)
+            elif seconds > previous.seconds:
+                observed[identifier] = _GameClock(period_label, seconds, now, 0.5)
             else:
                 elapsed = now - previous.observed_at
+                if seconds == previous.seconds:
+                    phase_elapsed = previous.phase_elapsed + elapsed
+                    running = previous.running and phase_elapsed < 1.0
+                    observed[identifier] = _GameClock(
+                        period_label,
+                        seconds,
+                        now,
+                        min(0.999, phase_elapsed) if running else previous.phase_elapsed,
+                        running,
+                    )
+                    continue
+
+                ticks = previous.seconds - seconds
+                if not previous.running:
+                    observed[identifier] = _GameClock(period_label, seconds, now, 0.5)
+                    continue
+                phase_elapsed = previous.phase_elapsed + elapsed - ticks
+                if not 0.0 <= phase_elapsed < 1.0:
+                    prior_low = max(0.0, ticks - elapsed)
+                    prior_high = min(1.0, ticks + 1.0 - elapsed)
+                    if prior_low < prior_high:
+                        current_low = prior_low + elapsed - ticks
+                        current_high = prior_high + elapsed - ticks
+                        phase_elapsed = (current_low + current_high) / 2.0
+                    else:
+                        phase_elapsed = 0.5
+                        if ticks + 1.0 <= elapsed:
+                            observed[identifier] = _GameClock(
+                                period_label,
+                                seconds,
+                                now,
+                                phase_elapsed,
+                                False,
+                            )
+                            continue
                 observed[identifier] = _GameClock(
                     period_label,
                     seconds,
-                    previous.anchor_at,
                     now,
-                    previous.running if elapsed < 0.75 else False,
+                    max(0.0, min(0.999, phase_elapsed)),
+                    True,
                 )
         self._game_clocks = observed
 
@@ -652,9 +687,9 @@ class TickerRuntime:
 
         labels: dict[str, str] = {}
         for identifier, clock in self._game_clocks.items():
-            elapsed = now - clock.anchor_at
+            elapsed = clock.phase_elapsed + max(0.0, now - clock.observed_at)
             if running and clock.running and now - clock.observed_at <= 15.0:
-                seconds = max(0, clock.seconds - int(max(0.0, elapsed)))
+                seconds = max(0, clock.seconds - int(elapsed))
             else:
                 seconds = clock.seconds
             labels[identifier] = f"{clock.period_label} {seconds // 60}:{seconds % 60:02d}"
