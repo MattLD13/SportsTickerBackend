@@ -130,3 +130,24 @@ Owner: Mini OTA owns update persistence and receipts. The backend command owns t
 Former path: Remove oversized NVS keys, ignored persistence failures, and HTTP-status-only receipt acceptance.
 Real input: A verified firmware image and a server command that matches the running release.
 Real output: Bounded durable keys and an explicit acknowledged receipt after boot validation.
+
+
+## Final release result
+
+The device received and verified `mini-1.3.5` through OTA on `lehigh-guest`.
+Serial output reports 1,289,408 firmware bytes and `Mini firmware: mini-1.3.5 sprite_protocol=1` after restart.
+The device then reports `Firmware boot confirmed and acknowledged`.
+The production display response contains no pending update and retains paired state.
+The published binary size and SHA-256 match its manifest.
+A second controlled restart retains the firmware version, guest credentials, app pairing, and 38 cached sprite files.
+Its first sprite working set records 32 cache hits and zero downloads.
+The personal Pi service remains active on its current controller release.
+All temporary serial test processes have finished.
+
+Validation: [release deployment](https://github.com/MattLD13/SportsTickerBackend/actions/runs/38807606051)
+and [ESP32 and iOS builds](https://github.com/MattLD13/SportsTickerBackend/actions/runs/38806561537).
+
+Owner: The physical device owns its running version and boot receipt. The backend owns the pending command.
+Former path: Close the network and OTA validation limits in the SOW and Mini release documents.
+Real input: The published image, guest network, and preserved device state after two restarts.
+Real output: Verified firmware, cleared update state, retained pairing, and cached sprite reuse.

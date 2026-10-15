@@ -31,7 +31,7 @@ The firmware removes PNG/JPEG decoding, generated logo overrides, client URL sel
 - Local PNG previews use production snapshot data and the shared preparation path.
 - The personal Pi service remained active during these checks. No screen takeover or replay ran.
 
-## Network limit
+## Initial network limit
 
 A separate ESP32 Wi-Fi diagnostic found 20 access points on campus networks.
 The Mini did not find its saved home network. The PC and personal Pi report the home network.
@@ -47,7 +47,7 @@ The SDK cannot restart either radio while the other radio owns coexistence state
 Provisioning now waits for a credential result read or client disconnect before it stops BLE and starts Wi-Fi.
 The scheduler passes one timestamp into credential application. This removes unsigned elapsed-time underflow after the timer reset.
 
-## Remaining hardware checks
+## Initial hardware check plan
 
 - Connect the Mini to a reachable 2.4 GHz network.
 - Confirm registration and the real V2 display payload.
@@ -73,3 +73,27 @@ Read [Mini Sprite V1](../contracts/mini-sprite-v1.md) for native C++ commands an
 Static RAM: 73,892 bytes. Application flash: 1,223,605 bytes.
 
 SHA-256: `ee40c5aef007c47437f1559da8ae13079e91cd29f57a2c42758a5bd59902f1a9`.
+
+
+## Published hardware results
+
+The physical Mini now runs `mini-1.3.5` on `lehigh-guest`.
+The user confirmed successful app pairing.
+Every Mini HTTPS client verifies the backend certificate chain and server name.
+The hardware rejects wrong-host and self-signed certificates.
+
+A captured stable run downloaded 35 validated 705-byte sprites and reused 44 cached sprites before release checks.
+The worker later reported 191 cache hits, 35 downloads, zero invalid files, and zero evictions.
+Deployment restarts caused temporary HTTP 502 responses. The Mini recovered and resumed its normal data reads.
+
+The final OTA image contains 1,289,408 bytes.
+The device verified the download, restarted, registered, and acknowledged its running version to the server.
+The server cleared the update command.
+The device found 38 stored sprite files after OTA.
+Its first working set reused 32 cached sprites with zero downloads.
+A second controlled restart retained guest credentials, pairing, the firmware version, and cached sprites.
+The final capture shows successful registration and data reads without a new update request.
+
+The full suite passes 589 tests. The critical suite passes 259 tests.
+The ESP32 deployment and the separate iOS simulator build pass.
+Direct optical inspection of the physical panel remains separate from telemetry and native frame validation.

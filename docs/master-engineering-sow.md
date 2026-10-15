@@ -180,8 +180,8 @@ USB upload to the connected ESP32-S3 completed with a verified flash hash. Seria
 The Mini now connects to `lehigh-guest` with an empty password. The user confirmed app pairing.
 Live sprite downloads, reboot reuse, and TLS heap measurements pass on the physical Mini.
 The `mini-1.3.4` image passes physical OTA download and reboot checks.
-The `mini-1.3.5` target corrects update receipt persistence and requires final acknowledgement validation.
-The local firmware release remains unpublished while these hardware checks remain open.
+The published `mini-1.3.5` image passes physical OTA verification, reboot, server acknowledgement, and a second restart.
+The backend clears the update command. App pairing and stored sprites survive both restarts.
 
 Hardware provisioning exposed a cross-core NimBLE shutdown crash and an unsigned timer error.
 The shutdown task now runs on the NimBLE host core. Credential application uses the scheduler timestamp for both retry timers.

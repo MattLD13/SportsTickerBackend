@@ -6,7 +6,7 @@ Date: 2026-10-15
 
 Use the main ticker scrolling game pane as the Mini reference.
 Adapt fonts, spacing, and logo size to keep the 64x32 panel readable.
-The local firmware version is `mini-1.3.2`.
+The initial UI build is `mini-1.3.2`. The published hardware release is `mini-1.3.5`.
 
 ## Owners
 
@@ -62,10 +62,11 @@ Generated PNG files stay outside Git:
 ## Release state
 
 The firmware build, Python compilation, Ruff, shared drawing export check, and native frame generation pass.
-The build uses 73,912 bytes of static RAM and 1,230,089 bytes of application flash.
-The full suite passes 586 tests. The critical suite passes 256 tests.
-The physical Mini now runs `mini-1.3.2` through USB. Serial output confirms its boot.
-Its live network validation still needs a reachable 2.4 GHz network.
+The final local build uses 73,936 bytes of static RAM and 1,259,765 bytes of application flash.
+The full suite passes 589 tests. The critical suite passes 259 tests.
+The physical Mini runs the published `mini-1.3.5` image after a verified OTA transfer and server acknowledgement.
+Guest Wi-Fi, app pairing, backend reads, sprite transfers, and reboot cache reuse pass.
+Read [network and OTA results](device-list-pairing-and-inning-2026-10-15.md) for the physical checks.
 
 ## Change notes
 
