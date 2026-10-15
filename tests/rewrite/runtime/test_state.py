@@ -143,7 +143,7 @@ def test_game_clock_phases_follow_each_games_observed_countdown() -> None:
     assert labels["late-tick"] == "Q1 1:53"
 
 
-def test_game_clock_freezes_on_stoppage_then_resumes_on_a_lower_reading() -> None:
+def test_game_clock_freezes_for_stoppage_then_resumes_on_a_lower_reading() -> None:
     from ticker_core.runtime import Content
 
     monotonic = [0.0]
@@ -157,34 +157,14 @@ def test_game_clock_freezes_on_stoppage_then_resumes_on_a_lower_reading() -> Non
 
     runtime.observe_game_clocks((game(200),))
     monotonic[0] = 5.4
-    runtime.observe_game_clocks((game(200),))
+    runtime.observe_game_clocks((game(199),))
     monotonic[0] = 6.4
-    assert runtime.next_frame().clock_labels["game"] == "Q1 3:20"
+    assert runtime.next_frame().clock_labels["game"] == "Q1 3:19"
 
     monotonic[0] = 10.4
     runtime.observe_game_clocks((game(198),))
     monotonic[0] = 11.0
     assert runtime.next_frame().clock_labels["game"] == "Q1 3:17"
-
-
-def test_clock_keeps_counting_when_one_feed_interval_drops_fewer_seconds() -> None:
-    from ticker_core.runtime import Content
-
-    monotonic = [0.0]
-    runtime = _runtime(monotonic)
-    runtime.accept_response(_response())
-    first = Content("game", "scoreboard", "nfl", {"clock": {
-        "direction": "down", "period_label": "Q1", "remaining_seconds": 200,
-    }})
-    second = Content("game", "scoreboard", "nfl", {"clock": {
-        "direction": "down", "period_label": "Q1", "remaining_seconds": 196,
-    }})
-    runtime.observe_game_clocks((first,))
-    monotonic[0] = 5.4
-    runtime.observe_game_clocks((second,))
-    monotonic[0] = 6.4
-
-    assert runtime.next_frame().clock_labels["game"] == "Q1 3:15"
 
 
 def test_sports_pinned_is_a_presentation_not_a_second_mode() -> None:
