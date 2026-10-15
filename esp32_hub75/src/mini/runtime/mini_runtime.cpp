@@ -3,14 +3,8 @@
 #include <NimBLEDevice.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <HTTPClient.h>
-#include <JPEGDEC.h>
 #include <LittleFS.h>
 #include <Preferences.h>
-#undef INTELSHORT
-#undef INTELLONG
-#undef MOTOSHORT
-#undef MOTOLONG
-#include <PNGdec.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <Update.h>
@@ -31,8 +25,6 @@
 #include "../platform/matrix_driver.h"
 #include "../assets/logo_sources.h"
 
-PNG pngDecoder;
-JPEGDEC jpegDecoder;
 JsonDocument payload;
 uint32_t rotationSignature = 0;
 uint32_t logoWorkingSetSignature = 0;
@@ -70,6 +62,7 @@ portMUX_TYPE bleProvisioningMux = portMUX_INITIALIZER_UNLOCKED;
 char pendingWifiSsid[33] = {};
 char pendingWifiPassword[65] = {};
 bool pendingWifiReady = false;
+bool pendingWifiResultRead = false;
 bool logoWorkbenchMode = false;
 static uint8_t logoWorkbenchFrameRgb[64 * 32 * 3] = {};
 
@@ -105,57 +98,24 @@ struct RuntimeLogo {
 
 struct PreparedGameLogos {
   String awayPrimary;
-  String awayFallback;
   String homePrimary;
-  String homeFallback;
-};
-
-struct PersistedLogo {
-  uint32_t urlHash;
-  char url[192];
-  uint16_t pixels[RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE];
-  uint8_t mask[RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE];
 };
 
 RuntimeLogo* runtimeLogos = nullptr;
 uint8_t runtimeLogoSlotCount = 0;
-uint8_t* logoDownloadBuffer = nullptr;
-size_t logoDownloadCapacity = 0;
-uint16_t logoDecodeLine[LOGO_DECODE_WIDTH_LIMIT];
-uint8_t logoDecodeMask[(LOGO_DECODE_WIDTH_LIMIT + 7) / 8];
-RuntimeLogo* activeLogoDecode = nullptr;
-int activeLogoWidth = 0;
-int activeLogoHeight = 0;
-int activeLogoScaledWidth = 0;
-int activeLogoScaledHeight = 0;
-int activeLogoOffsetX = 0;
-int activeLogoOffsetY = 0;
-uint32_t logoSampleCounts[LOGO_PIXEL_COUNT] = {};
-uint32_t logoOpaqueCounts[LOGO_PIXEL_COUNT] = {};
-uint32_t logoRedSums[LOGO_PIXEL_COUNT] = {};
-uint32_t logoGreenSums[LOGO_PIXEL_COUNT] = {};
-uint32_t logoBlueSums[LOGO_PIXEL_COUNT] = {};
-String logoFailureUrls[LOGO_FAILURE_SLOTS];
-uint8_t logoFailureCount = 0;
-uint8_t logoFailureIndex = 0;
 String logoRetryUrls[LOGO_FAILURE_SLOTS];
 uint32_t logoRetryAfter[LOGO_FAILURE_SLOTS] = {};
+uint32_t spriteRetryDueAt = 0;
 uint8_t logoRetryCount = 0;
 uint8_t logoRetryIndex = 0;
-bool lastLogoFailurePermanent = false;
 bool logoCacheReady = false;
 SemaphoreHandle_t logoCacheMutex = nullptr;
-SemaphoreHandle_t logoDecodeMutex = nullptr;
-SemaphoreHandle_t logoDownloadMutex = nullptr;
 SemaphoreHandle_t logoWorkMutex = nullptr;
-SemaphoreHandle_t logoStorageMutex = nullptr;
 SemaphoreHandle_t networkMutex = nullptr;
 TaskHandle_t logoWorkerHandle = nullptr;
 String logoWorkPrimary[LOGO_WORK_QUEUE_SLOTS];
-String logoWorkFallback[LOGO_WORK_QUEUE_SLOTS];
 uint8_t logoWorkCount = 0;
 String logoForegroundPrimary[LOGO_FOREGROUND_GAMES * 2];
-String logoForegroundFallback[LOGO_FOREGROUND_GAMES * 2];
 uint8_t logoForegroundCount = 0;
 bool logoWorkerBusy = false;
 bool logoWorkerPending = false;
@@ -189,7 +149,7 @@ void firmwareUpdateDisplaySnapshot(uint8_t& state, uint32_t& complete, uint32_t&
 void startBlePairing();
 void startPairingMode();
 void stopBlePairing();
-void applyPendingWifiCredentials();
+void applyPendingWifiCredentials(uint32_t now);
 void saveWifiCredentials(const String& ssid, const String& password);
 
 bool acquireNetwork(uint32_t timeoutMs) {
@@ -219,7 +179,7 @@ void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
 #include "../protocol/backend.inc"
 #include "../platform/firmware_update.inc"
 #include "../rendering/primitives.inc"
-#include "../assets/logo_pipeline.inc"
+#include "../assets/sprite_pipeline.inc"
 #include "../features/renderers.inc"
 #include "../protocol/payload.inc"
 #include "scheduler.inc"

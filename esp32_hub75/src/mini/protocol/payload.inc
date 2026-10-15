@@ -29,8 +29,8 @@ void updateFromPayload(const String& body) {
   JsonObject filterGame = filter["content"]["sports"][0]["data"].to<JsonObject>();
   filterGame["sport"] = true;
   filterGame["league"] = true;
-  filterGame["away_logo"] = true;
-  filterGame["home_logo"] = true;
+  filterGame["away_logo_asset"] = true;
+  filterGame["home_logo_asset"] = true;
   filterGame["away_abbr"] = true;
   filterGame["home_abbr"] = true;
   filterGame["away_score"] = true;

@@ -210,11 +210,7 @@ bool verifyFirmwareImage(const esp_partition_t* target) {
 }
 
 bool downloadFirmware(const FirmwareManifestPayload& manifest) {
-  if (logoDownloadMutex != nullptr) {
-    xSemaphoreTake(logoDownloadMutex, portMAX_DELAY);
-  }
   if (!acquireNetwork(FIRMWARE_HTTP_TIMEOUT_MS)) {
-    if (logoDownloadMutex != nullptr) xSemaphoreGive(logoDownloadMutex);
     return false;
   }
   WiFiClientSecure client;
@@ -227,7 +223,6 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
   http.setConnectTimeout(4000);
   http.setTimeout(FIRMWARE_HTTP_TIMEOUT_MS);
   if (!http.begin(client, manifest.binaryUrl)) {
-    if (logoDownloadMutex != nullptr) xSemaphoreGive(logoDownloadMutex);
     releaseNetwork();
     return false;
   }
@@ -237,7 +232,6 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
     logSecureHttpError("Firmware image", status, client);
     http.end();
     abortFirmwareWrite();
-    if (logoDownloadMutex != nullptr) xSemaphoreGive(logoDownloadMutex);
     releaseNetwork();
     return false;
   }
@@ -246,7 +240,6 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
   if (target == nullptr || manifest.size > target->size || !Update.begin(manifest.size, U_FLASH)) {
     http.end();
     abortFirmwareWrite();
-    if (logoDownloadMutex != nullptr) xSemaphoreGive(logoDownloadMutex);
     releaseNetwork();
     return false;
   }
@@ -296,7 +289,6 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
   if (!valid || received != manifest.size || !constantTimeEqual(actualSha256, manifest.sha256, sizeof(actualSha256)) || !Update.end()) {
     http.end();
     abortFirmwareWrite();
-    if (logoDownloadMutex != nullptr) xSemaphoreGive(logoDownloadMutex);
     releaseNetwork();
     return false;
   }
@@ -306,7 +298,6 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
   if (!bootSet) {
     esp_ota_set_boot_partition(esp_ota_get_running_partition());
   }
-  if (logoDownloadMutex != nullptr) xSemaphoreGive(logoDownloadMutex);
   releaseNetwork();
   if (!bootSet) {
     return false;

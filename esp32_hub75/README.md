@@ -53,17 +53,14 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/platform/firmware_update.inc` | Manifest checks, SHA-256 download, OTA rollback, and update progress |
 | `src/mini/features/renderers.inc` | Sports indicators and all seven mode renderers |
 | `src/mini/rendering/primitives.inc` | Text, clipping, centering, status panels, and page timing |
-| `src/mini/assets/logo_sources.h/.cpp` | Logo override lookup and fallback URL selection |
-| `src/mini/assets/logo_pipeline.inc` | Logo download, decode, cache, retry, and worker task |
+| `src/mini/assets/logo_sources.h/.cpp` | Validated backend sprite references |
+| `src/mini/assets/sprite_pipeline.inc` | Sprite transfer, persistent cache, RAM reads, and worker task |
+| `src/mini/assets/mini_sprite.h` | Portable sprite validation, decoding, and cache transactions |
 | `src/mini/runtime/scheduler.inc` | Startup, polling, heartbeat, Wi-Fi scheduling, and Arduino ticks |
 
-The generated logo override assets are owned by the backend provider data. The generator downloads each override and uses the large ticker's contained PIL preparation path. It embeds each prepared 18x18 RGB565 asset in firmware. If the provider data changes, regenerate the assets from the repository root:
-
-```powershell
-python tools\generate_mini_logo_overrides.py
-```
-
-Do not edit `src/mini/assets/logo_overrides_generated.h` by hand.
+The backend owns source selection and image preparation. The Mini reads versioned asset references from the V2 display projection.
+Each asset contains an 18x18 RGB565 image and a coverage mask. The complete file contains 705 bytes.
+Read [Mini Sprite V1](../docs/contracts/mini-sprite-v1.md) for the binary format and identity rules.
 
 ## Logo workbench
 
@@ -180,6 +177,9 @@ pio run -e esp32s3 -t upload --upload-port COMx
 ```
 
 If upload does not start, hold `BOOT`, press and release `RESET`, release `BOOT`, then run the upload command again. Use the `USB` connector for native USB workflows. The `UART` connector is the reliable first-flash path.
+If the flash hash passes but the board stays in download mode, press `RESET` once.
+The connected hardware check used esptool 5.5 to clear forced USB download mode before reset.
+
 
 ## Display behavior
 
@@ -194,7 +194,11 @@ Sports pages render scores, team logos, status, and sport-specific live indicato
 - Hockey: power play and empty net
 - Soccer: red cards
 
-Generated override logos load directly from firmware. Other logos load from the V2 payload or ESPN fallback URLs, decode to 18x18 pixels, and enter the RAM working set. LittleFS stores up to 256 downloaded logo records in `/logo_cache_v9.bin`. A first load can show `DOWNLOAD ASSETS` while the background worker fetches non-override logos.
+Sports logos load from immutable backend sprite URLs. The Mini validates the length, header, mask padding, and SHA-256 checksum.
+The worker stores each validated file atomically in `/sprites/<asset_id>.mts`. LittleFS retains at most 128 committed sprites.
+The renderer reads prepared pixels from RAM. It performs no downloads or image decoding.
+A first load can show `DOWNLOAD ASSETS` while the worker fills the foreground set. Later boots reuse validated files.
+The firmware removes the former URL cache files at startup. It no longer includes PNG, JPEG, or generated override decoders.
 
 The other layouts show these fields:
 

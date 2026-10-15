@@ -51,8 +51,6 @@ bool shownItem(JsonObjectConst item) {
   return item["is_shown"].isNull() || item["is_shown"].as<bool>();
 }
 
-String sportsLogoUrl(JsonObjectConst game, const char* field, const String& abbreviation);
-String fallbackSportsLogoUrl(JsonObjectConst game, const String& abbreviation);
 
 uint16_t countShownGames() {
   uint16_t count = 0;
@@ -86,12 +84,8 @@ uint32_t sportsRotationSignature() {
       identity = sport + ":" + away + ":" + home;
     }
     sequence += identity + "|";
-    const String away = shortValue(data["away_abbr"], "AWY", 4);
-    const String home = shortValue(data["home_abbr"], "HOM", 4);
-    sequence += sportsLogoUrl(data, "away_logo", away) + "|";
-    sequence += fallbackSportsLogoUrl(data, away) + "|";
-    sequence += sportsLogoUrl(data, "home_logo", home) + "|";
-    sequence += fallbackSportsLogoUrl(data, home) + ";";
+    sequence += miniSpriteToken(data, "away_logo_asset") + "|";
+    sequence += miniSpriteToken(data, "home_logo_asset") + ";";
   }
   return hashBody(sequence);
 }

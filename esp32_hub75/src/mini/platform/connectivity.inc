@@ -240,6 +240,7 @@ void processBleCredentials() {
   nextSsid.toCharArray(pendingWifiSsid, sizeof(pendingWifiSsid));
   nextPassword.toCharArray(pendingWifiPassword, sizeof(pendingWifiPassword));
   pendingWifiReady = true;
+  pendingWifiResultRead = false;
   portEXIT_CRITICAL(&bleProvisioningMux);
   setBleResult("OK");
   Serial.println("Wi-Fi credentials queued from BLE");
@@ -248,7 +249,18 @@ void processBleCredentials() {
 
 class PairingServerCallbacks : public NimBLEServerCallbacks {
   void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
+    portENTER_CRITICAL(&bleProvisioningMux);
+    if (pendingWifiReady) pendingWifiResultRead = true;
+    portEXIT_CRITICAL(&bleProvisioningMux);
     if (blePairingStarted) NimBLEDevice::startAdvertising();
+  }
+};
+
+class PairingResultCallbacks : public NimBLECharacteristicCallbacks {
+  void onRead(NimBLECharacteristic*, NimBLEConnInfo&) override {
+    portENTER_CRITICAL(&bleProvisioningMux);
+    if (pendingWifiReady) pendingWifiResultRead = true;
+    portEXIT_CRITICAL(&bleProvisioningMux);
   }
 };
 
@@ -288,6 +300,9 @@ class PairingCredentialsCallbacks : public NimBLECharacteristicCallbacks {
   }
 };
 
+PairingCredentialsCallbacks pairingCredentialsCallbacks;
+PairingResultCallbacks pairingResultCallbacks;
+
 void startBlePairing() {
   if (blePairingStarted) return;
   setupCode = String(100000 + (esp_random() % 900000));
@@ -324,7 +339,8 @@ void startBlePairing() {
   bleChallengeCharacteristic->setValue(bleChallenge, BLE_CHALLENGE_LENGTH);
   bleResultCharacteristic->setValue(std::string("WAITING"));
   blePairingCharacteristic->setValue(std::string(pairingCode.length() > 0 ? pairingCode.c_str() : "NONE"));
-  bleCredentialsCharacteristic->setCallbacks(new PairingCredentialsCallbacks());
+  bleCredentialsCharacteristic->setCallbacks(&pairingCredentialsCallbacks);
+  bleResultCharacteristic->setCallbacks(&pairingResultCallbacks);
   server->start();
   NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
   if (advertising == nullptr) {
@@ -341,13 +357,42 @@ void startBlePairing() {
 
 void stopBlePairing() {
   if (!blePairingStarted) return;
-  NimBLEDevice::stopAdvertising();
-  NimBLEDevice::deinit(true);
+  struct StopRequest {
+    SemaphoreHandle_t complete;
+    bool stopped = false;
+  } request;
+  request.complete = xSemaphoreCreateBinary();
+  if (request.complete == nullptr) {
+    Serial.println("BLE stop failed: no semaphore");
+    return;
+  }
+  // Keep shutdown on the host core until its event task exits.
+  // Cross-core teardown can free the SDK function table before that exit.
   blePairingStarted = false;
+  const BaseType_t created = xTaskCreatePinnedToCore([](void* parameter) {
+    auto* stop = static_cast<StopRequest*>(parameter);
+    NimBLEDevice::stopAdvertising();
+    stop->stopped = NimBLEDevice::deinit(true);
+    xSemaphoreGive(stop->complete);
+    vTaskDelete(nullptr);
+  }, "ble-stop", 4096, &request, 1, nullptr, CONFIG_BT_NIMBLE_PINNED_TO_CORE);
+  if (created != pdPASS) {
+    blePairingStarted = true;
+    vSemaphoreDelete(request.complete);
+    Serial.println("BLE stop failed: no task");
+    return;
+  }
+  xSemaphoreTake(request.complete, portMAX_DELAY);
+  vSemaphoreDelete(request.complete);
+  if (!request.stopped) {
+    Serial.println("BLE stop failed: host shutdown");
+    return;
+  }
   bleChallengeCharacteristic = nullptr;
   bleCredentialsCharacteristic = nullptr;
   bleResultCharacteristic = nullptr;
   blePairingCharacteristic = nullptr;
+  Serial.println("BLE host stopped");
 }
 
 void startPairingMode() {

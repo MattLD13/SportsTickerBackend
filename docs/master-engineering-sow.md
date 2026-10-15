@@ -4,7 +4,7 @@
 
 **Repository:** SportsTickerBackend
 **Baseline:** `a74596046a3672a912ade0dbc7b112d7c167a9d0`
-**Status date:** 2026-10-14
+**Status date:** 2026-10-15
 **Status:** Replaces the original draft as the active engineering plan.
 
 ## Objective
@@ -38,12 +38,12 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 | Snapshot history | `sports_ticker/application/state_store.py` | Immutable snapshots use bounded per-ticker deques. |
 | Fleet storage | `sports_ticker/fleet/repository.py` | SQLite stores device and schedule state. |
 | Pi image cache | `ticker_core/platform/assets.py` | Original image bytes use SHA-256 storage. |
-| Mini image cache | `esp32_hub75/src/mini/assets/logo_pipeline.inc` | Sports logos use LittleFS and RAM caches. |
+| Mini image cache | `esp32_hub75/src/mini/assets/sprite_pipeline.inc` | Backend sprites use validated LittleFS transactions and RAM rendering. |
 | Pi deployment | `updater.py` | Immutable worktrees and rollback already exist. |
 | ESP32 update flow | `esp32_hub75/src/mini/platform/firmware_update.inc` | Dual-slot update and boot validation already exist. |
 | CI | `.github/workflows/` | Python static and device build workflows exist. |
 
-Device Stream V1 now provides projection deltas, bounded replay, and snapshot recovery. Backend-generated sprites remain out of scope.
+Device Stream V1 provides projection deltas, bounded replay, and snapshot recovery. Gate 4 adds backend-generated Mini sports sprites.
 
 ## Workstream 1: Maintain an accurate plan
 
@@ -163,6 +163,29 @@ Espressif reports a typical 40–50 KB free-heap requirement during an ESP32 TLS
 Define width, height, row order, RGB565 byte order, mask format, payload length, checksum, and pipeline version.
 Use separate outputs for Mini and Pi display sizes.
 Do not use one universal outlined sprite when outline choice depends on background.
+
+### Gate 4 implementation and evidence
+
+The backend now owns source selection, shared contained image preparation, versioned identity, and immutable sprite responses.
+Mini firmware `mini-1.3.0` advertises sprite protocol 1. Older firmware and Pi projections retain their current payloads.
+Each 705-byte file contains a 16-byte header, 648 RGB565 bytes, and a 41-byte coverage mask.
+The backend caps stored source and sprite bodies at 8 MiB and 256 entries. The Mini caps committed files at 128.
+The Mini serializes HTTP work and renders only from its RAM working set.
+The former PNG/JPEG decoders, generated logo overrides, URL selection, and URL cache implementation are removed.
+
+Python tests cover source changes, policy changes, conditional requests, corruption, atomic writes, bounds, and the V2 route.
+A native C++ check on the Pi passes three Python wire vectors, all pixels, masks, restart reuse, corruption, interrupted writes, and eviction.
+The PlatformIO build uses 73,892 bytes of static RAM and 1,223,605 bytes of application flash.
+USB upload to the connected ESP32-S3 completed with a verified flash hash. Serial output confirms `mini-1.3.0` boots.
+A separate Wi-Fi diagnostic sees campus networks. The saved home network is absent from the Mini scan.
+Live sprite downloads, reboot reuse, and TLS heap measurements remain open until the Mini has a reachable network.
+The local firmware release remains unpublished while these hardware checks remain open.
+
+Hardware provisioning exposed a cross-core NimBLE shutdown crash and an unsigned timer error.
+The shutdown task now runs on the NimBLE host core. Credential application uses the scheduler timestamp for both retry timers.
+The Mini waits for a credential result read or client disconnect before switching from BLE to Wi-Fi.
+This SDK uses sequential BLE and Wi-Fi sessions during provisioning.
+The physical check returns `OK`, stops the BLE host, and retries Wi-Fi without a reset.
 
 ## Workstream 6: Measure and improve rendering efficiency
 

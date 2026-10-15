@@ -76,10 +76,11 @@ bool registerDevice() {
   for (uint8_t index = 0; index < sizeof(modes) / sizeof(modes[0]); ++index) {
     request["profile"]["capabilities"]["modes"][index] = modes[index];
   }
-  request["profile"]["capabilities"]["asset_cache"] = false;
+  request["profile"]["capabilities"]["asset_cache"] = true;
   request["profile"]["capabilities"]["ota"] = true;
   request["profile"]["capabilities"]["color_depth"] = 16;
   request["metadata"]["build"] = MINI_FIRMWARE_VERSION;
+  request["metadata"]["mini_sprite_protocol"] = 1;
   request["metadata"]["mode"] = displayMode;
   for (uint8_t index = 0; index < sizeof(modes) / sizeof(modes[0]); ++index) {
     request["metadata"]["capabilities"][index] = modes[index];

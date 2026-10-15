@@ -225,8 +225,8 @@ void drawGame(JsonObjectConst game, const PreparedGameLogos& logos) {
 
   // Match the big ticker's one-pixel edge margins. The bounds also keep a bad
   // asset from wrapping into the opposite edge of the physical panel.
-  drawLogoWithFallback(logos.awayPrimary, logos.awayFallback, away, 1, 9, awayColor);
-  drawLogoWithFallback(logos.homePrimary, logos.homeFallback, home, 45, 9, homeColor);
+  drawLogoWithBadge(logos.awayPrimary, away, 1, 9, awayColor);
+  drawLogoWithBadge(logos.homePrimary, home, 45, 9, homeColor);
   drawScoreCenter(awayScore, homeScore);
 
   if (football && active && awayPossession) drawFootballPossessionIndicator(2, 1, awayColor);

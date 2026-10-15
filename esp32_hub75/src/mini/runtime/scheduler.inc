@@ -49,6 +49,15 @@ void sendHeartbeat() {
     heartbeat["metadata"]["capabilities"][index] = modes[index];
   }
   heartbeat["metadata"]["uptime_seconds"] = millis() / 1000;
+  heartbeat["metadata"]["mini_sprite_protocol"] = 1;
+  heartbeat["metadata"]["sprite_cache"]["flash_hits"] = spriteFlashHits;
+  heartbeat["metadata"]["sprite_cache"]["downloads"] = spriteDownloads;
+  heartbeat["metadata"]["sprite_cache"]["invalid_files"] = spriteInvalidFiles;
+  heartbeat["metadata"]["sprite_cache"]["evictions"] = spriteEvictions;
+  heartbeat["metadata"]["sprite_cache"]["heap_before_tls"] = spriteHeapBeforeTls;
+  heartbeat["metadata"]["sprite_cache"]["heap_during_tls"] = spriteHeapDuringTls;
+  heartbeat["metadata"]["sprite_cache"]["heap_after_tls"] = spriteHeapAfterTls;
+  heartbeat["metadata"]["sprite_cache"]["largest_during_tls"] = spriteLargestDuringTls;
   String body;
   serializeJson(heartbeat, body);
   http.addHeader("Content-Type", "application/json");
@@ -160,17 +169,18 @@ void connectWifi() {
   }
 }
 
-void applyPendingWifiCredentials() {
+void applyPendingWifiCredentials(uint32_t now) {
   char nextSsid[sizeof(pendingWifiSsid)] = {};
   char nextPassword[sizeof(pendingWifiPassword)] = {};
   portENTER_CRITICAL(&bleProvisioningMux);
-  if (!pendingWifiReady) {
+  if (!pendingWifiReady || !pendingWifiResultRead) {
     portEXIT_CRITICAL(&bleProvisioningMux);
     return;
   }
   memcpy(nextSsid, pendingWifiSsid, sizeof(nextSsid));
   memcpy(nextPassword, pendingWifiPassword, sizeof(nextPassword));
   pendingWifiReady = false;
+  pendingWifiResultRead = false;
   memset(pendingWifiSsid, 0, sizeof(pendingWifiSsid));
   memset(pendingWifiPassword, 0, sizeof(pendingWifiPassword));
   portEXIT_CRITICAL(&bleProvisioningMux);
@@ -178,15 +188,13 @@ void applyPendingWifiCredentials() {
   wifiSsid = nextSsid;
   wifiPassword = nextPassword;
   saveWifiCredentials(wifiSsid, wifiPassword);
-  if (blePairingStarted) {
-    stopBlePairing();
-  }
+  if (blePairingStarted) stopBlePairing();
   wifiPairingMode = false;
   pairingMode = false;
   WiFi.disconnect();
   wifiStarted = false;
-  wifiWaitStartedAt = millis();
-  lastWifiRetryAt = millis() - WIFI_RETRY_INTERVAL_MS;
+  wifiWaitStartedAt = now;
+  lastWifiRetryAt = now - WIFI_RETRY_INTERVAL_MS;
   message = "WIFI...";
   renderCurrent();
   Serial.print("Applying Wi-Fi network: ");
@@ -204,25 +212,19 @@ void miniSetup() {
   Serial.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   Serial0.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   setupRuntimeLogoMemory();
+  Serial.printf("Mini firmware: %s sprite_protocol=1\n", MINI_FIRMWARE_VERSION);
   setupLogoCache();
   loadWifiCredentials();
   firmwareUpdateInitialize();
   setupMatrix();
   drawMessage("STARTING");
   logoCacheMutex = xSemaphoreCreateMutex();
-  logoDecodeMutex = xSemaphoreCreateMutex();
-  logoDownloadMutex = xSemaphoreCreateMutex();
   logoWorkMutex = xSemaphoreCreateMutex();
-  logoStorageMutex = xSemaphoreCreateMutex();
   networkMutex = xSemaphoreCreateMutex();
-  if (logoCacheMutex == nullptr || logoDecodeMutex == nullptr ||
-      logoDownloadMutex == nullptr || logoWorkMutex == nullptr ||
-      logoStorageMutex == nullptr || networkMutex == nullptr) {
-    Serial.println("Logo synchronization setup failed");
+  if (logoCacheMutex == nullptr || logoWorkMutex == nullptr || networkMutex == nullptr) {
+    Serial.println("Sprite synchronization setup failed");
   }
-  if (logoCacheMutex != nullptr && logoDecodeMutex != nullptr &&
-      logoDownloadMutex != nullptr && logoWorkMutex != nullptr &&
-      logoStorageMutex != nullptr && networkMutex != nullptr) {
+  if (logoCacheMutex != nullptr && logoWorkMutex != nullptr && networkMutex != nullptr) {
     const BaseType_t workerResult = xTaskCreatePinnedToCore(
       logoWorkerTask, "logo-worker", 8192, nullptr, 1, &logoWorkerHandle, 0
     );
@@ -384,7 +386,7 @@ void miniTick() {
     }
     return;
   } else {
-    applyPendingWifiCredentials();
+    applyPendingWifiCredentials(now);
 
     if (wifiPairingMode) {
       return;
@@ -414,6 +416,14 @@ void miniTick() {
     }
 
     // Page timing does not wait for background asset work.
+    bool retrySprites = false;
+    if (logoWorkMutex != nullptr) {
+      xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+      retrySprites = !logoPlanBusy && spriteRetryDueAt != 0 && static_cast<int32_t>(now - spriteRetryDueAt) >= 0;
+      if (retrySprites) spriteRetryDueAt = 0;
+      xSemaphoreGive(logoWorkMutex);
+    }
+    if (retrySprites && sportsMode && !pairingMode) prepareSportsLogoWorkingSet(pageIndex);
     if (message.length() == 0 && sportsMode && sportsFrameReady &&
         pageCount > 1 && now - lastPageAt >= pageHoldMillis(pageHoldSeconds)) {
       const uint16_t nextPage = (pageIndex + 1) % pageCount;
