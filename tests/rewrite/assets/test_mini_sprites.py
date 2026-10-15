@@ -71,6 +71,9 @@ def test_persisted_reuse_conditional_refresh_same_url_changes_and_policy_invalid
         assert service.read(first["asset_id"]) is not None
     finally:
         service.close()
+    service = create()
+    assert service.read(first["asset_id"]) is not None
+    service.close()
     service = create(policy=SpritePolicy(method="new"))
     try:
         service.reference("https://a.espncdn.com/team.png")
@@ -98,7 +101,9 @@ def test_source_304_preserves_sprite_and_corrupt_files_never_publish_ready(tmp_p
     assert service.reference("https://a.espncdn.com/a.png")["asset_id"] == first["asset_id"]
     assert calls == ["", '"same"']
     path = tmp_path / f'{first["asset_id"]}.mts'
-    path.write_bytes(b"broken")
+    damaged = bytearray(path.read_bytes())
+    damaged[100] ^= 1
+    path.write_bytes(damaged)
     assert service.read(first["asset_id"]) is None
     service.close()
     service = MiniSpriteService(tmp_path, fetcher=fetch, clock=lambda: now[0])
@@ -117,7 +122,8 @@ def test_cache_bounds_and_failed_writes_leave_the_previous_file_valid(tmp_path, 
             service.reference(url)
             service.wait()
         assert len(list(tmp_path.glob("*.mts"))) == 1
-        assert len(json.loads((tmp_path / "index.json").read_text())) == 1
+        index = json.loads((tmp_path / "index.json").read_text())
+        assert len(index["entries"]) == len(index["checksums"]) == 1
         asset = next(tmp_path.glob("*.mts"))
         before = asset.read_bytes()
 

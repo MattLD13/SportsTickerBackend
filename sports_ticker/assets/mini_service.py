@@ -87,14 +87,22 @@ class MiniSpriteService:
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mini-sprites")
         self._pending: dict[str, Future] = {}
         self._entries: dict[str, dict] = {}
+        self._checksums: dict[str, str] = {}
         self._retry: dict[str, float] = {}
         self._closed = False
         try:
-            entries = json.loads((self.directory / "index.json").read_text())
-            for url, entry in entries.items():
+            index = json.loads((self.directory / "index.json").read_text())
+            for identity, checksum in index["checksums"].items():
+                try:
+                    if (_DIGEST.fullmatch(identity) and _DIGEST.fullmatch(checksum)
+                            and validate_sprite((self.directory / f"{identity}.mts").read_bytes(), checksum)):
+                        self._checksums[identity] = checksum
+                except (OSError, TypeError):
+                    continue
+            for url, entry in index["entries"].items():
                 if self._valid_entry(entry):
                     self._entries[url] = entry
-        except (OSError, ValueError, TypeError, AttributeError):
+        except (OSError, ValueError, TypeError, AttributeError, KeyError):
             pass
 
     def _valid_entry(self, entry: dict) -> bool:
@@ -104,6 +112,7 @@ class MiniSpriteService:
                 and isinstance(entry.get("etag", ""), str) and isinstance(entry.get("modified", ""), str)
                 and bool(_DIGEST.fullmatch(entry["asset_id"]))
                 and bool(_DIGEST.fullmatch(entry["source_sha256"]))
+                and self._checksums.get(entry["asset_id"]) == entry["sha256"]
                 and validate_sprite((self.directory / f'{entry["asset_id"]}.mts').read_bytes(), entry["sha256"])
                 and self.policy.identity((self.directory / f'{entry["source_sha256"]}.src').read_bytes()) == entry["asset_id"]
             )
@@ -164,16 +173,21 @@ class MiniSpriteService:
             self._atomic_file(self.directory / f"{source_hash}.src", source)
             self._atomic_file(self.directory / f"{asset_id}.mts", body)
             with self._lock:
+                self._checksums[asset_id] = checksum
                 self._entries[url] = {
                     "asset_id": asset_id, "sha256": checksum, "source_sha256": source_hash,
                     "etag": reply.etag, "modified": reply.modified, "checked_at": checked_at, "chosen_source": candidate,
                 }
                 self._retry.pop(url, None)
                 self._prune(asset_id, source_hash)
-                self._atomic_file(self.directory / "index.json", json.dumps(self._entries, sort_keys=True).encode())
+                self._atomic_file(self.directory / "index.json", json.dumps({
+                    "entries": self._entries, "checksums": self._checksums,
+                }, sort_keys=True).encode())
         except (OSError, ValueError, KeyError, requests.RequestException):
             with self._lock:
                 self._retry[url] = self._clock() + 60
+                if len(self._retry) > self._max_entries:
+                    self._retry.pop(next(iter(self._retry)))
         finally:
             with self._lock:
                 self._pending.pop(url, None)
@@ -213,6 +227,10 @@ class MiniSpriteService:
             if (self.directory / f'{entry["asset_id"]}.mts').exists()
             and (self.directory / f'{entry["source_sha256"]}.src').exists()
         }
+        self._checksums = {
+            identity: checksum for identity, checksum in self._checksums.items()
+            if (self.directory / f"{identity}.mts").exists()
+        }
 
     def read(self, asset_id: str) -> tuple[bytes, str] | None:
         """Serve only validated, already prepared public image content."""
@@ -224,9 +242,10 @@ class MiniSpriteService:
             except OSError:
                 self._entries = {url: entry for url, entry in self._entries.items() if entry["asset_id"] != asset_id}
                 return None
-            checksum = hashlib.sha256(body).hexdigest()
+            checksum = self._checksums.get(asset_id, "")
             if validate_sprite(body, checksum):
                 return body, checksum
+            self._checksums.pop(asset_id, None)
             self._entries = {url: entry for url, entry in self._entries.items() if entry["asset_id"] != asset_id}
             return None
 

@@ -44,6 +44,7 @@ It accepts no upstream URL parameter. Invalid identities and missing or invalid 
 Successful responses include content length, `X-Content-SHA256`, ETag, and immutable public caching headers.
 
 The backend stores sources, sprites, and an atomic index outside the release tree.
+The index retains each immutable sprite checksum until eviction. Reads compare stored bytes with that saved checksum.
 Its default body cache limit is 8 MiB and 256 retained asset entries.
 The Mini stores validated sprite files in `/sprites/`, with a limit of 128 completed files.
 Each Mini write stages, closes, rereads, verifies, and renames the file before eviction.
@@ -57,3 +58,21 @@ Network work shares the existing serialized Mini network owner.
 Deploy the backend contract before flashing firmware that requires it.
 Verify USB boot, sprite fetch, rendering, reboot cache reuse, corruption recovery, and TLS heap on the real Mini.
 The Pi retains its RGBA assets and existing local outline decisions.
+
+## Repeatable codec checks
+
+Generate Python reference files from the repository root:
+
+```powershell
+python tools/mini_sprite_vectors.py --output .tmp/mini-sprites/vectors
+```
+
+On Linux, compile the native check with the firmware header directory:
+
+```sh
+g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
+/tmp/mini-sprite-check .tmp/mini-sprites/vectors /tmp/mini-sprite-cache
+```
+
+The check loads the installed OpenSSL library. It verifies every decoded pixel and mask value against Python output.
+It also verifies checksum rejection, truncated input, restart reuse, interrupted transactions, and bounded eviction.
