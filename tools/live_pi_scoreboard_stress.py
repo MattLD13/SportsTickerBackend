@@ -91,6 +91,13 @@ def _live_game_items(payload: dict[str, Any], count: int) -> list[dict[str, Any]
         item_data.setdefault("sport", "nfl")
         item_data.setdefault("away_abbr", "AWY")
         item_data.setdefault("home_abbr", "HME")
+        if index == 0:
+            item_data["status"] = "Q2 3:00"
+            item_data["clock"] = {
+                "direction": "down",
+                "period_label": "Q2",
+                "remaining_seconds": 180,
+            }
         games.append(
             {
                 "id": item_id,
@@ -314,9 +321,36 @@ def _device_run(args: argparse.Namespace) -> dict[str, object]:
                 deadline = time.perf_counter()
 
     try:
-        sink.present(viewport.frame(0, *PANEL_SIZE), brightness=100, inverted=False)
+        clock_started = time.monotonic()
+        clock_id = str(games[0]["id"])
+
+        def clock_label() -> str:
+            seconds = max(0, 180 - int(time.monotonic() - clock_started))
+            return f"Q2 {seconds // 60}:{seconds % 60:02d}"
+
+        clock_generation_before = viewport.status["committed_generation"]
+        first_clock_label = clock_label()
+        first_clock_frame = viewport.frame(
+            0, *PANEL_SIZE, clock_labels={clock_id: first_clock_label}
+        )
+        sink.present(first_clock_frame, brightness=100, inverted=False)
+        time.sleep(2.1)
+        next_clock_label = clock_label()
+        next_clock_frame = viewport.frame(
+            0, *PANEL_SIZE, clock_labels={clock_id: next_clock_label}
+        )
+        clock_pixels_changed = first_clock_frame.tobytes() != next_clock_frame.tobytes()
+        clock_render_generation = viewport.status["committed_generation"]
+        clock_render_pending = viewport.status["pending"]
+        sink.present(next_clock_frame, brightness=100, inverted=False)
+        if (
+            not clock_pixels_changed
+            or clock_render_pending != 0
+            or clock_render_generation != clock_generation_before
+        ):
+            raise RuntimeError("Clock tick failed to update a cached pane header cleanly.")
         if frame_file is not None:
-            viewport.frame(0, *PANEL_SIZE).save(frame_file)
+            next_clock_frame.save(frame_file)
         phases["steady_before_updates"] = {}
         samples: list[dict[str, float]] = []
         phase_started = time.monotonic()
@@ -414,6 +448,15 @@ def _device_run(args: argparse.Namespace) -> dict[str, object]:
             "scroll_columns_presented": scroll_columns,
             "full_scroll_cycles": round(scroll_columns / final_layout.width, 2),
             "cold_panes_ready_seconds": round(ready_seconds, 3),
+            "clock_interpolation": {
+                "game_id": clock_id,
+                "first_label": first_clock_label,
+                "next_label": next_clock_label,
+                "frame_pixels_changed": clock_pixels_changed,
+                "generation_before": clock_generation_before,
+                "pane_render_generation": clock_render_generation,
+                "pending_renders": clock_render_pending,
+            },
             "one_score_update_queue_depth": one_pending,
             "one_score_update_ready_seconds": round(one_update_ready, 3),
             "one_score_update_changed_pixels": score_frame_changed,
@@ -434,6 +477,10 @@ def _device_run(args: argparse.Namespace) -> dict[str, object]:
             and final_status["ready"] == 15
             and final_status["failed"] == 0
             and score_frame_changed
+            and clock_pixels_changed
+            and first_clock_label != next_clock_label
+            and clock_render_pending == 0
+            and clock_render_generation == clock_generation_before
             and report["display_budget_ok"]
             and one_pending == 1
             and all_pending == 15

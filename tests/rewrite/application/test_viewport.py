@@ -155,6 +155,35 @@ def test_fifteen_live_games_rerender_only_the_changed_pane() -> None:
         viewport.close()
 
 
+def test_clock_ticks_update_cached_pane_header_without_rerendering_card() -> None:
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    first = Content("game", "scoreboard", "nfl", {
+        "state": "in",
+        "status": "Q1 1:00",
+        "clock": {"direction": "down", "period_label": "Q1", "remaining_seconds": 60},
+    })
+    next_tick = Content("game", "scoreboard", "nfl", {
+        "state": "in",
+        "status": "Q1 0:59",
+        "clock": {"direction": "down", "period_label": "Q1", "remaining_seconds": 59},
+    })
+    try:
+        viewport.update((first,), context, "sports")
+        _drain(viewport, catalog, 1)
+        viewport.update((next_tick,), context, "sports")
+        _drain(viewport, catalog, 1)
+        first_frame = viewport.frame(0, clock_labels={"game": "Q1 1:00"})
+        second_frame = viewport.frame(0, clock_labels={"game": "Q1 0:59"})
+
+        assert catalog.calls == 1
+        assert first_frame.size == (384, 32)
+        assert first_frame.tobytes() != second_frame.tobytes()
+    finally:
+        viewport.close()
+
+
 def test_cached_pane_strip_matches_previous_composition_across_wraps() -> None:
     catalog = Catalog()
     viewport = CardViewport(catalog)

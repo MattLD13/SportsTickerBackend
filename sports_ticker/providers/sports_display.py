@@ -48,6 +48,11 @@ class SportsDisplayProjector:
         if prior.get("clock"):
             situation["clock"] = prior["clock"]
         data["status"] = _status(league, state, event, competition, data)
+        clock = _countdown_clock(league, state, event, competition)
+        if clock is None:
+            data.pop("clock", None)
+        else:
+            data["clock"] = clock
         if league == "nhl":
             shootout = _nhl_has_shootout_marker(event, competition)
             completed = state in {"post", "final"}
@@ -175,7 +180,11 @@ def _status(
         return _final_status(league, upper, period)
     if league in _FOOTBALL:
         return _period_status("Q", period, clock, overtime_base=4)
-    if league in _BASKETBALL:
+    if league == "march_madness":
+        prefix, overtime_base = "Q", 4
+    elif league == "march_madness":
+        prefix, overtime_base = "Q", 4
+    elif league in _BASKETBALL:
         if league == "march_madness" and period in {1, 2}:
             return f"H{period} {clock}".strip()
         return _period_status("Q", period, clock, overtime_base=4)
@@ -446,6 +455,48 @@ def _period_status(prefix: str, period: int, clock: str, *, overtime_base: int) 
     else:
         label = f"{prefix}{period}" if period else prefix
     return f"{label} {clock}".strip()
+
+
+def _countdown_clock(
+    league: str,
+    state: str,
+    event: Mapping[str, Any],
+    competition: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Publish structured countdown facts for live timed sports."""
+
+    if state not in {"in", "crit"}:
+        return None
+    if league in _FOOTBALL:
+        prefix, overtime_base = "Q", 4
+    elif league in _BASKETBALL:
+        prefix, overtime_base = "Q", 4
+    elif league == "nhl":
+        prefix, overtime_base = "P", 3
+    else:
+        return None
+    if league == "nhl" and _nhl_has_shootout_marker(event, competition):
+        return None
+
+    status = _mapping(event.get("status"))
+    status_type = _mapping(status.get("type"))
+    detail = str(status_type.get("shortDetail") or status_type.get("detail") or "").upper()
+    if "HALF" in detail or detail.startswith("END OF"):
+        return None
+    raw_clock = str(status.get("displayClock") or status.get("clock") or "").strip()
+    if not raw_clock:
+        raw_clock = str(_mapping(competition.get("situation")).get("clock") or "").strip()
+    match = re.fullmatch(r"(?P<minute>\d{1,3}):(?P<second>[0-5]\d)", raw_clock)
+    period = _integer(status.get("period"), _integer(status_type.get("period"), 0))
+    if match is None or period <= 0:
+        return None
+    remaining = int(match.group("minute")) * 60 + int(match.group("second"))
+    label = (
+        f"H{period}"
+        if league == "march_madness" and period in {1, 2}
+        else _period_status(prefix, period, "", overtime_base=overtime_base)
+    )
+    return {"direction": "down", "period_label": label, "remaining_seconds": remaining}
 
 
 def _nhl_has_shootout_marker(

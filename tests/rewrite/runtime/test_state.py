@@ -77,6 +77,50 @@ def test_scrolling_uses_payload_interval_and_integer_offsets() -> None:
     assert tuple(frame.scroll_offset for frame in frames) == (0, 1, 2)
 
 
+def test_game_clock_interpolates_between_polls_and_freezes_on_unchanged_poll() -> None:
+    from ticker_core.runtime import Content
+
+    monotonic = [0.0]
+    runtime = _runtime(monotonic)
+    runtime.accept_response(_response())
+    game = Content(
+        "game",
+        "scoreboard",
+        "nfl",
+        {"clock": {"direction": "down", "period_label": "Q2", "remaining_seconds": 62}},
+    )
+
+    runtime.observe_game_clocks((game,))
+    assert runtime.next_frame().clock_labels["game"] == "Q2 1:02"
+    monotonic[0] = 3.0
+    assert runtime.next_frame().clock_labels["game"] == "Q2 0:59"
+
+    monotonic[0] = 5.0
+    runtime.observe_game_clocks((game,))
+    monotonic[0] = 8.0
+    assert runtime.next_frame().clock_labels["game"] == "Q2 1:02"
+
+
+def test_game_clock_reanchors_when_provider_clock_moves_forward() -> None:
+    from ticker_core.runtime import Content
+
+    monotonic = [0.0]
+    runtime = _runtime(monotonic)
+    runtime.accept_response(_response())
+    first = Content("game", "scoreboard", "nba", {"clock": {
+        "direction": "down", "period_label": "Q4", "remaining_seconds": 35,
+    }})
+    resumed = Content("game", "scoreboard", "nba", {"clock": {
+        "direction": "down", "period_label": "Q4", "remaining_seconds": 40,
+    }})
+    runtime.observe_game_clocks((first,))
+    monotonic[0] = 2.0
+    runtime.observe_game_clocks((resumed,))
+    monotonic[0] = 4.0
+
+    assert runtime.next_frame().clock_labels["game"] == "Q4 0:38"
+
+
 def test_sports_pinned_is_a_presentation_not_a_second_mode() -> None:
     clock = [0.0]
     runtime = _runtime(clock)

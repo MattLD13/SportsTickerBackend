@@ -125,6 +125,7 @@ class FrameDecision:
     connection_lost: bool = False
     disconnected_for: float = 0.0
     wifi_state: WiFiSetupState | None = None
+    clock_labels: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

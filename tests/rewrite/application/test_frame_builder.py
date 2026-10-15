@@ -48,8 +48,12 @@ class News:
 
 
 class Viewport:
-    def frame(self, offset, width=384, height=32):
+    def __init__(self):
+        self.clock_labels = None
+
+    def frame(self, offset, width=384, height=32, *, clock_labels=None):
         del offset
+        self.clock_labels = clock_labels
         return Image.new("RGB", (width, height))
 
 
@@ -86,6 +90,19 @@ def test_static_content_receives_elapsed_animation_time() -> None:
     builder.build(decision(FrameKind.STATIC, content=content, content_elapsed=2.5))
 
     assert catalog.elapsed == [2.5]
+
+
+def test_scroll_frame_sends_interpolated_game_clock_labels_to_viewport() -> None:
+    viewport = Viewport()
+    builder = FrameBuilder(Catalog(), Utility(), Alerts(), News(), viewport)
+
+    builder.build(decision(
+        FrameKind.SCROLL,
+        scroll_offset=4,
+        clock_labels={"game": "Q2 0:59"},
+    ))
+
+    assert viewport.clock_labels == {"game": "Q2 0:59"}
 
 
 def test_visual_key_owns_update_animation_without_crashing() -> None:
