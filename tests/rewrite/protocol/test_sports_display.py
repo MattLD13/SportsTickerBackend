@@ -174,6 +174,47 @@ def test_college_basketball_zero_clock_keeps_half_label() -> None:
     assert basketball.data["status"] == "H2 END"
 
 
+@pytest.mark.parametrize(
+    ("sport", "period", "expected"),
+    (
+        ("nfl", 1, "Q1 END"),
+        ("ncf_fbs", 4, "Q4 END"),
+        ("ncf_fcs", 5, "OT END"),
+        ("nhl", 3, "P3 END"),
+        ("nhl", 4, "OT END"),
+        ("nhl", 5, "OT2 END"),
+        ("march_madness", 3, "OT END"),
+        ("march_madness", 4, "OT2 END"),
+    ),
+)
+def test_timed_sports_zero_clock_uses_the_period_end_label(
+    sport: str, period: int, expected: str
+) -> None:
+    event = _event("period", {})
+    event["status"].update({"period": period, "displayClock": "0.0"})
+
+    projected = SportsDisplayProjector().project(_item("end", sport), event)
+
+    assert projected.data["status"] == expected
+
+
+def test_zero_clock_does_not_create_period_end_for_countup_or_inning_sports() -> None:
+    soccer_event = _event("1st half", {})
+    soccer_event["status"].update({"period": 1, "displayClock": "0.0"})
+    baseball_event = _event("Top 5th", {})
+    baseball_event["status"].update({"period": 5, "displayClock": "0:00"})
+
+    soccer = SportsDisplayProjector().project(
+        _item("soccer", "soccer_epl"), soccer_event
+    )
+    baseball = SportsDisplayProjector().project(
+        _item("baseball", "mlb"), baseball_event
+    )
+
+    assert "END" not in soccer.data["status"]
+    assert baseball.data["status"] == "Top 5th"
+
+
 def test_hockey_period_end_uses_end_label() -> None:
     event = _event("End of 1st", {}, "in")
     event["status"]["period"] = 1
@@ -204,7 +245,7 @@ def test_hockey_second_overtime_stays_overtime_without_shootout_marker() -> None
 
     hockey = SportsDisplayProjector().project(_item("hockey", "nhl"), event)
 
-    assert hockey.data["status"] == "OT2 0:00"
+    assert hockey.data["status"] == "OT2 END"
 
 
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:

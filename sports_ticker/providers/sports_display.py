@@ -176,16 +176,22 @@ def _status(
         return "Half" if league.startswith("soccer") else "Halftime"
     if "FINAL" in upper or state in {"post", "final"}:
         return _final_status(league, upper, period)
-    if league in _BASKETBALL and _is_zero_clock(clock):
+    if league in _FOOTBALL and period > 0 and _is_zero_clock(clock):
+        return _period_status("Q", period, "END", overtime_base=4)
+    if league == "nhl" and period > 0 and _is_zero_clock(clock):
+        return _period_status("P", period, "END", overtime_base=3)
+    if league in _BASKETBALL and period > 0 and _is_zero_clock(clock):
         if league == "march_madness" and period in {1, 2}:
             return f"H{period} END"
-        return _period_status("Q", period, "END", overtime_base=4)
+        overtime_base = 2 if league == "march_madness" else 4
+        return _period_status("Q", period, "END", overtime_base=overtime_base)
     if league in _FOOTBALL:
         return _period_status("Q", period, clock, overtime_base=4)
     if league in _BASKETBALL:
         if league == "march_madness" and period in {1, 2}:
             return f"H{period} {clock}".strip()
-        return _period_status("Q", period, clock, overtime_base=4)
+        overtime_base = 2 if league == "march_madness" else 4
+        return _period_status("Q", period, clock, overtime_base=overtime_base)
     if league == "nhl":
         return _period_status("P", period, clock, overtime_base=3)
     if league.startswith("soccer"):
