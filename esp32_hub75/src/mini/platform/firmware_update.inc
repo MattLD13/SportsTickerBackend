@@ -170,7 +170,7 @@ bool fetchFirmwareManifest(const String& requestedVersion, FirmwareManifestPaylo
     return false;
   }
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
   client.setTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
   client.setHandshakeTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
   HTTPClient http;
@@ -214,7 +214,7 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
     return false;
   }
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
   client.setTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
   client.setHandshakeTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
   HTTPClient http;
@@ -427,7 +427,7 @@ void acknowledgeConfirmedFirmware() {
     return;
   }
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
   client.setTimeout(4);
   HTTPClient http;
   http.useHTTP10(true);

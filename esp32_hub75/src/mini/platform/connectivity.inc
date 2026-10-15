@@ -202,11 +202,12 @@ bool decryptWifiCredentials(const String& encodedEnvelope, String& ssid, String&
   JsonDocument credentials;
   const DeserializationError credentialsError = deserializeJson(credentials, plaintext, plaintextLength);
   free(plaintext);
-  if (credentialsError) return false;
+  if (credentialsError || !credentials["ssid"].is<const char*>() ||
+      !credentials["password"].is<const char*>()) return false;
   ssid = credentials["ssid"] | "";
   password = credentials["password"] | "";
   ssid.trim();
-  return ssid.length() > 0 && password.length() > 0 && ssid.length() <= 32 && password.length() <= 64;
+  return ssid.length() > 0 && ssid.length() <= 32 && password.length() <= 64;
 }
 
 void setBleResult(const char* value) {

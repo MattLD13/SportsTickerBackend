@@ -177,8 +177,9 @@ Python tests cover source changes, policy changes, conditional requests, corrupt
 A native C++ check on the Pi passes three Python wire vectors, all pixels, masks, restart reuse, corruption, interrupted writes, and eviction.
 The PlatformIO build uses 73,892 bytes of static RAM and 1,223,605 bytes of application flash.
 USB upload to the connected ESP32-S3 completed with a verified flash hash. Serial output confirms `mini-1.3.0` boots.
-A separate Wi-Fi diagnostic sees campus networks. The saved home network is absent from the Mini scan.
-Live sprite downloads, reboot reuse, and TLS heap measurements remain open until the Mini has a reachable network.
+The Mini now connects to `lehigh-guest` with an empty password. The user confirmed app pairing.
+Live sprite downloads, reboot reuse, and TLS heap measurements pass on the physical Mini.
+The release target is `mini-1.3.4`. OTA reboot and acknowledgement require final release validation.
 The local firmware release remains unpublished while these hardware checks remain open.
 
 Hardware provisioning exposed a cross-core NimBLE shutdown crash and an unsigned timer error.
@@ -225,7 +226,7 @@ The `mini-1.3.2` build adapts the main scrolling pane to 64x32.
 The main ticker owns shared glyphs and colors. Generated C++ data keeps the Mini definitions aligned.
 The Mini uses 16x16 RAM marks, clear score bounds, and two rows for long center labels.
 Twelve native Mini previews include a production V2 record and local layout examples beside real 384x32 main ticker frames.
-The Mini runs the UI build through USB. Live network checks remain open. Read [Mini display style](research/mini-ui-unification-2026-10-15.md) for owners and limits.
+The Mini runs the UI build through USB. Live backend, pairing, sprite transfer, and reboot cache checks pass. Read [Mini display style](research/mini-ui-unification-2026-10-15.md) for owners and limits.
 
 ## Workstream 7: Modernize ESP32 modules and resource use
 

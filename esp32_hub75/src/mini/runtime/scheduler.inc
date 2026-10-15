@@ -28,7 +28,7 @@ void sendHeartbeat() {
   }
 
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
   client.setTimeout(8);
   client.setHandshakeTimeout(8);
   HTTPClient http;
@@ -82,7 +82,7 @@ bool fetchData() {
   }
 
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
   client.setTimeout(8);
   client.setHandshakeTimeout(8);
   HTTPClient http;

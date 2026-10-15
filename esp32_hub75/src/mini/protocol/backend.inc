@@ -49,7 +49,7 @@ bool registerDevice() {
   }
 
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
   client.setTimeout(8);
   client.setHandshakeTimeout(8);
   HTTPClient http;

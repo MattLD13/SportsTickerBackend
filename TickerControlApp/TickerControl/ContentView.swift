@@ -1294,8 +1294,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             wifiSetupError = "Enter the six-digit WIFI PIN shown on the ticker."
             return
         }
-        guard !normalizedSSID.isEmpty, !homePassword.isEmpty else {
-            wifiSetupError = "Enter your home Wi-Fi network and password."
+        guard !normalizedSSID.isEmpty, normalizedSSID.utf8.count <= 32, homePassword.utf8.count <= 64 else {
+            wifiSetupError = "Enter a Wi-Fi name of up to 32 bytes and a password of up to 64 bytes. Open networks need no password."
             return
         }
 

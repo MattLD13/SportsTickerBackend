@@ -22,6 +22,7 @@
 #include <freertos/task.h>
 #include <new>
 #include "../platform/config.h"
+#include "../platform/tls.h"
 #include "../platform/matrix_driver.h"
 #include "../assets/logo_sources.h"
 #include "../rendering/sports_pane.h"

@@ -58,5 +58,56 @@ The full suite passes 586 tests. The critical suite passes 256 tests.
 Ruff, scoped Mypy, Python compilation, schema fixtures, and the ESP32 build pass.
 Seventeen native Mini frames include the shared inning glyphs and both pairing states.
 The USB upload verified its hash. Serial output confirms `mini-1.3.2` boots and initializes its cache.
-The Mini still reports the saved `MattsWifi2.4` network as unavailable.
-It returns to Wi-Fi setup after association attempts. No app pairing exchange can complete while it remains offline.
+Initial home-network checks failed. Guest-network checks later established a working connection and app pairing.
+
+## Wi-Fi radio investigation
+
+The user confirms that the Mini is near the home router.
+A separate Wi-Fi-only image reads the saved SSID and key length from NVS without changing credentials.
+The saved SSID contains the exact bytes for `MattsWifi2.4`.
+The Mini MAC is `58:8C:81:F1:7F:E4`. Its USB runtime port is `COM11`.
+An active scan finds campus access points on channels 1, 6, and 11.
+A passive scan on channel 5 succeeds but returns zero access points.
+Direct association with the home router BSSID and channel also fails with reason `201`, `NO_AP_FOUND`.
+The Pi concurrently reports the home router on channel 5 with signal strength 76 percent.
+The Pi ticker service remains active.
+These results do not establish the cause of the different radio observations.
+The diagnostic image changes no server ownership, Pi settings, or stored Mini credentials.
+The normal `mini-1.3.2` image replaces the diagnostic image after the radio checks.
+
+
+## Guest network and secure transport
+
+The Mini accepts an empty password for an open Wi-Fi network.
+The encrypted provisioning envelope still requires string fields and enforces SSID and password byte limits.
+The iOS setup form accepts the same limits and permits a blank password.
+Physical BLE provisioning returned `OK` for `lehigh-guest` with an empty password.
+The Mini obtained an address, registered, and fetched V2 data with HTTP 200.
+The user confirmed successful app pairing with the displayed `APP PAIR` code.
+
+All Mini HTTPS clients now use `configureTls` and the committed backend root store.
+The former clients disabled certificate validation with `setInsecure`.
+The compressed SDK trust bundle fails against the backend cross-signed certificate chain.
+Standard PEM validation resolves the failure without adding an obsolete signing root.
+A Wi-Fi-only hardware check accepts the backend and rejects wrong-host and self-signed certificates.
+The ticker firmware then registers and fetches data with certificate validation enabled.
+
+The physical `mini-1.3.3` development build reused two stored sprites after reboot.
+A new sprite returned HTTP 200 with 705 bytes and passed validation.
+Its observed free heap reached 98,668 bytes during TLS. Its largest free block measured 42,996 bytes.
+The release target is `mini-1.3.4`. OTA reboot and acknowledgement require final release validation.
+The full suite passes 589 tests. The critical suite passes 259 tests.
+
+Owner: Mini connectivity owns credential validation. Shared TLS configuration owns every Mini HTTPS client.
+Former path: Remove blank-password rejection and seven calls that disable server certificate checks.
+Real input: Encrypted guest credentials, the production certificate chain, and persisted sprite files.
+Real output: Successful pairing, verified HTTPS responses, cached sprites, and validated new sprite bytes.
+
+
+## First physical OTA transfer
+
+After pairing, the server delivered its previously queued `mini-1.2.8` command.
+The secure `mini-1.3.3` development image downloaded and verified all 1,347,568 firmware bytes.
+Serial output reported `Firmware update verified: mini-1.2.8` before the USB port reset.
+The published older image booted, reconnected to guest Wi-Fi, registered, and fetched data with HTTP 200.
+The new `mini-1.3.4` release will replace that older image through the normal deployment command.
