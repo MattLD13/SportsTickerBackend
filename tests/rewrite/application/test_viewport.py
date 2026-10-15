@@ -189,6 +189,27 @@ def test_clock_ticks_update_cached_pane_header_without_rerendering_card() -> Non
         viewport.close()
 
 
+def test_clock_header_stays_attached_to_pane_as_it_crosses_left_panel_edge() -> None:
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    item = Content("game", "scoreboard", "nfl", {
+        "state": "in",
+        "status": "Q1 0:59",
+        "clock": {"direction": "down", "period_label": "Q1", "remaining_seconds": 59},
+    })
+    try:
+        viewport.update((item,), context, "sports")
+        _drain(viewport, catalog, 1)
+        base = viewport.frame(10)
+        overlay = viewport.frame(10, clock_labels={"game": "Q1 0:58"})
+
+        assert base.getpixel((30, 2)) != overlay.getpixel((30, 2))
+        assert catalog.calls == 1
+    finally:
+        viewport.close()
+
+
 def test_cached_pane_strip_matches_previous_composition_across_wraps() -> None:
     catalog = Catalog()
     viewport = CardViewport(catalog)

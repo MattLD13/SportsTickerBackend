@@ -297,8 +297,6 @@ class CardViewport:
                 if request is not None:
                     card_width = segment.width - 1
                     screen_x = pane_start - position
-                    if screen_x < 0:
-                        screen_x += layout.width
                     while screen_x < width:
                         if screen_x + segment.width > 0:
                             draw_clock_header(frame, screen_x + 1, card_width, label)
