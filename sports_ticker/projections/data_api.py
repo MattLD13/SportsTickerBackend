@@ -11,7 +11,7 @@ from typing import Any
 from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnapshot
 from ..markets import selected_market_groups
 from ..providers.contracts import ProviderHealth
-from ..providers.sports_display import matches_followed_team
+from ..providers.sports_display import matches_followed_team, baseball_inning_display, sport_family
 
 
 _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
@@ -206,6 +206,8 @@ def _content_item(item: ContentItem, *, apply_logo_rendering: bool = False) -> d
     if not isinstance(item, ContentItem):
         raise TypeError("snapshot content must contain ContentItem values")
     data = dict(item.data)
+    if item.family == "sports" and sport_family(data.get("sport")) == "baseball":
+        data["baseball_inning"] = baseball_inning_display(data)
     if apply_logo_rendering and item.family == "sports":
         for side in ("home", "away"):
             rendering = _logo_rendering_choice(data, side)

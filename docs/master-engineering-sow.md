@@ -221,11 +221,11 @@ Read [the Pi stream report](research/pi-stream-overruns-2026-10-14.md) for evide
 
 ### Mini display style
 
-The local `mini-1.3.1` build adapts the main scrolling pane to 64x32.
+The `mini-1.3.2` build adapts the main scrolling pane to 64x32.
 The main ticker owns shared glyphs and colors. Generated C++ data keeps the Mini definitions aligned.
 The Mini uses 16x16 RAM marks, clear score bounds, and two rows for long center labels.
 Twelve native Mini previews include a production V2 record and local layout examples beside real 384x32 main ticker frames.
-The UI build remains local until hardware review. Read [Mini display style](research/mini-ui-unification-2026-10-15.md) for owners and limits.
+The Mini runs the UI build through USB. Live network checks remain open. Read [Mini display style](research/mini-ui-unification-2026-10-15.md) for owners and limits.
 
 ## Workstream 7: Modernize ESP32 modules and resource use
 

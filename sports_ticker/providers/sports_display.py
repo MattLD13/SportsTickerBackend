@@ -336,12 +336,8 @@ _LIVE_PLAY_KEYS = frozenset(
 def _baseball_batting_team(status: str, home_abbr: str, away_abbr: str) -> str:
     """Resolve batting ownership from the provider-normalized inning status."""
 
-    normalized = status.strip().casefold()
-    if normalized.startswith("top"):
-        return away_abbr
-    if normalized.startswith("bottom") or normalized.startswith("bot"):
-        return home_abbr
-    return ""
+    half = baseball_inning_display({"state": "in", "status": status})["half"]
+    return away_abbr if half == "top" else home_abbr if half == "bottom" else ""
 
 
 def _baseball_player_name(value: Any) -> str:
@@ -799,6 +795,19 @@ _TEAM_ALIASES: dict[str, tuple[str, ...]] = {
     "MUN": ("MUN", "MAN"),
     "MAN": ("MUN", "MAN"),
 }
+
+
+def baseball_inning_display(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Own inning number, half, and phase for every display target."""
+    state = str(data.get("state") or "pre").lower()
+    result = {"number": 0, "half": "none", "phase": "inactive"}
+    if state not in {"in", "crit"}:
+        return result
+    match = re.match(r"^(TOP|BOTTOM|BOT|MID|MIDDLE|END)(?:\s+OF)?\s*(\d+)", str(data.get("status") or "").strip().upper())
+    if match is None or int(match[2]) < 1:
+        return {**result, "phase": "paused"}
+    half = "top" if match[1] == "TOP" else "bottom" if match[1] in {"BOTTOM", "BOT"} else "break"
+    return {"number": int(match[2]), "half": half, "phase": "break" if half == "break" else "playing"}
 
 
 def sport_family(sport: object) -> str:

@@ -186,11 +186,12 @@ void drawSolidColorTest() {
 }
 
 void drawPairingCode() {
-  matrix->fillScreen(0);
-  matrix->drawFastHLine(0, 0, 64, color(30, 150, 220));
-  drawTextFit("PAIR", 2, 3, color(40, 190, 230), 24);
-  const String code = setupCode.length() > 0 ? setupCode : pairingCode;
-  drawTextFit(code.length() > 0 ? code : "------", 8, 16, color(255, 220, 80), 54);
+  struct Canvas {
+    void pixel(int x, int y, ticker_ui::Rgb ink) { matrix->drawPixel(x, y, color(ink.r, ink.g, ink.b)); }
+    void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) { matrix->fillRect(x, y, width, height, color(ink.r, ink.g, ink.b)); }
+  } canvas;
+  const auto view = ticker_ui::pairingPane(wifiPairingMode, setupCode.c_str(), pairingCode.c_str());
+  ticker_ui::renderPairing(canvas, view);
   presentFrame();
 }
 

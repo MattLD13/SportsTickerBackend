@@ -2,6 +2,28 @@
 #include "sports_pane.h"
 
 namespace ticker_ui {
+enum class PairingStage { WiFiSetup, AppPairing };
+struct PairingPane {
+  PairingStage stage = PairingStage::WiFiSetup;
+  std::string code;
+};
+
+inline PairingPane pairingPane(bool wifiSetup, const std::string& wifiPin, const std::string& appCode) {
+  PairingPane view;
+  view.stage = wifiSetup ? PairingStage::WiFiSetup : PairingStage::AppPairing;
+  view.code = wifiSetup ? wifiPin : appCode;
+  return view;
+}
+
+template<class Canvas>
+void renderPairing(Canvas& canvas, const PairingPane& view) {
+  canvas.rect(0, 0, 64, 32, BACKGROUND);
+  const bool wifi = view.stage == PairingStage::WiFiSetup;
+  centered(canvas, wifi ? "WIFI PIN" : "APP PAIR", 0, 64, 1, CLOCK_PROGRESS);
+  centered(canvas, view.code.empty() ? "WAIT" : view.code, 0, 64, 11, STATUS_TEXT, 5, 9, 1);
+  centered(canvas, wifi ? "WIFI SETUP" : "ADD TICKER", 0, 64, 26, MUTED_TEXT);
+}
+
 struct ClockPane {
   std::string date, time;
   int seconds = 0;

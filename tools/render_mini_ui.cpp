@@ -62,7 +62,8 @@ int main(int argc, char** argv) {
   for (JsonObjectConst row : document.as<JsonArrayConst>()) {
     Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "");
     const std::string mode = row["mode"] | "sports";
-    if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
+    if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(row["game"]["wifi_setup"] | false, row["game"]["wifi_pin"] | "", row["game"]["app_code"] | ""));
+    else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
     else if (mode == "clock") {
       ticker_ui::ClockPane view;
       view.ready = true; view.date = row["game"]["date"] | ""; view.time = row["game"]["time"] | ""; view.seconds = row["game"]["seconds"] | 0;

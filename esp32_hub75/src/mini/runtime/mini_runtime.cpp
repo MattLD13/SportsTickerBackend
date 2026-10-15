@@ -25,6 +25,7 @@
 #include "../platform/matrix_driver.h"
 #include "../assets/logo_sources.h"
 #include "../rendering/sports_pane.h"
+#include "../rendering/utility_panels.h"
 
 JsonDocument payload;
 uint32_t rotationSignature = 0;

@@ -190,6 +190,7 @@ void applyPendingWifiCredentials(uint32_t now) {
   saveWifiCredentials(wifiSsid, wifiPassword);
   if (blePairingStarted) stopBlePairing();
   wifiPairingMode = false;
+  setupCode = "";
   pairingMode = false;
   WiFi.disconnect();
   wifiStarted = false;

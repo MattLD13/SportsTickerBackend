@@ -6,7 +6,7 @@ import time
 import hashlib
 import secrets
 from uuid import uuid4
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from math import isfinite
@@ -57,6 +57,7 @@ class BackendApplication:
             raise ValueError("pairing_code_ttl_seconds must be positive")
         self._pairing_code_ttl_seconds = pairing_code_ttl_seconds
         self._close_lock = Lock()
+        self._pairing_refresh_lock = Lock()
         self._closed = False
         self.schedule_service = schedule_service or ScheduleService(
             repository,
@@ -86,9 +87,17 @@ class BackendApplication:
         return self.snapshot_store
 
     def list_tickers(self) -> tuple[TickerRecord, ...]:
-        """Return all configured tickers."""
+        """Return tickers seen within thirty days for fleet lists."""
 
-        return self.repository.list_tickers()
+        return self.visible_tickers(self.repository.list_tickers())
+
+    def visible_tickers(self, tickers: Iterable[TickerRecord]) -> tuple[TickerRecord, ...]:
+        """Hide inactive records while retaining their settings and controller ownership."""
+        cutoff = self._clock() - 30 * 24 * 60 * 60
+        return tuple(
+            ticker for ticker in tickers
+            if (ticker.created_at if ticker.device.last_seen_at is None else ticker.device.last_seen_at) > cutoff
+        )
 
     def list_tickers_for_controller(self, token: str) -> tuple[TickerRecord, ...]:
         """Return the fleet visible to one opaque controller token."""
@@ -140,35 +149,44 @@ class BackendApplication:
 
         current = self.heartbeat(identifier, {"metadata": device_metadata})
         self._ensure_display_snapshot(current)
-        pairing = current.pairing
-        requested_pairing_code = str(pairing_code or "").strip()
-        response_pairing_code = None
-        if pairing is None or not pairing.paired:
-            current_code = pairing.pairing_code if pairing is not None else None
-            expires_at = pairing.pairing_code_expires_at if pairing is not None else None
-            if requested_pairing_code and current_code == requested_pairing_code:
-                # Keep the code already exposed by the mini valid while its BLE session completes.
-                self.repository.issue_pairing_code(
-                    identifier,
-                    requested_pairing_code,
-                    expires_at=self._clock() + self._pairing_code_ttl_seconds,
-                )
-                current = self.repository.get_ticker(identifier)
-                if current is None:
-                    raise KeyError(identifier)
-                response_pairing_code = requested_pairing_code
-            else:
-                response_pairing_code = current_code
-            if not response_pairing_code or (
-                requested_pairing_code != response_pairing_code
-                and expires_at is not None
-                and self._clock() >= float(expires_at)
-            ):
-                response_pairing_code = self.issue_pairing_code(identifier)
-                current = self.repository.get_ticker(identifier)
-                if current is None:
-                    raise KeyError(identifier)
+        current, response_pairing_code = self._device_pairing_record(identifier, pairing_code)
         return current, response_pairing_code, created
+
+    def _device_pairing_record(self, identifier: str, pairing_code: str | None = None) -> tuple[TickerRecord, str | None]:
+        """Keep one current app code across registration and snapshot reads."""
+        with self._pairing_refresh_lock:
+            current = self.repository.get_ticker(identifier)
+            if current is None:
+                raise KeyError(identifier)
+            pairing = current.pairing
+            requested_pairing_code = str(pairing_code or "").strip()
+            response_pairing_code = None
+            if pairing is None or not pairing.paired:
+                current_code = pairing.pairing_code if pairing is not None else None
+                expires_at = pairing.pairing_code_expires_at if pairing is not None else None
+                if requested_pairing_code and current_code == requested_pairing_code:
+                    # Keep the code already exposed by the mini valid while its BLE session completes.
+                    self.repository.issue_pairing_code(
+                        identifier,
+                        requested_pairing_code,
+                        expires_at=self._clock() + self._pairing_code_ttl_seconds,
+                    )
+                    current = self.repository.get_ticker(identifier)
+                    if current is None:
+                        raise KeyError(identifier)
+                    response_pairing_code = requested_pairing_code
+                else:
+                    response_pairing_code = current_code
+                if not response_pairing_code or (
+                    requested_pairing_code != response_pairing_code
+                    and expires_at is not None
+                    and self._clock() >= float(expires_at)
+                ):
+                    response_pairing_code = self.issue_pairing_code(identifier)
+                    current = self.repository.get_ticker(identifier)
+                    if current is None:
+                        raise KeyError(identifier)
+            return current, response_pairing_code
 
     def _ensure_display_snapshot(self, ticker: TickerRecord) -> None:
         """Create the first empty snapshot before a device starts polling."""
@@ -436,9 +454,7 @@ class BackendApplication:
         snapshot = self.get_snapshot(identifier)
         if snapshot is None:
             raise KeyError(f"ticker snapshot not found: {identifier}")
-        ticker = self.repository.get_ticker(identifier)
-        if ticker is None:
-            raise KeyError(f"ticker not found: {identifier}")
+        ticker, _ = self._device_pairing_record(identifier)
         effective_settings, schedule = self.schedule_service.resolve(
             identifier,
             ticker.display_settings,
@@ -560,9 +576,7 @@ class BackendApplication:
             }
         )
 
-        raw_last_seen = payload.get("last_seen_at", payload.get("last_seen"))
-        last_seen = self._clock() if raw_last_seen is None else _finite_timestamp(raw_last_seen)
-        device = DeviceMetadata(last_seen_at=last_seen, metadata=metadata)
+        device = DeviceMetadata(last_seen_at=self._clock(), metadata=metadata)
         return self.repository.update_ticker(ticker_id, device=device)
 
     def request_update(self, ticker_id: str, version: str) -> TickerRecord:
@@ -781,18 +795,6 @@ class BackendApplication:
             healthy=not errors,
             error="; ".join(errors) if errors else None,
         )
-
-
-def _finite_timestamp(value: object) -> float:
-    """Convert one heartbeat timestamp and reject non-finite values."""
-
-    try:
-        timestamp = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("last_seen_at must be a finite number") from exc
-    if not isfinite(timestamp):
-        raise ValueError("last_seen_at must be a finite number")
-    return timestamp
 
 
 __all__ = ["BackendApplication"]

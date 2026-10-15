@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/baseball-inning.json",
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "half": {
+      "enum": [
+        "none",
+        "top",
+        "bottom",
+        "break"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "inactive",
+        "paused",
+        "playing",
+        "break"
+      ]
+    }
+  },
+  "required": [
+    "number",
+    "half",
+    "phase"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": {
+        "phase": {
+          "enum": [
+            "inactive",
+            "paused"
+          ]
+        },
+        "half": {
+          "const": "none"
+        },
+        "number": {
+          "const": 0
+        }
+      }
+    },
+    {
+      "properties": {
+        "phase": {
+          "const": "playing"
+        },
+        "half": {
+          "enum": [
+            "top",
+            "bottom"
+          ]
+        },
+        "number": {
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "phase": {
+          "const": "break"
+        },
+        "half": {
+          "const": "break"
+        },
+        "number": {
+          "minimum": 1
+        }
+      }
+    }
+  ]
+}

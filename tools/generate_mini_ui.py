@@ -31,6 +31,9 @@ def header() -> str:
             rows = [sum(int(bit) << (len(row)-1-index) for index, bit in enumerate(row)) for row in glyph] if name == "pane" else glyph
             lines.append("  {" + ", ".join(map(str, rows)) + "},")
         lines.append("};")
+    for name, glyph in (("inningTop", PANE["▲"]), ("inningBottom", PANE["▼"])):
+        rows = [sum(bit << (2-index) for index, bit in enumerate(row)) for row in glyph]
+        lines.append(f"static constexpr uint8_t {name}[5] = {{" + ", ".join(map(str, rows)) + "};")
     lines += ["inline const char* sportFamily(const char* league) {"]
     identifiers = sorted({league.id for league in LEAGUES} | {"football", "baseball", "basketball", "hockey", "soccer"})
     for identifier in identifiers:

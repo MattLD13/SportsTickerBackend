@@ -39,6 +39,7 @@ void updateFromPayload(const String& body) {
   filterGame["home_color"] = true;
   filterGame["status"] = true;
   filterGame["state"] = true;
+  filterGame["baseball_inning"] = true;
   filterGame["away_rank"] = true;
   filterGame["home_rank"] = true;
   JsonObject filterSituation = filterGame["situation"].to<JsonObject>();

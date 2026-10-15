@@ -14,6 +14,8 @@ static constexpr int CONTENT_LEFT = MINI_LOGO_SIZE + 2;
 static constexpr int CONTENT_WIDTH = 64 - 2 * CONTENT_LEFT;
 
 enum class Side { None, Away, Home };
+enum class InningHalf { None, Top, Bottom, Break };
+
 enum class Sport { Other, Football, Baseball, Basketball, Hockey, Soccer };
 
 struct SportsPane {
@@ -22,7 +24,8 @@ struct SportsPane {
   Sport sport = Sport::Other;
   Side active = Side::None, powerPlay = Side::None, emptyNet = Side::None;
   bool live = false, redZone = false, baseballLive = false, shootout = false;
-  int balls = 0, strikes = 0, outs = 0;
+  int balls = 0, strikes = 0, outs = 0, inning = 0;
+  InningHalf inningHalf = InningHalf::None;
   bool first = false, second = false, third = false;
   int awayCards = 0, homeCards = 0;
   // Values are zero for pending, one for a goal, and two for a miss.
@@ -141,9 +144,22 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
                            view.emptyNet != Side::None || view.awayCards || view.homeCards;
   const int headerSpan = view.baseballLive ? 32 : headerSides ? 36 : 62;
   const int headerLeft = (64 - headerSpan) / 2;
-  const bool fullFont = !view.baseballLive && textWidth(view.status, 4) <= headerSpan;
-  centered(canvas, view.status, headerLeft, headerSpan, 1, STATUS_TEXT,
-           fullFont ? 4 : 3, fullFont ? 6 : 5, fullFont || textWidth(view.status) <= headerSpan ? 1 : 0, fullFont);
+  if (view.baseballLive && view.inning > 0) {
+    const std::string number = std::to_string(view.inning);
+    const int width = 4 + textWidth(number);
+    const int x = (64 - width + 1) / 2;
+    if (view.inningHalf == InningHalf::Top || view.inningHalf == InningHalf::Bottom) {
+      const uint8_t* rows = view.inningHalf == InningHalf::Top ? inningTop : inningBottom;
+      for (int row = 0; row < 5; ++row) for (int column = 0; column < 3; ++column) {
+        if (rows[row] & (1 << (2 - column))) canvas.pixel(x + column, row + 1, {255, 220, 105});
+      }
+    } else text(canvas, "-", x, 1, STATUS_TEXT);
+    text(canvas, number, x + 4, 1, STATUS_TEXT);
+  } else {
+    const bool fullFont = textWidth(view.status, 4) <= headerSpan;
+    centered(canvas, view.status, headerLeft, headerSpan, 1, STATUS_TEXT,
+             fullFont ? 4 : 3, fullFont ? 6 : 5, fullFont || textWidth(view.status) <= headerSpan ? 1 : 0, fullFont);
+  }
 
 
   const int scoreSpan = view.shootout ? 20 : CONTENT_WIDTH;

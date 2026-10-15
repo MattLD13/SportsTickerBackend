@@ -1,6 +1,5 @@
 """Stadium-style game card renderer (Python port of ticker_playground.html)."""
 
-import re
 
 from PIL import Image, ImageDraw
 
@@ -18,27 +17,6 @@ LOGO_SZ = 22    # logo square size in pixels
 LOGO_PAD = 2    # gap between logo edge and center content zone
 ZONE = LOGO_SZ + LOGO_PAD  # space each side takes = 24px
 FOOTBALL_RANK_COLOR = (255, 220, 80)
-
-def inning_half(status, game=None):
-    """Which half of the inning it is: 'top', 'bot', or 'break'.
-
-    ESPN sends "Top 5th", "Bot 5th", "Mid 5th" and "End 5th". An earlier test
-    looked for "T " in the upper-cased status, which matches "BOT 5TH", so every
-    bottom half read as a top half and the count sat on the wrong club.
-
-    Mid and End are between halves. Neither arrow is true there, so they get
-    their own answer rather than falling through to one.
-    """
-    up = str(status or '').upper()
-    if isinstance(game, dict) and 'isTop' in game:
-        return 'top' if game['isTop'] else 'bot'
-    # "^5TH" and "V5TH" are the shortened forms the compact strip uses.
-    if 'TOP' in up or up.startswith('^'):
-        return 'top'
-    if 'BOT' in up or up.startswith('V'):
-        return 'bot'
-    return 'break'
-
 
 # ── Low-level drawing helpers ─────────────────────────────────────────────────
 
@@ -221,9 +199,8 @@ def calc_card_width(g):
     score_w = a_score_w + pf_w('-', sc=2) + h_score_w
     center = score_w
 
-    _susp_kw = ('delay', 'suspended', 'postponed', 'canceled', 'ppd')
-    is_delay = any(k in status.lower() for k in _susp_kw)
-    if is_mlb and is_active and not is_delay:
+    show_inning = (g.get('baseball_inning') or {}).get('phase') in {'playing', 'break'}
+    if is_mlb and show_inning:
         center = max(center, score_w + 2)
     else:
         center = max(center, pf_w(status))
@@ -301,11 +278,8 @@ class StadiumRenderer:
         h_score = str(g['hs'])
         status = g['status']
 
-        # Treat delay/suspension like a non-active game for header rendering:
-        # show the status text ("Rain Delay", "Suspended", etc.) instead of
-        # the inning arrow/BSO that would render as a lone '▼' with no number.
-        _SUSP_KW  = ('delay', 'suspended', 'postponed', 'canceled', 'ppd')
-        is_delay  = any(k in status.lower() for k in _SUSP_KW)
+        inning = g.get('baseball_inning') or {}
+        show_inning = inning.get('phase') in {'playing', 'break'}
 
         def _side_from_value(val):
             if val is None:
@@ -338,7 +312,7 @@ class StadiumRenderer:
         fi(d, 0, 7, CW, 1, *HEADER_RULE)
 
         st = status[:12]
-        if not (is_mlb and is_active and not is_delay):
+        if not (is_mlb and show_inning):
             self._draw_header_text(img, CW, st)
             fi(d, 0, 7, CW, 1, *HEADER_RULE)
 
@@ -382,7 +356,7 @@ class StadiumRenderer:
         center_x = (cL + cR) / 2.0
 
         # ── Score ─────────────────────────────────────────────────────────────
-        if not (is_mlb and is_active and not is_delay):
+        if not (is_mlb and show_inning):
             a_sw = pf_w(a_score, sc=2)
             h_sw = pf_w(h_score, sc=2)
             dash_sw = pf_w('-', sc=2)
@@ -444,7 +418,7 @@ class StadiumRenderer:
             pf_text(d, round_label, cCX - pf_w(round_label) // 2, 23, 200, 210, 225)
 
         # ══ MLB ══════════════════════════════════════════════════════════════
-        if is_mlb and is_active and not is_delay:
+        if is_mlb and show_inning:
             balls   = int(sit.get('balls',   g.get('balls',   0)) or 0)
             strikes = int(sit.get('strikes', g.get('strikes', 0)) or 0)
             outs    = int(sit.get('outs',    g.get('outs',    0)) or 0)
@@ -452,15 +426,14 @@ class StadiumRenderer:
             on2     = bool(sit.get('onSecond', g.get('on2', False)))
             on3     = bool(sit.get('onThird',  g.get('on3', False)))
 
-            half = inning_half(status, g)
+            half = inning.get('half', 'none')
             is_top = half == 'top'
-            is_bot = half == 'bot'
+            is_bot = half == 'bottom'
 
             fi(d, 0, 0, CW, 8, 0, 0, 0)
             fi(d, 0, 7, CW, 1, *HEADER_RULE)
 
-            inn_match = re.search(r'\d+', status)
-            inn_num = inn_match.group() if inn_match else ''
+            inn_num = str(inning['number']) if inning.get('number') else ''
             # Between halves there is no half to point at, so neither arrow is
             # true. A dash says "inning break" instead of guessing a direction.
             arrow_glyph = '▲' if is_top else ('▼' if is_bot else '-')
@@ -476,16 +449,13 @@ class StadiumRenderer:
             b_glyph, s_glyph = str(balls), str(strikes)
             bs_w = pf_w(b_glyph) + pf_w('-') + pf_w(s_glyph)
             batting_side = _side_from_value(sit.get('activeTeam', ''))
-            if batting_side is None:
-                # The visitors bat in the top. Between halves the home side is
-                # up next, so it takes the count.
-                batting_side = 'away' if is_top else 'home'
-            bs_hdr_x = (h_logo_x + LOGO_SZ // 2 - bs_w // 2) if batting_side == 'home' \
+            if batting_side is not None:
+                bs_hdr_x = (h_logo_x + LOGO_SZ // 2 - bs_w // 2) if batting_side == 'home' \
                        else (a_logo_x + LOGO_SZ // 2 - bs_w // 2)
-            bsx = bs_hdr_x
-            bsx += pf_text(d, b_glyph, bsx, 2,  60, 200,  60)
-            bsx += pf_text(d, '-',     bsx, 2, 160, 160, 160)
-            pf_text(d,     s_glyph, bsx, 2, 255, 140,  40)
+                bsx = bs_hdr_x
+                bsx += pf_text(d, b_glyph, bsx, 2,  60, 200,  60)
+                bsx += pf_text(d, '-',     bsx, 2, 160, 160, 160)
+                pf_text(d,     s_glyph, bsx, 2, 255, 140,  40)
 
             a_sw   = pf_w(a_score, sc=2)
             h_sw   = pf_w(h_score, sc=2)

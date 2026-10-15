@@ -1291,7 +1291,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedSSID = homeSSID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedCode.range(of: "^[0-9]{6}$", options: .regularExpression) != nil else {
-            wifiSetupError = "Enter the six-digit setup code shown on the ticker."
+            wifiSetupError = "Enter the six-digit WIFI PIN shown on the ticker."
             return
         }
         guard !normalizedSSID.isEmpty, !homePassword.isEmpty else {
@@ -1322,7 +1322,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     )
                 } else {
                     self.isWifiSetupInProgress = false
-                    self.wifiSetupStatus = "Wi-Fi saved. The ticker is rebooting now."
+                    self.wifiSetupStatus = "Wi-Fi saved. Wait for APP PAIR, then enter that code in Add ticker."
                 }
             }
         } onFailure: { message in
@@ -4252,10 +4252,10 @@ struct PairingView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Instructions")) { Text("1. Ensure your Ticker is powered on."); Text("2. If unpaired, it will display a 6-digit code."); Text("3. Enter that code below.") }
+                Section(header: Text("Instructions")) { Text("1. Ensure your Ticker is powered on."); Text("2. Wait for the app pairing code. On Mini, look for APP PAIR."); Text("3. Enter that code below. Use WIFI PIN only in Wi-Fi setup.") }
                 Section(header: Text("Device Info")) {
                     TextField("Friendly Name", text: $vm.pairName)
-                    TextField("6-Digit Code", text: $vm.pairCode).keyboardType(.numberPad)
+                    TextField("6-Digit App Code", text: $vm.pairCode).keyboardType(.numberPad)
                     Toggle("Share teams and Spotify with my other tickers", isOn: $shareWithApp)
                 }
                 Section(header: Text("Ticker Wi-Fi")) {

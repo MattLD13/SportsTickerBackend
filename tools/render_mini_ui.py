@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.providers.logo_overrides import mini_logo_sources
+from sports_ticker.providers.sports_display import baseball_inning_display, sport_family
 from tools.render_rewrite import normalize_snapshot, render_snapshot
 
 
@@ -33,7 +34,7 @@ def cases(snapshot: dict) -> list[dict]:
     hockey = deepcopy(nfl); hockey["name"] = "hockey-power-play"
     hockey["game"].update(sport="nhl", away_abbr="NYR", home_abbr="BOS", away_score="2", home_score="1", status="P3 03:21",
                           away_logo="https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", home_logo="https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
-                          situation={"powerPlay":True, "powerPlayTeam":"BOS", "activeTeam":"BOS", "manpower":{"scrollLabel":"0:45 5v4"}})
+                          situation={"powerPlay":True, "powerPlayTeam":"BOS", "activeTeam":"BOS", "manpower":{"scrollLabel":"0:45"}})
     result.append(hockey)
     shootout = deepcopy(hockey); shootout["name"] = "hockey-shootout"
     shootout["game"].update(status="S/O", situation={"shootout":{"state":"active","roundLabel":"R4-6", "displayRounds":[{"away":"goal","home":"miss"},{"away":"miss","home":"goal"},{"away":"pending","home":"pending"}]}})
@@ -48,6 +49,15 @@ def cases(snapshot: dict) -> list[dict]:
     period_end = deepcopy(hoops); period_end["name"] = "basketball-period-end"
     period_end["game"].update(status="Q1 END", away_score="22", home_score="20")
     result.append(period_end)
+    baseball = next(row for row in result if row["name"] == "mlb-live")
+    for name, status in (("baseball-bottom-extra", "Bot 12th"), ("baseball-break", "Mid 7th"), ("baseball-delay", "Rain Delay")):
+        example = deepcopy(baseball)
+        example["name"] = name
+        example["game"]["status"] = status
+        example["game"]["situation"]["activeTeam"] = example["game"]["home_abbr"] if name == "baseball-bottom-extra" else ""
+        result.append(example)
+    result += [{"name":"wifi-pin", "mode":"pairing", "game":{"wifi_setup":True,"wifi_pin":"123456","app_code":"654321"}},
+               {"name":"app-pair", "mode":"pairing", "game":{"wifi_setup":False,"wifi_pin":"123456","app_code":"654321"}}]
     for row in result:
         for side in ("away", "home"):
             sources = mini_logo_sources(row["game"], side)
@@ -56,6 +66,9 @@ def cases(snapshot: dict) -> list[dict]:
     stock_game = stock[0]["data"] if stock else {"type":"stock_ticker", "sport":"stock", "home_abbr":"AAPL", "home_score":"212.48", "away_score":"+1.25%", "situation":{"change":"2.62"}}
     result.append({"name":"stock-example", "mode":"stock", "game":stock_game})
     result.append({"name":"clock", "mode":"clock", "game":{"date":"THU OCT 15", "time":"12:34:27", "seconds":27}})
+    for row in result:
+        if sport_family(row["game"].get("sport")) == "baseball":
+            row["game"]["baseball_inning"] = baseball_inning_display(row["game"])
     return result
 
 
@@ -78,9 +91,15 @@ def prepare(snapshot: Path, output: Path, native_root: str) -> list[dict]:
                 ref = service.reference(*mini_logo_sources(row["game"], side))
                 row[side + "_sprite"] = f'{native_root}/assets/{ref["asset_id"]}.mts' if ref["state"] == "ready" else ""
             mode = row.get("mode", "sports")
-            envelope = {"api_version":"v2", "content":{mode:[{"id":row["name"], "family":mode, "kind":"scoreboard", "data":row["game"]}]}}
-            image = render_snapshot(normalize_snapshot(envelope,mode), mode, item_id=row["name"],
-                                    now=datetime.fromisoformat("2026-10-15T12:34:27+00:00"), asset_directory=output / "main-assets")
+            if mode == "pairing":
+                from ticker_core.features.utility import UtilityRenderer
+                from ticker_core.rendering import load_default_font_set
+                from ticker_core.context import RenderContext
+                image = UtilityRenderer(load_default_font_set()).pairing(RenderContext(datetime.fromisoformat("2026-10-15T12:34:27+00:00")), row["game"]["app_code"])
+            else:
+                envelope = {"api_version":"v2", "content":{mode:[{"id":row["name"], "family":mode, "kind":"scoreboard", "data":row["game"]}]}}
+                image = render_snapshot(normalize_snapshot(envelope,mode), mode, item_id=row["name"],
+                                        now=datetime.fromisoformat("2026-10-15T12:34:27+00:00"), asset_directory=output / "main-assets")
             image.save(output / (row["name"] + "-main.png"))
     finally:
         service.close()

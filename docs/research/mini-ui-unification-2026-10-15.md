@@ -6,7 +6,7 @@ Date: 2026-10-15
 
 Use the main ticker scrolling game pane as the Mini reference.
 Adapt fonts, spacing, and logo size to keep the 64x32 panel readable.
-The local firmware version is `mini-1.3.1`.
+The local firmware version is `mini-1.3.2`.
 
 ## Owners
 
@@ -33,7 +33,7 @@ Team marks use 16x16 pixels and share one vertical center in the game body.
 Scores use three sizes. Each size keeps clear bounds between the marks.
 Long center labels use two rows with normal letter spacing.
 Football uses the main pane possession symbol, green down text, and red-zone border.
-Baseball shows the backend inning label, batting-side count, occupied bases, and rectangular out indicators.
+Baseball shows the shared inning glyph, batting-side count, occupied bases, and rectangular out indicators.
 Hockey shows explicit power-play or empty-net ownership, manpower text, and the backend shootout window.
 Soccer shows red-card counts above the team mark.
 Stock mode uses the main ticker white symbol and gain or loss colors.
@@ -63,8 +63,8 @@ Generated PNG files stay outside Git:
 
 The firmware build, Python compilation, Ruff, shared drawing export check, and native frame generation pass.
 The build uses 73,912 bytes of static RAM and 1,230,089 bytes of application flash.
-This UI change has no new test suite run yet.
-The physical Mini remains on the prior USB firmware until this UI build completes hardware review.
+The full suite passes 586 tests. The critical suite passes 256 tests.
+The physical Mini now runs `mini-1.3.2` through USB. Serial output confirms its boot.
 Its live network validation still needs a reachable 2.4 GHz network.
 
 ## Change notes

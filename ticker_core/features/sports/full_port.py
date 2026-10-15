@@ -463,19 +463,11 @@ class SportsMixin:
 
         # ── MLB: special full-width layout matching HTML L1 getBgText() ──────
         if is_mlb:
-            # Parse inning from status string  e.g. "Top 7th" / "Bottom 3rd" / "Mid 8th"
-            status_raw = str(game.get('status', '')).upper()
-            is_top_inn = 'TOP' in status_raw
-            is_bot_inn = 'BOT' in status_raw or 'BOTTOM' in status_raw
-            is_mid_inn = not is_top_inn and not is_bot_inn  # MID / END
-
-            # Extract inning number
-            inn_num = ''
-            for word in status_raw.split():
-                clean = word.replace('TH','').replace('ST','').replace('ND','').replace('RD','')
-                if clean.isdigit():
-                    inn_num = clean
-                    break
+            inning = game.get('baseball_inning') or {}
+            is_top_inn = inning.get('half') == 'top'
+            is_bot_inn = inning.get('half') == 'bottom'
+            is_mid_inn = not is_top_inn and not is_bot_inn
+            inn_num = str(inning['number']) if inning.get('number') else ''
 
             def _ordinal(n):
                 n = int(n)
@@ -759,16 +751,9 @@ class SportsMixin:
             if not pitch_info_line and era_txt:
                 pitch_info_line = f"ERA:{era_txt}"
 
-            # Prefer backend possession marker; fall back to inning state.
-            # home_ab is now the visual-left (actual away) team after the home/away swap.
+            # Use the explicit batting ownership from the backend.
             home_batting = bool(home_ab and poss_ab and poss_ab == home_ab)
             away_batting = bool(away_ab and poss_ab and poss_ab == away_ab)
-            if not home_batting and not away_batting:
-                home_batting = is_top_inn and not is_mid_inn
-                away_batting = is_bot_inn and not is_mid_inn
-            if home_batting and away_batting:
-                home_batting = is_top_inn and not is_mid_inn
-                away_batting = is_bot_inn and not is_mid_inn
 
             info_lane_spread = 92
             info_left_cx  = W // 2 - info_lane_spread

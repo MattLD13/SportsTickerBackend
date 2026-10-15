@@ -317,6 +317,8 @@ static constexpr uint8_t hybrid[95][6] = {
   {0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0},
 };
+static constexpr uint8_t inningTop[5] = {2, 7, 7, 0, 0};
+static constexpr uint8_t inningBottom[5] = {0, 0, 7, 7, 2};
 inline const char* sportFamily(const char* league) {
   if (strcmp(league, "baseball") == 0) return "baseball";
   if (strcmp(league, "basketball") == 0) return "basketball";

@@ -65,12 +65,29 @@
             "pitcher_pitches": "82",
             "last_pitch_speed": 96,
             "last_pitch_type": "4S Fastball"
+          },
+          "baseball_inning": {
+            "number": 7,
+            "half": "top",
+            "phase": "playing"
           }
         }
       }
     ]
   },
-  "events": {"alerts": [], "news": []},
-  "health": {"provider": "scheduler", "healthy": true, "error": null},
-  "meta": {"pairing": {"paired": true, "code": null}}
+  "events": {
+    "alerts": [],
+    "news": []
+  },
+  "health": {
+    "provider": "scheduler",
+    "healthy": true,
+    "error": null
+  },
+  "meta": {
+    "pairing": {
+      "paired": true,
+      "code": null
+    }
+  }
 }

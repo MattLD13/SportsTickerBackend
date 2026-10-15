@@ -138,9 +138,8 @@ def card_width(game: Mapping[str, Any]) -> int:
     sport = normal["sport"].lower()
     scores = pixel_width(normal["as"], 2) + pixel_width("-", 2) + pixel_width(normal["hs"], 2)
     active = normal["state"] == "in"
-    baseball = "baseball" in sport or "mlb" in sport
-    delayed = any(word in normal["status"].lower() for word in ("delay", "suspended", "postponed", "canceled", "ppd"))
-    center = max(scores + 2, 0) if baseball and active and not delayed else max(scores, pixel_width(normal["status"][:12]))
+    show_inning = (normal.get("baseball_inning") or {}).get("phase") in {"playing", "break"}
+    center = max(scores + 2, 0) if show_inning else max(scores, pixel_width(normal["status"][:12]))
     if normal["state"] == "in" and ("football" in sport or "nfl" in sport):
         center = max(center, pixel_width(normal["sit"].get("downDist", normal.get("dd", ""))))
     if normal["sit"].get("shootout") and ("hockey" in sport or "soccer" in sport):

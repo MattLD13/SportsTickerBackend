@@ -76,7 +76,8 @@ python tools/generate_mini_ui.py
 The worker prepares 16x16 RAM marks from the validated 18x18 wire sprites.
 The layout centers each mark in the game body. Scores fit between the logo bounds.
 Long down-and-distance text uses two center rows. It does not cover either logo.
-Baseball keeps the backend status text and explicit `activeTeam` ownership. The Mini does not infer inning state from a status label.
+Baseball reads `baseball_inning` for its number, half, and phase. It draws the shared top or bottom inning glyph.
+The backend owns batting state through `activeTeam`. The Mini does not parse status text to infer inning state.
 Hockey reads `powerPlayTeam`, `emptyNetSide`, `manpower.scrollLabel`, and the backend shootout window.
 `utility_panels.h` owns the compact stock and clock layouts.
 Clock mode shows seconds and a one-pixel progress rail. Sports clocks continue to show backend values.

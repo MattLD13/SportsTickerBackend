@@ -58,7 +58,12 @@ inline SportsPane sportsPane(JsonObjectConst game) {
     view.homeRank = label(game["home_rank"], "", 2);
   }
   if (view.sport == Sport::Baseball && view.live) {
-    view.baseballLive = view.active != Side::None;
+    JsonObjectConst inning = game["baseball_inning"].as<JsonObjectConst>();
+    const std::string phase = label(inning["phase"]);
+    view.baseballLive = phase == "PLAYING" || phase == "BREAK";
+    view.inning = inning["number"] | 0;
+    const std::string half = label(inning["half"]);
+    view.inningHalf = half == "TOP" ? InningHalf::Top : half == "BOTTOM" ? InningHalf::Bottom : half == "BREAK" ? InningHalf::Break : InningHalf::None;
     view.balls = std::max(0, std::min(3, situation["balls"] | 0));
     view.strikes = std::max(0, std::min(2, situation["strikes"] | 0));
     view.outs = std::max(0, std::min(3, situation["outs"] | 0));
