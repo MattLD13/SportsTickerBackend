@@ -51,7 +51,11 @@
               "type": "boolean"
             },
             "data": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "away_logo_asset": {"$ref": "mini-sprite-asset.json"},
+                "home_logo_asset": {"$ref": "mini-sprite-asset.json"}
+              }
             }
           },
           "required": [

@@ -11,7 +11,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-from flask import Flask, jsonify, redirect, request, send_from_directory
+from flask import Flask, Response, jsonify, redirect, request, send_from_directory
 
 from sports_ticker.application.composition import BackendApplication
 from sports_ticker.domain import DisplaySettings
@@ -67,6 +67,21 @@ def register_routes(
     @app.errorhandler(405)
     def handle_method_not_allowed(error):
         return _error_response("method not allowed", 405, "method_not_allowed")
+
+    @app.get("/api/v2/assets/mini-sports/<asset_id>.mts")
+    def mini_sports_sprite(asset_id: str):
+        """Serve validated public team art under an immutable content identity."""
+        service = application.mini_sprites
+        sprite = None if service is None else service.read(asset_id)
+        if sprite is None:
+            raise ApiError("sprite is unavailable", 404, "not_found")
+        body, checksum = sprite
+        response = Response(body, mimetype="application/vnd.sportsticker.rgb565-mask")
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        response.headers["X-Content-SHA256"] = checksum
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.set_etag(checksum)
+        return response.make_conditional(request)
 
     @app.get("/firmware/<path:filename>")
     def firmware_binary(filename: str):

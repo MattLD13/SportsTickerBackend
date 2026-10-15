@@ -40,6 +40,7 @@ class BackendApplication:
         schedule_service: ScheduleService | None = None,
         clock: Callable[[], float] = time.time,
         pairing_code_ttl_seconds: float = 600.0,
+        mini_sprites: object | None = None,
     ) -> None:
         """Capture infrastructure through dependency injection."""
 
@@ -49,6 +50,7 @@ class BackendApplication:
         self.runtime = runtime
         self.spotify_service = spotify_service
         self.catalog = catalog
+        self.mini_sprites = mini_sprites
         self.weather_location_resolver = weather_location_resolver
         self._clock = clock
         if pairing_code_ttl_seconds <= 0:
@@ -468,6 +470,18 @@ class BackendApplication:
             settings,
             allowed_modes=ticker.profile.capabilities.modes,
         )
+        if (
+            self.mini_sprites is not None and ticker.profile.product_family == "mini"
+            and ticker.device.metadata.get("mini_sprite_protocol") == 1
+        ):
+            from sports_ticker.providers.logo_overrides import mini_logo_sources
+
+            for item in data["content"].get("sports", ()):
+                if not item.get("is_shown", True):
+                    continue
+                game = item["data"]
+                for side in ("away", "home"):
+                    game[f"{side}_logo_asset"] = self.mini_sprites.reference(*mini_logo_sources(game, side))
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),
@@ -720,7 +734,7 @@ class BackendApplication:
             self._closed = True
 
         failures: list[Exception] = []
-        for component in (self.runtime, self.scheduler):
+        for component in (self.runtime, self.scheduler, self.mini_sprites):
             if component is None:
                 continue
             stop = getattr(component, "stop", None)

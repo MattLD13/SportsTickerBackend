@@ -13,6 +13,7 @@ from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.fleet import TickerRepository
 from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.providers import Provider, WeatherLocationResolver
+from sports_ticker.assets.mini_service import MiniSpriteService
 
 
 def create_backend_application(
@@ -24,6 +25,7 @@ def create_backend_application(
     firmware_manifest: FirmwareManifest | dict[str, object] | None = None,
     firmware_directory: str | Path | None = None,
     clock: Callable[[], float] = time.time,
+    mini_sprites: MiniSpriteService | None = None,
 ) -> Flask:
     """Build the rewrite Flask app without discovery, configuration, or startup side effects."""
 
@@ -40,6 +42,7 @@ def create_backend_application(
         spotify_service=spotify_service,
         weather_location_resolver=WeatherLocationResolver().resolve,
         clock=clock,
+        mini_sprites=mini_sprites or MiniSpriteService(Path(database_path).parent / "mini_sprites", clock=clock),
     )
     event_service = application.event_service
 

@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from flask import Flask
 
 from sports_ticker.api.app import create_app
+from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.application import BackendApplication, BackendRuntime, RefreshScheduler, RefreshService
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.domain import DisplaySettings
@@ -89,6 +90,7 @@ def create_production_application(
         spotify_service=spotify,
         catalog=catalog,
         weather_location_resolver=WeatherLocationResolver().resolve,
+        mini_sprites=MiniSpriteService(Path(os.environ.get("TICKER_MINI_ASSET_CACHE", path.parent / "mini_sprites"))),
     )
     runtime = BackendRuntime(
         scheduler,

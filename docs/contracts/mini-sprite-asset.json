@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mini sports sprite reference",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {"state": {"enum": ["pending", "unavailable"]}},
+      "required": ["state"], "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "state": {"const": "ready"},
+        "asset_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "url": {"type": "string", "pattern": "^/api/v2/assets/mini-sports/[0-9a-f]{64}\\.mts$"},
+        "length": {"const": 705}, "width": {"const": 18}, "height": {"const": 18},
+        "format": {"const": "rgb565-le-mask-lsb"}, "pipeline_version": {"const": 1},
+        "refreshing": {"type": "boolean"}
+      },
+      "required": ["state", "asset_id", "sha256", "url", "length", "width", "height", "format", "pipeline_version", "refreshing"],
+      "additionalProperties": false
+    }
+  ]
+}

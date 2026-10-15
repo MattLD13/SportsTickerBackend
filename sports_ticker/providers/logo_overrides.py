@@ -55,4 +55,22 @@ def corrected_logo(league: str, abbreviation: str, source_url: str | None) -> st
     return LOGO_OVERRIDES.get(key, source_url)
 
 
-__all__ = ["LOGO_OVERRIDES", "corrected_logo"]
+def mini_logo_sources(game, side: str) -> tuple[str, ...]:
+    """Resolve approved source candidates for the Mini in the backend."""
+    league = str(game.get("league") or game.get("sport") or "").strip().lower()
+    league = {"football": "nfl", "hockey": "nhl", "baseball": "mlb", "basketball": "nba",
+              "march_madness": "ncaa", "march madness": "ncaa"}.get(league, league)
+    abbreviation = str(game.get(f"{side}_abbr") or "").strip()
+    source = corrected_logo(str(game.get("sport") or league), abbreviation, game.get(f"{side}_logo"))
+    code = abbreviation.lower()
+    if league == "nhl":
+        code = {"sjs": "sj", "njd": "nj", "tbl": "tb", "lak": "la", "vgk": "vgs", "veg": "vgs", "was": "wsh", "uta": "utah"}.get(code, code)
+    elif league == "nfl" and code == "was":
+        code = "wsh"
+    if league in {"ncf_fbs", "ncf_fcs", "college football", "college basketball"}:
+        league = "ncaa"
+    fallback = f"https://a.espncdn.com/i/teamlogos/{league}/500/{code}.png" if league and code else ""
+    return tuple(dict.fromkeys(url for url in (source, fallback) if isinstance(url, str) and url.startswith("https://")))
+
+
+__all__ = ["LOGO_OVERRIDES", "corrected_logo", "mini_logo_sources"]
