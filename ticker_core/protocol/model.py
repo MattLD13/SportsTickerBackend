@@ -57,17 +57,23 @@ def _freeze(value: Any, path: str = "payload") -> FrozenJson:
 
 
 def _mapping(value: Any, path: str) -> Mapping[str, FrozenJson]:
-    if not isinstance(value, Mapping):
-        raise PayloadValidationError(f"{path} must be an object")
+    _object(value, path)
     frozen = _freeze(value, path)
     assert isinstance(frozen, Mapping)
     return frozen
 
 
+def _object(value: Any, path: str) -> Mapping[str, FrozenJson]:
+    """Check one object inside a tree that the boundary already froze."""
+    if not isinstance(value, Mapping):
+        raise PayloadValidationError(f"{path} must be an object")
+    return value
+
+
 def _items(value: Any, path: str) -> tuple[Mapping[str, FrozenJson], ...]:
     if not isinstance(value, (list, tuple)):
         raise PayloadValidationError(f"{path} must be a list")
-    return tuple(_mapping(item, f"{path}[{index}]") for index, item in enumerate(value))
+    return tuple(_object(item, f"{path}[{index}]") for index, item in enumerate(value))
 
 
 def _string(value: Any, path: str, *, default: str | None = None) -> str | None:
@@ -106,9 +112,15 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     """Return a stable hash for a JSON-compatible payload."""
 
     frozen = _mapping(payload, "payload")
+    return _json_payload_hash(_thaw(frozen))
+
+
+def _json_payload_hash(payload: Any) -> str:
+    """Hash detached JSON values after the boundary validates their types."""
+
     try:
         encoded = json.dumps(
-            _thaw(frozen), allow_nan=False, ensure_ascii=False,
+            payload, allow_nan=False, ensure_ascii=False,
             separators=(",", ":"), sort_keys=True,
         ).encode("utf-8")
     except (TypeError, ValueError) as error:
@@ -119,12 +131,12 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
 def _display_payload_hash(payload: Mapping[str, Any]) -> str:
     """Hash display data while excluding transport-only snapshot fields."""
 
-    normalized = _thaw(_mapping(payload, "payload"))
+    normalized = _thaw(payload)
     snapshot = normalized.get("snapshot")
     if isinstance(snapshot, dict):
         snapshot.pop("observed_at", None)
         snapshot.pop("revision", None)
-    return canonical_payload_hash(normalized)
+    return _json_payload_hash(normalized)
 
 
 def _render_data(family: str, kind: str, data: Mapping[str, FrozenJson]) -> Mapping[str, FrozenJson]:
@@ -140,7 +152,7 @@ def _render_data(family: str, kind: str, data: Mapping[str, FrozenJson]) -> Mapp
     rendered["type"] = _renderer_type(family, kind)
     if not str(rendered.get("sport", "")).strip():
         rendered["sport"] = _renderer_sport(family, kind, rendered)
-    return _mapping(rendered, "content.data")
+    return MappingProxyType(rendered)
 
 
 def _renderer_type(family: str, kind: str) -> str:
@@ -188,7 +200,10 @@ class ContentItem(Mapping[str, FrozenJson]):
 
     @classmethod
     def from_payload(cls, payload: Any, path: str) -> "ContentItem":
-        envelope = _mapping(payload, path)
+        return cls._from_frozen(_mapping(payload, path), path)
+
+    @classmethod
+    def _from_frozen(cls, envelope: Mapping[str, FrozenJson], path: str) -> "ContentItem":
         identifier = _string(envelope.get("id"), f"{path}.id")
         family = _string(envelope.get("family"), f"{path}.family")
         kind = _string(envelope.get("kind"), f"{path}.kind")
@@ -199,7 +214,7 @@ class ContentItem(Mapping[str, FrozenJson]):
             family=family,
             kind=kind,
             is_shown=_boolean(envelope.get("is_shown"), f"{path}.is_shown", True),
-            data=_render_data(family, kind, _mapping(envelope.get("data", {}), f"{path}.data")),
+            data=_render_data(family, kind, _object(envelope.get("data", {}), f"{path}.data")),
         )
 
 
@@ -222,16 +237,19 @@ class OverlayItem(Mapping[str, FrozenJson]):
 
     @classmethod
     def from_payload(cls, payload: Any, path: str) -> "OverlayItem":
-        envelope = _mapping(payload, path)
+        return cls._from_frozen(_mapping(payload, path), path)
+
+    @classmethod
+    def _from_frozen(cls, envelope: Mapping[str, FrozenJson], path: str) -> "OverlayItem":
         identifier = _string(envelope.get("event_id"), f"{path}.event_id")
         kind = _string(envelope.get("kind"), f"{path}.kind")
         if not identifier or not kind:
             raise PayloadValidationError(f"{path} needs non-empty event_id and kind")
-        event = dict(_mapping(envelope.get("payload", {}), f"{path}.payload"))
+        event = dict(_object(envelope.get("payload", {}), f"{path}.payload"))
         event.setdefault("id", identifier)
         event.setdefault("event_id", identifier)
         event.setdefault("kind", kind)
-        return cls(identifier, kind, _mapping(event, f"{path}.payload"))
+        return cls(identifier, kind, MappingProxyType(event))
 
 
 Alert = OverlayItem
@@ -252,7 +270,10 @@ class TickerSettings:
 
     @classmethod
     def from_payload(cls, payload: Any) -> "TickerSettings":
-        data = _mapping(payload, "settings")
+        return cls._from_frozen(_mapping(payload, "settings"))
+
+    @classmethod
+    def _from_frozen(cls, data: Mapping[str, FrozenJson]) -> "TickerSettings":
         mode = _string(data.get("mode"), "settings.mode", default="sports")
         presentation = _string(data.get("sports_presentation"), "settings.sports_presentation", default="rotation")
         pinned = _string(data.get("pinned_content_id"), "settings.pinned_content_id", default="")
@@ -334,45 +355,58 @@ class TickerResponse:
 
     @classmethod
     def from_payload(cls, payload: Any) -> "TickerResponse":
-        data = _mapping(payload, "response")
+        return cls._from_frozen(_mapping(payload, "response"))
+
+    def apply_projection_delta(
+        self, changes: Mapping[str, Any], removed: tuple[str, ...]
+    ) -> "TickerResponse":
+        """Validate replacements once and retain unchanged immutable projection sections."""
+        data = dict(self.data)
+        data.update(_mapping(changes, "response"))
+        for key in removed:
+            data.pop(key, None)
+        return self._from_frozen(MappingProxyType(data))
+
+    @classmethod
+    def _from_frozen(cls, data: Mapping[str, FrozenJson]) -> "TickerResponse":
         if data.get("api_version") != "v2":
             raise PayloadValidationError("response.api_version must be v2")
-        snapshot = _mapping(data.get("snapshot"), "response.snapshot")
+        snapshot = _object(data.get("snapshot"), "response.snapshot")
         ticker_id = _string(snapshot.get("ticker_id"), "response.snapshot.ticker_id")
         if not ticker_id or not ticker_id.strip():
             raise PayloadValidationError("response.snapshot.ticker_id must be a non-empty string")
-        settings = TickerSettings.from_payload(data.get("settings", {}))
-        content_root = _mapping(data.get("content", {}), "response.content")
+        settings = TickerSettings._from_frozen(_object(data.get("settings", MappingProxyType({})), "settings"))
+        content_root = _object(data.get("content", {}), "response.content")
         content: list[ContentItem] = []
         for family in sorted(content_root, key=lambda value: (_CONTENT_FAMILY_ORDER.get(value, 99), value)):
             records = content_root[family]
             if not isinstance(records, tuple):
                 raise PayloadValidationError(f"response.content.{family} must be a list")
             for index, item in enumerate(_items(records, f"response.content.{family}")):
-                parsed = ContentItem.from_payload(item, f"response.content.{family}[{index}]")
+                parsed = ContentItem._from_frozen(item, f"response.content.{family}[{index}]")
                 if parsed.family != family:
                     raise PayloadValidationError(f"response.content.{family}[{index}].family does not match its group")
                 content.append(parsed)
 
-        events = _mapping(data.get("events", {}), "response.events")
+        events = _object(data.get("events", {}), "response.events")
         alerts = tuple(
-            OverlayItem.from_payload(item, f"response.events.alerts[{index}]")
+            OverlayItem._from_frozen(item, f"response.events.alerts[{index}]")
             for index, item in enumerate(_items(events.get("alerts", ()), "response.events.alerts"))
         )
         news = tuple(
-            OverlayItem.from_payload(item, f"response.events.news[{index}]")
+            OverlayItem._from_frozen(item, f"response.events.news[{index}]")
             for index, item in enumerate(_items(events.get("news", ()), "response.events.news"))
         )
-        meta = _mapping(data.get("meta", {}), "response.meta")
-        pairing = _mapping(meta.get("pairing", {}), "response.meta.pairing")
+        meta = _object(data.get("meta", {}), "response.meta")
+        pairing = _object(meta.get("pairing", {}), "response.meta.pairing")
         pairing_code = pairing.get("code")
         if pairing_code is not None and not isinstance(pairing_code, str):
             raise PayloadValidationError("response.meta.pairing.code must be a string")
-        update = _mapping(meta.get("update", {}), "response.meta.update")
+        update = _object(meta.get("update", {}), "response.meta.update")
         update_version = update.get("version")
         if update_version is not None and not isinstance(update_version, str):
             raise PayloadValidationError("response.meta.update.version must be a string")
-        reboot = _mapping(meta.get("reboot", {}), "response.meta.reboot")
+        reboot = _object(meta.get("reboot", {}), "response.meta.reboot")
         reboot_request_id = reboot.get("id")
         if reboot_request_id is not None and not isinstance(reboot_request_id, str):
             raise PayloadValidationError("response.meta.reboot.id must be a string")

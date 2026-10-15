@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -70,12 +69,12 @@ class DeviceStreamState:
     def __init__(self) -> None:
         self.stream_id: str | None = None
         self.sequence: int | None = None
-        self.payload: dict[str, Any] | None = None
+        self._response: TickerResponse | None = None
 
     @property
     def cursor(self) -> tuple[str, int] | None:
         """Return a reconnect cursor after receiving a full snapshot."""
-        if self.stream_id is None or self.sequence is None or self.payload is None:
+        if self.stream_id is None or self.sequence is None or self._response is None:
             return None
         return self.stream_id, self.sequence
 
@@ -92,22 +91,18 @@ class DeviceStreamState:
                 and message.sequence < self.sequence
             ):
                 return None
-            payload = deepcopy(dict(message.payload or {}))
+            response = TickerResponse.from_payload(message.payload)
         else:
-            if self.stream_id != message.stream_id or self.sequence is None or self.payload is None:
+            if self.stream_id != message.stream_id or self.sequence is None or self._response is None:
                 raise PayloadValidationError("delta arrived without its matching snapshot")
             if message.sequence <= self.sequence:
                 return None
             if message.base_sequence != self.sequence or message.sequence != self.sequence + 1:
                 raise PayloadValidationError("delta sequence is stale or has a gap")
-            payload = deepcopy(self.payload)
-            payload.update(deepcopy(dict(message.changes or {})))
-            for key in message.removed:
-                payload.pop(key, None)
-        response = TickerResponse.from_payload(payload)
+            response = self._response.apply_projection_delta(message.changes or {}, message.removed)
         self.stream_id = message.stream_id
         self.sequence = message.sequence
-        self.payload = payload
+        self._response = response
         return response
 
 

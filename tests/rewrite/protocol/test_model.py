@@ -1,7 +1,11 @@
 """Validate the version two display payload boundary."""
 
 from datetime import datetime, timezone
+from copy import deepcopy
+import hashlib
+import json
 import pickle
+from types import MappingProxyType
 
 import pytest
 
@@ -52,6 +56,28 @@ def test_payload_hashing_and_snapshot_stability() -> None:
     after["snapshot"]["revision"] = 2
 
     assert TickerResponse.from_payload(before).payload_key == TickerResponse.from_payload(after).payload_key
+
+
+def test_payload_hash_matches_canonical_wire_data_and_rejects_nonfinite_values() -> None:
+    payload = _payload()
+    expected = deepcopy(payload)
+    del expected["snapshot"]["observed_at"]
+    del expected["snapshot"]["revision"]
+    encoded = json.dumps(expected, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    assert TickerResponse.from_payload(payload).payload_key == hashlib.sha256(encoded).hexdigest()
+    for value in (float("nan"), float("inf"), float("-inf")):
+        payload["health"]["invalid"] = value
+        with pytest.raises(PayloadValidationError, match="canonical JSON"):
+            TickerResponse.from_payload(payload)
+
+
+def test_payload_boundary_detaches_nested_values_inside_external_mapping_proxies() -> None:
+    payload = _payload()
+    values = ["nba:NY"]
+    payload["settings"] = MappingProxyType({**payload["settings"], "my_teams": values})
+    response = TickerResponse.from_payload(payload)
+    values.append("nhl:NYR")
+    assert response.settings.data["my_teams"] == ("nba:NY",)
 
 
 def test_response_can_cross_the_poll_process_without_mapping_proxy_errors() -> None:

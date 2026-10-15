@@ -98,3 +98,12 @@ These numbers exclude pane rendering, provider work, backend time, and Pi matrix
 The old composition used about 0.23 percent of a 30 millisecond frame interval. The new composition uses about 0.01 percent.
 This gain reduces CPU work and leaves more headroom. It does not change the configured frame cadence.
 Run the benchmark on a Pi before claiming production frame-speed gains.
+
+## Stream application cost
+
+`device_stream_apply.py` replays captured Device Stream V1 messages without network or matrix writes.
+It measures JSON decoding, envelope validation, and stream state application.
+Its digest covers accepted cursors, raw payloads, fingerprints, rendered item data, and overlays.
+Use identical capture files and repeat counts when comparing implementations.
+Keep live captures outside committed source.
+Read [the Pi stream report](../../docs/research/pi-stream-overruns-2026-10-14.md) for physical Pi measurements.
