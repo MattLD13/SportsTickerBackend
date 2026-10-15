@@ -447,6 +447,8 @@ def _final_status(league: str, detail: str, period: int) -> str:
             return "FINAL S/O"
         if period >= 4:
             return f"FINAL OT{period - 3 if period > 4 else ''}"
+    if league == "march_madness" and period > 2:
+        return f"FINAL OT{period - 2 if period > 3 else ''}"
     if league in _FOOTBALL | _BASKETBALL and period > 4:
         return f"FINAL OT{period - 4 if period > 5 else ''}"
     return "FINAL"

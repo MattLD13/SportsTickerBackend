@@ -180,11 +180,17 @@ def test_college_basketball_zero_clock_keeps_half_label() -> None:
         ("nfl", 1, "Q1 END"),
         ("ncf_fbs", 4, "Q4 END"),
         ("ncf_fcs", 5, "OT END"),
+        ("nfl", 6, "OT2 END"),
+        ("nba", 5, "OT END"),
+        ("nba", 6, "OT2 END"),
+        ("nba", 7, "OT3 END"),
         ("nhl", 3, "P3 END"),
         ("nhl", 4, "OT END"),
         ("nhl", 5, "OT2 END"),
+        ("nhl", 6, "OT3 END"),
         ("march_madness", 3, "OT END"),
         ("march_madness", 4, "OT2 END"),
+        ("march_madness", 5, "OT3 END"),
     ),
 )
 def test_timed_sports_zero_clock_uses_the_period_end_label(
@@ -213,6 +219,50 @@ def test_zero_clock_does_not_create_period_end_for_countup_or_inning_sports() ->
 
     assert "END" not in soccer.data["status"]
     assert baseball.data["status"] == "Top 5th"
+
+
+@pytest.mark.parametrize(
+    ("sport", "period", "expected"),
+    (
+        ("nfl", 5, "FINAL OT"),
+        ("ncf_fbs", 6, "FINAL OT2"),
+        ("nba", 7, "FINAL OT3"),
+        ("march_madness", 3, "FINAL OT"),
+        ("march_madness", 4, "FINAL OT2"),
+        ("march_madness", 5, "FINAL OT3"),
+        ("nhl", 4, "FINAL OT"),
+        ("nhl", 5, "FINAL OT2"),
+        ("nhl", 6, "FINAL OT3"),
+    ),
+)
+def test_final_status_keeps_overtime_number(
+    sport: str, period: int, expected: str
+) -> None:
+    event = _event("Final", {}, state="post")
+    event["status"]["period"] = period
+
+    projected = SportsDisplayProjector().project(_item("final", sport, "post"), event)
+
+    assert projected.data["status"] == expected
+
+
+@pytest.mark.parametrize(
+    ("period", "detail", "clock", "expected"),
+    (
+        (4, "Overtime", "5:00", "OT 5:00"),
+        (5, "2nd Overtime", "12:34", "OT2 12:34"),
+        (6, "3rd Overtime", "17:02", "OT3 17:02"),
+    ),
+)
+def test_hockey_overtime_period_labels_follow_provider_period(
+    period: int, detail: str, clock: str, expected: str
+) -> None:
+    event = _event(detail, {})
+    event["status"].update({"period": period, "displayClock": clock})
+
+    hockey = SportsDisplayProjector().project(_item("hockey", "nhl"), event)
+
+    assert hockey.data["status"] == expected
 
 
 def test_hockey_period_end_uses_end_label() -> None:
