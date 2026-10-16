@@ -5,6 +5,11 @@
   if (!root) return;
   const $ = id => document.getElementById(id);
   const png = data => `data:image/png;base64,${data}`;
+  function mainUrl(row, presentation = 'pinned') {
+    const url = new URL(root.dataset.frameUrl, location.href);
+    url.searchParams.set('case', row.name); url.searchParams.set('presentation', presentation);
+    return url.href;
+  }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const images = new Map();
   const sources = new Map();
@@ -15,15 +20,18 @@
 
   function status(message) { $('status').textContent = message; }
   function image(data) {
-    if (!images.has(data)) {
-      images.set(data, new Promise((resolve, reject) => {
+    return loadImage(png(data));
+  }
+  function loadImage(url) {
+    if (!images.has(url)) {
+      images.set(url, new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
         img.onerror = () => reject(new Error('A sample frame failed to load.'));
-        img.src = png(data);
+        img.src = url;
       }));
     }
-    return images.get(data);
+    return images.get(url);
   }
 
   function canvasFrom(source) {
@@ -117,7 +125,7 @@
       if (token !== generation) return;
       setBoard('mini', canvasFrom(mini));
       $('mini-note').textContent = row.mini_source === 'hardware' ? 'Exact physical Mini capture · sample data' : 'Production firmware renderer · sample data';
-      if (!row.main.pinned) {
+      if (!row.main.available) {
         sources.delete('main');
         root.querySelector('[data-board="main"]').classList.add('unavailable');
         $('main-screen').disabled = true;
@@ -125,25 +133,13 @@
         return;
       }
       if ($('layout').value === 'pane' && row.main.pane) {
-        const group = cases.filter(item => item.group === row.group && item.mode === row.mode && item.main.pane);
-        const index = group.indexOf(row);
-        const neighbors = Array.from({length: Math.min(4, group.length)}, (_, i) => group[(index + i) % group.length]);
-        const panes = await Promise.all(neighbors.map(item => image(item.main.pane)));
+        const rendered = await loadImage(mainUrl(row, 'rotation'));
         if (token !== generation) return;
-        strip = document.createElement('canvas');
-        strip.width = panes.reduce((width, pane) => width + pane.naturalWidth + 1, 0);
-        strip.height = 32;
-        const ctx = strip.getContext('2d');
-        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, strip.width, 32);
-        let x = 0;
-        for (const pane of panes) {
-          ctx.drawImage(pane, x, 0); x += pane.naturalWidth;
-          ctx.fillStyle = '#2d2d2d'; ctx.fillRect(x, 0, 1, 32); x++;
-        }
+        strip = canvasFrom(rendered);
         drawStrip(); startAnimation();
         $('main-note').textContent = 'Production scrolling panes · neighboring examples share the board';
       } else {
-        const main = await image(row.main.pinned);
+        const main = await loadImage(mainUrl(row));
         if (token !== generation) return;
         setBoard('main', canvasFrom(main));
         $('main-note').textContent = 'Production Pi renderer · sample data';
@@ -192,10 +188,10 @@
       label.append(id, title);
       const screens = document.createElement('span'); screens.className = 'case-screens';
       for (const device of ['main', 'mini']) {
-        const data = device === 'main' ? row.main.pinned : row.mini;
+        const data = device === 'main' ? row.main.available : row.mini;
         if (!data) continue;
         const img = document.createElement('img');
-        img.className = `thumb-${device}`; img.loading = 'lazy'; img.alt = device === 'main' ? 'Big ticker' : 'Mini ticker'; img.src = png(data);
+        img.className = `thumb-${device}`; img.loading = 'lazy'; img.alt = device === 'main' ? 'Big ticker' : 'Mini ticker'; img.src = device === 'main' ? mainUrl(row) : png(data);
         img.width = device === 'main' ? 384 : 64; img.height = 32;
         screens.append(img);
       }
@@ -244,7 +240,7 @@
       const response = await fetch(root.dataset.galleryUrl, {credentials:'omit'});
       if (!response.ok) throw new Error('The layout library is unavailable. Reload to try again.');
       const data = await response.json();
-      if (data.schema_version !== 1 || !Array.isArray(data.cases) || !data.cases.length) throw new Error('The layout library is invalid.');
+      if (data.schema_version !== 2 || !Array.isArray(data.cases) || !data.cases.length) throw new Error('The layout library is invalid.');
       cases = data.cases;
       for (const group of [...new Set(cases.map(row => row.group))]) $('category').add(new Option(group, group));
       for (const option of $('category').options) {

@@ -1,7 +1,6 @@
 """Load the complete font set once at application startup."""
 
-import os
-import sys
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,62 +23,24 @@ class FontSet:
     score_default: ImageFont.ImageFont | ImageFont.FreeTypeFont
 
 
-def _font_directories() -> tuple[Path, ...]:
-    """Return platform font directories in search order."""
-    directories = [Path.cwd()]
-    if sys.platform == "win32":
-        directories.append(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "Fonts")
-        local = os.environ.get("LOCALAPPDATA")
-        if local:
-            directories.append(Path(local) / "Microsoft" / "Windows" / "Fonts")
-    else:
-        directories.extend(
-            Path(value)
-            for value in (
-                "/usr/share/fonts/truetype/dejavu",
-                "/usr/share/fonts/truetype",
-                "/usr/share/fonts",
-                "/usr/local/share/fonts",
-            )
-        )
-    return tuple(directories)
+FONT_DIRECTORY = Path(__file__).with_name("font_assets")
 
 
-def _load_font(candidates: tuple[str, ...], size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont | None:
-    """Load the first available font candidate."""
-    for name in candidates:
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            pass
-        for directory in _font_directories():
-            try:
-                return ImageFont.truetype(directory / name, size)
-            except OSError:
-                continue
-    return None
+@lru_cache(maxsize=64)
+def load_monospace_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Load the same bundled monospace typeface on every display host."""
+    name = "DejaVuSansMono-Bold.ttf" if bold else "DejaVuSansMono.ttf"
+    return ImageFont.truetype(FONT_DIRECTORY / name, size)
 
 
-def load_monospace_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
-    """Load a stable cross-platform monospace font."""
-    candidates = (
-        ("DejaVuSansMono-Bold.ttf", "UbuntuMono-Bold.ttf", "consolab.ttf", "courbd.ttf")
-        if bold
-        else ("DejaVuSansMono.ttf", "UbuntuMono-Regular.ttf", "consola.ttf", "cour.ttf")
-    )
-    return _load_font(candidates, size) or ImageFont.load_default()
+@lru_cache(maxsize=64)
+def load_display_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Load the same bundled display typeface on every display host."""
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    return ImageFont.truetype(FONT_DIRECTORY / name, size)
 
 
-def load_display_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
-    """Load a proportional display font with a monospace fallback."""
-    candidates = (
-        ("DejaVuSans-Bold.ttf", "arialbd.ttf", "ARIALBD.TTF", "Arial Bold.ttf")
-        if bold
-        else ("DejaVuSans.ttf", "arial.ttf", "ARIAL.TTF")
-    )
-    return _load_font(candidates, size) or load_monospace_font(size, bold=bold)
-
-
+@lru_cache(maxsize=1)
 def load_default_font_set() -> FontSet:
     """Load fonts that match the deployed controller."""
     return FontSet(

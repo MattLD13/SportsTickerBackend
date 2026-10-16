@@ -40,6 +40,8 @@ jobs:
           filters: |
             backend:
               - 'sports_ticker/**'
+              - 'ticker_core/**'
+              - '.github/workflows/deploy.yml'
               - 'requirements.txt'
               - 'requirements-backend.txt'
               - '*.json'
@@ -229,7 +231,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "sports_ticker/**,requirements.txt,requirements-backend.txt,ticker.service,VERSION"
+          source:   "sports_ticker/**,ticker_core/**,requirements.txt,requirements-backend.txt,ticker.service,VERSION"
           target:   "/home/${{ secrets.SSH_USER }}/"
 
       - name: Write backend environment and restart backend

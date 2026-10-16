@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='style.css', v=version_hash) }}">
 </head>
 <body class="demo-portfolio">
-<div class="demo" data-ticker-demo data-demo-music="sample" data-autorotate="true" data-scroll-rate="{{ scroll_px_s }}" data-modes='{{ demo_modes | tojson }}'>
+<div class="demo" data-ticker-demo data-autorotate="true" data-scroll-rate="{{ scroll_px_s }}" data-modes='{{ demo_modes | tojson }}'>
   <div class="panel-stage"><div class="panel"><div class="demo-vp" data-demo-vp><div class="demo-status">CONNECTING TO TICKER...</div></div></div></div>
   <div class="demo-controls" data-demo-controls></div>
 </div>

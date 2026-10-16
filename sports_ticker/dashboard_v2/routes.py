@@ -4,19 +4,23 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from functools import lru_cache
 from io import BytesIO
 import os
+import hashlib
 from pathlib import Path
-from time import monotonic
+from time import monotonic, time
+from concurrent.futures import wait
+from zoneinfo import ZoneInfo
+from threading import Lock
 
 from flask import abort, current_app, render_template, request, send_file
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.projections import project_data_v2, select_display_content
 
 from . import dashboard_v2
+from .preview import PreviewRenderer, case_items, layout_case, layout_library
 
 
 @dashboard_v2.get("/")
@@ -109,22 +113,47 @@ def demo_layouts():
     return render_template("demo_layouts.html", version_hash=_version_hash())
 
 
-@dashboard_v2.get("/api/preview/strip.png")
-def preview_strip():
-    """Render one stable public panel preview without ticker state."""
-
-    mode = str(request.args.get("mode") or "sports").strip().lower()
-    if mode not in {item["id"] for item in _demo_modes()}:
+@dashboard_v2.get("/api/v2/demo/frame.png")
+def demo_frame():
+    """Render public content through the current production Pi renderer."""
+    name = request.args.get("case", "")
+    row = layout_case(name) if name else None
+    if name and row is None:
         abort(404)
-    content = _live_sports_content() if mode == "sports" else {}
-    image = _render_preview(content or _demo_content(mode), mode)
-    output = BytesIO()
-    image.save(output, format="PNG")
-    output.seek(0)
-    return send_file(output, mimetype="image/png", max_age=0)
+    presentation = request.args.get("presentation", "rotation" if not row else "pinned")
+    if presentation not in {"rotation", "pinned"}:
+        abort(400)
+    mode = row["mode"] if row else request.args.get("mode", "sports")
+    if row:
+        if not row["main"]["available"]:
+            abort(404)
+        if presentation == "rotation" and not row["main"]["pane"]:
+            abort(400)
+        items = case_items(row, presentation)
+        content = {mode: [{"data": item} for item in items]}
+        now = datetime.fromisoformat(row.get("example_time", layout_library()["example_time"]))
+    else:
+        if mode not in {item["id"] for item in _demo_modes()}:
+            abort(404)
+        content = _live_sports_content() if mode == "sports" else {}
+        content = content or _demo_content(mode)
+        items = [dict(item["data"]) for records in content.values() for item in records if item.get("is_shown", True)]
+        if mode not in {"sports", "stock"}:
+            presentation = "pinned"
+        timestamp = int(time() * 4) / 4
+        now = datetime.fromtimestamp(timestamp, ZoneInfo("America/New_York"))
+    assets = _preview_assets()
+    assets.prefetch(content)
+    encoded = assets.renderer.render(items, mode, presentation, now, row=row)
+    response = send_file(BytesIO(encoded), mimetype="image/png", max_age=0)
+    response.set_etag(hashlib.sha256(encoded).hexdigest())
+    response.headers["X-Ticker-Renderer"] = _version_hash()
+    return response.make_conditional(request)
 
 
 _STARTED_AT = monotonic()
+_SAMPLE_STARTED = time()
+_PREVIEW_LOCK = Lock()
 
 
 def _version_hash() -> str:
@@ -205,11 +234,12 @@ def _display_modes() -> list[dict[str, str]]:
 def _demo_modes() -> list[dict[str, str]]:
     return [
         {"id": "sports", "label": "Sports", "kind": "scroll"},
-        {"id": "weather", "label": "Weather", "kind": "static"},
-        {"id": "music", "label": "Music", "kind": "canvas"},
+        {"id": "stock", "label": "Stocks", "kind": "scroll"},
+        {"id": "weather", "label": "Weather", "kind": "frame"},
+        {"id": "music", "label": "Music", "kind": "frame"},
         {"id": "flights", "label": "Flights", "kind": "static"},
         {"id": "airports", "label": "Airports", "kind": "static"},
-        {"id": "clock", "label": "Clock", "kind": "canvas"},
+        {"id": "clock", "label": "Clock", "kind": "frame"},
     ]
 
 
@@ -248,103 +278,19 @@ def _live_sports_content() -> dict[str, list[dict[str, object]]]:
             if isinstance(item, dict) and item.get("is_shown", True)
         ]
         if items:
-            _preview_assets().prefetch(content)
             return content
     return {}
 
 
 def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
-    """Return fixed public samples for every data-driven demo mode."""
-
-    samples = {
-        "sports": {
-            "sports": [{
-                "data": {
-                    "type": "scoreboard",
-                    "sport": "nhl",
-                    "away_abbr": "NYR",
-                    "away_score": 3,
-                    "away_color": "#0038a8",
-                    "away_logo": "demo:nyr",
-                    "home_abbr": "NJD",
-                    "home_score": 2,
-                    "home_color": "#ce1126",
-                    "home_logo": "demo:njd",
-                    "state": "in",
-                    "status": "3RD 12:41",
-                    "situation": {"possession": "NYR"},
-                },
-            }],
-        },
-        "weather": {
-            "weather": [{
-                "data": {
-                    "type": "weather",
-                    "sport": "weather",
-                    "home_abbr": "76",
-                    "away_abbr": "NEW YORK CITY",
-                    "status": "PARTLY CLOUDY",
-                    "situation": {
-                        "icon": "partly_cloudy",
-                        "is_day": 1,
-                        "cloud_cover": 42,
-                        "stats": {"aqi": "38", "uv": "6", "feels": "77", "wind": "9", "humidity": "58"},
-                        "forecast": [
-                            {"day": "TODAY", "icon": "partly_cloudy", "high": 79, "low": 66},
-                            {"day": "TUE", "icon": "sun", "high": 82, "low": 68},
-                            {"day": "WED", "icon": "rain", "high": 75, "low": 65, "pop": 65, "wind": 12},
-                            {"day": "THU", "icon": "cloud", "high": 77, "low": 64},
-                            {"day": "FRI", "icon": "sun", "high": 81, "low": 67},
-                        ],
-                    },
-                },
-            }],
-        },
-        "flights": {
-            "flights": [{
-                "data": {
-                    "type": "flight_visitor",
-                    "sport": "flight",
-                    "id": "UA 188",
-                    "guest_name": "JOHN DOE",
-                    "route": "LAX > EWR",
-                    "origin_city": "LOS ANGELES",
-                    "dest_city": "NEWARK",
-                    "alt": 34000,
-                    "dist": 1420,
-                    "eta_str": "1H 45M",
-                    "speed": 540,
-                    "progress": 65,
-                    "status": "EN ROUTE",
-                    "is_delayed": False,
-                    "is_live": True,
-                    "aircraft_type": "B777-200",
-                },
-            }],
-        },
-        "airports": {
-            "airports": [{
-                "data": {
-                    "type": "flight_airport_hud",
-                    "sport": "airport",
-                    "weather": {"iata": "EWR", "city": "NEWARK", "away_abbr": "76F", "status": "PARTLY CLOUDY"},
-                    "arrivals": [
-                        {"flight_number": "UA 188", "airport_code": "LAX", "airport_city": "LOS ANGELES"},
-                        {"flight_number": "DL 402", "airport_code": "ATL", "airport_city": "ATLANTA"},
-                        {"flight_number": "B6 201", "airport_code": "MCO", "airport_city": "ORLANDO"},
-                        {"flight_number": "AA 109", "airport_code": "DFW", "airport_city": "DALLAS"},
-                    ],
-                    "departures": [
-                        {"flight_number": "UA 205", "airport_code": "SFO", "airport_city": "SAN FRANCISCO"},
-                        {"flight_number": "B6 117", "airport_code": "MCO", "airport_city": "ORLANDO"},
-                        {"flight_number": "DL 311", "airport_code": "DTW", "airport_city": "DETROIT"},
-                        {"flight_number": "AA 672", "airport_code": "MIA", "airport_city": "MIAMI"},
-                    ],
-                },
-            }],
-        },
-    }
-    return samples.get(mode, {})
+    """Select reviewed public inputs without exposing personal utility data."""
+    selected = {"sports": ("FB02", "BS09", "BK03", "HK07", "SC04"), "stock": ("MD01",),
+                "weather": ("MD04",), "flights": ("MD13",), "airports": ("MD18",), "clock": ("MD20",)}
+    if mode == "music":
+        return {"music": [{"data": {"type": "music", "sport": "music", "name": "MR. BLUE SKY",
+            "artist": "ELECTRIC LIGHT ORCHESTRA", "cover": "demo:album", "is_playing": True,
+            "progress": 112, "duration": 303, "fetch_ts": _SAMPLE_STARTED}}]}
+    return {mode: [{"id": name, "data": layout_case(name)["game"]} for name in selected.get(mode, ())]}
 
 
 def _display_content(application, ticker_id: str, *, mode: str | None = None) -> dict[str, list[dict[str, object]]]:
@@ -394,36 +340,31 @@ class _PreviewAssets:
         from ticker_core.platform.assets import AssetCoordinator
 
         self._coordinator = AssetCoordinator(directory)
+        self._album = Image.open(Path(__file__).parent / "static/mr-blue-sky-cover.png").convert("RGBA")
+        self.renderer = PreviewRenderer(self)
 
     def image(self, url: str, processor: str, size: tuple[int, int]):
-        if url.startswith("demo:"):
-            return _demo_logo(url, size)
+        if url == "demo:album":
+            return self._album.resize(size, Image.Resampling.NEAREST)
         return self._coordinator.image(url, processor, size)
 
     def prefetch(self, content: dict[str, list[dict[str, object]]]) -> None:
         """Prepare current sports logos before the renderer reads them."""
 
-        from ticker_core.assets import AssetRequest
+        from ticker_core.assets import AssetPlanner
 
-        requests = []
-        for items in content.values():
-            for item in items:
-                data = item.get("data") if isinstance(item, dict) else None
-                if not isinstance(data, dict):
-                    continue
-                for field in ("home_logo", "away_logo"):
-                    url = str(data.get(field) or "").strip()
-                    if url and not url.startswith("demo:"):
-                        requests.append(AssetRequest(url, "logo", (22, 22)))
-        for future in self._coordinator.prefetch(requests):
-            try:
-                future.result(timeout=5)
-            except Exception:
-                continue
+        requests = [item for item in AssetPlanner().plan(content).requests if not item.url.startswith("demo:")]
+        wait(self._coordinator.prefetch(requests), timeout=2)
+
+    @property
+    def revision(self) -> int:
+        """Expose completed asset changes to the encoded frame cache."""
+        return self._coordinator.revision
 
     def close(self) -> None:
         """Stop the asset workers during backend shutdown."""
 
+        self.renderer.close()
         self._coordinator.close()
 
 
@@ -431,76 +372,14 @@ def _preview_assets() -> _PreviewAssets:
     """Return one application-owned prepared asset view for public previews."""
 
     key = "sports_ticker.dashboard_preview_assets"
-    assets = current_app.extensions.get(key)
-    if isinstance(assets, _PreviewAssets):
+    with _PREVIEW_LOCK:
+        assets = current_app.extensions.get(key)
+        if isinstance(assets, _PreviewAssets):
+            return assets
+        directory = Path(current_app.config.get("DASHBOARD_ASSET_CACHE", "ticker_data/rewrite_assets"))
+        assets = _PreviewAssets(directory)
+        current_app.extensions[key] = assets
         return assets
-    directory = Path(current_app.config.get("DASHBOARD_ASSET_CACHE", "ticker_data/rewrite_assets"))
-    assets = _PreviewAssets(directory)
-    current_app.extensions[key] = assets
-    return assets
-
-
-@lru_cache(maxsize=4)
-def _demo_logo(url: str, size: tuple[int, int]) -> Image.Image | None:
-    """Draw a compact team mark for the fixed sports sample."""
-
-    team = {
-        "demo:nyr": ((0, 56, 168), (255, 255, 255), "NYR"),
-        "demo:njd": ((206, 17, 38), (255, 255, 255), "NJD"),
-    }.get(url)
-    if team is None:
-        return None
-    width, height = size
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    fill, text, label = team
-    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=max(2, width // 5), fill=fill, outline=text)
-    box = draw.textbbox((0, 0), label)
-    x = (width - (box[2] - box[0])) // 2
-    y = (height - (box[3] - box[1])) // 2 - 1
-    draw.text((x, y), label, fill=text)
-    return image
-
-
-@lru_cache(maxsize=1)
-def _preview_catalog():
-    from ticker_core.bootstrap import create_default_content_catalog
-    return create_default_content_catalog(_preview_assets())
-
-
-def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:
-    from ticker_core.context import RenderContext
-    from ticker_core.rendering import ContentScene
-
-    items = [
-        item for records in content.values() for item in records
-        if isinstance(item, dict) and item.get("is_shown", True)
-    ]
-    if not items:
-        image = Image.new("RGB", (384, 32), "black")
-        ImageDraw.Draw(image).text((8, 10), f"NO {mode.upper()} DATA", fill="white")
-        return image
-    catalog = _preview_catalog()
-    context = RenderContext(datetime.now())
-    cards = []
-    for item in items:
-        scene = dict(item.get("data") or {})
-        scene.setdefault("id", item.get("id", ""))
-        scene.setdefault("type", item.get("kind", ""))
-        scene.setdefault("sport", item.get("family", ""))
-        cards.append(catalog.render(context, ContentScene(scene, mode)).image.convert("RGBA"))
-    if mode != "sports":
-        return cards[0].convert("RGB")
-    width = sum(card.width + 1 for card in cards)
-    strip = Image.new("RGBA", (max(384, width), 32), "black")
-    x = 0
-    draw = ImageDraw.Draw(strip)
-    for card in cards:
-        draw.line((x, 0, x, 31), fill=(45, 45, 45, 255))
-        x += 1
-        strip.alpha_composite(card, (x, 0))
-        x += card.width
-    return strip.convert("RGB")
 
 
 def _duration(value: object) -> str:

@@ -14,10 +14,11 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Any, Callable
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentRendererCatalog, ContentScene
+from ticker_core.rendering.strip import compose_pane_strip
 from ticker_core.runtime import Content, StripLayout, StripSegment
 
 
@@ -419,15 +420,10 @@ def _compose_tiled_strip(
 ) -> Image.Image:
     """Flatten and tile committed panes once after a layout generation completes."""
     height = max((surface.image.height for surface in surfaces.values()), default=32)
-    pane_strip = Image.new("RGB", (layout.width, height), "black")
-    draw = ImageDraw.Draw(pane_strip)
-    x = 0
-    for segment in layout.segments:
-        draw.line((x, 0, x, height - 1), fill=(45, 45, 45))
-        surface = surfaces.get(segment.item_id)
-        if surface is not None:
-            pane_strip.paste(surface.image, (x + 1, 0), surface.image)
-        x += segment.width
+    pane_strip = compose_pane_strip(
+        ((surfaces[segment.item_id].image if segment.item_id in surfaces else None, segment.width) for segment in layout.segments),
+        height,
+    )
     repeat_count = (384 + layout.width - 1) // layout.width + 1
     tiled = Image.new("RGB", (layout.width * repeat_count, height), "black")
     for index in range(repeat_count):

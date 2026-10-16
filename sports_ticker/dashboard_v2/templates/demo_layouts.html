@@ -24,7 +24,7 @@
     <div class="header-right"><a class="btn btn-ghost" href="/">Back to main website</a></div>
   </div>
 </header>
-<main class="frame explorer" data-layout-explorer data-gallery-url="{{ url_for('dashboard_v2.static', filename='layout-gallery.json', v=version_hash) }}">
+<main class="frame explorer" data-layout-explorer data-gallery-url="{{ url_for('dashboard_v2.static', filename='layout-gallery.json', v=version_hash) }}" data-frame-url="{{ url_for('dashboard_v2.demo_frame', v=version_hash) }}">
   <section class="sec intro">
     <span class="plus tl"></span><span class="plus tr"></span>
     <p class="sec-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">LAYOUT EXPLORER</p>
@@ -78,7 +78,7 @@
     <p id="empty" hidden>No examples match. Try another search or clear the filters.</p>
   </section>
   <p class="status" id="status" role="status" aria-live="polite">Loading the layout library…</p>
-  <footer class="page-foot"><a href="/demo">Back to live demo</a><span>Still images capture one animation moment. Display timing here is a preview setting.</span></footer>
+  <footer class="page-foot"><a href="/demo">Back to live demo</a><span>Big ticker layouts update with each release. Mini images show captured examples.</span></footer>
 </main>
 <dialog id="zoom" aria-labelledby="zoom-title">
   <div class="zoom-head"><h2 id="zoom-title">Pixel inspector</h2><button id="close-zoom" type="button">Close</button></div>

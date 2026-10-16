@@ -65,15 +65,15 @@ The page explains those differences without inventing frames.
 
 Playback starts only after a user action.
 The browser pauses timers and scrolling while the page is hidden.
-The browser uses local frames after one catalog download.
+The browser downloads the sample catalog and requests current big ticker frames from the server.
 The page sends no controller commands and reads no fleet records.
 Brightness and dwell controls affect the preview only.
 Weather and music images show one captured animation moment.
 
 ## Rebuild
 
-Run `python tools/build_demo_layouts.py` to refresh main frames from the published sample catalog.
-The tool preserves Mini capture provenance during this refresh.
+Run `python tools/build_demo_layouts.py` to package sample inputs and Mini captures.
+The tool preserves Mini capture provenance. The server renders main frames when the browser requests them.
 Use `--manifest` and `--mini-frames` to import reviewed native renders and physical captures.
 The import requires one 64x32 PNG for each case ID.
 The tool records source hashes when it imports those frames.
@@ -90,7 +90,7 @@ Update `tools/verify_public_demo.py` after an authorized public design change.
 - All 112 matching main images decode at 384x32 pixels.
 - All 87 Mini sports images match the native production output pixel for pixel.
 - Public route tests reject fleet access and verify all modes and image dimensions.
-- The full suite passes 621 tests. The critical suite passes 294 tests.
+- The current rendering release adds pixel equality and renderer update checks.
 - Python compilation, Ruff, scoped Mypy, and JavaScript syntax checks pass.
 - Browser checks cover search, layout switching, LED dots, zoom, and timed playback.
 - Actual 384x32 frames appear in `previews/demo-layouts` for visual review.
