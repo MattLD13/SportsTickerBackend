@@ -28,9 +28,14 @@ def header() -> str:
         lines.append(f"static constexpr uint8_t {name}[95][{height}] = {{")
         for code in range(32, 127):
             glyph = mapping.get(chr(code), mapping[" "])
+            if name == "pane" and (len(glyph) != height or not 1 <= len(glyph[0]) <= 8 or any(len(row) != len(glyph[0]) for row in glyph)):
+                raise ValueError(f"PANE glyph {chr(code)!r} must contain consistent rows of one to eight columns")
             rows = [sum(int(bit) << (len(row)-1-index) for index, bit in enumerate(row)) for row in glyph] if name == "pane" else glyph
             lines.append("  {" + ", ".join(map(str, rows)) + "},")
         lines.append("};")
+        if name == "pane":
+            widths = [str(len(mapping.get(chr(code), mapping[" "])[0])) for code in range(32, 127)]
+            lines.append("static constexpr uint8_t paneWidths[95] = {" + ", ".join(widths) + "};")
     for name, glyph in (("inningTop", PANE["▲"]), ("inningBottom", PANE["▼"])):
         rows = [sum(bit << (2-index) for index, bit in enumerate(row)) for row in glyph]
         lines.append(f"static constexpr uint8_t {name}[5] = {{" + ", ".join(map(str, rows)) + "};")

@@ -28,6 +28,8 @@
 #include "../assets/logo_sources.h"
 #include "../rendering/sports_pane.h"
 #include "../rendering/utility_panels.h"
+#include "../protocol/payload_reader.h"
+#include "../platform/response_stream.h"
 
 JsonDocument payload;
 uint32_t rotationSignature = 0;
@@ -51,6 +53,15 @@ bool pairingMode = false;
 bool sportsMode = true;
 String displayMode = "sports";
 bool registered = false;
+int lastDataStatus = 0;
+int lastDataExpectedBytes = 0;
+int lastDataTransferBytes = 0;
+size_t lastDataBytes = 0;
+String lastDataContentType;
+String lastDataEncoding;
+String lastDataJsonError;
+size_t lastDataJsonOffset = 0;
+uint32_t dataJsonFailures = 0;
 bool wifiStarted = false;
 bool wifiPairingMode = false;
 bool blePairingStarted = false;

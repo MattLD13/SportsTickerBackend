@@ -97,7 +97,13 @@ bool fetchData() {
     return false;
   }
 
+  const char* responseHeaders[] = {"Content-Type", "Content-Encoding"};
+  http.collectHeaders(responseHeaders, 2);
   int status = http.GET();
+  lastDataStatus = status;
+  lastDataExpectedBytes = http.getSize();
+  lastDataContentType = http.header("Content-Type");
+  lastDataEncoding = http.header("Content-Encoding");
   Serial.print("Data HTTP status: ");
   Serial.println(status);
   logSecureHttpError("Data", status, client);
@@ -117,11 +123,18 @@ bool fetchData() {
     return false;
   }
 
-  String body = http.getString();
+  ResponseStream response;
+  lastDataTransferBytes = http.writeToStream(&response);
+  lastDataBytes = response.body.size();
   http.end();
   releaseNetwork();
-  updateFromPayload(body);
-  return message.length() == 0;
+  if (lastDataTransferBytes < 0 || response.body.failed() ||
+      static_cast<size_t>(lastDataTransferBytes) != lastDataBytes ||
+      (lastDataExpectedBytes >= 0 && static_cast<size_t>(lastDataExpectedBytes) != lastDataBytes)) {
+    showFetchError("DATA TRANSFER");
+    return false;
+  }
+  return updateFromPayload(response.body);
 }
 
 void pollMiniSerial();

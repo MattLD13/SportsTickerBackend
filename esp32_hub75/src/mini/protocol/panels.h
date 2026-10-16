@@ -19,8 +19,9 @@ inline Side side(const std::string& value, const std::string& away, const std::s
   return Side::None;
 }
 
-inline uint8_t shot(const std::string& value) {
-  return value == "GOAL" ? 1 : value == "MISS" ? 2 : 0;
+inline Shot shot(const std::string& value) {
+  return value == "GOAL" ? Shot::Goal : value == "MISS" ? Shot::Miss :
+         value == "NOT_TAKEN" ? Shot::NotTaken : Shot::Pending;
 }
 
 inline Rgb teamInk(JsonVariantConst value) {
@@ -83,14 +84,22 @@ inline SportsPane sportsPane(JsonObjectConst game) {
     }
   }
   JsonObjectConst shootout = situation["shootout"].as<JsonObjectConst>();
-  if (shootout.size() > 0 && (view.sport == Sport::Hockey || view.sport == Sport::Soccer)) {
+  const std::string shootoutState = label(shootout["state"]);
+  const bool hockeyShootout = view.sport == Sport::Hockey &&
+                             (shootoutState == "ACTIVE" || shootoutState == "COMPLETE");
+  if (hockeyShootout || (shootout.size() > 0 && view.sport == Sport::Soccer)) {
     view.shootout = true;
-    view.footer = label(shootout["roundLabel"], "", 5);
+    view.footer = label(shootout["roundLabel"], "", 16);
     if (view.sport == Sport::Hockey) {
       for (JsonObjectConst round : shootout["displayRounds"].as<JsonArrayConst>()) {
         if (view.shotCount == 3) break;
         view.awayShots[view.shotCount] = shot(label(round["away"]));
         view.homeShots[view.shotCount] = shot(label(round["home"]));
+        const std::string next = label(round["nextSide"]);
+        if (shootoutState == "ACTIVE" && next == "AWAY" && view.awayShots[view.shotCount] == Shot::Pending)
+          view.awayShots[view.shotCount] = Shot::Next;
+        if (shootoutState == "ACTIVE" && next == "HOME" && view.homeShots[view.shotCount] == Shot::Pending)
+          view.homeShots[view.shotCount] = Shot::Next;
         ++view.shotCount;
       }
     } else {

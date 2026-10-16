@@ -1,5 +1,5 @@
-void updateFromPayload(const String& body) {
-  // Parse directly into the retained document to avoid duplicating the payload tree.
+bool updateFromPayload(const ResponseBody& body) {
+  // Keep the previous document until the complete response passes validation.
   JsonDocument filter;
   filter["meta"]["pairing"]["paired"] = true;
   filter["meta"]["pairing"]["code"] = true;
@@ -55,14 +55,16 @@ void updateFromPayload(const String& body) {
   filterSituation["red_cards"][0]["is_home"] = true;
 
   JsonDocument candidate;
-  DeserializationError error = deserializeJson(candidate, body, DeserializationOption::Filter(filter));
+  PayloadReader reader(body.data(), body.size());
+  DeserializationError error = deserializeJson(candidate, reader, DeserializationOption::Filter(filter));
+  lastDataJsonError = error ? error.c_str() : "";
+  lastDataJsonOffset = reader.position();
   if (error) {
-    Serial.print("Data JSON error: ");
-    Serial.print(error.c_str());
-    Serial.print(" bytes=");
-    Serial.println(body.length());
+    ++dataJsonFailures;
+    Serial.printf("Data JSON error: %s bytes=%u offset=%u\n", error.c_str(),
+                  static_cast<unsigned>(body.size()), static_cast<unsigned>(reader.position()));
     showFetchError("JSON ERROR");
-    return;
+    return false;
   }
 
   // Commit only a complete filtered document. A transient HTTP or JSON error
@@ -118,5 +120,6 @@ void updateFromPayload(const String& body) {
     lastPageAt = millis();
   }
   firmwareUpdateObserve(payload["meta"]["update"]);
+  return true;
 }
 // Owns retained V2 payload filtering and runtime state projection.

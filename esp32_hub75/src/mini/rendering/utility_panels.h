@@ -53,6 +53,6 @@ void renderStock(Canvas& canvas, const StockPane& view) {
   text(canvas, view.symbol, 1, 1, SCORE_TEXT, 4, 6, 1, true);
   centered(canvas, view.price, 1, 62, 10, ink, 4, 12, 1, true);
   text(canvas, view.percent, 1, 25, ink, 4, 6, 1, true, 1, 32);
-  text(canvas, view.change, 63 - textWidth(view.change, 4), 25, ink, 4, 6, 1, true, 33, 63);
+  text(canvas, view.change, 63 - textWidth(view.change, 4, 1, true), 25, ink, 4, 6, 1, true, 33, 63);
 }
 }  // namespace ticker_ui

@@ -17,6 +17,7 @@ enum class Side { None, Away, Home };
 enum class InningHalf { None, Top, Bottom, Break };
 
 enum class Sport { Other, Football, Baseball, Basketball, Hockey, Soccer };
+enum class Shot { Pending, Goal, Miss, Next, NotTaken };
 
 struct SportsPane {
   std::string status, awayScore, homeScore, footer, awayRank, homeRank, awayLabel, homeLabel;
@@ -28,8 +29,7 @@ struct SportsPane {
   InningHalf inningHalf = InningHalf::None;
   bool first = false, second = false, third = false;
   int awayCards = 0, homeCards = 0;
-  // Values are zero for pending, one for a goal, and two for a miss.
-  uint8_t awayShots[5] = {}, homeShots[5] = {};
+  Shot awayShots[5] = {}, homeShots[5] = {};
   int shotCount = 0;
 };
 
@@ -39,33 +39,41 @@ inline int glyphIndex(char ch) {
   return upper >= 32 && upper <= 126 ? upper - 32 : 0;
 }
 
-inline int textWidth(const std::string& value, int width = 3, int gap = 1) {
-  return value.empty() ? 0 : static_cast<int>(value.size()) * (width + gap) - gap;
+inline int glyphWidth(char ch, int width, bool hybridFont) {
+  if (!hybridFont && ch == ' ') return std::max(1, width / 3);
+  return hybridFont ? width : (paneWidths[glyphIndex(ch)] * width + 1) / 3;
+}
+
+inline int textWidth(const std::string& value, int width = 3, int gap = 1, bool hybridFont = false) {
+  int size = 0;
+  for (char ch : value) size += glyphWidth(ch, width, hybridFont) + gap;
+  return value.empty() ? 0 : size - gap;
 }
 
 template<class Canvas>
 void text(Canvas& canvas, const std::string& value, int x, int y, Rgb ink,
           int width = 3, int height = 5, int gap = 1, bool hybridFont = false, int clipLeft = 0, int clipRight = 64) {
   const int rows = hybridFont ? 6 : 5;
-  const int columns = hybridFont ? 4 : 3;
   for (char ch : value) {
     const int index = glyphIndex(ch);
+    const int columns = hybridFont ? 4 : paneWidths[index];
+    const int drawnWidth = glyphWidth(ch, width, hybridFont);
     for (int dy = 0; dy < height; ++dy) {
       const int row = ((2 * dy + 1) * rows) / (2 * height);
       const uint8_t bits = hybridFont ? hybrid[index][row] : pane[index][row];
-      for (int dx = 0; dx < width; ++dx) {
-        const int column = ((2 * dx + 1) * columns) / (2 * width);
+      for (int dx = 0; dx < drawnWidth; ++dx) {
+        const int column = ((2 * dx + 1) * columns) / (2 * drawnWidth);
         if (x + dx >= clipLeft && x + dx < clipRight && (bits & (1 << (columns - 1 - column)))) canvas.pixel(x + dx, y + dy, ink);
       }
     }
-    x += width + gap;
+    x += drawnWidth + gap;
   }
 }
 
 template<class Canvas>
 void centered(Canvas& canvas, const std::string& value, int left, int span, int y,
               Rgb ink, int width = 3, int height = 5, int gap = 1, bool hybridFont = false) {
-  const int size = textWidth(value, width, gap);
+  const int size = textWidth(value, width, gap, hybridFont);
   text(canvas, value, left + (span - size + 1) / 2, y, ink, width, height, gap, hybridFont, left, left + span);
 }
 
@@ -156,7 +164,7 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
     } else text(canvas, "-", x, 1, STATUS_TEXT);
     text(canvas, number, x + 4, 1, STATUS_TEXT);
   } else {
-    const bool fullFont = textWidth(view.status, 4) <= headerSpan;
+    const bool fullFont = textWidth(view.status, 4, 1, true) <= headerSpan;
     centered(canvas, view.status, headerLeft, headerSpan, 1, STATUS_TEXT,
              fullFont ? 4 : 3, fullFont ? 6 : 5, fullFont || textWidth(view.status) <= headerSpan ? 1 : 0, fullFont);
   }
@@ -182,7 +190,7 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
   text(canvas, view.homeScore, x + awayWidth + dashWidth + 2, y, SCORE_TEXT, digitWidth, height, digitGap);
 
   if (view.live && view.sport == Sport::Football) {
-    if (view.active != Side::None) football(canvas, view.active == Side::Home ? 53 : 9);
+    if (view.active != Side::None) football(canvas, view.active == Side::Home ? 55 : 7);
     footer(canvas, view.footer, view.redZone ? RED_ZONE_TEXT : PLAY_TEXT);
     if (view.redZone) {
       canvas.rect(0, 0, 64, 1, RED_ZONE_BORDER);
@@ -213,11 +221,16 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
     for (int index = 0; index < view.shotCount; ++index) {
       const int size = view.shotCount > 3 ? 2 : 3;
       const int step = view.shotCount > 3 ? 4 : 6;
-      auto ink = [](uint8_t state) -> Rgb { return state == 1 ? Rgb{50, 200, 70} : state == 2 ? Rgb{220, 55, 55} : Rgb{80, 80, 80}; };
-      canvas.rect(CONTENT_LEFT, 9 + index * step, size, size, ink(view.awayShots[index]));
-      canvas.rect(64 - CONTENT_LEFT - size, 9 + index * step, size, size, ink(view.homeShots[index]));
+      auto ink = [](Shot state) -> Rgb {
+        return state == Shot::Goal ? Rgb{50, 200, 70} : state == Shot::Miss ? Rgb{220, 55, 55} :
+               state == Shot::Next ? Rgb{255, 210, 40} : Rgb{80, 80, 80};
+      };
+      if (view.awayShots[index] != Shot::NotTaken)
+        canvas.rect(CONTENT_LEFT, 9 + index * step, size, size, ink(view.awayShots[index]));
+      if (view.homeShots[index] != Shot::NotTaken)
+        canvas.rect(64 - CONTENT_LEFT - size, 9 + index * step, size, size, ink(view.homeShots[index]));
     }
-    centered(canvas, view.footer, 24, 16, 27, MUTED_TEXT, 3, 5, 0);
+    centered(canvas, view.footer, CONTENT_LEFT, CONTENT_WIDTH, 27, MUTED_TEXT, 3, 5, 0);
   }
   if (view.sport == Sport::Soccer) {
     for (int side = 0; side < 2; ++side) {

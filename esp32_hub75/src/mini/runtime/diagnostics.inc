@@ -27,6 +27,18 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   out["heap_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   out["psram_free"] = ESP.getFreePsram();
   out["wifi_rssi"] = WiFi.RSSI();
+  JsonObject network = out["network"].to<JsonObject>();
+  network["wifi_connected"] = WiFi.status() == WL_CONNECTED;
+  network["ticker_id"] = tickerId;
+  network["http_status"] = lastDataStatus;
+  network["expected_bytes"] = lastDataExpectedBytes;
+  network["received_bytes"] = lastDataBytes;
+  network["transfer_bytes"] = lastDataTransferBytes;
+  network["content_type"] = lastDataContentType;
+  network["content_encoding"] = lastDataEncoding;
+  network["json_error"] = lastDataJsonError;
+  network["json_offset"] = lastDataJsonOffset;
+  network["json_failures"] = dataJsonFailures;
   describePane(out["pane"].to<JsonObject>(), displayMetrics.current);
   out["pane"]["shown_us"] = displayMetrics.frames ? now - displayMetrics.startedUs : 0;
   if (history) {

@@ -27,6 +27,15 @@ def cases(snapshot: dict) -> list[dict]:
         result.append({"name": item["id"], "game": item["data"]})
     nfl = next(row for row in result if row["name"] == "nfl-live")
     goal = deepcopy(nfl); goal["name"] = "football-goal"; goal["game"]["situation"]["downDist"] = "1ST & GOAL"; result.append(goal)
+    for name, label in (("football-third-six", "3RD & 6"), ("football-fourth-fifteen", "4TH & 15")):
+        down = deepcopy(nfl)
+        down["name"] = name
+        down["game"]["situation"]["downDist"] = label
+        result.append(down)
+    possession = deepcopy(nfl)
+    possession["name"] = "football-home-possession"
+    possession["game"]["situation"]["activeTeam"] = possession["game"]["home_abbr"]
+    result.append(possession)
     hoops = deepcopy(nfl); hoops["name"] = "basketball-three-digits"
     hoops["game"].update(sport="nba", away_abbr="BOS", home_abbr="NYK", away_score="112", home_score="108", status="Q4 0:15", situation={},
                          away_logo="https://a.espncdn.com/i/teamlogos/nba/500/bos.png", home_logo="https://a.espncdn.com/i/teamlogos/nba/500/ny.png")
@@ -36,9 +45,12 @@ def cases(snapshot: dict) -> list[dict]:
                           away_logo="https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", home_logo="https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
                           situation={"powerPlay":True, "powerPlayTeam":"BOS", "activeTeam":"BOS", "manpower":{"scrollLabel":"0:45"}})
     result.append(hockey)
-    shootout = deepcopy(hockey); shootout["name"] = "hockey-shootout"
-    shootout["game"].update(status="S/O", situation={"shootout":{"state":"active","roundLabel":"R4-6", "displayRounds":[{"away":"goal","home":"miss"},{"away":"miss","home":"goal"},{"away":"pending","home":"pending"}]}})
-    result.append(shootout)
+    hockey_cases = json.loads((ROOT / "tests/rewrite/debug/mini_hockey_panes.json").read_text(encoding="utf-8"))
+    result.extend({"name": "hockey-" + row["name"], "game": row["game"]} for row in hockey_cases)
+    numbered = deepcopy(hockey)
+    numbered["name"] = "hockey-penalty-number"
+    numbered["game"]["situation"]["manpower"]["scrollLabel"] = "#88"
+    result.append(numbered)
     soccer = deepcopy(nfl); soccer["name"] = "soccer-red-cards"
     soccer["game"].update(sport="soccer_epl", away_abbr="ARS", home_abbr="CHE", away_score="1", home_score="2", status="78'",
                           away_logo="https://a.espncdn.com/i/teamlogos/soccer/500/359.png", home_logo="https://a.espncdn.com/i/teamlogos/soccer/500/363.png", situation={"red_cards":[{"is_home":True},{"is_home":True}]})

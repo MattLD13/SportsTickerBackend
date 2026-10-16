@@ -1,0 +1,483 @@
+[
+  {
+    "name": "initial-home-next",
+    "facts": {
+      "shootout": {
+        "state": "active",
+        "firstSide": "home",
+        "away": [],
+        "home": []
+      }
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "S/O",
+      "away_abbr": "SEA",
+      "home_abbr": "PHI",
+      "away_score": "2",
+      "home_score": "2",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "situation": {
+        "shootout": {
+          "away": [],
+          "home": [],
+          "state": "active",
+          "round": 1,
+          "stage": "initial",
+          "nextSide": "home",
+          "awayGoals": 0,
+          "homeGoals": 0,
+          "roundLabel": "R1-3",
+          "displayRounds": [
+            {
+              "round": 1,
+              "nextSide": "home",
+              "away": "pending",
+              "home": "pending"
+            },
+            {
+              "round": 2,
+              "nextSide": "",
+              "away": "pending",
+              "home": "pending"
+            },
+            {
+              "round": 3,
+              "nextSide": "",
+              "away": "pending",
+              "home": "pending"
+            }
+          ]
+        }
+      }
+    },
+    "away_shots": [
+      "pending",
+      "pending",
+      "pending"
+    ],
+    "home_shots": [
+      "next",
+      "pending",
+      "pending"
+    ]
+  },
+  {
+    "name": "third-away-next",
+    "facts": {
+      "shootout": {
+        "state": "active",
+        "firstSide": "away",
+        "away": [
+          "goal",
+          "miss"
+        ],
+        "home": [
+          "miss",
+          "goal"
+        ]
+      }
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "S/O",
+      "away_abbr": "SEA",
+      "home_abbr": "PHI",
+      "away_score": "2",
+      "home_score": "2",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "situation": {
+        "shootout": {
+          "away": [
+            "goal",
+            "miss"
+          ],
+          "home": [
+            "miss",
+            "goal"
+          ],
+          "state": "active",
+          "round": 3,
+          "stage": "initial",
+          "nextSide": "away",
+          "awayGoals": 1,
+          "homeGoals": 1,
+          "roundLabel": "R1-3",
+          "displayRounds": [
+            {
+              "round": 1,
+              "nextSide": "",
+              "away": "goal",
+              "home": "miss"
+            },
+            {
+              "round": 2,
+              "nextSide": "",
+              "away": "miss",
+              "home": "goal"
+            },
+            {
+              "round": 3,
+              "nextSide": "away",
+              "away": "pending",
+              "home": "pending"
+            }
+          ]
+        }
+      }
+    },
+    "away_shots": [
+      "goal",
+      "miss",
+      "next"
+    ],
+    "home_shots": [
+      "miss",
+      "goal",
+      "pending"
+    ]
+  },
+  {
+    "name": "round-twelve-home-next",
+    "facts": {
+      "shootout": {
+        "state": "active",
+        "firstSide": "away",
+        "away": [
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "goal"
+        ],
+        "home": [
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss",
+          "miss"
+        ]
+      }
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "S/O",
+      "away_abbr": "SEA",
+      "home_abbr": "PHI",
+      "away_score": "2",
+      "home_score": "2",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "situation": {
+        "shootout": {
+          "away": [
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "goal"
+          ],
+          "home": [
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss",
+            "miss"
+          ],
+          "state": "active",
+          "round": 12,
+          "stage": "sudden_death",
+          "nextSide": "home",
+          "awayGoals": 1,
+          "homeGoals": 0,
+          "roundLabel": "R10-12",
+          "displayRounds": [
+            {
+              "round": 10,
+              "nextSide": "",
+              "away": "miss",
+              "home": "miss"
+            },
+            {
+              "round": 11,
+              "nextSide": "",
+              "away": "miss",
+              "home": "miss"
+            },
+            {
+              "round": 12,
+              "nextSide": "home",
+              "away": "goal",
+              "home": "pending"
+            }
+          ]
+        }
+      }
+    },
+    "away_shots": [
+      "miss",
+      "miss",
+      "goal"
+    ],
+    "home_shots": [
+      "miss",
+      "miss",
+      "next"
+    ]
+  },
+  {
+    "name": "early-complete",
+    "facts": {
+      "shootout": {
+        "state": "complete",
+        "firstSide": "home",
+        "away": [
+          "goal",
+          "miss"
+        ],
+        "home": [
+          "goal",
+          "goal",
+          "goal"
+        ]
+      }
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "post",
+      "status": "FINAL/SO",
+      "away_abbr": "SEA",
+      "home_abbr": "PHI",
+      "away_score": "2",
+      "home_score": "3",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "situation": {
+        "shootout": {
+          "away": [
+            "goal",
+            "miss"
+          ],
+          "home": [
+            "goal",
+            "goal",
+            "goal"
+          ],
+          "state": "complete",
+          "round": 3,
+          "stage": "initial",
+          "nextSide": "",
+          "awayGoals": 1,
+          "homeGoals": 3,
+          "roundLabel": "R1-3",
+          "displayRounds": [
+            {
+              "round": 1,
+              "nextSide": "",
+              "away": "goal",
+              "home": "goal"
+            },
+            {
+              "round": 2,
+              "nextSide": "",
+              "away": "miss",
+              "home": "goal"
+            },
+            {
+              "round": 3,
+              "nextSide": "",
+              "away": "not_taken",
+              "home": "goal"
+            }
+          ]
+        }
+      }
+    },
+    "away_shots": [
+      "goal",
+      "miss",
+      "not_taken"
+    ],
+    "home_shots": [
+      "goal",
+      "goal",
+      "goal"
+    ]
+  },
+  {
+    "name": "captured-final",
+    "facts": {
+      "goals": [
+        {
+          "id": "167",
+          "side": "away",
+          "lastName": "McMann",
+          "jerseyNumber": 74,
+          "period": 1,
+          "clock": "07:57"
+        },
+        {
+          "id": "661",
+          "side": "away",
+          "lastName": "Ottavainen",
+          "jerseyNumber": 46,
+          "period": 2,
+          "clock": "08:54"
+        },
+        {
+          "id": "910",
+          "side": "home",
+          "lastName": "Dvorak",
+          "jerseyNumber": 22,
+          "period": 3,
+          "clock": "06:07"
+        },
+        {
+          "id": "936",
+          "side": "home",
+          "lastName": "Zegras",
+          "jerseyNumber": 46,
+          "period": 3,
+          "clock": "07:20"
+        }
+      ],
+      "shootout": {
+        "away": [
+          "goal",
+          "miss",
+          "miss",
+          "miss",
+          "goal"
+        ],
+        "home": [
+          "miss",
+          "goal",
+          "miss",
+          "miss",
+          "miss"
+        ],
+        "state": "complete",
+        "firstSide": "home"
+      }
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "post",
+      "status": "FINAL/SO",
+      "away_abbr": "SEA",
+      "home_abbr": "PHI",
+      "away_score": "3",
+      "home_score": "2",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "situation": {
+        "shootout": {
+          "away": [
+            "goal",
+            "miss",
+            "miss",
+            "miss",
+            "goal"
+          ],
+          "home": [
+            "miss",
+            "goal",
+            "miss",
+            "miss",
+            "miss"
+          ],
+          "state": "complete",
+          "round": 5,
+          "stage": "sudden_death",
+          "nextSide": "",
+          "awayGoals": 2,
+          "homeGoals": 1,
+          "roundLabel": "R3-5",
+          "displayRounds": [
+            {
+              "round": 3,
+              "nextSide": "",
+              "away": "miss",
+              "home": "miss"
+            },
+            {
+              "round": 4,
+              "nextSide": "",
+              "away": "miss",
+              "home": "miss"
+            },
+            {
+              "round": 5,
+              "nextSide": "",
+              "away": "goal",
+              "home": "miss"
+            }
+          ]
+        }
+      }
+    },
+    "away_shots": [
+      "miss",
+      "miss",
+      "goal"
+    ],
+    "home_shots": [
+      "miss",
+      "miss",
+      "miss"
+    ]
+  },
+  {
+    "name": "playoff-third-overtime",
+    "facts": {
+      "shootout": null
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "3OT 01:00",
+      "away_abbr": "SEA",
+      "home_abbr": "PHI",
+      "away_score": "2",
+      "home_score": "2",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "situation": {
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": []
+  }
+]
