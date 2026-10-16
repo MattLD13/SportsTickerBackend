@@ -75,7 +75,8 @@ void setupMatrix() {
   config.clkphase = false;
   config.latch_blanking = 1;
   config.i2sspeed = HUB75_I2S_CFG::HZ_8M;
-  config.min_refresh_rate = 240;
+  // Retain low-bit color precision at the configured 8 MHz clock.
+  config.min_refresh_rate = 200;
   matrix = new MiniMatrix(config);
   auto* pixels = static_cast<uint8_t*>(heap_caps_calloc(2, mini_display::FRAME_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   matrix->mirror.attach(pixels);

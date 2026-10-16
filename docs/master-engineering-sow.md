@@ -236,6 +236,13 @@ It includes render durations, loop gaps, bounded visit history, and normal heart
 The published firmware passes OTA, live image capture, and an exact RGB888 round trip.
 Read [Mini display diagnostics](research/mini-display-diagnostics-2026-10-15.md) for measured results and pixel limits.
 
+### Mini color profile
+
+The `mini-1.3.7` target retains a 200 Hz panel profile at the existing 8 MHz clock.
+The user confirms that this profile removes the green tint inside the original Lightning logo.
+The firmware build pins the dependencies used in the successful hardware check.
+Read [Mini color profile](research/mini-color-profile-2026-10-15.md) for the observations and limits.
+
 ## Workstream 7: Modernize ESP32 modules and resource use
 
 Split `.inc` modules only with explicit interfaces and stable initialization order.

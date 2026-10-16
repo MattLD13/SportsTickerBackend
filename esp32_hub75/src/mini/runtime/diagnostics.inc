@@ -21,6 +21,7 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   out["render_mean_us"] = displayMetrics.frames ? displayMetrics.renderTotalUs / displayMetrics.frames : 0;
   out["loop_gap_max_us"] = displayMetrics.loopMaxUs;
   out["capture_available"] = matrix->mirror.ready();
+  out["panel_refresh_hz"] = matrix->calculated_refresh_rate;
   out["heap_free"] = ESP.getFreeHeap();
   out["heap_min"] = ESP.getMinFreeHeap();
   out["heap_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
