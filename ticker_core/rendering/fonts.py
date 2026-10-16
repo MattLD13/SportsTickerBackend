@@ -30,14 +30,14 @@ FONT_DIRECTORY = Path(__file__).with_name("font_assets")
 def load_monospace_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
     """Load the same bundled monospace typeface on every display host."""
     name = "DejaVuSansMono-Bold.ttf" if bold else "DejaVuSansMono.ttf"
-    return ImageFont.truetype(FONT_DIRECTORY / name, size)
+    return ImageFont.truetype(FONT_DIRECTORY / name, size, layout_engine=ImageFont.Layout.BASIC)
 
 
 @lru_cache(maxsize=64)
 def load_display_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
     """Load the same bundled display typeface on every display host."""
     name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
-    return ImageFont.truetype(FONT_DIRECTORY / name, size)
+    return ImageFont.truetype(FONT_DIRECTORY / name, size, layout_engine=ImageFont.Layout.BASIC)
 
 
 @lru_cache(maxsize=1)

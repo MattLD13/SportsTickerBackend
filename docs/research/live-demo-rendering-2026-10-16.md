@@ -58,6 +58,10 @@ The Mini retains its 114 reviewed 64x32 captures.
 The font files come from the personal Pi's installed DejaVu fonts.
 The repository includes their copyright and permission notice.
 The hardware and backend load these same files without system font discovery.
+Both hosts explicitly use Pillow's BASIC text engine.
+The Pi previously selected RAQM while the web server selected BASIC.
+That difference changed 587 text pixels in the hockey comparison frame.
+The common BASIC setting produced zero differing pixels across the Pi and public server.
 
 ## Scope
 

@@ -287,9 +287,10 @@ def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
     selected = {"sports": ("FB02", "BS09", "BK03", "HK07", "SC04"), "stock": ("MD01",),
                 "weather": ("MD04",), "flights": ("MD13",), "airports": ("MD18",), "clock": ("MD20",)}
     if mode == "music":
+        cycle_start = _SAMPLE_STARTED + int((time() - _SAMPLE_STARTED + 112) // 303) * 303
         return {"music": [{"data": {"type": "music", "sport": "music", "name": "MR. BLUE SKY",
             "artist": "ELECTRIC LIGHT ORCHESTRA", "cover": "demo:album", "is_playing": True,
-            "progress": 112, "duration": 303, "fetch_ts": _SAMPLE_STARTED}}]}
+            "progress": 112, "duration": 303, "fetch_ts": cycle_start}}]}
     return {mode: [{"id": name, "data": layout_case(name)["game"]} for name in selected.get(mode, ())]}
 
 

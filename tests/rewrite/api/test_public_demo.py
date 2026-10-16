@@ -38,10 +38,15 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
     from sports_ticker.dashboard_v2.preview import PreviewRenderer, layout_case, layout_library
     from ticker_core.bootstrap import create_default_frame_builder
     from ticker_core.features.sports import SportsRenderer
+    from ticker_core.rendering.fonts import load_default_font_set
     from ticker_core.runtime import Content, FrameDecision, FrameKind
 
     app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
     try:
+        from PIL import ImageFont
+        fonts = load_default_font_set()
+        for name in ("normal", "medium", "big", "huge", "clock", "tiny", "micro", "nano"):
+            assert getattr(fonts, name).layout_engine == ImageFont.Layout.BASIC
         client = app.test_client()
         with app.app_context():
             assets = routes._preview_assets()
