@@ -68,9 +68,16 @@ Timed visits range from 3,004.397 to 3,004.939 milliseconds.
 The baseline range is 3,003.901 to 3,004.185 milliseconds.
 Free-heap samples include startup and active TLS requests. They do not form a controlled memory benchmark.
 
+## Transport extraction
+
+The next extraction moves HTTP execution, shared TLS synchronization, HTTP diagnostics, and OTA into compiled modules.
+The runtime applies responses through `network_results.inc` on the display task.
+The iOS transport interface preserves existing request lifetime and polling owners.
+Read [transport evidence and Wi-Fi options](network-modules-and-wifi-2026-10-16.md) for current checks and limits.
+
 ## Remaining Gate 6 work
 
-The runtime still owns its retained JSON, network worker, OTA task, and initialization order.
-The iOS view model still owns HTTP request construction and cancellation.
-Later extraction can introduce transport interfaces after focused request-lifetime tests.
-The current change does not move those state owners or change task placement.
+The runtime still owns retained JSON, sprite coordination, connectivity, and initialization order.
+The iOS view model still owns response policy and timers.
+The app does not have a WebSocket transport today.
+A future WebSocket change needs lifecycle and cancellation evidence before it replaces polling.

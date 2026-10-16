@@ -26,21 +26,8 @@ String backendEndpoint(const String& suffix) {
   return base + suffix;
 }
 
-void logSecureHttpError(const char* operation, int status, WiFiClientSecure& client) {
-  if (status >= 0) {
-    return;
-  }
-  char tlsError[96] = {};
-  const int tlsStatus = client.lastError(tlsError, sizeof(tlsError));
-  Serial.printf("%s failed: %s", operation, HTTPClient::errorToString(status).c_str());
-  if (tlsStatus != 0) {
-    Serial.printf(" TLS %d %s", tlsStatus, tlsError);
-  }
-  Serial.println();
-}
-
 bool registerDevice() {
-  if (WiFi.status() != WL_CONNECTED || !networkAvailable()) {
+  if (WiFi.status() != WL_CONNECTED || !networkWorker.available()) {
     return false;
   }
   JsonDocument request;
@@ -71,7 +58,7 @@ bool registerDevice() {
   if (!job) return false;
   job->url = backendEndpoint("/api/v2/devices/register");
   job->request = body;
-  return queueNetworkJob(job);
+  return networkWorker.enqueue(job);
 }
 
 void applyRegistrationResponse(const NetworkJob& job) {

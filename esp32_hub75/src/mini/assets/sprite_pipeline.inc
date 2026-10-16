@@ -106,7 +106,7 @@ bool logoAvailableInCache(const String& key) {
 }
 
 bool downloadSprite(const mini_sprite::Reference& reference, uint8_t* body) {
-  if (WiFi.status() != WL_CONNECTED || !acquireNetwork(12000)) return false;
+  if (WiFi.status() != WL_CONNECTED || !networkGate.acquire(12000)) return false;
   bool success = false;
   spriteHeapBeforeTls = ESP.getFreeHeap();
   {
@@ -133,7 +133,7 @@ bool downloadSprite(const mini_sprite::Reference& reference, uint8_t* body) {
     }
   }
   spriteHeapAfterTls = ESP.getFreeHeap();
-  releaseNetwork();
+  networkGate.release();
   if (success) ++spriteDownloads;
   return success;
 }

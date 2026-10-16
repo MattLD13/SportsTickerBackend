@@ -217,12 +217,12 @@ void drawClock(const struct tm& localTime, bool clockReady) {
 }
 
 void renderCurrent() {
-  if (firmwareUpdateDisplayActive()) {
+  if (firmwareUpdater.displayActive()) {
     uint8_t state = 0;
     uint32_t complete = 0;
     uint32_t total = 0;
     char detail[24] = {};
-    firmwareUpdateDisplaySnapshot(state, complete, total, detail, sizeof(detail));
+    firmwareUpdater.displaySnapshot(state, complete, total, detail, sizeof(detail));
     drawFirmwareUpdate(state, complete, total, detail);
     return;
   }

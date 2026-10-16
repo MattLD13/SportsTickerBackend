@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../platform/response_stream.h"
+#include "../platform/network_gate.h"
+#include <freertos/queue.h>
 
 enum class NetworkKind { Registration, Data, Heartbeat, FirmwareAck };
 
@@ -13,6 +15,7 @@ struct NetworkJob {
   String contentType, contentEncoding;
   String errorStage, resolvedAddress;
   uint32_t durationMs = 0;
+  uint32_t gateWaitMs = 0, headersMs = 0, bodyMs = 0;
   explicit NetworkJob(NetworkKind value) : kind(value) {}
   bool complete() const {
     return transferredBytes >= 0 && !response.body.failed() &&
@@ -21,7 +24,24 @@ struct NetworkJob {
   }
 };
 
-bool networkAvailable();
-bool queueNetworkJob(NetworkJob* job);
-void setupNetworkWorker();
-void pollNetworkResults();
+// The caller owns jobs before enqueue and after takeResult.
+// enqueue consumes each non-null job, including rejected jobs.
+// Instances must outlive their background tasks. Queue methods run on the display task.
+class NetworkWorker {
+ public:
+  explicit NetworkWorker(NetworkGate& gate) : gate_(gate) {}
+  NetworkWorker(const NetworkWorker&) = delete;
+  NetworkWorker& operator=(const NetworkWorker&) = delete;
+  bool begin();
+  bool available() const;
+  bool enqueue(NetworkJob* job);
+  NetworkJob* takeResult();
+
+ private:
+  static void taskEntry(void* context);
+  void run();
+  NetworkGate& gate_;
+  QueueHandle_t requests_ = nullptr;
+  QueueHandle_t results_ = nullptr;
+  bool pending_ = false;
+};

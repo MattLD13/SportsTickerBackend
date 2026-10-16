@@ -9,6 +9,7 @@ void describePane(JsonObject out, const mini_display::Pane& pane) {
 void populateDisplayMetrics(JsonObject out, bool history) {
   const uint64_t now = esp_timer_get_time();
   out["uptime_us"] = now;
+  out["reset_reason"] = static_cast<int>(esp_reset_reason());
   out["frames"] = displayMetrics.frames;
   out["completed_visits"] = displayMetrics.completed;
   out["timed_visits"] = displayMetrics.timed;
@@ -49,6 +50,9 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   network["json_offset"] = lastDataJsonOffset;
   network["json_failures"] = dataJsonFailures;
   network["request_ms"] = lastDataDurationMs;
+  network["gate_wait_ms"] = lastDataGateWaitMs;
+  network["headers_ms"] = lastDataHeadersMs;
+  network["body_ms"] = lastDataBodyMs;
   describePane(out["pane"].to<JsonObject>(), displayMetrics.current);
   out["pane"]["shown_us"] = displayMetrics.frames ? now - displayMetrics.startedUs : 0;
   if (history) {

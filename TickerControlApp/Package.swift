@@ -16,11 +16,11 @@ let package = Package(
                 "Assets.xcassets",
                 "TickerScheduleView.swift",
                 "TickerControl.entitlements",
-                "Services",
+                "Services/BLEProvisioningCoordinator.swift",
                 "ViewModels",
                 "Views",
             ],
-            sources: ["DeviceListState.swift", "TickerScheduleModels.swift", "Models/TickerHardwareProfile.swift", "Models/TickerContentModels.swift"]
+            sources: ["DeviceListState.swift", "TickerScheduleModels.swift", "Models/TickerHardwareProfile.swift", "Models/TickerContentModels.swift", "Services/TickerHTTPClient.swift"]
         ),
         .testTarget(
             name: "TickerControlStateTests",

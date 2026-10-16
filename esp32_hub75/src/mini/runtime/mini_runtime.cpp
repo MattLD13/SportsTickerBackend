@@ -7,9 +7,6 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <Update.h>
-#include <esp_image_format.h>
-#include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
@@ -32,6 +29,8 @@
 #include "../rendering/text_primitives.h"
 #include "../protocol/payload_reader.h"
 #include "network.h"
+#include "../platform/firmware_update.h"
+#include "../platform/http_diagnostics.h"
 #include "../platform/network_recovery.h"
 
 JsonDocument payload;
@@ -71,6 +70,7 @@ String lastDataJsonError;
 size_t lastDataJsonOffset = 0;
 uint32_t dataJsonFailures = 0;
 uint32_t lastDataDurationMs = 0;
+uint32_t lastDataGateWaitMs = 0, lastDataHeadersMs = 0, lastDataBodyMs = 0;
 bool wifiStarted = false;
 bool wifiPairingMode = false;
 bool blePairingStarted = false;
@@ -135,7 +135,13 @@ uint8_t logoRetryIndex = 0;
 bool logoCacheReady = false;
 SemaphoreHandle_t logoCacheMutex = nullptr;
 SemaphoreHandle_t logoWorkMutex = nullptr;
-SemaphoreHandle_t networkMutex = nullptr;
+NetworkGate networkGate;
+NetworkWorker networkWorker(networkGate);
+FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, {
+  MINI_FIRMWARE_VERSION, MINI_FIRMWARE_TARGET, MINI_FIRMWARE_HARDWARE,
+  FIRMWARE_MIN_IMAGE_SIZE, FIRMWARE_MAX_IMAGE_SIZE, FIRMWARE_HTTP_TIMEOUT_MS,
+  FIRMWARE_RETRY_BACKOFF_MS, FIRMWARE_BOOT_VALIDATION_MS, FIRMWARE_FAILURE_DISPLAY_MS
+});
 TaskHandle_t logoWorkerHandle = nullptr;
 String logoWorkPrimary[LOGO_WORK_QUEUE_SLOTS];
 uint8_t logoWorkCount = 0;
@@ -166,28 +172,11 @@ void renderCurrent();
 void drawDownloadingProgress(uint16_t complete, uint16_t total);
 void drawFirmwareUpdate(uint8_t state, uint32_t complete, uint32_t total, const char* detail);
 void logoWorkerTask(void* parameter);
-void firmwareUpdateInitialize();
-void firmwareUpdateObserve(JsonVariantConst command);
-void firmwareUpdateTick(uint32_t now);
-bool firmwareUpdateDisplayActive();
-bool firmwareUpdateTransferActive();
-void firmwareUpdateDisplaySnapshot(uint8_t& state, uint32_t& complete, uint32_t& total, char* detail, size_t detailSize);
 void startBlePairing();
 void startPairingMode();
 void stopBlePairing();
 void applyPendingWifiCredentials(uint32_t now);
 void saveWifiCredentials(const String& ssid, const String& password);
-
-bool acquireNetwork(uint32_t timeoutMs) {
-  return networkMutex == nullptr ||
-    xSemaphoreTake(networkMutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
-}
-
-void releaseNetwork() {
-  if (networkMutex != nullptr) {
-    xSemaphoreGive(networkMutex);
-  }
-}
 
 void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
   if (logoWorkMutex != nullptr) {
@@ -203,11 +192,10 @@ void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
 
 #include "../platform/connectivity.inc"
 #include "../protocol/backend.inc"
-#include "../platform/firmware_update.inc"
 #include "../rendering/presentation.inc"
 #include "../assets/sprite_pipeline.inc"
 #include "../features/renderers.inc"
 #include "diagnostics.inc"
 #include "../protocol/payload.inc"
-#include "network.inc"
+#include "network_results.inc"
 #include "scheduler.inc"

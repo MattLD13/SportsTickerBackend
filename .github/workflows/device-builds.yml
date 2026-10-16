@@ -43,6 +43,10 @@ jobs:
         run: |
           g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/rendering tests/native/mini_text_layout.cpp -o /tmp/mini-text-check
           /tmp/mini-text-check
+      - name: Check firmware transfer and boot receipts
+        run: |
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
+          /tmp/mini-firmware-check
   ios:
     runs-on: macos-latest
     timeout-minutes: 30

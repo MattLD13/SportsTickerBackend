@@ -127,7 +127,7 @@ bool updateFromPayload(const ResponseBody& body) {
   }
   message = "";
   renderCurrent();
-  firmwareUpdateObserve(payload["meta"]["update"]);
+  firmwareUpdater.observe(payload["meta"]["update"], registered, pairingMode, tickerId);
   return true;
 }
 // Owns retained V2 payload filtering and runtime state projection.
@@ -140,6 +140,9 @@ void applyDataResponse(const NetworkJob& job) {
   lastDataContentType = job.contentType;
   lastDataEncoding = job.contentEncoding;
   lastDataDurationMs = job.durationMs;
+  lastDataGateWaitMs = job.gateWaitMs;
+  lastDataHeadersMs = job.headersMs;
+  lastDataBodyMs = job.bodyMs;
   Serial.printf("Data HTTP status: %d duration_ms=%lu bytes=%u\n", job.status,
                 static_cast<unsigned long>(job.durationMs), static_cast<unsigned>(lastDataBytes));
   if (job.status == HTTP_CODE_NOT_FOUND) {

@@ -40,7 +40,7 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 | Pi image cache | `ticker_core/platform/assets.py` | Original image bytes use SHA-256 storage. |
 | Mini image cache | `esp32_hub75/src/mini/assets/sprite_pipeline.inc` | Backend sprites use validated LittleFS transactions and RAM rendering. |
 | Pi deployment | `updater.py` | Immutable worktrees and rollback already exist. |
-| ESP32 update flow | `esp32_hub75/src/mini/platform/firmware_update.inc` | Dual-slot update and boot validation already exist. |
+| ESP32 update flow | `esp32_hub75/src/mini/platform/firmware_update.cpp` | Dual-slot update and boot validation already exist. |
 | CI | `.github/workflows/` | Python static and device build workflows exist. |
 
 Device Stream V1 provides projection deltas, bounded replay, and snapshot recovery. Gate 4 adds backend-generated Mini sports sprites.
@@ -255,7 +255,9 @@ Add native parsing tests only when the PlatformIO target can run them reliably.
 
 The first drawing split now compiles `text_primitives.cpp` with an explicit drawing-surface interface.
 Shared glyph lookup and pane-text layout have pure headers with 3,054 native pixel comparisons.
-The runtime retains selection, frame presentation, networking, tasks, and retained JSON ownership.
+The runtime retains selection, frame presentation, response application, and retained JSON ownership.
+`NetworkWorker`, `NetworkGate`, and `FirmwareUpdater` now compile through explicit interfaces.
+Read [transport extraction and Wi-Fi options](research/network-modules-and-wifi-2026-10-16.md) for validation and remaining measurements.
 The physical `mini-1.3.11` check preserves matching pane hashes, 200 Hz refresh, and three-second visits.
 Read [Gate 6 platform modules](research/platform-modules-2026-10-16.md) for resources and hardware evidence.
 
@@ -271,7 +273,9 @@ The original and extracted applications pass Debug and Release simulator builds.
 Bluetooth provisioning, models, the complete view model, feed cards, shared style, and screens now have separate files.
 `ContentView.swift` now contains the 45-line root view.
 The Foundation package validates extracted models against the backend contract fixtures.
-Request construction and cancellation remain with the existing view-model owner.
+`TickerHTTPClient` now executes HTTP requests through an injected transport interface.
+The view model retains credential selection, cancellation, response policy, and polling.
+The package checks authorization, suspended tasks, cancellation, HTTP failures, and network errors.
 
 ## Workstream 9: Security, deployment, and runtime ownership
 

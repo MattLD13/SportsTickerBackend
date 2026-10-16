@@ -50,7 +50,7 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/platform/connectivity.inc` | Saved Wi-Fi, reconnects, BLE provisioning, and pairing transition |
 | `src/mini/protocol/backend.inc` | V2 registration, eFuse device identity, and endpoint construction |
 | `src/mini/protocol/payload.inc` | V2 payload filtering and retained runtime state |
-| `src/mini/platform/firmware_update.inc` | Manifest checks, SHA-256 download, OTA rollback, and update progress |
+| `src/mini/platform/firmware_update.h/.cpp` | Manifest checks, SHA-256 download, OTA rollback, and update progress |
 | `src/mini/features/renderers.inc` | Sports indicators and all seven mode renderers |
 | `src/mini/rendering/text_primitives.h`, `text_primitives.cpp` | Text drawing through an explicit graphics surface |
 | `src/mini/rendering/text_layout.h`, `glyphs.h` | Pure pane-text layout and shared glyph lookup |
@@ -58,6 +58,9 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/assets/logo_sources.h/.cpp` | Validated backend sprite references |
 | `src/mini/assets/sprite_pipeline.inc` | Sprite transfer, persistent cache, RAM reads, and worker task |
 | `src/mini/assets/mini_sprite.h` | Portable sprite validation, decoding, and cache transactions |
+| `src/mini/runtime/network.h/.cpp` | Bounded request transfer and background HTTP execution |
+| `src/mini/runtime/network_results.inc` | Display-task response application |
+| `src/mini/platform/network_gate.h/.cpp` | Shared TLS and Wi-Fi renewal exclusion |
 | `src/mini/runtime/scheduler.inc` | Startup, polling, heartbeat, Wi-Fi scheduling, and Arduino ticks |
 
 The backend owns source selection and image preparation. The Mini reads versioned asset references from the V2 display projection.
@@ -259,3 +262,10 @@ Set both test switches to `false` before normal ticker operation. Reflash after 
 - If the panel shows `NO <mode>`, verify that the selected V2 mode has at least one shown content item.
 - If the panel shows `DOWNLOAD ASSETS`, keep Wi-Fi available while the logo worker downloads and caches images.
 - If the panel enters BLE setup, read the setup PIN from the panel or the 115200 baud serial log and complete Wi-Fi provisioning.
+
+### Request timing
+
+Serial `STATS` includes `request_ms`, `gate_wait_ms`, `headers_ms`, and `body_ms` under `display.network`.
+`headers_ms` includes name resolution, connection, TLS negotiation, and server response headers.
+`body_ms` measures response body transfer. `gate_wait_ms` measures shared network exclusion.
+These values describe the last data request. They do not measure raw radio throughput.

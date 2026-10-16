@@ -20,7 +20,7 @@ void refreshPreparedClock() {
 }
 
 bool sendHeartbeat() {
-  if (WiFi.status() != WL_CONNECTED || !registered || !networkAvailable()) return false;
+  if (WiFi.status() != WL_CONNECTED || !registered || !networkWorker.available()) return false;
   JsonDocument heartbeat;
   heartbeat["metadata"]["build"] = MINI_FIRMWARE_VERSION;
   heartbeat["metadata"]["mode"] = displayMode;
@@ -45,15 +45,15 @@ bool sendHeartbeat() {
   if (!job) return false;
   job->url = heartbeatUrl;
   job->request = body;
-  return queueNetworkJob(job);
+  return networkWorker.enqueue(job);
 }
 
 bool fetchData() {
-  if (WiFi.status() != WL_CONNECTED || !registered || !networkAvailable()) return false;
+  if (WiFi.status() != WL_CONNECTED || !registered || !networkWorker.available()) return false;
   auto* job = new (std::nothrow) NetworkJob(NetworkKind::Data);
   if (!job) return false;
   job->url = dataUrl;
-  return queueNetworkJob(job);
+  return networkWorker.enqueue(job);
 }
 
 void pollMiniSerial();
@@ -149,17 +149,17 @@ void miniSetup() {
   Serial.printf("Mini firmware: %s sprite_protocol=1\n", MINI_FIRMWARE_VERSION);
   setupLogoCache();
   loadWifiCredentials();
-  firmwareUpdateInitialize();
+  firmwareUpdater.initialize();
   setupMatrix();
   drawMessage("STARTING");
   logoCacheMutex = xSemaphoreCreateMutex();
   logoWorkMutex = xSemaphoreCreateMutex();
-  networkMutex = xSemaphoreCreateMutex();
-  setupNetworkWorker();
-  if (logoCacheMutex == nullptr || logoWorkMutex == nullptr || networkMutex == nullptr) {
+  networkGate.begin();
+  networkWorker.begin();
+  if (logoCacheMutex == nullptr || logoWorkMutex == nullptr || !networkGate.ready()) {
     Serial.println("Sprite synchronization setup failed");
   }
-  if (logoCacheMutex != nullptr && logoWorkMutex != nullptr && networkMutex != nullptr) {
+  if (logoCacheMutex != nullptr && logoWorkMutex != nullptr && networkGate.ready()) {
     const BaseType_t workerResult = xTaskCreatePinnedToCore(
       logoWorkerTask, "logo-worker", 8192, nullptr, 1, &logoWorkerHandle, 0
     );
@@ -286,7 +286,7 @@ void miniTick() {
   }
   pollNetworkResults();
   const uint32_t now = millis();
-  if (networkReconnectRequested && !wifiPairingMode && !blePairingStarted && networkAvailable() && acquireNetwork(0)) {
+  if (networkReconnectRequested && !wifiPairingMode && !blePairingStarted && networkWorker.available() && networkGate.acquire(0)) {
     networkReconnectRequested = false;
     ++networkReconnects;
     Serial.println("Network recovery: renewing the saved Wi-Fi connection after DNS or connection failures");
@@ -294,15 +294,15 @@ void miniTick() {
     WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
     wifiWaitStartedAt = now;
     lastWifiRetryAt = now;
-    releaseNetwork();
+    networkGate.release();
   }
-  firmwareUpdateTick(now);
-  if (firmwareUpdateTransferActive()) {
+  if (firmwareUpdater.tick(now, registered, tickerId)) renderCurrent();
+  if (firmwareUpdater.transferActive()) {
     delay(1);
     return;
   }
   refreshPreparedClock();
-  if (displayMode == "clock" && !pairingMode && message.length() == 0 && !firmwareUpdateDisplayActive() &&
+  if (displayMode == "clock" && !pairingMode && message.length() == 0 && !firmwareUpdater.displayActive() &&
       (preparedClockValid != lastPresentedClockReady ||
        (preparedClockValid && preparedClock.tm_sec != lastPresentedClockSecond))) {
     renderCurrent();

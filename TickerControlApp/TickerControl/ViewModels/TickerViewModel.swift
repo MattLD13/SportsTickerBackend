@@ -89,8 +89,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var timer: Timer?
     private var devicesTimer: Timer?
     private var saveDebounceTimer: Timer?
-    private var currentSaveTask: URLSessionDataTask?
-    private var deviceListTask: URLSessionDataTask?
+    private let httpClient: any TickerHTTPTransport
+    private var currentSaveTask: (any TickerHTTPTask)?
+    private var deviceListTask: (any TickerHTTPTask)?
     private var deviceListGate = DeviceListRequestGate()
     private var selection: DeviceSelectionReducer
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
@@ -229,11 +230,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         let token = controllerToken(for: identifier)
             ?? (controllerGroupID != nil ? savedTickerID.flatMap { controllerToken(for: $0) } : nil)
         guard let token else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        return request
+        return TickerHTTPClient.authorizedRequest(url: url, method: method, token: token)
     }
 
     private func scheduleRequest<T: Decodable>(
@@ -257,7 +254,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 return
             }
         }
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        httpClient.dataTask(with: request) { data, response, error in
             let result: Result<T, Error>
             if let error {
                 result = .failure(error)
@@ -459,7 +456,12 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         )
     }
 
-    override init() {
+    override convenience init() {
+        self.init(httpClient: TickerHTTPClient())
+    }
+
+    init(httpClient: any TickerHTTPTransport) {
+        self.httpClient = httpClient
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
         self.selection = DeviceSelectionReducer(activeTickerID: UserDefaults.standard.string(forKey: "latchedTickerID"))
@@ -613,7 +615,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             return
         }
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        httpClient.dataTask(with: request) { data, _, error in
             if let error = error {
                 DispatchQueue.main.async {
                     self.isServerReachable = false
@@ -744,7 +746,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             print("📤 Saving settings to \(url.absoluteString)")
             currentSaveTask?.cancel()
-            currentSaveTask = URLSession.shared.dataTask(with: request) { data, response, error in
+            currentSaveTask = httpClient.dataTask(with: request) { data, response, error in
                 if let error = error {
                     // Ignore cancellation errors — they mean a newer save superseded this one.
                     if (error as NSError).code == NSURLErrorCancelled { return }
@@ -788,7 +790,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             request.httpBody = try? JSONSerialization.data(
                 withJSONObject: ["display_settings": ["my_teams": teams]]
             )
-            URLSession.shared.dataTask(with: request).resume()
+            httpClient.dataTask(with: request).resume()
         }
     }
 
@@ -833,7 +835,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     func fetchLeagueOptions() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/v2/catalog/leagues") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        httpClient.dataTask(with: url) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode(V2LeagueCatalog.self, from: d) {
                 DispatchQueue.main.async {
                     self.leagueOptions = decoded.leagues
@@ -850,7 +852,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         let base = getBaseURL()
         let identifier = leagueID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? leagueID
         guard let url = URL(string: "\(base)/api/v2/catalog/leagues/\(identifier)/teams") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        httpClient.dataTask(with: url) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode(V2TeamCatalog.self, from: d) {
                 DispatchQueue.main.async { self.allTeams[leagueID] = decoded.teams }
             }
@@ -860,7 +862,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     func fetchModeOptions() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/v2/catalog/modes") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        httpClient.dataTask(with: url) { data, _, _ in
             if let data, let decoded = try? JSONDecoder().decode(V2ModeCatalog.self, from: data) {
                 DispatchQueue.main.async {
                     self.modeSymbols = Dictionary(uniqueKeysWithValues: decoded.modes.map { ($0.id, $0.symbol) })
@@ -896,7 +898,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
 
         let requestIdentity = deviceListGate.begin(tickerID: tickerID, authorizationToken: token)
-        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
+        let task = httpClient.dataTask(with: request) { data, _, _ in
             guard let data, let decoded = try? JSONDecoder().decode(V2TickerList.self, from: data) else { return }
             DispatchQueue.main.async {
                 guard self.deviceListGate.accepts(
@@ -1010,7 +1012,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             }
             req.timeoutInterval = 15
 
-            URLSession.shared.dataTask(with: req) { data, response, error in
+            httpClient.dataTask(with: req) { data, response, error in
                 if let error = error {
                     let message = "Network error: \(error.localizedDescription)"
                     DispatchQueue.main.async {
@@ -1088,7 +1090,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             self.statusColor = .red
             return
         }
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        httpClient.dataTask(with: request) { data, response, error in
             guard error == nil,
                   let status = (response as? HTTPURLResponse)?.statusCode,
                   status == 200,
@@ -1150,7 +1152,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             return
         }
 
-        URLSession.shared.dataTask(with: req) { data, response, error in
+        httpClient.dataTask(with: req) { data, response, error in
             if let error = error {
                 print("❌ Network Error: \(error.localizedDescription)")
                 return
@@ -1190,7 +1192,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         guard let url = tickerURL(tickerID),
               var request = authorizedRequest(url: url, method: "PATCH", tickerID: tickerID) else { return }
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
-        URLSession.shared.dataTask(with: request).resume()
+        httpClient.dataTask(with: request).resume()
     }
 
     func fetchSpotifyStatus() {
@@ -1202,7 +1204,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             spotifyAccounts = []
             return
         }
-        URLSession.shared.dataTask(with: request) { data, response, _ in
+        httpClient.dataTask(with: request) { data, response, _ in
             guard let data, let status = try? JSONDecoder().decode(SpotifyStatus.self, from: data) else {
                 DispatchQueue.main.async { self.spotifyStatus = "Spotify unavailable" }
                 return
@@ -1225,7 +1227,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
         isConnectingSpotify = true
         spotifyError = nil
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        httpClient.dataTask(with: request) { data, response, error in
             guard error == nil,
                   let response = response as? HTTPURLResponse,
                   response.statusCode == 201,
@@ -1278,7 +1280,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 suffix: accountID.map { "/integrations/spotify/\($0)" } ?? "/integrations/spotify"
               ),
               let request = authorizedRequest(url: url, method: "DELETE") else { return }
-        URLSession.shared.dataTask(with: request) { _, response, _ in
+        httpClient.dataTask(with: request) { _, response, _ in
             DispatchQueue.main.async {
                 if (response as? HTTPURLResponse)?.statusCode == 200 {
                     self.spotifyError = nil
@@ -1298,7 +1300,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         request.httpBody = try? JSONSerialization.data(
             withJSONObject: ["spotify_account_id": accountID as Any]
         )
-        URLSession.shared.dataTask(with: request) { _, response, _ in
+        httpClient.dataTask(with: request) { _, response, _ in
             DispatchQueue.main.async {
                 if (response as? HTTPURLResponse)?.statusCode == 200 {
                     self.spotifyError = nil
@@ -1324,7 +1326,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     func showPairCode(for tickerID: String) {
         guard let url = tickerURL(tickerID, suffix: "/pairing-code"),
               let request = authorizedRequest(url: url, method: "POST", tickerID: tickerID) else { return }
-        URLSession.shared.dataTask(with: request) { data, response, _ in
+        httpClient.dataTask(with: request) { data, response, _ in
             DispatchQueue.main.async {
                 if (response as? HTTPURLResponse)?.statusCode == 201,
                    let data,
@@ -1349,7 +1351,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             statusColor = .orange
             return
         }
-        URLSession.shared.dataTask(with: request) { _, response, error in
+        httpClient.dataTask(with: request) { _, response, error in
             DispatchQueue.main.async {
                 if error == nil, (response as? HTTPURLResponse)?.statusCode == 201 {
                     self.connectionStatus = "Reboot requested. The ticker will restart on its next poll."
