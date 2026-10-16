@@ -102,6 +102,13 @@ def demo_portfolio():
     )
 
 
+@dashboard_v2.get("/demo/layouts")
+def demo_layouts():
+    """Show public sample layouts without reading or changing ticker state."""
+
+    return render_template("demo_layouts.html", version_hash=_version_hash())
+
+
 @dashboard_v2.get("/api/preview/strip.png")
 def preview_strip():
     """Render one stable public panel preview without ticker state."""

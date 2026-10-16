@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from io import BytesIO
 
 from PIL import Image
@@ -51,6 +52,65 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
             assert Image.open(BytesIO(response.data)).size == (384, 32)
     finally:
         app.extensions["sports_ticker.backend_application"].close()
+
+
+def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, monkeypatch) -> None:
+    """Serve both board sizes and all modes without touching device records."""
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    backend = app.extensions["sports_ticker.backend_application"]
+    try:
+        def reject_fleet_read():
+            raise AssertionError("The sample explorer cannot read fleet state.")
+
+        monkeypatch.setattr(backend, "list_tickers", reject_fleet_read)
+        client = app.test_client()
+        response = client.get("/demo/layouts")
+        assert response.status_code == 200
+        assert b"data-layout-explorer" in response.data
+        for control in ("category", "search", "device", "layout", "pixels", "brightness", "play", "share", "zoom"):
+            assert f'id="{control}"'.encode() in response.data
+        for asset in ("layout-explorer.css", "layout-explorer.js"):
+            assert client.get(f"/dashboard/static/{asset}").status_code == 200
+        response = client.get("/dashboard/static/layout-gallery.json")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["schema_version"] == 1
+        rows = data["cases"]
+        assert len(rows) >= 114
+        assert len({row["name"] for row in rows}) == len(rows)
+        assert {row["mode"] for row in rows} == {
+            "sports", "stock", "weather", "music", "flights", "airports", "clock", "pairing", "message",
+        }
+        labels = {
+            row["game"].get("situation", {}).get("manpower", {}).get("powerPlayLabel", "")
+            for row in rows
+        }
+        assert {"5v4", "5v3", "4v3"} <= labels
+        assert any(row["game"].get("status") == "OT4" and row["game"].get("sport") == "ncf_fbs" for row in rows)
+        for row in rows:
+            assert row["mini_source"] in {"firmware", "hardware"}
+            with Image.open(BytesIO(base64.b64decode(row["mini"], validate=True))) as mini:
+                assert mini.size == (64, 32), row["name"]
+                mini.load()
+            if row["main"].get("pinned"):
+                with Image.open(BytesIO(base64.b64decode(row["main"]["pinned"], validate=True))) as main:
+                    assert main.size == (384, 32), row["name"]
+                    main.load()
+            else:
+                assert row["main"]["note"]
+            if row["main"].get("pane"):
+                with Image.open(BytesIO(base64.b64decode(row["main"]["pane"], validate=True))) as pane:
+                    assert pane.size == (row["main"]["pane_width"], 32), row["name"]
+                    pane.load()
+            assert not any(key.endswith("_sprite") for key in row)
+            assert "ticker_id" not in row["game"]
+            if row["group"] == "Other sports":
+                assert "generic scoreboard" in row["note"]
+        for private_value in (b"ticker2.local", b"esp32s3-E47FF1818C58", b"lehigh-guest", b"/tmp/"):
+            assert private_value not in response.data
+        assert client.post("/demo/layouts").status_code == 405
+    finally:
+        backend.close()
 
 def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_path) -> None:
     from datetime import datetime, timezone
