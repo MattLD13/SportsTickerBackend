@@ -1,10 +1,21 @@
 name: Static checks
 
 on:
+  push:
+    branches: ['main']
+    paths:
+      - 'sports_ticker/**'
+      - 'ticker_core/**'
+      - 'docs/contracts/**'
+      - 'tests/rewrite/**'
+      - 'pyproject.toml'
+      - '.github/workflows/static-checks.yml'
   pull_request:
     paths:
       - 'sports_ticker/**'
       - 'ticker_core/**'
+      - 'docs/contracts/**'
+      - 'tests/rewrite/**'
       - 'pyproject.toml'
       - '.github/workflows/static-checks.yml'
   workflow_dispatch:

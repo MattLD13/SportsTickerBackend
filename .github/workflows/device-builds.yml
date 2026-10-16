@@ -1,10 +1,26 @@
 name: Device builds
 
 on:
+  push:
+    branches: ['main']
+    paths:
+      - 'esp32_hub75/**'
+      - 'TickerControlApp/**'
+      - 'docs/contracts/**'
+      - 'tests/native/**'
+      - 'ticker_core/rendering/pixels.py'
+      - 'ticker_core/rendering/style.py'
+      - 'tools/generate_mini_ui.py'
+      - '.github/workflows/device-builds.yml'
   pull_request:
     paths:
       - 'esp32_hub75/**'
       - 'TickerControlApp/**'
+      - 'docs/contracts/**'
+      - 'tests/native/**'
+      - 'ticker_core/rendering/pixels.py'
+      - 'ticker_core/rendering/style.py'
+      - 'tools/generate_mini_ui.py'
       - '.github/workflows/device-builds.yml'
   workflow_dispatch:
 
@@ -25,16 +41,27 @@ jobs:
         run: pio run -d esp32_hub75 -e esp32s3
   ios:
     runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configuration: Debug
+            package_configuration: debug
+          - configuration: Release
+            package_configuration: release
     steps:
       - uses: actions/checkout@v4
       - name: Report Xcode toolchain
         run: xcodebuild -version
+      - name: Check state and contract serialization
+        run: swift test --package-path TickerControlApp --configuration ${{ matrix.package_configuration }}
       - name: Build iOS simulator app
         run: >-
           xcodebuild
           -project TickerControlApp/TickerControl.xcodeproj
           -target TickerControl
-          -configuration Debug
+          -configuration ${{ matrix.configuration }}
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
