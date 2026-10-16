@@ -41,6 +41,11 @@ Changes under `ticker_core` now trigger a backend release and the existing Pi up
 The next page load uses the new release assets and renderer.
 No manual screenshot rebuild is necessary for big ticker layout changes.
 
+The deployment workflow owns the backend renderer source folder.
+The first copy attempt found renderer directories owned by another account.
+Tar rejected their timestamp and permission updates.
+The workflow now verifies the source folder path and assigns it to the deployment account before copying files.
+
 ## Input and output proof
 
 Pixel tests compare public football, hockey, weather, music, and clock responses with the real frame builder.

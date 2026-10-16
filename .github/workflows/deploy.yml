@@ -225,6 +225,19 @@ jobs:
           echo "${SHA}" > VERSION
           echo "Version: ${SHA}"
 
+      - name: Prepare shared renderer ownership
+        uses: appleboy/ssh-action@master
+        with:
+          host:     ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key:      ${{ secrets.SSH_KEY }}
+          script: |
+            set -eu
+            cd "/home/${{ secrets.SSH_USER }}"
+            mkdir -p ticker_core
+            test "$(readlink -f ticker_core)" = "/home/${{ secrets.SSH_USER }}/ticker_core"
+            sudo chown -R --no-dereference "${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }}" ticker_core
+
       - name: Copy files to server
         uses: appleboy/scp-action@master
         with:
