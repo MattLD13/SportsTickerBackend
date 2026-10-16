@@ -42,6 +42,17 @@ The release target is `mini-1.3.7`.
 The temporary `mini-1.3.7-colorcheck` image runs successfully on the physical Mini.
 A real 384x32 main ticker reference also renders successfully.
 
+## Published result
+
+Deployment [38835861645](https://github.com/MattLD13/SportsTickerBackend/actions/runs/38835861645) passes runtime checks and the firmware build.
+The physical Mini downloads and verifies 1,272,320 bytes, restarts into `mini-1.3.7`, and acknowledges the release.
+The backend clears the update command and retains app pairing.
+The final live capture reports 200 Hz on the published firmware.
+It saves three complete frames without protocol errors and observes the normal 19-page sports rotation.
+The full suite passes 597 tests. The critical suite passes 267 tests.
+The local firmware build, Ruff, scoped Mypy, and the real 384x32 reference render pass.
+All temporary display patterns and serial collectors have finished.
+
 ## Change notes
 
 Owner: The Mini matrix adapter owns scan timing. PlatformIO owns the tested build dependencies.
