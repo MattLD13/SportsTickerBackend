@@ -5,22 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0a0a0a">
 <title>SportsTicker — layout explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='style.css', v=version_hash) }}">
 <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='layout-explorer.css', v=version_hash) }}">
 </head>
-<body>
-<main class="explorer" data-layout-explorer data-gallery-url="{{ url_for('dashboard_v2.static', filename='layout-gallery.json', v=version_hash) }}">
-  <header class="page-head">
-    <a class="wordmark" href="/">SPORTS<span>TICKER</span></a>
-    <nav aria-label="Demo pages"><a href="/demo">Live demo</a><a href="/demo/layouts" aria-current="page">Layout explorer</a></nav>
-  </header>
-  <section class="intro">
-    <p class="eyebrow">TWO BOARDS. EVERY SITUATION.</p>
-    <h1>See how it looks.</h1>
-    <p>Explore the big ticker and Mini together. Pick a situation, compare layouts, and inspect every pixel.</p>
-    <p class="sample-note">Sample data · Actual ticker drawing code · Controls affect this preview only</p>
+<body class="layout-page">
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="/">
+      <span class="logo-leds" aria-hidden="true"><span class="led-dot ld1"></span><span class="led-dot ld2"></span><span class="led-dot ld3"></span></span>
+      <span class="logo-text">SportsTicker</span>
+    </a>
+    <nav class="nav" aria-label="Website pages">
+      <a href="/">Home</a><a href="/demo">Live demo</a><a href="/demo/layouts" aria-current="page">Layouts</a>
+    </nav>
+    <div class="header-right"><a class="btn btn-ghost" href="/">Back to main website</a></div>
+  </div>
+</header>
+<main class="frame explorer" data-layout-explorer data-gallery-url="{{ url_for('dashboard_v2.static', filename='layout-gallery.json', v=version_hash) }}">
+  <section class="sec intro">
+    <span class="plus tl"></span><span class="plus tr"></span>
+    <p class="sec-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">LAYOUT EXPLORER</p>
+    <h1 class="sec-title">Every situation.<br>Both <span data-led data-led-inline data-led-scale="2" data-led-color="amber" data-led-pad="0">tickers</span>.</h1>
+    <p class="sec-note">Pick a game situation or display mode. Compare the big ticker and Mini, then zoom in to inspect the pixels.</p>
+    <p class="sample-note">Sample data · Preview controls affect this page only</p>
   </section>
 
-  <section class="workspace" aria-label="Selected layout">
+  <section class="sec workspace" aria-label="Selected layout">
     <div class="selection-head">
       <div><p class="eyebrow" id="case-category">LAYOUT EXPLORER</p><h2 id="case-title">Loading examples…</h2></div>
       <div class="step-controls"><button id="previous" type="button" aria-label="Previous example">←</button><span id="position"></span><button id="next" type="button" aria-label="Next example">→</button></div>
@@ -53,7 +66,7 @@
     </div>
   </section>
 
-  <section class="catalog" aria-labelledby="browse-title">
+  <section class="sec catalog" aria-labelledby="browse-title">
     <div class="catalog-head"><h2 id="browse-title">Find a layout</h2><span id="result-count" role="status"></span></div>
     <div class="filters">
       <label>Category<select id="category"><option value="all">All categories</option></select></label>
@@ -73,6 +86,7 @@
   <p id="pixel-readout">Move over the image to inspect a pixel.</p>
 </dialog>
 <noscript><p>This layout explorer needs JavaScript. <a href="/demo">Open the live demo.</a></p></noscript>
+<script src="{{ url_for('dashboard_v2.static', filename='led.js', v=version_hash) }}"></script>
 <script src="{{ url_for('dashboard_v2.static', filename='layout-explorer.js', v=version_hash) }}" defer></script>
 </body>
 </html>

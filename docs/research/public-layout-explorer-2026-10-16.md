@@ -11,8 +11,24 @@ The catalog contains synthetic data. It contains no device identifiers or real p
 The complete Mini review gallery existed only in local preview files.
 The public demo displayed only the big ticker.
 The new `/demo/layouts` page serves both board sizes from one reviewed static catalog.
-The landing page and `/demo` link to this page.
+The landing page links to this subpage through its navigation and footer.
 The existing live demo and portfolio embed keep their current render paths.
+
+## Website style correction
+
+The dashboard owns page routing and the public website style.
+The explorer remains a subpage at `/demo/layouts`.
+The main page retains its original sections and live demo.
+The `/demo` template matches the version before the explorer release.
+The main page includes only navigation and footer links to the explorer.
+
+Remove the explorer's separate global theme and green branding.
+Load the existing `style.css` and `led.js` on the subpage.
+Scope additional layout rules under `.layout-page`.
+Use the original header, logo, typography, page rails, and amber accents.
+
+Route tests verify the main pages exclude explorer markup and assets.
+The subpage test verifies shared website assets and its separate page frame.
 
 ## Input and output
 
