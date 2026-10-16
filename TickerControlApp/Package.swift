@@ -16,9 +16,11 @@ let package = Package(
                 "Assets.xcassets",
                 "TickerScheduleView.swift",
                 "TickerControl.entitlements",
-                "Models/TickerHardwareProfile.swift",
+                "Services",
+                "ViewModels",
+                "Views",
             ],
-            sources: ["DeviceListState.swift", "TickerScheduleModels.swift"]
+            sources: ["DeviceListState.swift", "TickerScheduleModels.swift", "Models/TickerHardwareProfile.swift", "Models/TickerContentModels.swift"]
         ),
         .testTarget(
             name: "TickerControlStateTests",
