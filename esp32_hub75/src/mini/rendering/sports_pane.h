@@ -1,10 +1,9 @@
 #pragma once
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <string>
-#include "ui_generated.h"
+#include "glyphs.h"
 
 namespace ticker_ui {
 
@@ -36,12 +35,6 @@ struct SportsPane {
   Penalty penalties[2];
   int penaltyCount = 0;
 };
-
-inline int glyphIndex(char ch) {
-  const unsigned char value = static_cast<unsigned char>(ch);
-  const int upper = std::toupper(value);
-  return upper >= 32 && upper <= 126 ? upper - 32 : 0;
-}
 
 inline int glyphWidth(char ch, int width, bool hybridFont, int wordSpace = 1) {
   if (!hybridFont && ch == ' ') return wordSpace * std::max(1, width / 3);

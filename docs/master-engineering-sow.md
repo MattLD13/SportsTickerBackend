@@ -4,7 +4,7 @@
 
 **Repository:** SportsTickerBackend
 **Baseline:** `a74596046a3672a912ade0dbc7b112d7c167a9d0`
-**Status date:** 2026-10-15
+**Status date:** 2026-10-16
 **Status:** Replaces the original draft as the active engineering plan.
 
 ## Objective
@@ -253,6 +253,12 @@ Measure memory and frame stability on the target board before changing task plac
 Retain existing dual-slot OTA and boot validation while adding focused recovery checks.
 Add native parsing tests only when the PlatformIO target can run them reliably.
 
+The first drawing split now compiles `text_primitives.cpp` with an explicit drawing-surface interface.
+Shared glyph lookup and pane-text layout have pure headers with 3,054 native pixel comparisons.
+The runtime retains selection, frame presentation, networking, tasks, and retained JSON ownership.
+The physical `mini-1.3.11` check preserves matching pane hashes, 200 Hz refresh, and three-second visits.
+Read [Gate 6 platform modules](research/platform-modules-2026-10-16.md) for resources and hardware evidence.
+
 ## Workstream 8: Modularize the iOS client
 
 Split `ContentView.swift` by screen while retaining state ownership and current request timing.
@@ -260,6 +266,12 @@ Extract HTTP and WebSocket clients behind tested service interfaces.
 Use [the platform module map](research/platform-modularization-map.md) to sequence BLE and model extraction.
 Preserve token auth, BLE provisioning, schedules, and update flows.
 Add simulator build and focused serialization tests before each screen migration.
+
+The original and extracted applications pass Debug and Release simulator builds.
+Bluetooth provisioning, models, the complete view model, feed cards, shared style, and screens now have separate files.
+`ContentView.swift` now contains the 45-line root view.
+The Foundation package validates extracted models against the backend contract fixtures.
+Request construction and cancellation remain with the existing view-model owner.
 
 ## Workstream 9: Security, deployment, and runtime ownership
 
@@ -273,6 +285,7 @@ Add rollback checks for healthy rendered frames before replacing service activit
 ## Workstream 10: Observability and CI
 
 Add push-to-main and contract-path triggers to static and device build workflows.
+These triggers now run on direct `main` pushes. Device checks cover Debug and Release iOS builds and package tests.
 Report frame latency, bytes transferred, stream reconnects, queue resets, and sprite cache hits.
 Keep tools in place until moves update imports, workflow paths, and documented commands.
 Keep `test.py` because setup documentation uses it as a device diagnostic.

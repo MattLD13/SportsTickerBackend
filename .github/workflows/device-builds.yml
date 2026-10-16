@@ -39,6 +39,10 @@ jobs:
         run: python -m pip install platformio
       - name: Build mini firmware
         run: pio run -d esp32_hub75 -e esp32s3
+      - name: Check extracted text pixels
+        run: |
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/rendering tests/native/mini_text_layout.cpp -o /tmp/mini-text-check
+          /tmp/mini-text-check
   ios:
     runs-on: macos-latest
     timeout-minutes: 30

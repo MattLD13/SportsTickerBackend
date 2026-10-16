@@ -1,29 +1,3 @@
-void drawText(const String& value, int16_t x, int16_t y, uint16_t foreground) {
-  matrix->setTextColor(foreground);
-  matrix->setCursor(x, y);
-  matrix->print(value);
-}
-
-void drawTextFit(const String& value, int16_t x, int16_t y, uint16_t foreground, int16_t width) {
-  String clipped = value;
-  const size_t maxCharacters = width > 0 ? static_cast<size_t>(width / 6) : 0;
-  if (clipped.length() > maxCharacters) {
-    clipped.remove(maxCharacters);
-  }
-  drawText(clipped, x, y, foreground);
-}
-
-void drawTextRight(const String& value, int16_t right, int16_t y, uint16_t foreground, int16_t left) {
-  String clipped = value;
-  const int16_t width = right - left;
-  const size_t maxCharacters = width > 0 ? static_cast<size_t>(width / 6) : 0;
-  if (clipped.length() > maxCharacters) {
-    clipped.remove(maxCharacters);
-  }
-  const int16_t x = right - static_cast<int16_t>(clipped.length() * 6);
-  drawText(clipped, x, y, foreground);
-}
-
 String shortValue(JsonVariantConst value, const char* fallback, size_t limit) {
   String result = value.isNull() ? String(fallback) : value.as<String>();
   result.trim();
@@ -117,7 +91,7 @@ void drawMessage(const String& value) {
   beginFrame("message", value.c_str());
   matrix->fillScreen(0);
   matrix->drawFastHLine(0, 0, 64, color(30, 150, 220));
-  drawTextFit(value, 2, 13, color(255, 220, 80), 60);
+  mini_text::drawTextFit(*matrix, value, 2, 13, color(255, 220, 80), 60);
   presentFrame();
 }
 
@@ -139,10 +113,10 @@ void drawDownloadingProgress(uint16_t complete, uint16_t total) {
 
   matrix->fillScreen(0);
   matrix->drawFastHLine(0, 0, 64, cyan);
-  drawText("DOWNLOAD", 2, 3, yellow);
-  drawTextRight(String(percent) + "%", 61, 3, cyan, 2);
-  drawText("ASSETS", 2, 13, color(180, 200, 220));
-  drawTextRight(String(complete) + "/" + String(total), 61, 13, color(180, 200, 220), 2);
+  mini_text::drawText(*matrix, "DOWNLOAD", 2, 3, yellow);
+  mini_text::drawTextRight(*matrix, String(percent) + "%", 61, 3, cyan, 2);
+  mini_text::drawText(*matrix, "ASSETS", 2, 13, color(180, 200, 220));
+  mini_text::drawTextRight(*matrix, String(complete) + "/" + String(total), 61, 13, color(180, 200, 220), 2);
   matrix->drawRect(2, 22, 60, 7, cyan);
   if (filledWidth > 0) {
     matrix->fillRect(3, 24, filledWidth, 3, yellow);
@@ -164,18 +138,18 @@ void drawFirmwareUpdate(uint8_t state, uint32_t complete, uint32_t total, const 
   const uint16_t titleColor = state == 4 ? red : yellow;
   matrix->fillScreen(0);
   matrix->drawFastHLine(0, 0, 64, state == 4 ? red : cyan);
-  drawTextFit(title, 2, 3, titleColor, 60);
+  mini_text::drawTextFit(*matrix, title, 2, 3, titleColor, 60);
   if (state == 2 && total > 0) {
     const uint8_t percent = static_cast<uint8_t>(min<uint32_t>(100, (complete * 100U) / total));
-    drawTextRight(String(percent) + "%", 61, 3, cyan, 2);
+    mini_text::drawTextRight(*matrix, String(percent) + "%", 61, 3, cyan, 2);
     matrix->drawRect(2, 13, 60, 7, cyan);
     const uint16_t filledWidth = static_cast<uint16_t>((58U * min(complete, total)) / total);
     if (filledWidth > 0) {
       matrix->fillRect(3, 15, filledWidth, 3, yellow);
     }
-    drawTextRight(String(complete / 1024) + "/" + String(total / 1024) + "K", 61, 24, color(180, 200, 220), 2);
+    mini_text::drawTextRight(*matrix, String(complete / 1024) + "/" + String(total / 1024) + "K", 61, 24, color(180, 200, 220), 2);
   } else {
-    drawTextFit(detail == nullptr ? "WAIT" : detail, 2, 16, state == 4 ? red : color(180, 200, 220), 60);
+    mini_text::drawTextFit(*matrix, detail == nullptr ? "WAIT" : detail, 2, 16, state == 4 ? red : color(180, 200, 220), 60);
   }
   presentFrame();
 }
@@ -206,39 +180,3 @@ void drawPairingCode() {
   ticker_ui::renderPairing(canvas, view);
   presentFrame();
 }
-
-const char* pixelGlyph(char value) {
-  static char bits[16];
-  const uint8_t* rows = ticker_ui::pane[ticker_ui::glyphIndex(value)];
-  for (uint8_t row = 0; row < 5; ++row) {
-    for (uint8_t column = 0; column < 3; ++column) bits[row * 3 + column] = rows[row] & (1 << (2 - column)) ? '1' : '0';
-  }
-  bits[15] = '\0';
-  return bits;
-}
-
-void drawPixelText(const String& value, int16_t x, int16_t y, uint16_t foreground, uint8_t scale = 1) {
-  int16_t cursor = x + CONTENT_X_OFFSET;
-  for (size_t characterIndex = 0; characterIndex < value.length(); ++characterIndex) {
-    const char* glyph = pixelGlyph(value[characterIndex]);
-    for (uint8_t row = 0; row < 5; ++row) {
-      for (uint8_t column = 0; column < 3; ++column) {
-        if (glyph[row * 3 + column] == '1') {
-          matrix->fillRect(cursor + column * scale, y + row * scale, scale, scale, foreground);
-        }
-      }
-    }
-    cursor += 4 * scale;
-  }
-}
-
-void drawPixelTextFit(const String& value, int16_t x, int16_t y, uint16_t foreground, uint8_t scale, int16_t width) {
-  String clipped = value;
-  const size_t maximumCharacters = width > 0 ? static_cast<size_t>(width / (4 * scale)) : 0;
-  if (clipped.length() > maximumCharacters) {
-    clipped.remove(maximumCharacters);
-  }
-  drawPixelText(clipped, x, y, foreground, scale);
-}
-
-// Owns pixel primitives, status panels, geometry helpers, and page timing helpers.

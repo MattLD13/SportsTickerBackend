@@ -8,7 +8,7 @@ static const char* BACKEND_URL = "https://ticker.mattdicks.org";
 static const char* DEVICE_NAME = "MiniTicker";
 static const char* DEFAULT_TIMEZONE = "America/New_York";
 static const char* DEFAULT_TIMEZONE_SPEC = "EST5EDT,M3.2.0,M11.1.0";
-static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.3.10";
+static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.3.11";
 static constexpr char MINI_FIRMWARE_TARGET[] = "esp32s3";
 static constexpr char MINI_FIRMWARE_HARDWARE[] = "esp32-s3";
 
@@ -36,7 +36,6 @@ static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 10000;
 static constexpr uint32_t WIFI_PAIRING_TIMEOUT_MS = 30000;
 static constexpr uint32_t MESSAGE_REFRESH_MS = 1000;
 static constexpr uint8_t PANEL_BRIGHTNESS = 255;
-static constexpr int16_t CONTENT_X_OFFSET = 1;
 static constexpr bool SOLID_COLOR_TEST = false;
 static constexpr bool FORCE_PAIRING_TEST = false;
 static constexpr uint32_t SOLID_COLOR_INTERVAL_MS = 1500;

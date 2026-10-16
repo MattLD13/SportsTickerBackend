@@ -52,7 +52,9 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/protocol/payload.inc` | V2 payload filtering and retained runtime state |
 | `src/mini/platform/firmware_update.inc` | Manifest checks, SHA-256 download, OTA rollback, and update progress |
 | `src/mini/features/renderers.inc` | Sports indicators and all seven mode renderers |
-| `src/mini/rendering/primitives.inc` | Text, clipping, centering, status panels, and page timing |
+| `src/mini/rendering/text_primitives.h`, `text_primitives.cpp` | Text drawing through an explicit graphics surface |
+| `src/mini/rendering/text_layout.h`, `glyphs.h` | Pure pane-text layout and shared glyph lookup |
+| `src/mini/rendering/presentation.inc` | Status panels, rotation selection, and page timing |
 | `src/mini/assets/logo_sources.h/.cpp` | Validated backend sprite references |
 | `src/mini/assets/sprite_pipeline.inc` | Sprite transfer, persistent cache, RAM reads, and worker task |
 | `src/mini/assets/mini_sprite.h` | Portable sprite validation, decoding, and cache transactions |

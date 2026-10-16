@@ -41,3 +41,36 @@ The Swift package now compiles the extracted Foundation models and hardware prof
 Its new tests read the backend display, sports, profile, schedule, and schedule-status fixtures directly.
 The Xcode source group includes the new application files automatically.
 The package excludes UIKit services and views from its Foundation test target.
+
+The extracted application passes Debug and Release simulator builds in run `38971899918`.
+Both configurations pass the new package tests against backend fixtures.
+
+## Mini text module
+
+`rendering/text_primitives.cpp` owns drawing through an explicit `Adafruit_GFX` surface.
+`rendering/text_layout.h` owns the fixed pane-text drawing loop.
+`rendering/glyphs.h` owns the shared glyph index operation.
+`rendering/presentation.inc` retains selection, dwell policy, and status-frame presentation.
+Remove the former `rendering/primitives.inc` and its global text functions.
+The module has no network, task, JSON-document, or matrix-global ownership.
+
+The native check compares 3,054 character, clipping, position, and scale cases against the former drawing loop.
+All cases retain identical pixels on the real Pi native runner.
+The pinned PlatformIO build compiles the separate C++ module.
+Static RAM changes from 77,036 to 77,020 bytes.
+Application flash changes from 1,282,593 to 1,283,377 bytes.
+
+The physical Mini runs `mini-1.3.11` after a verified USB flash.
+The 90-second check collects 27 frames and 45 telemetry samples without capture errors.
+All seven pane identities shared with the baseline retain their exact frame hashes.
+Registration and data requests return 200. JSON failures remain zero. Panel refresh remains 200 Hz.
+Timed visits range from 3,004.397 to 3,004.939 milliseconds.
+The baseline range is 3,003.901 to 3,004.185 milliseconds.
+Free-heap samples include startup and active TLS requests. They do not form a controlled memory benchmark.
+
+## Remaining Gate 6 work
+
+The runtime still owns its retained JSON, network worker, OTA task, and initialization order.
+The iOS view model still owns HTTP request construction and cancellation.
+Later extraction can introduce transport interfaces after focused request-lifetime tests.
+The current change does not move those state owners or change task placement.
