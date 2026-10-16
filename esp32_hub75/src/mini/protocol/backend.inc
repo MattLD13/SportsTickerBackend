@@ -40,29 +40,9 @@ void logSecureHttpError(const char* operation, int status, WiFiClientSecure& cli
 }
 
 bool registerDevice() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED || !networkAvailable()) {
     return false;
   }
-  if (!acquireNetwork(10000)) {
-    Serial.println("Register deferred: network busy");
-    return false;
-  }
-
-  WiFiClientSecure client;
-  configureTls(client);
-  client.setTimeout(8);
-  client.setHandshakeTimeout(8);
-  HTTPClient http;
-  http.useHTTP10(true);
-  http.setReuse(false);
-  http.setConnectTimeout(4000);
-  http.setTimeout(4000);
-  if (!http.begin(client, backendEndpoint("/api/v2/devices/register"))) {
-    releaseNetwork();
-    showFetchError("REGISTER SETUP");
-    return false;
-  }
-
   JsonDocument request;
   request["device_id"] = localDeviceId();
   request["name"] = DEVICE_NAME;
@@ -87,32 +67,27 @@ bool registerDevice() {
   }
   String body;
   serializeJson(request, body);
-  http.addHeader("Content-Type", "application/json");
-  int status = http.POST(body);
-  Serial.print("Register HTTP status: ");
-  Serial.println(status);
-  logSecureHttpError("Register", status, client);
-  if (status != HTTP_CODE_OK && status != HTTP_CODE_CREATED) {
-    showFetchError("REGISTER " + String(status));
-    http.end();
-    releaseNetwork();
-    return false;
-  }
+  auto* job = new (std::nothrow) NetworkJob(NetworkKind::Registration);
+  if (!job) return false;
+  job->url = backendEndpoint("/api/v2/devices/register");
+  job->request = body;
+  return queueNetworkJob(job);
+}
 
-  String responseBody = http.getString();
-  http.end();
-  releaseNetwork();
+void applyRegistrationResponse(const NetworkJob& job) {
+  Serial.printf("Register HTTP status: %d\n", job.status);
+  if (job.status != HTTP_CODE_OK && job.status != HTTP_CODE_CREATED) {
+    showFetchError("REGISTER " + String(job.status));
+    return;
+  }
   JsonDocument response;
-  if (deserializeJson(response, responseBody)) {
-    showFetchError("REGISTER JSON");
-    return false;
-  }
-
+  PayloadReader reader(job.response.body.data(), job.response.body.size());
+  if (!job.complete() || deserializeJson(response, reader)) { showFetchError("REGISTER JSON"); return; }
   String nextTickerId = response["ticker_id"] | "";
   nextTickerId.trim();
   if (nextTickerId.length() == 0) {
     showFetchError("REGISTER ID");
-    return false;
+    return;
   }
 
   tickerId = nextTickerId;
@@ -132,7 +107,6 @@ bool registerDevice() {
   pageCount = 0;
   message = "";
   renderCurrent();
-  return true;
 }
 
 // Owns V2 registration, device identity, and endpoint construction.

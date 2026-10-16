@@ -39,6 +39,7 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   network["json_error"] = lastDataJsonError;
   network["json_offset"] = lastDataJsonOffset;
   network["json_failures"] = dataJsonFailures;
+  network["request_ms"] = lastDataDurationMs;
   describePane(out["pane"].to<JsonObject>(), displayMetrics.current);
   out["pane"]["shown_us"] = displayMetrics.frames ? now - displayMetrics.startedUs : 0;
   if (history) {

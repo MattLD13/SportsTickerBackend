@@ -18,6 +18,7 @@ enum class InningHalf { None, Top, Bottom, Break };
 
 enum class Sport { Other, Football, Baseball, Basketball, Hockey, Soccer };
 enum class Shot { Pending, Goal, Miss, Next, NotTaken };
+struct Penalty { std::string clock, number; };
 
 struct SportsPane {
   std::string status, awayScore, homeScore, footer, awayRank, homeRank, awayLabel, homeLabel;
@@ -31,6 +32,8 @@ struct SportsPane {
   int awayCards = 0, homeCards = 0;
   Shot awayShots[5] = {}, homeShots[5] = {};
   int shotCount = 0;
+  Penalty penalties[2];
+  int penaltyCount = 0;
 };
 
 inline int glyphIndex(char ch) {
@@ -77,22 +80,64 @@ void centered(Canvas& canvas, const std::string& value, int left, int span, int 
   text(canvas, value, left + (span - size + 1) / 2, y, ink, width, height, gap, hybridFont, left, left + span);
 }
 
+inline int inkBounds(char ch, int& first) {
+  const int index = glyphIndex(ch), columns = paneWidths[index];
+  uint8_t bits = 0;
+  for (int row = 0; row < 5; ++row) bits |= pane[index][row];
+  first = 0;
+  if (!bits) return 1;
+  int last = columns - 1;
+  while (!(bits & (1 << (columns - 1 - first)))) ++first;
+  while (!(bits & (1 << (columns - 1 - last)))) --last;
+  return last - first + 1;
+}
+
+inline int inkTextWidth(const std::string& value, int gap) {
+  int size = 0, first = 0;
+  for (char ch : value) size += inkBounds(ch, first) + gap;
+  return value.empty() ? 0 : size - gap;
+}
+
+template<class Canvas>
+void penaltyLine(Canvas& canvas, const Penalty& penalty, int y, Rgb ink) {
+  const std::string number = "#" + penalty.number;
+  const int numberWidth = textWidth(number);
+  const int gap = inkTextWidth(penalty.clock, 1) + 2 + numberWidth <= CONTENT_WIDTH ? 1 : 0;
+  const int clockWidth = inkTextWidth(penalty.clock, gap);
+  const int left = CONTENT_LEFT + (CONTENT_WIDTH - clockWidth - 2 - numberWidth) / 2;
+  int x = left;
+  for (char ch : penalty.clock) {
+    const int index = glyphIndex(ch), columns = paneWidths[index];
+    int first = 0;
+    const int width = inkBounds(ch, first);
+    for (int row = 0; row < 5; ++row) for (int column = 0; column < width; ++column) {
+      if (pane[index][row] & (1 << (columns - 1 - first - column))) canvas.pixel(x + column, y + row, ink);
+    }
+    x += width + gap;
+  }
+  text(canvas, number, left + clockWidth + 2, y, ink);
+}
+
 template<class Canvas>
 void footer(Canvas& canvas, const std::string& value, Rgb ink) {
   if (value.empty()) return;
-  if (textWidth(value) <= CONTENT_WIDTH) {
-    centered(canvas, value, CONTENT_LEFT, CONTENT_WIDTH, 23, ink);
+  const int gap = textWidth(value) <= CONTENT_WIDTH ? 1 : 0;
+  if (textWidth(value, 3, gap) <= CONTENT_WIDTH) {
+    centered(canvas, value, CONTENT_LEFT, CONTENT_WIDTH, 23, ink, 3, 5, gap);
     return;
   }
   // Keep long labels on two clear rows between the team marks.
-  size_t split = value.rfind(' ', value.size() / 2);
+  const size_t separator = value.find(" | ");
+  size_t split = separator;
+  if (split == std::string::npos) split = value.rfind(' ', value.size() / 2);
   if (split == std::string::npos) split = value.find(' ', value.size() / 2);
   if (split == std::string::npos) split = value.size() / 2;
   const std::string first = value.substr(0, split);
-  const size_t start = split < value.size() && value[split] == ' ' ? split + 1 : split;
+  const size_t start = separator != std::string::npos ? split + 3 :
+                       split < value.size() && value[split] == ' ' ? split + 1 : split;
   const std::string second = value.substr(start);
-  centered(canvas, first, CONTENT_LEFT, CONTENT_WIDTH, 20, ink);
-  centered(canvas, second, CONTENT_LEFT, CONTENT_WIDTH, 26, ink);
+  centered(canvas, first, CONTENT_LEFT, CONTENT_WIDTH, 20, ink, 3, 5, textWidth(first) <= CONTENT_WIDTH ? 1 : 0);
+  centered(canvas, second, CONTENT_LEFT, CONTENT_WIDTH, 26, ink, 3, 5, textWidth(second) <= CONTENT_WIDTH ? 1 : 0);
 }
 
 
@@ -181,7 +226,8 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
     group = textWidth(view.awayScore, digitWidth, digitGap) + textWidth(view.homeScore, digitWidth, digitGap) + dashWidth + 2;
   }
   const int x = (64 - group + 1) / 2;
-  const bool twoFooterRows = !view.shootout && !view.baseballLive && textWidth(view.footer) > CONTENT_WIDTH;
+  const bool twoFooterRows = view.penaltyCount > 1 ||
+                            (!view.shootout && !view.baseballLive && textWidth(view.footer, 3, 0) > CONTENT_WIDTH);
   const int height = digitWidth == 6 ? (twoFooterRows ? 9 : 11) : digitWidth == 4 ? 9 : 7;
   const int y = view.baseballLive ? 8 : digitWidth == 6 ? 9 : 10;
   const int awayWidth = textWidth(view.awayScore, digitWidth, digitGap);
@@ -215,7 +261,11 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
     const Side side = view.emptyNet != Side::None ? view.emptyNet : view.powerPlay;
     const bool empty = view.emptyNet != Side::None;
     if (side != Side::None) centered(canvas, empty ? "EN" : "PP", side == Side::Home ? HOME_LOGO_X : 1, MINI_LOGO_SIZE, 2, empty ? EMPTY_NET : POWER_PLAY);
-    footer(canvas, view.footer, empty ? EMPTY_NET : side != Side::None ? POWER_PLAY : MUTED_TEXT);
+    const Rgb ink = empty ? EMPTY_NET : side != Side::None ? POWER_PLAY : MUTED_TEXT;
+    if (view.penaltyCount > 0) {
+      for (int index = 0; index < view.penaltyCount; ++index)
+        penaltyLine(canvas, view.penalties[index], view.penaltyCount == 1 ? 23 : 20 + index * 6, ink);
+    } else footer(canvas, view.footer, ink);
   }
   if (view.shootout) {
     for (int index = 0; index < view.shotCount; ++index) {

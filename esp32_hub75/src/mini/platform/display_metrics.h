@@ -73,6 +73,16 @@ class Metrics {
   uint32_t timed = 0;
   uint32_t late = 0;
   std::array<Visit, HISTORY> history{};
+  bool rotationDue(uint64_t now) const {
+    return frames && std::strcmp(current.kind, "sports") == 0 && current.count > 1 &&
+           current.targetMs > 0 && now - startedUs >= uint64_t(current.targetMs) * 1000;
+  }
+  bool prefetchDue(uint64_t now, uint32_t leadMs) const {
+    if (!frames || std::strcmp(current.kind, "sports") != 0 || current.count < 2 || current.targetMs == 0) return false;
+    const uint64_t elapsed = now - startedUs;
+    const uint64_t target = uint64_t(current.targetMs) * 1000;
+    return elapsed < target && elapsed + uint64_t(leadMs) * 1000 >= target;
+  }
   void loop(uint64_t now) {
     if (hasLoop_) loopMaxUs = std::max(loopMaxUs, now - lastLoopUs_);
     lastLoopUs_ = now; hasLoop_ = true;

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.providers.logo_overrides import mini_logo_sources
-from sports_ticker.providers.sports_display import baseball_inning_display, sport_family
+from sports_ticker.providers.sports_display import baseball_inning_display, nhl_manpower_situation, sport_family
 from tools.render_rewrite import normalize_snapshot, render_snapshot
 
 
@@ -45,6 +45,24 @@ def cases(snapshot: dict) -> list[dict]:
                           away_logo="https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", home_logo="https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
                           situation={"powerPlay":True, "powerPlayTeam":"BOS", "activeTeam":"BOS", "manpower":{"scrollLabel":"0:45"}})
     result.append(hockey)
+    penalty_cases = (
+        ("hockey-penalty-88", [(45, 88)]),
+        ("hockey-penalty-20", [(600, 20)]),
+        ("hockey-two-penalties", [(45, 88), (45, 99)]),
+        ("hockey-staggered-penalties", [(45, 88), (90, 99)]),
+    )
+    for name, penalties in penalty_cases:
+        penalty = deepcopy(hockey)
+        penalty["name"] = name
+        facts = {"phase": "regulation", "situationCode": "1531" if len(penalties) == 2 else "1541",
+                 "awayPowerPlay": True, "homePowerPlay": False, "powerPlaySecondsRemaining": penalties[0][0],
+                 "penaltyBox": {"home": [{"jerseyNumber": number, "secondsRemaining": seconds, "kind": "MIN"} for seconds, number in penalties]}}
+        penalty["game"]["situation"] = nhl_manpower_situation(facts, home_abbr="BOS", away_abbr="NYR")
+        result.append(penalty)
+    replay = json.loads((ROOT / "tests/rewrite/debug/nhl_rangers_pp_replay.json").read_text(encoding="utf-8"))
+    captured = deepcopy(replay["item"]["data"])
+    captured["situation"] = nhl_manpower_situation(replay["facts"], home_abbr=captured["home_abbr"], away_abbr=captured["away_abbr"])
+    result.append({"name": "hockey-captured-penalty", "game": captured})
     hockey_cases = json.loads((ROOT / "tests/rewrite/debug/mini_hockey_panes.json").read_text(encoding="utf-8"))
     result.extend({"name": "hockey-" + row["name"], "game": row["game"]} for row in hockey_cases)
     numbered = deepcopy(hockey)

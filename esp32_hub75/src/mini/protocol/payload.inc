@@ -48,6 +48,8 @@ bool updateFromPayload(const ResponseBody& body) {
   filterSituation["powerPlay"] = true;
   filterSituation["powerPlayTeam"] = true;
   filterSituation["manpower"]["scrollLabel"] = true;
+  filterSituation["manpower"]["penalties"][0]["timeRemaining"] = true;
+  filterSituation["manpower"]["penalties"][0]["jerseyNumber"] = true;
   filterSituation["shootout"] = true;
   filterSituation["isRedZone"] = true;
   filterSituation["emptyNet"] = true;
@@ -69,6 +71,9 @@ bool updateFromPayload(const ResponseBody& body) {
 
   // Commit only a complete filtered document. A transient HTTP or JSON error
   // keeps the last valid payload available for rendering and later refresh.
+  JsonObjectConst visibleItem;
+  String visibleId;
+  if (sportsMode && sportsFrameReady && selectedSportsItem(visibleItem)) visibleId = visibleItem["id"] | "";
   payload = candidate;
 
   JsonObjectConst meta = payload["meta"].as<JsonObjectConst>();
@@ -97,29 +102,53 @@ bool updateFromPayload(const ResponseBody& body) {
   }
   pageHoldSeconds = settings["scroll_speed"] | 0.03f;
   pageCount = sportsMode && !pairingMode ? countShownGames() : 0;
+  if (visibleId.length() > 0 && sportsMode) {
+    uint16_t index = 0;
+    for (JsonObjectConst item : payload["content"]["sports"].as<JsonArrayConst>()) {
+      if (!shownItem(item)) continue;
+      if (visibleId == (item["id"] | "")) { pageIndex = index; break; }
+      ++index;
+    }
+  }
+  if (pageIndex >= pageCount) pageIndex = 0;
   float brightness = settings["brightness"] | 100.0f;
   if (brightness < 0.0f) brightness = 0.0f;
   if (brightness > 100.0f) brightness = 100.0f;
   matrix->setBrightness8(static_cast<uint8_t>(brightness * 2.55f));
   const uint32_t newRotationSignature = sportsRotationSignature();
   const bool workingSetChanged = newRotationSignature != rotationSignature;
-  const bool keepVisibleSportsFrame = sportsMode && sportsFrameReady;
   if (workingSetChanged) {
     rotationSignature = newRotationSignature;
   }
   if (workingSetChanged || logoWorkingSetSignature != newRotationSignature) {
     logoWorkingSetSignature = newRotationSignature;
-    prepareSportsLogoWorkingSet(sportsMode ? 0 : pageIndex);
+    prepareSportsLogoWorkingSet(pageIndex);
   }
   message = "";
-  const bool newSportsPlanReady = !sportsMode || foregroundLogoPlanReady();
-  if (!keepVisibleSportsFrame || !workingSetChanged || !sportsMode || newSportsPlanReady) {
-    renderCurrent();
-  }
-  if (workingSetChanged) {
-    lastPageAt = millis();
-  }
+  renderCurrent();
   firmwareUpdateObserve(payload["meta"]["update"]);
   return true;
 }
 // Owns retained V2 payload filtering and runtime state projection.
+
+void applyDataResponse(const NetworkJob& job) {
+  lastDataStatus = job.status;
+  lastDataExpectedBytes = job.expectedBytes;
+  lastDataTransferBytes = job.transferredBytes;
+  lastDataBytes = job.response.body.size();
+  lastDataContentType = job.contentType;
+  lastDataEncoding = job.contentEncoding;
+  lastDataDurationMs = job.durationMs;
+  Serial.printf("Data HTTP status: %d duration_ms=%lu bytes=%u\n", job.status,
+                static_cast<unsigned long>(job.durationMs), static_cast<unsigned>(lastDataBytes));
+  if (job.status == HTTP_CODE_NOT_FOUND) {
+    registered = false;
+    tickerId = dataUrl = heartbeatUrl = "";
+    pageCount = 0;
+    message = "REGISTER";
+    return;
+  }
+  if (job.status != HTTP_CODE_OK) { showFetchError("HTTP " + String(job.status)); return; }
+  if (!job.complete()) { showFetchError("DATA TRANSFER"); return; }
+  updateFromPayload(job.response.body);
+}

@@ -21,6 +21,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <freertos/queue.h>
 #include <new>
 #include "../platform/config.h"
 #include "../platform/tls.h"
@@ -29,15 +30,15 @@
 #include "../rendering/sports_pane.h"
 #include "../rendering/utility_panels.h"
 #include "../protocol/payload_reader.h"
-#include "../platform/response_stream.h"
+#include "network.h"
 
 JsonDocument payload;
 uint32_t rotationSignature = 0;
 uint32_t logoWorkingSetSignature = 0;
 uint32_t lastFetchAt = 0;
+uint64_t lastPrefetchPageUs = 0;
 uint32_t lastHeartbeatAt = 0;
 uint32_t lastRegisterAt = 0;
-uint32_t lastPageAt = 0;
 uint32_t lastMessageAt = 0;
 uint16_t pageIndex = 0;
 uint16_t pageCount = 0;
@@ -62,6 +63,7 @@ String lastDataEncoding;
 String lastDataJsonError;
 size_t lastDataJsonOffset = 0;
 uint32_t dataJsonFailures = 0;
+uint32_t lastDataDurationMs = 0;
 bool wifiStarted = false;
 bool wifiPairingMode = false;
 bool blePairingStarted = false;
@@ -200,4 +202,5 @@ void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
 #include "../features/renderers.inc"
 #include "diagnostics.inc"
 #include "../protocol/payload.inc"
+#include "network.inc"
 #include "scheduler.inc"

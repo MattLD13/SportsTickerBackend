@@ -452,46 +452,30 @@ void acknowledgeConfirmedFirmware() {
     return;
   }
   const uint32_t now = millis();
-  if (now - firmwareUpdateLastAckAt < 5000) return;
-  firmwareUpdateLastAckAt = now;
-  if (!acquireNetwork(1000)) {
-    return;
-  }
-  WiFiClientSecure client;
-  configureTls(client);
-  client.setTimeout(4);
-  HTTPClient http;
-  http.useHTTP10(true);
-  http.setReuse(false);
-  http.setConnectTimeout(3000);
-  http.setTimeout(4000);
-  const String url = backendEndpoint("/api/v2/tickers/") + tickerId + "/updates/ack";
-  bool acknowledged = false;
-  if (http.begin(client, url)) {
-    JsonDocument request;
-    request["version"] = firmwareUpdateConfirmedVersion;
-    String body;
-    serializeJson(request, body);
-    http.addHeader("Content-Type", "application/json");
-    const int status = http.POST(body);
-    if (status == HTTP_CODE_OK) {
-      JsonDocument response;
-      acknowledged = !deserializeJson(response, http.getString()) && response["acknowledged"].is<bool>() &&
-                     response["acknowledged"].as<bool>();
-    }
-    if (!acknowledged) {
-      if (status == HTTP_CODE_OK) Serial.println("Firmware acknowledgement declined");
-      else logSecureHttpError("Firmware acknowledgement", status, client);
-    }
-    http.end();
-  }
-  releaseNetwork();
+  if (now - firmwareUpdateLastAckAt < 5000 || !networkAvailable()) return;
+  auto* job = new (std::nothrow) NetworkJob(NetworkKind::FirmwareAck);
+  if (!job) return;
+  job->url = backendEndpoint("/api/v2/tickers/") + tickerId + "/updates/ack";
+  job->identity = firmwareUpdateConfirmedVersion;
+  job->command = firmwareUpdateReceiptCommandId;
+  JsonDocument request;
+  request["version"] = job->identity;
+  serializeJson(request, job->request);
+  if (queueNetworkJob(job)) firmwareUpdateLastAckAt = now;
+}
+
+void applyFirmwareAckResponse(const NetworkJob& job) {
+  if (job.identity != firmwareUpdateConfirmedVersion || job.command != firmwareUpdateReceiptCommandId) return;
+  JsonDocument response;
+  PayloadReader reader(job.response.body.data(), job.response.body.size());
+  const bool acknowledged = job.status == HTTP_CODE_OK && job.complete() &&
+    !deserializeJson(response, reader) && response["acknowledged"].is<bool>() && response["acknowledged"].as<bool>();
   if (acknowledged) {
     firmwareUpdateAcknowledged = true;
     preferences.remove(FIRMWARE_PENDING_NVS_KEY);
     firmwareUpdateConfirmedVersion[0] = '\0';
     Serial.println("Firmware boot confirmed and acknowledged");
-  }
+  } else Serial.println("Firmware acknowledgement declined");
 }
 
 void firmwareUpdateTick(uint32_t now) {

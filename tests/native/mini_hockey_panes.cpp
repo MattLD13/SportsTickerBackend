@@ -120,6 +120,52 @@ int main(int argc, char** argv) {
     assert(possession.pixels[3 * 64 + center - 4].r == 110);
     assert(possession.pixels[3 * 64 + center + 4].r == 110);
   }
+  for (const std::string label : {"0:45 #88", "10:00 #20"}) {
+    assert(ticker_ui::textWidth(label, 3, 0) <= ticker_ui::CONTENT_WIDTH);
+    Canvas penalty;
+    ticker_ui::footer(penalty, label, {255, 255, 255});
+    bool drawn = false;
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
+      const bool lit = penalty.pixels[y * 64 + x].r;
+      if (y < 23 || y > 27) assert(!lit);
+      drawn |= lit;
+    }
+    assert(drawn);
+  }
+  JsonDocument longPenalty;
+  longPenalty["sport"] = "nhl";
+  longPenalty["state"] = "in";
+  longPenalty["situation"]["manpower"]["scrollLabel"] = "0:45 #88 | 1:30 #99";
+  const auto longView = ticker_ui::sportsPane(longPenalty.as<JsonObjectConst>());
+  assert(longView.footer == "0:45 #88 | 1:30 #99");
+  Canvas paired;
+  ticker_ui::footer(paired, longView.footer, {255, 255, 255});
+  Canvas pairedExpected;
+  ticker_ui::centered(pairedExpected, "0:45 #88", ticker_ui::CONTENT_LEFT, ticker_ui::CONTENT_WIDTH, 20, {255, 255, 255}, 3, 5, 0);
+  ticker_ui::centered(pairedExpected, "1:30 #99", ticker_ui::CONTENT_LEFT, ticker_ui::CONTENT_WIDTH, 26, {255, 255, 255}, 3, 5, 0);
+  for (size_t index = 0; index < paired.pixels.size(); ++index) assert(paired.pixels[index].r == pairedExpected.pixels[index].r);
+  JsonArray penaltyRows = longPenalty["situation"]["manpower"]["penalties"].to<JsonArray>();
+  for (int number : {88, 99}) {
+    JsonObject entry = penaltyRows.add<JsonObject>();
+    entry["timeRemaining"] = "0:45";
+    entry["jerseyNumber"] = number;
+  }
+  const auto stacked = ticker_ui::sportsPane(longPenalty.as<JsonObjectConst>());
+  assert(stacked.penaltyCount == 2 && stacked.footer.empty());
+  assert(stacked.penalties[0].number == "88" && stacked.penalties[1].number == "99");
+  Canvas actualRows, expectedRows;
+  ticker_ui::renderSports(actualRows, stacked);
+  ticker_ui::penaltyLine(expectedRows, stacked.penalties[0], 20, ticker_ui::MUTED_TEXT);
+  ticker_ui::penaltyLine(expectedRows, stacked.penalties[1], 26, ticker_ui::MUTED_TEXT);
+  for (int y = 20; y < 31; ++y) for (int x = ticker_ui::CONTENT_LEFT; x < ticker_ui::CONTENT_LEFT + ticker_ui::CONTENT_WIDTH; ++x) {
+    const auto actual = actualRows.pixels[y * 64 + x], expected = expectedRows.pixels[y * 64 + x];
+    assert(actual.r == expected.r && actual.g == expected.g && actual.b == expected.b);
+  }
+  for (const ticker_ui::Penalty penalty : {ticker_ui::Penalty{"0:45", "88"}, ticker_ui::Penalty{"10:00", "20"}}) {
+    const int numberWidth = ticker_ui::textWidth("#" + penalty.number);
+    const int gap = ticker_ui::inkTextWidth(penalty.clock, 1) + 2 + numberWidth <= ticker_ui::CONTENT_WIDTH ? 1 : 0;
+    assert(ticker_ui::inkTextWidth(penalty.clock, gap) + 2 + numberWidth == ticker_ui::CONTENT_WIDTH);
+  }
   Canvas glyph;
   ticker_ui::text(glyph, "#", 0, 0, {255, 255, 255});
   assert(ticker_ui::textWidth("#88") == 13);

@@ -259,12 +259,11 @@ bool sportsGameAssetsCached(JsonObjectConst game) {
 
 bool commitReadySportsLogoPlan(uint32_t generation) {
   if (generation != logoPlanGeneration || !foregroundLogoPlanReady()) return false;
-  pageIndex = logoPlanPageIndex;
+  if (!sportsFrameReady) pageIndex = logoPlanPageIndex;
   sportsFrameReady = true;
   assetsLoading = false;
   logoPlanDisplayPending = false;
   assetLoadingStartedAt = 0;
-  lastPageAt = millis();
   return true;
 }
 
@@ -382,12 +381,11 @@ void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
 
   const bool readyBeforeWorker = foregroundLogoPlanReady();
   if (readyBeforeWorker) {
-    pageIndex = targetPage;
+    if (!sportsFrameReady) pageIndex = targetPage;
     sportsFrameReady = true;
     assetsLoading = false;
     logoPlanDisplayPending = false;
     assetLoadingStartedAt = 0;
-    lastPageAt = millis();
   } else {
     assetsLoading = !sportsFrameReady;
     if (assetsLoading && assetLoadingStartedAt == 0) {
@@ -411,7 +409,7 @@ void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
   } else if (hasWork) {
     Serial.println("Sprite worker unavailable");
     assetsLoading = false;
+    if (!sportsFrameReady) pageIndex = targetPage;
     sportsFrameReady = true;
-    pageIndex = targetPage;
   }
 }

@@ -19,28 +19,8 @@ void refreshPreparedClock() {
   preparedClockValid = getLocalTime(&preparedClock, 50);
 }
 
-void sendHeartbeat() {
-  if (WiFi.status() != WL_CONNECTED || !registered) {
-    return;
-  }
-  if (!acquireNetwork(1000)) {
-    return;
-  }
-
-  WiFiClientSecure client;
-  configureTls(client);
-  client.setTimeout(8);
-  client.setHandshakeTimeout(8);
-  HTTPClient http;
-  http.useHTTP10(true);
-  http.setReuse(false);
-  http.setConnectTimeout(4000);
-  http.setTimeout(4000);
-  if (!http.begin(client, heartbeatUrl)) {
-    releaseNetwork();
-    return;
-  }
-
+bool sendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED || !registered || !networkAvailable()) return false;
   JsonDocument heartbeat;
   heartbeat["metadata"]["build"] = MINI_FIRMWARE_VERSION;
   heartbeat["metadata"]["mode"] = displayMode;
@@ -61,80 +41,19 @@ void sendHeartbeat() {
   populateDisplayMetrics(heartbeat["metadata"]["display_metrics"].to<JsonObject>(), false);
   String body;
   serializeJson(heartbeat, body);
-  http.addHeader("Content-Type", "application/json");
-  const int status = http.POST(body);
-  logSecureHttpError("Heartbeat", status, client);
-  http.end();
-  releaseNetwork();
+  auto* job = new (std::nothrow) NetworkJob(NetworkKind::Heartbeat);
+  if (!job) return false;
+  job->url = heartbeatUrl;
+  job->request = body;
+  return queueNetworkJob(job);
 }
 
 bool fetchData() {
-  if (WiFi.status() != WL_CONNECTED) {
-    showFetchError("WIFI LOST");
-    return false;
-  }
-  if (!registered) {
-    showFetchError("REGISTER");
-    return false;
-  }
-  if (!acquireNetwork(10000)) {
-    Serial.println("Data fetch deferred: network busy");
-    return false;
-  }
-
-  WiFiClientSecure client;
-  configureTls(client);
-  client.setTimeout(8);
-  client.setHandshakeTimeout(8);
-  HTTPClient http;
-  http.useHTTP10(true);
-  http.setReuse(false);
-  http.setConnectTimeout(4000);
-  http.setTimeout(4000);
-  if (!http.begin(client, dataUrl)) {
-    releaseNetwork();
-    showFetchError("HTTP SETUP");
-    return false;
-  }
-
-  const char* responseHeaders[] = {"Content-Type", "Content-Encoding"};
-  http.collectHeaders(responseHeaders, 2);
-  int status = http.GET();
-  lastDataStatus = status;
-  lastDataExpectedBytes = http.getSize();
-  lastDataContentType = http.header("Content-Type");
-  lastDataEncoding = http.header("Content-Encoding");
-  Serial.print("Data HTTP status: ");
-  Serial.println(status);
-  logSecureHttpError("Data", status, client);
-  if (status != HTTP_CODE_OK) {
-    if (status == HTTP_CODE_NOT_FOUND) {
-      registered = false;
-      tickerId = "";
-      dataUrl = "";
-      heartbeatUrl = "";
-      pageCount = 0;
-      message = "REGISTER";
-    } else {
-      showFetchError("HTTP " + String(status));
-    }
-    http.end();
-    releaseNetwork();
-    return false;
-  }
-
-  ResponseStream response;
-  lastDataTransferBytes = http.writeToStream(&response);
-  lastDataBytes = response.body.size();
-  http.end();
-  releaseNetwork();
-  if (lastDataTransferBytes < 0 || response.body.failed() ||
-      static_cast<size_t>(lastDataTransferBytes) != lastDataBytes ||
-      (lastDataExpectedBytes >= 0 && static_cast<size_t>(lastDataExpectedBytes) != lastDataBytes)) {
-    showFetchError("DATA TRANSFER");
-    return false;
-  }
-  return updateFromPayload(response.body);
+  if (WiFi.status() != WL_CONNECTED || !registered || !networkAvailable()) return false;
+  auto* job = new (std::nothrow) NetworkJob(NetworkKind::Data);
+  if (!job) return false;
+  job->url = dataUrl;
+  return queueNetworkJob(job);
 }
 
 void pollMiniSerial();
@@ -234,6 +153,7 @@ void miniSetup() {
   logoCacheMutex = xSemaphoreCreateMutex();
   logoWorkMutex = xSemaphoreCreateMutex();
   networkMutex = xSemaphoreCreateMutex();
+  setupNetworkWorker();
   if (logoCacheMutex == nullptr || logoWorkMutex == nullptr || networkMutex == nullptr) {
     Serial.println("Sprite synchronization setup failed");
   }
@@ -267,7 +187,6 @@ void miniSetup() {
     lastFetchAt = millis() - FETCH_INTERVAL_MS;
     lastHeartbeatAt = millis() - HEARTBEAT_INTERVAL_MS;
     lastRegisterAt = millis() - REGISTER_INTERVAL_MS;
-    lastPageAt = millis();
   }
 }
 
@@ -363,6 +282,7 @@ void miniTick() {
     delay(1);
     return;
   }
+  pollNetworkResults();
   const uint32_t now = millis();
   firmwareUpdateTick(now);
   if (firmwareUpdateTransferActive()) {
@@ -411,7 +331,6 @@ void miniTick() {
     assetsLoading = false;
     logoPlanDisplayPending = false;
     assetLoadingStartedAt = 0;
-    lastPageAt = now;
     Serial.println("Logo startup timed out. Showing the scoreboard while downloads continue.");
     if (message.length() == 0) {
       renderCurrent();
@@ -478,10 +397,9 @@ void miniTick() {
     }
     if (retrySprites && sportsMode && !pairingMode) prepareSportsLogoWorkingSet(pageIndex);
     if (message.length() == 0 && sportsMode && sportsFrameReady &&
-        pageCount > 1 && now - lastPageAt >= pageHoldMillis(pageHoldSeconds)) {
+        pageCount > 1 && displayMetrics.rotationDue(esp_timer_get_time())) {
       const uint16_t nextPage = (pageIndex + 1) % pageCount;
       pageIndex = nextPage;
-      lastPageAt = now;
       renderCurrent();
       if (!logoPlanBusy) {
         JsonObjectConst nextGame;
@@ -492,18 +410,18 @@ void miniTick() {
     }
 
     if (WiFi.status() == WL_CONNECTED && !registered && now - lastRegisterAt >= REGISTER_INTERVAL_MS) {
-      lastRegisterAt = now;
-      registerDevice();
+      if (registerDevice()) lastRegisterAt = now;
     }
-
-    if (registered && now - lastFetchAt >= FETCH_INTERVAL_MS) {
-      lastFetchAt = now;
-      fetchData();
-    }
-
     if (now - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
-      lastHeartbeatAt = now;
-      sendHeartbeat();
+      if (sendHeartbeat()) lastHeartbeatAt = now;
+    }
+    const bool prefetch = sportsMode && displayMetrics.prefetchDue(esp_timer_get_time(), 1000) &&
+                          lastPrefetchPageUs != displayMetrics.startedUs;
+    if (registered && (prefetch || now - lastFetchAt >= FETCH_INTERVAL_MS)) {
+      if (fetchData()) {
+        lastFetchAt = now;
+        if (prefetch) lastPrefetchPageUs = displayMetrics.startedUs;
+      }
     }
 
     if (message.length() > 0) {
