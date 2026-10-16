@@ -70,6 +70,28 @@ int main(int argc, char** argv) {
     }
     Canvas canvas;
     ticker_ui::renderSports(canvas, view);
+    if (!row["expected_power_label"].isNull()) {
+      assert(view.powerPlayLabel == row["expected_power_label"].as<std::string>());
+      if (!view.powerPlayLabel.empty()) {
+        for (int y = 1; y < 7; ++y) for (int x : {15, 16, 17, 47, 48, 49}) {
+          const auto pixel = canvas.pixels[y * 64 + x];
+          assert(pixel.r == 0 && pixel.g == 0 && pixel.b == 0);
+        }
+      }
+      const std::string badge = row["expected_badge"].as<std::string>();
+      if (!badge.empty()) {
+        Canvas expectedBadge;
+        const int left = (row["badge_home"] | false) ? ticker_ui::HOME_LOGO_X : 1;
+        ticker_ui::centered(expectedBadge, badge, left, ticker_ui::MINI_LOGO_SIZE, 2, ticker_ui::POWER_PLAY);
+        for (int y = 2; y < 7; ++y) for (int x = left; x < left + ticker_ui::MINI_LOGO_SIZE; ++x) {
+          const auto expected = expectedBadge.pixels[y * 64 + x];
+          if (expected.r || expected.g || expected.b) {
+            const auto actual = canvas.pixels[y * 64 + x];
+            assert(actual.r == expected.r && actual.g == expected.g && actual.b == expected.b);
+          }
+        }
+      }
+    }
     for (int index = 0; index < view.shotCount; ++index) {
       for (int side = 0; side < 2; ++side) {
         const auto state = side ? view.homeShots[index] : view.awayShots[index];
@@ -89,6 +111,7 @@ int main(int argc, char** argv) {
   }
   assert(ticker_ui::textWidth("3RD & 6") == 23);
   assert(ticker_ui::textWidth("4TH & 15") == 27);
+  assert(ticker_ui::textWidth("2ND & GOAL", 3, 0, false, 2) == 28);
   assert(ticker_ui::textWidth("4TH & 15") <= ticker_ui::CONTENT_WIDTH);
   ticker_ui::SportsPane football;
   football.sport = ticker_ui::Sport::Football;

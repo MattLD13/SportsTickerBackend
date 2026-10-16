@@ -110,7 +110,7 @@ bool downloadSprite(const mini_sprite::Reference& reference, uint8_t* body) {
   bool success = false;
   spriteHeapBeforeTls = ESP.getFreeHeap();
   {
-    WiFiClientSecure client;
+    BackendTlsClient client;
     configureTls(client);
     client.setTimeout(8);
     client.setHandshakeTimeout(8);

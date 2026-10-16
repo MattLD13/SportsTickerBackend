@@ -22,6 +22,7 @@ struct Penalty { std::string clock, number; };
 
 struct SportsPane {
   std::string status, awayScore, homeScore, footer, awayRank, homeRank, awayLabel, homeLabel;
+  std::string powerPlayLabel;
   Rgb awayColor = {86, 104, 132}, homeColor = {86, 104, 132};
   Sport sport = Sport::Other;
   Side active = Side::None, powerPlay = Side::None, emptyNet = Side::None;
@@ -42,25 +43,25 @@ inline int glyphIndex(char ch) {
   return upper >= 32 && upper <= 126 ? upper - 32 : 0;
 }
 
-inline int glyphWidth(char ch, int width, bool hybridFont) {
-  if (!hybridFont && ch == ' ') return std::max(1, width / 3);
+inline int glyphWidth(char ch, int width, bool hybridFont, int wordSpace = 1) {
+  if (!hybridFont && ch == ' ') return wordSpace * std::max(1, width / 3);
   return hybridFont ? width : (paneWidths[glyphIndex(ch)] * width + 1) / 3;
 }
 
-inline int textWidth(const std::string& value, int width = 3, int gap = 1, bool hybridFont = false) {
+inline int textWidth(const std::string& value, int width = 3, int gap = 1, bool hybridFont = false, int wordSpace = 1) {
   int size = 0;
-  for (char ch : value) size += glyphWidth(ch, width, hybridFont) + gap;
+  for (char ch : value) size += glyphWidth(ch, width, hybridFont, wordSpace) + gap;
   return value.empty() ? 0 : size - gap;
 }
 
 template<class Canvas>
 void text(Canvas& canvas, const std::string& value, int x, int y, Rgb ink,
-          int width = 3, int height = 5, int gap = 1, bool hybridFont = false, int clipLeft = 0, int clipRight = 64) {
+          int width = 3, int height = 5, int gap = 1, bool hybridFont = false, int clipLeft = 0, int clipRight = 64, int wordSpace = 1) {
   const int rows = hybridFont ? 6 : 5;
   for (char ch : value) {
     const int index = glyphIndex(ch);
     const int columns = hybridFont ? 4 : paneWidths[index];
-    const int drawnWidth = glyphWidth(ch, width, hybridFont);
+    const int drawnWidth = glyphWidth(ch, width, hybridFont, wordSpace);
     for (int dy = 0; dy < height; ++dy) {
       const int row = ((2 * dy + 1) * rows) / (2 * height);
       const uint8_t bits = hybridFont ? hybrid[index][row] : pane[index][row];
@@ -75,9 +76,9 @@ void text(Canvas& canvas, const std::string& value, int x, int y, Rgb ink,
 
 template<class Canvas>
 void centered(Canvas& canvas, const std::string& value, int left, int span, int y,
-              Rgb ink, int width = 3, int height = 5, int gap = 1, bool hybridFont = false) {
-  const int size = textWidth(value, width, gap, hybridFont);
-  text(canvas, value, left + (span - size + 1) / 2, y, ink, width, height, gap, hybridFont, left, left + span);
+              Rgb ink, int width = 3, int height = 5, int gap = 1, bool hybridFont = false, int wordSpace = 1) {
+  const int size = textWidth(value, width, gap, hybridFont, wordSpace);
+  text(canvas, value, left + (span - size + 1) / 2, y, ink, width, height, gap, hybridFont, left, left + span, wordSpace);
 }
 
 inline int inkBounds(char ch, int& first) {
@@ -123,7 +124,10 @@ void footer(Canvas& canvas, const std::string& value, Rgb ink) {
   if (value.empty()) return;
   const int gap = textWidth(value) <= CONTENT_WIDTH ? 1 : 0;
   if (textWidth(value, 3, gap) <= CONTENT_WIDTH) {
-    centered(canvas, value, CONTENT_LEFT, CONTENT_WIDTH, 23, ink, 3, 5, gap);
+    const int spaces = static_cast<int>(std::count(value.begin(), value.end(), ' '));
+    const int remainingWidth = CONTENT_WIDTH - textWidth(value, 3, gap);
+    const int wordSpace = gap == 0 && spaces > 0 ? 1 + std::min(1, remainingWidth / spaces) : 1;
+    centered(canvas, value, CONTENT_LEFT, CONTENT_WIDTH, 23, ink, 3, 5, gap, false, wordSpace);
     return;
   }
   // Keep long labels on two clear rows between the team marks.
@@ -195,7 +199,8 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
 
   const bool headerSides = view.active != Side::None || view.powerPlay != Side::None ||
                            view.emptyNet != Side::None || view.awayCards || view.homeCards;
-  const int headerSpan = view.baseballLive ? 32 : headerSides ? 36 : 62;
+  const bool manpowerHeader = view.sport == Sport::Hockey && view.emptyNet == Side::None && !view.powerPlayLabel.empty();
+  const int headerSpan = view.baseballLive ? 32 : manpowerHeader ? 30 : headerSides ? 36 : 62;
   const int headerLeft = (64 - headerSpan) / 2;
   if (view.baseballLive && view.inning > 0) {
     const std::string number = std::to_string(view.inning);
@@ -260,7 +265,7 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
   if (view.live && view.sport == Sport::Hockey && !view.shootout) {
     const Side side = view.emptyNet != Side::None ? view.emptyNet : view.powerPlay;
     const bool empty = view.emptyNet != Side::None;
-    if (side != Side::None) centered(canvas, empty ? "EN" : "PP", side == Side::Home ? HOME_LOGO_X : 1, MINI_LOGO_SIZE, 2, empty ? EMPTY_NET : POWER_PLAY);
+    if (side != Side::None) centered(canvas, empty ? "EN" : view.powerPlayLabel, side == Side::Home ? HOME_LOGO_X : 1, MINI_LOGO_SIZE, 2, empty ? EMPTY_NET : POWER_PLAY);
     const Rgb ink = empty ? EMPTY_NET : side != Side::None ? POWER_PLAY : MUTED_TEXT;
     if (view.penaltyCount > 0) {
       for (int index = 0; index < view.penaltyCount; ++index)

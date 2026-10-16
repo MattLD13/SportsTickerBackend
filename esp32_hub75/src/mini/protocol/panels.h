@@ -74,6 +74,7 @@ inline SportsPane sportsPane(JsonObjectConst game) {
   }
   if (view.sport == Sport::Hockey && view.live) {
     if (situation["powerPlay"] | false) view.powerPlay = side(label(situation["powerPlayTeam"]), away, home);
+    view.powerPlayLabel = label(situation["manpower"]["powerPlayLabel"], "", 5);
     if (situation["emptyNet"] | false) view.emptyNet = side(label(situation["emptyNetSide"]), away, home);
     view.footer = label(situation["manpower"]["scrollLabel"], "", 64);
     for (JsonObjectConst penalty : situation["manpower"]["penalties"].as<JsonArrayConst>()) {

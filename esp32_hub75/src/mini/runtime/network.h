@@ -11,6 +11,7 @@ struct NetworkJob {
   ResponseStream response;
   int status = 0, expectedBytes = -1, transferredBytes = 0;
   String contentType, contentEncoding;
+  String errorStage, resolvedAddress;
   uint32_t durationMs = 0;
   explicit NetworkJob(NetworkKind value) : kind(value) {}
   bool complete() const {

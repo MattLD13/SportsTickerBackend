@@ -285,9 +285,12 @@ class SportsRenderer:
             draw_hockey_so_column(draw, 25, 9, shootout, "away")
             draw_hockey_so_column(draw, width - 30, 9, shootout, "home")
             return
-        badge = "EN" if sit.get("emptyNet") else "PP" if sit.get("powerPlay") else ""
+        badge = "EN" if sit.get("emptyNet") else str(sit.get("manpower", {}).get("powerPlayLabel") or "") if sit.get("powerPlay") else ""
         if badge:
-            pixel_text(draw, badge, width - pixel_width(badge) - 2, 2, (255, 100, 100) if badge == "EN" else (255, 220, 0))
+            owner = sit.get("emptyNetSide") if sit.get("emptyNet") else sit.get("powerPlayTeam")
+            home = str(owner or "").upper() == str(game.get("home_abbr") or "").upper()
+            x = width - pixel_width(badge) - 2 if home else 2
+            pixel_text(draw, badge, x, 2, (255, 100, 100) if badge == "EN" else (255, 220, 0))
 
 
     def _draw_baseball(self, draw: ImageDraw.ImageDraw, width: int, center: int, game: Mapping[str, Any]) -> None:

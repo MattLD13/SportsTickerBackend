@@ -479,5 +479,306 @@
     },
     "away_shots": [],
     "home_shots": []
+  },
+  {
+    "name": "manpower-5-4",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1541",
+      "awayPowerPlay": true,
+      "homePowerPlay": false,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": true,
+        "powerPlayTeam": "NYR",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "power_play",
+          "awaySkaters": 5,
+          "homeSkaters": 4,
+          "label": "5v4",
+          "scrollLabel": "1:47",
+          "powerPlayTimeRemaining": "1:47",
+          "powerPlayLabel": "5v4",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "5V4",
+    "expected_badge": "5V4",
+    "badge_home": false
+  },
+  {
+    "name": "manpower-4-5",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1451",
+      "awayPowerPlay": false,
+      "homePowerPlay": true,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": true,
+        "powerPlayTeam": "BOS",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "power_play",
+          "awaySkaters": 4,
+          "homeSkaters": 5,
+          "label": "4v5",
+          "scrollLabel": "1:47",
+          "powerPlayTimeRemaining": "1:47",
+          "powerPlayLabel": "5v4",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "5V4",
+    "expected_badge": "5V4",
+    "badge_home": true
+  },
+  {
+    "name": "manpower-5-3",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1531",
+      "awayPowerPlay": true,
+      "homePowerPlay": false,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": true,
+        "powerPlayTeam": "NYR",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "power_play",
+          "awaySkaters": 5,
+          "homeSkaters": 3,
+          "label": "5v3",
+          "scrollLabel": "1:47",
+          "powerPlayTimeRemaining": "1:47",
+          "powerPlayLabel": "5v3",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "5V3",
+    "expected_badge": "5V3",
+    "badge_home": false
+  },
+  {
+    "name": "manpower-3-5",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1351",
+      "awayPowerPlay": false,
+      "homePowerPlay": true,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": true,
+        "powerPlayTeam": "BOS",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "power_play",
+          "awaySkaters": 3,
+          "homeSkaters": 5,
+          "label": "3v5",
+          "scrollLabel": "1:47",
+          "powerPlayTimeRemaining": "1:47",
+          "powerPlayLabel": "5v3",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "5V3",
+    "expected_badge": "5V3",
+    "badge_home": true
+  },
+  {
+    "name": "manpower-4-3",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1431",
+      "awayPowerPlay": true,
+      "homePowerPlay": false,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": true,
+        "powerPlayTeam": "NYR",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "power_play",
+          "awaySkaters": 4,
+          "homeSkaters": 3,
+          "label": "4v3",
+          "scrollLabel": "1:47",
+          "powerPlayTimeRemaining": "1:47",
+          "powerPlayLabel": "4v3",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "4V3",
+    "expected_badge": "4V3",
+    "badge_home": false
+  },
+  {
+    "name": "manpower-3-4",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1341",
+      "awayPowerPlay": false,
+      "homePowerPlay": true,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": true,
+        "powerPlayTeam": "BOS",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "power_play",
+          "awaySkaters": 3,
+          "homeSkaters": 4,
+          "label": "3v4",
+          "scrollLabel": "1:47",
+          "powerPlayTimeRemaining": "1:47",
+          "powerPlayLabel": "4v3",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "4V3",
+    "expected_badge": "4V3",
+    "badge_home": true
+  },
+  {
+    "name": "manpower-5-5",
+    "facts": {
+      "phase": "regulation",
+      "situationCode": "1551",
+      "awayPowerPlay": false,
+      "homePowerPlay": false,
+      "powerPlaySecondsRemaining": 107
+    },
+    "game": {
+      "sport": "nhl",
+      "state": "in",
+      "status": "P2 8:00",
+      "away_abbr": "NYR",
+      "home_abbr": "BOS",
+      "away_score": "1",
+      "home_score": "0",
+      "situation": {
+        "powerPlay": false,
+        "powerPlayTeam": "",
+        "emptyNet": false,
+        "emptyNetSide": "",
+        "manpower": {
+          "phase": "regulation",
+          "state": "even_strength",
+          "awaySkaters": 5,
+          "homeSkaters": 5,
+          "label": "",
+          "scrollLabel": "",
+          "powerPlayTimeRemaining": "",
+          "powerPlayLabel": "",
+          "penaltyNumbers": [],
+          "penalties": []
+        },
+        "shootout": null
+      }
+    },
+    "away_shots": [],
+    "home_shots": [],
+    "expected_power_label": "",
+    "expected_badge": "",
+    "badge_home": false
   }
 ]

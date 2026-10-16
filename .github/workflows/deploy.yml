@@ -133,6 +133,8 @@ jobs:
         run: |
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_hockey_panes.cpp -o /tmp/mini-hockey-check
           /tmp/mini-hockey-check tests/rewrite/debug/mini_hockey_panes.json
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_dns_answer.cpp -o /tmp/mini-dns-check
+          /tmp/mini-dns-check
       - name: Read mini firmware version
         id: version
         shell: bash

@@ -8,7 +8,7 @@ void networkWorkerTask(void*) {
     if (xQueueReceive(networkRequests, &job, portMAX_DELAY) != pdTRUE) continue;
     const uint32_t started = millis();
     if (WiFi.status() == WL_CONNECTED && acquireNetwork(10000)) {
-      WiFiClientSecure client;
+      BackendTlsClient client;
       configureTls(client);
       client.setTimeout(8);
       client.setHandshakeTimeout(8);
@@ -31,6 +31,11 @@ void networkWorkerTask(void*) {
         if (job->status == HTTP_CODE_OK || job->status == HTTP_CODE_CREATED)
           job->transferredBytes = http.writeToStream(&job->response);
         logSecureHttpError("Network", job->status, client);
+        job->resolvedAddress = client.resolvedAddress();
+        if (job->status < 0) {
+          char detail[96] = {};
+          job->errorStage = !client.nameResolved() ? "dns" : client.lastError(detail, sizeof(detail)) < -1 ? "tls" : "connect";
+        }
         http.end();
       }
       releaseNetwork();
@@ -69,6 +74,13 @@ void pollNetworkResults() {
   NetworkJob* job = nullptr;
   if (!networkResults || xQueueReceive(networkResults, &job, 0) != pdTRUE) return;
   networkJobPending = false;
+  lastNetworkError = job->errorStage;
+  lastResolvedAddress = job->resolvedAddress;
+  if (job->kind == NetworkKind::Registration) lastRegistrationStatus = job->status;
+  const uint8_t failuresBeforeRenewal = job->kind == NetworkKind::Registration ? 1 : 3;
+  const bool linkFailed = job->errorStage == "dns" || job->errorStage == "connect";
+  if (networkRecovery.observe(linkFailed, job->status > 0, millis(), failuresBeforeRenewal))
+    networkReconnectRequested = true;
   if (job->kind == NetworkKind::Registration) applyRegistrationResponse(*job);
   else if (job->kind == NetworkKind::Data) applyDataResponse(*job);
   else if (job->kind == NetworkKind::FirmwareAck) applyFirmwareAckResponse(*job);

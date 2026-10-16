@@ -405,7 +405,8 @@ class StadiumRenderer:
                 pp_side = _side_from_value(sit.get('powerPlayTeam'))
                 if pp_side:
                     pp_hdr_x = h_logo_x + LOGO_SZ // 2 if pp_side == 'home' else a_logo_x + LOGO_SZ // 2
-                    pf_text(d, 'PP', pp_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
+                    pp_label = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
+                    pf_text(d, pp_label, pp_hdr_x - pf_w(pp_label) // 2, 2, 255, 220, 0)
             label = str(sit.get('manpower', {}).get('scrollLabel') or '')
             if label:
                 color = (255, 220, 0) if is_pp else (255, 100, 100) if is_en else (200, 210, 225)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from sports_ticker.providers.nhl_live import _game_events
-from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display
+from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
@@ -553,10 +553,21 @@ def test_news_banner_keeps_live_frame_geometry() -> None:
     assert first.tobytes() == second.tobytes()
 
 
+@pytest.mark.critical
+@pytest.mark.parametrize("advantage,opponent", [(5, 4), (5, 3), (4, 3)])
 @pytest.mark.parametrize("power_play_team", ["NYR", "NYI"])
 def test_hockey_power_play_renders_for_its_team_in_both_layouts(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch, power_play_team: str
+    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch, power_play_team: str, advantage: int, opponent: int
 ) -> None:
+    away_pp = power_play_team == "NYR"
+    away, home = (advantage, opponent) if away_pp else (opponent, advantage)
+    situation = nhl_manpower_situation({
+        "phase": "regulation", "situationCode": f"1{away}{home}1", "awayPowerPlay": away_pp, "homePowerPlay": not away_pp,
+        "powerPlaySecondsRemaining": 107,
+        "penaltyBox": {"home" if away_pp else "away": [{"jerseyNumber": 55, "secondsRemaining": 107, "kind": "MIN"}]},
+    }, home_abbr="NYI", away_abbr="NYR")
+    situation["activeTeam"] = "NYI" if away_pp else "NYR"
+    badge = f"{advantage}v{opponent}"
     game = {
         "sport": "nhl",
         "state": "in",
@@ -565,7 +576,7 @@ def test_hockey_power_play_renders_for_its_team_in_both_layouts(
         "home_abbr": "NYI",
         "away_score": 1,
         "home_score": 0,
-        "situation": {"powerPlay": True, "powerPlayTeam": power_play_team, "activeTeam": "NYI" if power_play_team == "NYR" else "NYR", "manpower": {"scrollLabel": "1:47 #55"}},
+        "situation": situation,
     }
     scroll_labels: list[str] = []
     scroll_positions: list[tuple[str, int, int]] = []
@@ -580,21 +591,26 @@ def test_hockey_power_play_renders_for_its_team_in_both_layouts(
     card = sports.render_card(game)
     assert "1:47 #55" in scroll_labels
     logo_x = card.width - sports_stadium_port.LOGO_SZ - 1 if power_play_team == "NYI" else sports_stadium_port.team_logo_layout("scrolling", "nhl").x
-    badge_x = logo_x + sports_stadium_port.LOGO_SZ // 2 - sports_stadium_port.pf_w("PP") // 2
-    assert ("PP", badge_x, 2) in scroll_positions
-    assert len([entry for entry in scroll_positions if entry[0] == "PP"]) == 1
+    badge_x = logo_x + sports_stadium_port.LOGO_SZ // 2 - sports_stadium_port.pf_w(badge) // 2
+    assert (badge, badge_x, 2) in scroll_positions
+    assert len([entry for entry in scroll_positions if entry[0] == badge]) == 1
     assert any(text == "1:47 #55" and y == 23 for text, x, y in scroll_positions)
 
     full_labels: list[str] = []
+    full_positions = []
+    original_full_text = sports._full.draw_outlined_text
 
     def capture_full_text(draw, x, y, text, *args, **kwargs):
         full_labels.append(str(text))
+        full_positions.append((str(text), y, kwargs.get("anchor")))
+        return original_full_text(draw, x, y, text, *args, **kwargs)
 
     monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
     image = sports.render_full(game)
 
     assert image.size == (384, 32)
-    assert "PP" in full_labels
+    assert badge in full_labels
+    assert (badge, 1, "mt") in full_positions
     assert "1:47 #55" not in full_labels
 
 

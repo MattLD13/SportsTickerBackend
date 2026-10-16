@@ -118,6 +118,8 @@ void applyPendingWifiCredentials(uint32_t now) {
   memset(pendingWifiPassword, 0, sizeof(pendingWifiPassword));
   portEXIT_CRITICAL(&bleProvisioningMux);
 
+  networkReconnectRequested = false;
+  networkRecovery = NetworkRecovery{};
   wifiSsid = nextSsid;
   wifiPassword = nextPassword;
   saveWifiCredentials(wifiSsid, wifiPassword);
@@ -284,6 +286,16 @@ void miniTick() {
   }
   pollNetworkResults();
   const uint32_t now = millis();
+  if (networkReconnectRequested && !wifiPairingMode && !blePairingStarted && networkAvailable() && acquireNetwork(0)) {
+    networkReconnectRequested = false;
+    ++networkReconnects;
+    Serial.println("Network recovery: renewing the saved Wi-Fi connection after DNS or connection failures");
+    WiFi.disconnect(false, false);
+    WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+    wifiWaitStartedAt = now;
+    lastWifiRetryAt = now;
+    releaseNetwork();
+  }
   firmwareUpdateTick(now);
   if (firmwareUpdateTransferActive()) {
     delay(1);
@@ -364,9 +376,8 @@ void miniTick() {
       return;
     }
 
-    if (WiFi.status() != WL_CONNECTED && wifiWaitStartedAt == 0) {
-      wifiWaitStartedAt = now;
-    }
+    if (WiFi.status() == WL_CONNECTED) wifiWaitStartedAt = 0;
+    else if (wifiWaitStartedAt == 0) wifiWaitStartedAt = now;
     if (WiFi.status() != WL_CONNECTED && !wifiPairingMode && now - wifiWaitStartedAt >= WIFI_PAIRING_TIMEOUT_MS) {
       startPairingMode();
     }

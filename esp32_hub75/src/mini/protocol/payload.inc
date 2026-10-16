@@ -48,6 +48,7 @@ bool updateFromPayload(const ResponseBody& body) {
   filterSituation["powerPlay"] = true;
   filterSituation["powerPlayTeam"] = true;
   filterSituation["manpower"]["scrollLabel"] = true;
+  filterSituation["manpower"]["powerPlayLabel"] = true;
   filterSituation["manpower"]["penalties"][0]["timeRemaining"] = true;
   filterSituation["manpower"]["penalties"][0]["jerseyNumber"] = true;
   filterSituation["shootout"] = true;

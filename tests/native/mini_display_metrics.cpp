@@ -1,9 +1,26 @@
 #include "display_metrics.h"
+#include "network_recovery.h"
 #include <cassert>
 #include <cstdio>
 #include <vector>
 
 int main() {
+  NetworkRecovery recovery;
+  NetworkRecovery startup;
+  assert(startup.observe(true, false, 1000, 1));
+  assert(!startup.observe(true, false, 2000, 1));
+  assert(!startup.observe(false, true, 3000, 1));
+  assert(startup.observe(true, false, 32000, 1));
+  assert(!recovery.observe(true, false, 100));
+  assert(!recovery.observe(true, false, 200));
+  assert(recovery.observe(true, false, 300));
+  assert(!recovery.observe(true, false, 400));
+  assert(!recovery.observe(true, false, 500));
+  assert(!recovery.observe(true, false, 600));
+  assert(!recovery.observe(false, true, 1000));
+  assert(!recovery.observe(true, false, 31000));
+  assert(!recovery.observe(true, false, 32000));
+  assert(recovery.observe(true, false, 33000));
   using namespace mini_display;
   std::vector<uint8_t> bytes(FRAME_BYTES * 2, 0);
   FrameMirror mirror;

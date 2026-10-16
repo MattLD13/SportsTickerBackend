@@ -787,9 +787,9 @@ class SportsMixin:
         elif is_nhl and sit.get('powerPlay'):
             power_play_team = str(sit.get('powerPlayTeam') or '').upper()
             if power_play_team == home_ab:
-                h_badge = 'PP'
+                h_badge = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
             elif power_play_team == away_ab:
-                a_badge = 'PP'
+                a_badge = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
 
         # Side scrims via alpha_composite (correct blending)
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -836,15 +836,15 @@ class SportsMixin:
         a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
         if h_badge:
-            h_col = (255, 204, 0) if h_badge == 'PP' else (255, 90, 90)
+            h_col = (255, 90, 90) if h_badge == 'EN' else (255, 204, 0)
             h_badge_x = int(h_sc_x + h_sc_w + 9)
-            self.draw_outlined_text(d, h_badge_x, H // 2, h_badge,
-                                    self.tiny, h_col, (0, 0, 0, 220), anchor='mm')
+            self.draw_outlined_text(d, h_badge_x, 1, h_badge,
+                                    self.tiny, h_col, (0, 0, 0, 220), anchor='mt')
         if a_badge:
-            a_col = (255, 204, 0) if a_badge == 'PP' else (255, 90, 90)
+            a_col = (255, 90, 90) if a_badge == 'EN' else (255, 204, 0)
             a_badge_x = int(a_sc_x - a_sc_w - 9)
-            self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
-                                    self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
+            self.draw_outlined_text(d, a_badge_x, 1, a_badge,
+                                    self.tiny, a_col, (0, 0, 0, 220), anchor='mt')
 
         if is_nhl:
             shootout = sit.get('shootout')

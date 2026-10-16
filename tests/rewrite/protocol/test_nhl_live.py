@@ -309,9 +309,27 @@ def test_nhl_manpower_replaces_stale_facts_through_snapshot_api_and_pi() -> None
         payload = project_data_v2(stored, ProviderHealth(), {"stale": False})
         situation = payload["content"]["sports"][0]["data"]["situation"]
         assert situation["manpower"]["label"] == expected_label
+        assert situation["manpower"]["powerPlayLabel"] == expected_label
         assert situation["powerPlayTeam"] == expected_team
         assert situation["emptyNet"] is False
         assert situation["emptyNetSide"] == ""
         assert situation["scoring_plays"] == [{"id": "goal-1"}]
         response = TickerResponse.from_payload(payload)
         assert response.content[0].data["situation"]["manpower"]["label"] == expected_label
+
+
+@pytest.mark.parametrize("away,home,away_pp,home_pp,phase,expected", [
+    (5, 4, True, False, "regulation", "5v4"),
+    (5, 3, True, False, "regulation", "5v3"),
+    (3, 5, False, True, "regulation", "5v3"),
+    (4, 5, False, True, "regulation", "5v4"),
+    (4, 3, True, False, "overtime", "4v3"),
+    (3, 4, False, True, "overtime", "4v3"),
+    (5, 5, False, False, "regulation", ""),
+    (4, 4, False, False, "regulation", ""),
+    (5, 3, True, False, "shootout", ""),
+])
+def test_power_play_header_uses_advantaged_team_first(away, home, away_pp, home_pp, phase, expected) -> None:
+    source = {"phase": phase, "situationCode": f"1{away}{home}1", "awayPowerPlay": away_pp, "homePowerPlay": home_pp}
+    situation = nhl_manpower_situation(source, home_abbr="NYI", away_abbr="NYR")
+    assert situation["manpower"]["powerPlayLabel"] == expected

@@ -27,7 +27,7 @@ def cases(snapshot: dict) -> list[dict]:
         result.append({"name": item["id"], "game": item["data"]})
     nfl = next(row for row in result if row["name"] == "nfl-live")
     goal = deepcopy(nfl); goal["name"] = "football-goal"; goal["game"]["situation"]["downDist"] = "1ST & GOAL"; result.append(goal)
-    for name, label in (("football-third-six", "3RD & 6"), ("football-fourth-fifteen", "4TH & 15")):
+    for name, label in (("football-third-six", "3RD & 6"), ("football-fourth-fifteen", "4TH & 15"), ("football-second-goal", "2ND & GOAL")):
         down = deepcopy(nfl)
         down["name"] = name
         down["game"]["situation"]["downDist"] = label
@@ -44,6 +44,9 @@ def cases(snapshot: dict) -> list[dict]:
     hockey["game"].update(sport="nhl", away_abbr="NYR", home_abbr="BOS", away_score="2", home_score="1", status="P3 03:21",
                           away_logo="https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", home_logo="https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
                           situation={"powerPlay":True, "powerPlayTeam":"BOS", "activeTeam":"BOS", "manpower":{"scrollLabel":"0:45"}})
+    hockey["game"]["situation"] = nhl_manpower_situation(
+        {"phase": "regulation", "situationCode": "1451", "homePowerPlay": True, "awayPowerPlay": False, "powerPlaySecondsRemaining": 45},
+        home_abbr="BOS", away_abbr="NYR")
     result.append(hockey)
     penalty_cases = (
         ("hockey-penalty-88", [(45, 88)]),

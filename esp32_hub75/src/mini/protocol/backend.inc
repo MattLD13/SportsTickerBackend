@@ -77,7 +77,10 @@ bool registerDevice() {
 void applyRegistrationResponse(const NetworkJob& job) {
   Serial.printf("Register HTTP status: %d\n", job.status);
   if (job.status != HTTP_CODE_OK && job.status != HTTP_CODE_CREATED) {
-    showFetchError("REGISTER " + String(job.status));
+    if (job.errorStage == "dns") showFetchError("DNS RETRY");
+    else if (job.errorStage == "connect") showFetchError("NET RETRY");
+    else if (job.errorStage == "tls") showFetchError("TLS ERROR");
+    else showFetchError("REGISTER " + String(job.status));
     return;
   }
   JsonDocument response;

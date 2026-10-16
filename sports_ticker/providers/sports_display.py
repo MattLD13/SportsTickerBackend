@@ -176,6 +176,8 @@ def _status(
         return "Half" if league.startswith("soccer") else "Halftime"
     if "FINAL" in upper or state in {"post", "final"}:
         return _final_status(league, upper, period)
+    if league in _COLLEGE_FOOTBALL and period > 4:
+        return _period_status("Q", period, "", overtime_base=4)
     if league in _FOOTBALL and period > 0 and _is_zero_clock(clock):
         return _period_status("Q", period, "END", overtime_base=4)
     if league == "nhl" and period > 0 and _is_zero_clock(clock):
@@ -880,6 +882,7 @@ def nhl_manpower_situation(
         "label": "",
         "scrollLabel": "",
         "powerPlayTimeRemaining": "",
+        "powerPlayLabel": "",
         "penaltyNumbers": [],
         "penalties": [],
     }
@@ -903,6 +906,9 @@ def nhl_manpower_situation(
     result["powerPlay"] = away_pp != home_pp
     if result["powerPlay"]:
         result["powerPlayTeam"] = away_abbr if away_pp else home_abbr
+        advantage = away_skaters if away_pp else home_skaters
+        opponent = home_skaters if away_pp else away_skaters
+        manpower["powerPlayLabel"] = f"{advantage}v{opponent}"
     result["emptyNet"] = not away_goalie or not home_goalie
     if away_goalie != home_goalie:
         result["emptyNetSide"] = away_abbr if not away_goalie else home_abbr

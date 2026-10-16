@@ -31,6 +31,7 @@
 #include "../rendering/utility_panels.h"
 #include "../protocol/payload_reader.h"
 #include "network.h"
+#include "../platform/network_recovery.h"
 
 JsonDocument payload;
 uint32_t rotationSignature = 0;
@@ -55,6 +56,11 @@ bool sportsMode = true;
 String displayMode = "sports";
 bool registered = false;
 int lastDataStatus = 0;
+int lastRegistrationStatus = 0;
+String lastNetworkError, lastResolvedAddress;
+NetworkRecovery networkRecovery;
+bool networkReconnectRequested = false;
+uint32_t networkReconnects = 0;
 int lastDataExpectedBytes = 0;
 int lastDataTransferBytes = 0;
 size_t lastDataBytes = 0;

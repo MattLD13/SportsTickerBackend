@@ -30,6 +30,15 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   JsonObject network = out["network"].to<JsonObject>();
   network["wifi_connected"] = WiFi.status() == WL_CONNECTED;
   network["ticker_id"] = tickerId;
+  network["registration_status"] = lastRegistrationStatus;
+  network["error_stage"] = lastNetworkError;
+  network["resolved_address"] = lastResolvedAddress;
+  network["dns_server"] = "1.1.1.1";
+  network["dns_method"] = "https";
+  network["dhcp_dns_server"] = WiFi.dnsIP().toString();
+  network["local_address"] = WiFi.localIP().toString();
+  network["epoch"] = static_cast<long long>(time(nullptr));
+  network["reconnects"] = networkReconnects;
   network["http_status"] = lastDataStatus;
   network["expected_bytes"] = lastDataExpectedBytes;
   network["received_bytes"] = lastDataBytes;

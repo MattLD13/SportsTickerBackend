@@ -179,7 +179,6 @@ def test_college_basketball_zero_clock_keeps_half_label() -> None:
     (
         ("nfl", 1, "Q1 END"),
         ("ncf_fbs", 4, "Q4 END"),
-        ("ncf_fcs", 5, "OT END"),
         ("nfl", 6, "OT2 END"),
         ("nba", 5, "OT END"),
         ("nba", 6, "OT2 END"),
@@ -415,3 +414,30 @@ def test_nhl_manpower_projects_counts_and_hides_unneeded_labels() -> None:
             assert situation["manpower"]["awaySkaters"] == int(code[1])
             assert situation["manpower"]["homeSkaters"] == int(code[2])
 
+
+
+@pytest.mark.critical
+@pytest.mark.parametrize("league", ["ncf_fbs", "ncf_fcs"])
+@pytest.mark.parametrize("period,expected", [(5, "OT"), (6, "OT2"), (8, "OT4")])
+def test_college_overtime_is_active_without_a_game_clock(league, period, expected) -> None:
+    event = _event("OT", {}, "in")
+    event["status"].update(period=period, displayClock="0:00")
+    assert SportsDisplayProjector().project(_item("college-ot", league), event).data["status"] == expected
+
+
+@pytest.mark.critical
+def test_captured_ecu_uab_overtime_stays_active() -> None:
+    from pathlib import Path
+    import json
+    record = json.loads((Path(__file__).parents[1] / "debug/fbs_untimed_overtime.json").read_text())
+    game = SportsDisplayProjector().project(_item(record["event_id"], "ncf_fbs"), record["event"])
+    assert record["event"]["status"]["type"]["state"] == "in"
+    assert game.data["status"] == "OT"
+
+
+@pytest.mark.critical
+@pytest.mark.parametrize("league", ["ncf_fbs", "ncf_fcs"])
+def test_college_overtime_uses_final_only_after_provider_completion(league) -> None:
+    event = _event("Final/2OT", {}, "post")
+    event["status"].update(period=6, displayClock="0:00")
+    assert SportsDisplayProjector().project(_item("college-final", league), event).data["status"] == "FINAL OT2"

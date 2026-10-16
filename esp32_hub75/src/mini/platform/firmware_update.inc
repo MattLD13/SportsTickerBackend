@@ -176,7 +176,7 @@ bool fetchFirmwareManifest(const String& requestedVersion, FirmwareManifestPaylo
   if (WiFi.status() != WL_CONNECTED || tickerId.length() == 0 || !acquireNetwork(FIRMWARE_HTTP_TIMEOUT_MS)) {
     return false;
   }
-  WiFiClientSecure client;
+  BackendTlsClient client;
   configureTls(client);
   client.setTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
   client.setHandshakeTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
@@ -220,7 +220,7 @@ bool downloadFirmware(const FirmwareManifestPayload& manifest) {
   if (!acquireNetwork(FIRMWARE_HTTP_TIMEOUT_MS)) {
     return false;
   }
-  WiFiClientSecure client;
+  BackendTlsClient client;
   configureTls(client);
   client.setTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
   client.setHandshakeTimeout(FIRMWARE_HTTP_TIMEOUT_MS / 1000);
