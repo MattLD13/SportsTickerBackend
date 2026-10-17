@@ -182,5 +182,10 @@ The new firmware reports a validated boot with no boot-state error and acknowled
 The public device projection confirms firmware `mini-1.3.17`, paired state, and no pending update.
 
 During backend restarts, telemetry records HTTP failures while cached sports frames continue.
-All 39 sampled sports frames in that interval report current logos ready, with no reset or timing overrun.
+All 39 sports telemetry samples in that interval report current logos ready, with no reset or timing overrun.
 This check proves interrupted download recovery. It does not prove rollback from an intentionally invalid boot image.
+
+The monitor interrupts the download at 536,576 of 1,292,688 bytes.
+After recovery, it records 61 production telemetry samples through 182.730 seconds of uptime.
+All 52 sports samples report current logos ready. JSON failures and late visits remain zero.
+Panel refresh remains 200 Hz. Boot state is valid and the firmware acknowledges the update.
