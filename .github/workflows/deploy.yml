@@ -210,7 +210,11 @@ jobs:
             if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "The backend deployment will activate the firmware manifest."
             else
+              if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "Backend code deployment will restart the service after copying files."
+            else
               sudo systemctl restart ticker
+            fi
               sudo systemctl status ticker --no-pager
             fi
 
@@ -294,6 +298,18 @@ jobs:
             # ── Restart backend ───────────────────────────────────────────
             echo "Restarting ticker (backend)..."
             sudo systemctl restart ticker
+            healthy=false
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --max-time 2 http://127.0.0.1:5000/api/v2/health >/dev/null; then
+                healthy=true
+                break
+              fi
+              sleep 1
+            done
+            if [ "$healthy" != "true" ]; then
+              echo "Backend did not pass its HTTP readiness check."
+              exit 1
+            fi
             sudo systemctl status ticker --no-pager
 
   request-mini-ota:

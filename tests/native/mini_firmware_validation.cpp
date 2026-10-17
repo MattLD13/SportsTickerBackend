@@ -30,9 +30,10 @@ int main() {
     hash[digit] = 'g';
     assert(!parseSha256(hash, actual));
   }
-  assert(bootReceipt(std::string(), std::string("mini-1.3.12")) == BootReceipt::None);
-  assert(bootReceipt(std::string("mini-1.3.12"), std::string("mini-1.3.12")) == BootReceipt::Confirm);
-  assert(bootReceipt(std::string("mini-1.3.12"), std::string("mini-1.3.11")) == BootReceipt::Rollback);
+  assert(bootReceipt(std::string("mini-1.3.12"), std::string("mini-1.3.12"), false) == BootReceipt::Pending);
+  assert(bootReceipt(std::string(), std::string("mini-1.3.12"), false) == BootReceipt::None);
+  assert(bootReceipt(std::string("mini-1.3.12"), std::string("mini-1.3.12"), true) == BootReceipt::Confirm);
+  assert(bootReceipt(std::string("mini-1.3.12"), std::string("mini-1.3.11"), false) == BootReceipt::Rollback);
   const std::string version = "mini-1.3.12", target = "esp32s3", hardware = "matrixportal_s3";
   const std::string url = "https://ticker.example/firmware.bin";
   auto manifest = [&](const std::string& requested, const std::string& actualVersion, const std::string& actualTarget,

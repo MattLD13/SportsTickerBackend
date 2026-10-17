@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 class NetworkWorker;
+class NetworkGate;
 class Adafruit_GFX;
 
 class SpriteAssets {
@@ -9,7 +10,7 @@ class SpriteAssets {
     uint32_t flashHits = 0, downloads = 0, reusedDownloads = 0, invalidFiles = 0, evictions = 0;
     uint32_t heapBeforeTls = 0, heapDuringTls = 0, heapAfterTls = 0, largestDuringTls = 0;
   };
-  SpriteAssets(NetworkWorker& transport, const char* backend);
+  SpriteAssets(NetworkWorker& transport, NetworkGate& gate, const char* backend);
   SpriteAssets(const SpriteAssets&) = delete;
   SpriteAssets& operator=(const SpriteAssets&) = delete;
   bool begin();
@@ -29,6 +30,7 @@ class SpriteAssets {
   struct State;
   State* state_ = nullptr;
   NetworkWorker& transport_;
+  NetworkGate& gate_;
   const char* backend_;
   Metrics metrics_;
 };

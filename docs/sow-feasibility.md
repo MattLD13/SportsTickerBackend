@@ -152,5 +152,5 @@ Four frozen render baselines match exactly between the PC and Pi.
 The Mini memory limit remains a real release risk.
 A 152-game response leaves insufficient internal heap for verified TLS.
 The candidate moves retained JSON into PSRAM, defers initialization, and removes duplicate OTA activation.
-Its build and native 160-game checks pass. Its physical boot and logo checks remain open.
+Its native 160-game checks, physical boot, logo pixels, and failed-boot recovery now pass.
 The detailed release gate record appears in [Final SOW packages](research/sow-final-packages-2026-10-17.md).

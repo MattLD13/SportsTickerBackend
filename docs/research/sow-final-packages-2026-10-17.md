@@ -9,11 +9,11 @@ TV calibration and local game-clock interpolation remain excluded.
 
 | Package | Required evidence | State |
 | --- | --- | --- |
-| Mini networking | Compare real request timing, heap, outage recovery, logos, and OTA with the current release. | Implemented. Physical outage and timeout checks pass. Fixed-response comparison remains. |
-| Platform cleanup | Extract sprite/cache and payload ownership. Split iOS response and timer responsibilities. Preserve exact pixels and builds. | Published. A new Mini memory correction awaits hardware recovery. |
+| Mini networking | Compare real request timing, heap, outage recovery, logos, and OTA with the current release. | Implemented. Physical outage and timeout checks pass. The fixed-response comparison passes on the real Mini. |
+| Platform cleanup | Extract sprite/cache and payload ownership. Split iOS response and timer responsibilities. Preserve exact pixels and builds. | Published. Memory, wire, and cache corrections pass physical checks. |
 | Provider efficiency | Own demand and market-session policy. Prove schedule activation, retained close data, and lower request counts. | Published. Demand and calendar tests pass. |
-| Security | Issue durable device credentials. Authenticate device reads and mutations. Audit controller and deployment authorization. | Both real credentials verify. Enforcement and boundary tests await publication. |
-| Final validation | Prove OTA recovery, frame health, and deterministic performance baselines. | Real Pi rollback passes. Offline pixel baselines pass. Mini recovery remains open. |
+| Security | Issue durable device credentials. Authenticate device reads and mutations. Audit controller and deployment authorization. | Both real credentials verify. Device enforcement and boundary tests are published. |
+| Final validation | Prove OTA recovery, frame health, and deterministic performance baselines. | Real Pi and Mini rollback pass. Family quarantine, offline baselines, and physical logo checks pass. |
 
 Each package records its owner, removed path, actual input, output, and measured limits before publication.
 
@@ -114,17 +114,53 @@ Owner: The Mini field contract owns wire selection. BackendHttpSession owns seri
 Removed path: Manual C++ field lists and the separate sprite TLS connection are removed.
 Input and output: The real 152-game response produces identical selected Mini facts with 72.4 percent fewer bytes.
 
-## Remaining release evidence
+## Physical release validation
 
-1. Verify the smaller device reply after deployment.
-2. Check logo availability and exact captured pixels across a complete physical rotation.
-3. Complete the authenticated update result and recovery checks.
-4. Run the fixed-response HTTPS comparison and authenticated live request checks.
-5. Prove a new Mini boot failure reports after rollback and quarantines its release.
-6. Run final critical, full, native, firmware, and iOS checks before publication.
-7. Migrate Ticker Six through SSH because its former acknowledgement endpoint is removed.
-8. Check live fleet cancellation and retained manual controls after deployment.
+The Mini completes 56 timed visits between 3,010.864 and 3,019.554 milliseconds.
+All 83 sports samples report ready current logos across 24 game identities. No reset occurs during this capture.
+The pixel check validates 42 logos across 15 games and 4,538 opaque pixels without differences.
+Two comparisons lack a current backend asset reference. The check excludes the rank shadow from raw-logo comparisons.
 
-Owner: The update ledger owns release policy. Device platform code owns boot validation and durable receipts.
-Removed path: Device clients no longer clear update commands before proving startup. Mini activation uses one IDF owner.
-Input and output: Assigned rollback reports cancel matching family commands. Real Pi frame failure restores a validated prior release.
+Five equal-size authenticated request pairs compare fresh and reused TLS connections.
+Each response contains 58 bytes. Median latency falls from 2,346 milliseconds to 50 milliseconds, a 97.87 percent reduction.
+This comparison measures connection setup. It does not measure all game payload transfers.
+Ten diagnostic file round trips and 160 client teardown checks pass. The first diagnostic wait records one response timeout.
+
+The controlled Mini trial downloads and verifies the published 25 image before its first boot.
+The test then replaces only the pending image with an isolated startup-fault image.
+It preserves the valid 26 slot, NVS, and OTA metadata. The fault source never enters Git.
+The bootloader restores 26. The device resumes games and reports the failed assigned attempt.
+The live server records `rolled_back`, reason `boot_reset`, and a quarantine for Mini version 25.
+The Ticker Six release remains unquarantined. The failed version cannot receive another fleet assignment.
+This trial tests boot failure and interrupted activation. It does not simulate a physical power cut.
+
+The last corrected boot receipt remains pending until display validation succeeds.
+This prevents a startup crash from leaving an installed receipt on the restored firmware.
+
+## Runtime corrections from the hardware checks
+
+A task watchdog trace locates flash-cache reads during TLS work.
+NetworkGate now serializes flash access and TLS. Its recursive ownership protects nested updater receipt writes.
+LittleSpriteStore builds its file index at mount. Cache count and eviction no longer scan the filesystem on each download.
+The retained index uses PSRAM. File count and modification-time ordering remain unchanged.
+
+The pinned Arduino Stream implementation reads secure bodies one byte at a time.
+DeadlineClient now uses bulk reads with total-budget, idle-timeout, partial-read, and timer-wrap checks.
+The native test confirms three buffer reads without single-byte reads for a twelve-byte input.
+
+The server deployment previously spends ninety seconds waiting for shutdown.
+The service now limits shutdown to fifteen seconds.
+A combined deployment restarts the backend once after copying code and firmware metadata.
+The deployment requires a successful HTTP health check before it reports success.
+
+Owner: NetworkGate owns flash and TLS exclusion. FirmwareUpdater owns durable boot validation.
+Removed path: Repeated directory scans, byte-at-a-time TLS bodies, and installed receipts before validation are removed.
+Input and output: The real Mini restores 26 after a failed boot. Its authenticated report quarantines only the Mini release.
+
+## Package completion
+
+The five requested implementation packages are complete.
+Provider demand and market policy remain published and tested.
+Device authentication, shared wire fields, cache ownership, and iOS extraction retain their checked boundaries.
+Physical Pi rollback, Mini rollback reporting, family quarantine, pixel checks, and fixed-response timing provide release evidence.
+Release 26 receives the final CI and production health checks after publication.

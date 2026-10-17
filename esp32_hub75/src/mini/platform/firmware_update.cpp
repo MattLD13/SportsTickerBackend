@@ -294,7 +294,7 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
     const String commandId = update["id"] | "";
     if (commandId.length() == 0 || commandId == firmwareUpdateReceiptCommandId) return;
     firmwareUpdateReceiptCommandId = commandId;
-    saveTrial(requested, "installed", "");
+    saveTrial(requested, firmwareUpdateBootValidated ? "installed" : "pending_boot", "");
     return;
   }
   char failedVersion[sizeof(firmwareUpdateFailedVersion)] = {};
@@ -313,6 +313,8 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
     firmwareUpdateFailedVersion[0] = '\0';
     portEXIT_CRITICAL(&firmwareUpdateMux);
   }
+  NetworkLease flash(gate_, 0, NetworkAccess::DeviceRequests);
+  if (!flash) return;
   const String persistedFailure = preferences_.getString(FIRMWARE_FAILED_NVS_KEY, "");
   if (persistedFailure == requested) {
     return;
@@ -334,7 +336,10 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
 }
 
 void FirmwareUpdater::initialize() {
+  NetworkLease flash(gate_, config_.httpTimeoutMs, NetworkAccess::DeviceRequests);
+  if (!flash) return;
   const esp_partition_t* running = esp_ota_get_running_partition();
+  if (running) strncpy(firmwareUpdateBootPartition, running->label, sizeof(firmwareUpdateBootPartition) - 1);
   esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
   firmwareUpdateBootStateError = running ? esp_ota_get_state_partition(running, &state) : ESP_ERR_NOT_FOUND;
   firmwareUpdateBootState = state;
@@ -346,19 +351,19 @@ void FirmwareUpdater::initialize() {
   firmwareUpdateReceiptCommandId = trial["id"] | "";
   resultStatus_ = trial["status"] | "";
   resultReason_ = trial["reason"] | "";
-  if (resultStatus_ == "pending_boot") {
-    if (resultVersion_ == config_.version) saveTrial(resultVersion_, "installed", "");
-    else {
+  if (resultStatus_ == "pending_boot" &&
+      mini_firmware::bootReceipt(resultVersion_, String(config_.version), false) == mini_firmware::BootReceipt::Rollback) {
       saveTrial(resultVersion_, "rolled_back", "boot_reset");
       preferences_.putString(FIRMWARE_FAILED_NVS_KEY, resultVersion_);
       setFirmwareUpdateDetail("ROLLBACK");
       setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
       firmwareUpdateFailureAt = millis();
-    }
   }
 }
 
 bool FirmwareUpdater::saveTrial(const String& version, const char* status, const char* reason) {
+  NetworkLease flash(gate_, config_.httpTimeoutMs, NetworkAccess::DeviceRequests);
+  if (!flash) return false;
   JsonDocument trial;
   trial["version"] = version;
   trial["id"] = firmwareUpdateReceiptCommandId;
@@ -426,6 +431,8 @@ void FirmwareUpdater::applyResultResponse(const NetworkJob& job) {
   JsonDocument response;
   PayloadReader reader(job.response.body.data(), job.response.body.size());
   if (job.status == HTTP_CODE_OK && job.complete() && !deserializeJson(response, reader) && response["accepted"] == true) {
+    NetworkLease flash(gate_, 0, NetworkAccess::DeviceRequests);
+    if (!flash) return;
     firmwareUpdateAcknowledged = true;
     preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
     Serial.println("Firmware result saved by server");
@@ -434,6 +441,8 @@ void FirmwareUpdater::applyResultResponse(const NetworkJob& job) {
 
 bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId, bool displayHealthy) {
   if (!firmwareUpdateBootChecked && now >= config_.bootValidationMs) {
+    NetworkLease flash(gate_, 0, NetworkAccess::DeviceRequests);
+    if (!flash) return false;
     firmwareUpdateBootChecked = true;
     const esp_partition_t* running = esp_ota_get_running_partition();
     esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
@@ -466,6 +475,9 @@ bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId
       firmwareUpdateFailureAt = now;
     }
   }
+  if (resultStatus_ == "pending_boot" &&
+      mini_firmware::bootReceipt(resultVersion_, String(config_.version), firmwareUpdateBootValidated) == mini_firmware::BootReceipt::Confirm)
+    saveTrial(resultVersion_, "installed", "");
   bool redraw = false;
   reportFirmwareResult(registered, tickerId);
   if (firmwareUpdateState == FIRMWARE_UPDATE_FAILED && now - firmwareUpdateFailureAt >= config_.failureDisplayMs) {

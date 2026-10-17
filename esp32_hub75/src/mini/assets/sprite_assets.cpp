@@ -17,6 +17,30 @@ static bool spriteHash(const uint8_t* bytes, size_t length, uint8_t* output) {
 class LittleSpriteStore : public mini_sprite::Store {
  public:
   explicit LittleSpriteStore(SpriteAssets::Metrics& metrics) : metrics_(metrics) {}
+  ~LittleSpriteStore() { heap_caps_free(entries_); }
+  bool begin() {
+    if (!reserve(SPRITE_FLASH_LIMIT + 1)) return false;
+    File directory = LittleFS.open("/sprites");
+    size_t visited = 0;
+    for (File file = directory.openNextFile(); file; file = directory.openNextFile()) {
+      String name = file.name();
+      name = name.substring(name.lastIndexOf('/') + 1);
+      if (name.endsWith(".mts")) {
+        name.remove(name.length() - 4);
+        if (mini_sprite::digestValid(name.c_str()) && !remember(name.c_str(), file.getLastWrite())) {
+          file.close(); directory.close(); return false;
+        }
+      }
+      file.close();
+      if (++visited % 8 == 0) delay(1);
+    }
+    directory.close();
+    while (count_ > SPRITE_FLASH_LIMIT) {
+      char identity[65];
+      if (!oldest(identity, "") || !erase(identity)) return false;
+    }
+    return true;
+  }
   String path(const char* id) { return String("/sprites/") + id + ".mts"; }
   size_t read(const char* id, uint8_t* bytes, size_t capacity, bool staged = false) override {
     File file = LittleFS.open(staged ? "/sprites/.write.tmp" : path(id), "r");
@@ -34,45 +58,60 @@ class LittleSpriteStore : public mini_sprite::Store {
     file.close();
     return written;
   }
-  bool commit(const char* id) override { return LittleFS.rename("/sprites/.write.tmp", path(id)); }
+  bool commit(const char* id) override {
+    if (!LittleFS.rename("/sprites/.write.tmp", path(id))) return false;
+    File file = LittleFS.open(path(id), "r");
+    if (!file) return false;
+    const time_t modified = file.getLastWrite();
+    file.close();
+    return remember(id, modified);
+  }
   void discard() override { LittleFS.remove("/sprites/.write.tmp"); }
   bool erase(const char* id) override {
     if (!LittleFS.remove(path(id))) return false;
+    for (size_t index = 0; index < count_; ++index) if (strcmp(entries_[index].id, id) == 0) {
+      entries_[index] = entries_[--count_];
+      break;
+    }
     ++metrics_.evictions;
     return true;
   }
-  size_t count() override {
-    size_t total = 0;
-    File directory = LittleFS.open("/sprites");
-    for (File file = directory.openNextFile(); file; file = directory.openNextFile()) {
-      if (String(file.name()).endsWith(".mts")) ++total;
-      file.close();
-    }
-    directory.close();
-    return total;
-  }
+  size_t count() override { return count_; }
   bool oldest(char* id, const char* protectedId) override {
-    String selected;
-    time_t selectedTime = 0;
-    File directory = LittleFS.open("/sprites");
-    for (File file = directory.openNextFile(); file; file = directory.openNextFile()) {
-      String name = file.name();
-      name = name.substring(name.lastIndexOf('/') + 1);
-      if (name.endsWith(".mts")) name.remove(name.length() - 4);
-      const time_t modified = file.getLastWrite();
-      if (mini_sprite::digestValid(name.c_str()) && name != protectedId &&
-          (selected.length() == 0 || modified < selectedTime || (modified == selectedTime && name < selected))) {
-        selected = name;
-        selectedTime = modified;
-      }
-      file.close();
+    const Entry* selected = nullptr;
+    for (size_t index = 0; index < count_; ++index) {
+      const auto& entry = entries_[index];
+      if (strcmp(entry.id, protectedId) == 0) continue;
+      if (!selected || entry.modified < selected->modified ||
+          (entry.modified == selected->modified && strcmp(entry.id, selected->id) < 0)) selected = &entry;
     }
-    directory.close();
-    if (selected.length() == 0) return false;
-    selected.toCharArray(id, 65);
+    if (!selected) return false;
+    memcpy(id, selected->id, 65);
     return true;
   }
  private:
+  struct Entry { char id[65]; time_t modified; };
+  Entry* entries_ = nullptr;
+  size_t count_ = 0, capacity_ = 0;
+  bool reserve(size_t count) {
+    if (count <= capacity_) return true;
+    const size_t next = max(count, capacity_ * 2);
+    void* memory = heap_caps_realloc(entries_, next * sizeof(Entry), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!memory) return false;
+    entries_ = static_cast<Entry*>(memory);
+    capacity_ = next;
+    return true;
+  }
+  bool remember(const char* id, time_t modified) {
+    for (size_t index = 0; index < count_; ++index) if (strcmp(entries_[index].id, id) == 0) {
+      entries_[index].modified = modified;
+      return true;
+    }
+    if (!reserve(count_ + 1)) return false;
+    memcpy(entries_[count_].id, id, 65);
+    entries_[count_++].modified = modified;
+    return true;
+  }
   SpriteAssets::Metrics& metrics_;
 };
 
@@ -97,7 +136,7 @@ struct SpriteAssets::State {
   }
 };
 
-SpriteAssets::SpriteAssets(NetworkWorker& transport, const char* backend) : transport_(transport), backend_(backend) {}
+SpriteAssets::SpriteAssets(NetworkWorker& transport, NetworkGate& gate, const char* backend) : transport_(transport), gate_(gate), backend_(backend) {}
 
 bool SpriteAssets::begin() {
   if (state_) return ready();
@@ -115,7 +154,8 @@ bool SpriteAssets::begin() {
   if (state_->mounted) {
     LittleFS.mkdir("/sprites");
     state_->store.discard();
-    Serial.printf("Sprite cache ready files=%u\n", static_cast<unsigned>(state_->store.count()));
+    state_->mounted = state_->store.begin();
+    Serial.printf("Sprite cache %s files=%u\n", state_->mounted ? "ready" : "unavailable", static_cast<unsigned>(state_->store.count()));
   }
   return ready();
 }
@@ -155,6 +195,8 @@ void SpriteAssets::pinWindow(const String* keys, uint8_t count) {
 
 bool SpriteAssets::loadCached(const String& key, uint8_t* bytes) {
   if (!ready()) return false;
+  NetworkLease flash(gate_, 10000, NetworkAccess::DeviceRequests);
+  if (!flash) return false;
   mini_sprite::Reference reference;
   if (!mini_sprite::parseReference(key.c_str(), reference) || !state_->mounted) return false;
   const auto loaded = state_->cache.load(reference, bytes);
@@ -179,7 +221,12 @@ bool SpriteAssets::load(const String& key, uint8_t* bytes) {
   if (!valid) return false;
   ++metrics_.downloads;
   if (transfer.reused) ++metrics_.reusedDownloads;
-  if (state_->mounted && !state_->cache.save(reference, bytes)) Serial.println("Sprite flash write failed");
+  if (state_->mounted) {
+    NetworkLease flash(gate_, 10000, NetworkAccess::DeviceRequests);
+    const uint32_t started = millis();
+    if (!flash || !state_->cache.save(reference, bytes)) Serial.println("Sprite flash write failed");
+    else Serial.printf("Sprite cache commit duration_ms=%lu files=%u\n", static_cast<unsigned long>(millis() - started), static_cast<unsigned>(state_->store.count()));
+  }
   return true;
 }
 

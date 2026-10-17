@@ -41,7 +41,7 @@ inline bool transferComplete(bool valid, size_t received, size_t expected,
   return valid && received == expected && difference == 0;
 }
 
-enum class BootReceipt { None, Confirm, Rollback };
+enum class BootReceipt { None, Pending, Confirm, Rollback };
 
 template <typename Text>
 bool manifestMatches(const Text& requested, const Text& version, const Text& target, const Text& hardware,
@@ -61,9 +61,10 @@ bool sameReceipt(const Text& version, const Text& command, const Text& currentVe
 }
 
 template <typename Text>
-BootReceipt bootReceipt(const Text& pending, const Text& current) {
+BootReceipt bootReceipt(const Text& pending, const Text& current, bool displayValidated) {
   return pending.length() == 0 ? BootReceipt::None
-       : pending == current ? BootReceipt::Confirm : BootReceipt::Rollback;
+       : pending != current ? BootReceipt::Rollback
+       : displayValidated ? BootReceipt::Confirm : BootReceipt::Pending;
 }
 
 }  // namespace mini_firmware

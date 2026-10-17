@@ -22,7 +22,11 @@ void saveWifiCredentials(const String& ssid, const String& password) {
 
 void savePairingCode(const String& code) {
   pairingCode = code;
-  preferences.putString("pairing_code", code);
+  NetworkLease flash(networkGate, 20000, NetworkAccess::DeviceRequests);
+  if (!flash) { Serial.println("Pairing code cache write failed"); return; }
+  if (code.isEmpty()) {
+    if (preferences.isKey("pairing_code") && !preferences.remove("pairing_code")) Serial.println("Pairing code cache clear failed");
+  } else if (preferences.putString("pairing_code", code) != code.length()) Serial.println("Pairing code cache write failed");
 }
 
 bool decodeBase64(const String& input, uint8_t*& output, size_t& outputLength) {

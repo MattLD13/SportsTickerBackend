@@ -63,8 +63,9 @@ def verify(frames: Path, backend: str, ticker: str, token_file: Path | None = No
                 continue
             body = sprites[asset["asset_id"]]
             tested = different = 0
-            # The upper ten rows exclude the lower college-rank overlay.
-            for y in range(10):
+            # The rank shadow overlaps the tenth logo row.
+            rows = 9 if games[identity].get(f"{side}_rank") else 10
+            for y in range(rows):
                 for x in range(16):
                     source = ((2 * y + 1) * 18 // 32) * 18 + (2 * x + 1) * 18 // 32
                     if not (body[16 + 18 * 18 * 2 + source // 8] >> (source % 8)) & 1:

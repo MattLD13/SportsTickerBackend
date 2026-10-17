@@ -37,6 +37,9 @@ def test_boot_failure_quarantines_only_assigned_family_and_preserves_controls(tm
             assert ticker.pairing == before[identity].pairing
             kinds = {item["type"] for item in ticker.device.metadata["pending_commands"]}
             assert kinds == ({"reboot", "update"} if identity == "six" else {"reboot"})
+        other_attempt = next(item["id"] for item in before["mini-b"].device.metadata["pending_commands"] if item["type"] == "update")
+        blocked = app.repository.updates.report("mini-b", {"id": other_attempt, "version": "release-1", "running_version": "release-0", "status": "started", "reason": ""}, 100)
+        assert blocked["accepted"] and blocked["quarantined"]
         with pytest.raises(ValueError, match="quarantined"):
             app.request_update("mini-b", "release-1")
         app.request_update("six", "release-1")

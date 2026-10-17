@@ -21,6 +21,7 @@ ExecStart=/usr/bin/env python3 -m sports_ticker.server
 # someone reboots the box.
 Restart=always
 RestartSec=5
+TimeoutStopSec=15
 
 # The A1.Flex host provides 12 GB RAM. Keep enough memory available for the
 # operating system while allowing image work, caches, and concurrent refreshes.

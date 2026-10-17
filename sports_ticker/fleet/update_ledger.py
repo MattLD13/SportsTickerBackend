@@ -110,6 +110,9 @@ class UpdateLedger:
             if attempt["status"] in {"installed", "rolled_back", "download_failed"}:
                 raise ValueError("update attempt already has a final result")
             family = attempt["family"]
+            if status == "started" and self.quarantined(family, version):
+                self._event(identifier, ticker_id, family, version, "blocked", running, "release_quarantined", now)
+                return {"accepted": True, "quarantined": True, "cancelled": 0}
             self.db.execute("UPDATE update_attempts SET status=?,updated_at=? WHERE id=?", (status, now, identifier))
             self._event(identifier, ticker_id, family, version, status, running, reason, now)
             if status == "rolled_back":

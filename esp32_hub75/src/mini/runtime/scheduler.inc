@@ -73,13 +73,17 @@ void serviceWifi(uint32_t now) {
       if (wifiPairingMode && blePairingStarted) return;
       if (wifiPairingMode) { wifiPairingMode = false; pairingMode = false; setupCode = ""; }
       wifiWasConnected = true;
-      if (!wifiKnownWorking) { preferences.putBool("wifi_confirmed", true); wifiKnownWorking = true; }
+
       appliedTimezone = "";
       applyConfiguredTimezone();
       lastFetchAt = now - FETCH_INTERVAL_MS;
       message = "";
       Serial.println("Wi-Fi address acquired. Data polling resumes.");
       renderCurrent();
+    }
+    if (!wifiKnownWorking) {
+      NetworkLease flash(networkGate, 0, NetworkAccess::DeviceRequests);
+      if (flash && preferences.putBool("wifi_confirmed", true)) wifiKnownWorking = true;
     }
     wifiWaitStartedAt = 0;
   } else {
@@ -91,6 +95,12 @@ void serviceWifi(uint32_t now) {
 }
 
 void applyPendingWifiCredentials(uint32_t now) {
+  portENTER_CRITICAL(&bleProvisioningMux);
+  const bool pending = pendingWifiReady && pendingWifiResultRead;
+  portEXIT_CRITICAL(&bleProvisioningMux);
+  if (!pending) return;
+  NetworkLease flash(networkGate, 0);
+  if (!flash) return;
   char nextSsid[sizeof(pendingWifiSsid)] = {};
   char nextPassword[sizeof(pendingWifiPassword)] = {};
   portENTER_CRITICAL(&bleProvisioningMux);
@@ -134,6 +144,7 @@ void miniSetup() {
   Serial0.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
+  networkGate.begin();
   spriteAssets.begin();
   Serial.printf("Mini firmware: %s sprite_protocol=1\n", MINI_FIRMWARE_VERSION);
   loadWifiCredentials();
@@ -142,7 +153,6 @@ void miniSetup() {
   deviceCredentials.load();
   drawMessage(deviceCredentials.ready() ? "STARTING" : "DEVICE KEY");
   logoWorkMutex = xSemaphoreCreateMutex();
-  networkGate.begin();
   networkWorker.begin();
   if (!spriteAssets.ready() || logoWorkMutex == nullptr || !networkGate.ready()) {
     Serial.println("Sprite synchronization setup failed");
@@ -210,6 +220,8 @@ void processMiniSerialCommand(Stream* input, const String& command) {
     return;
   }
   if (command.startsWith("AUTHSET:")) {
+    NetworkLease flash(networkGate, 0, NetworkAccess::DeviceRequests);
+    if (!flash) { input->print("MINI_AUTH:BUSY\n"); return; }
     if (firmwareUpdater.transferActive()) { input->print("MINI_AUTH:BUSY\n"); return; }
     if (!deviceCredentials.replace(command.substring(8))) { input->print("MINI_AUTH:REJECTED\n"); return; }
     input->print("MINI_AUTH:STORED\n");
@@ -242,6 +254,8 @@ void processMiniSerialCommand(Stream* input, const String& command) {
     return;
   }
   if (command == "CHECKTLS") {
+    NetworkLease flash(networkGate, 5000);
+    if (!flash) { input->print("MINI_TLS_CHECK:BUSY\n"); return; }
     const char* path = "/tls-close-check.tmp";
     File file = LittleFS.open(path, "w+");
     if (!file) { input->print("MINI_TLS_CHECK:NO_FILE\n"); return; }

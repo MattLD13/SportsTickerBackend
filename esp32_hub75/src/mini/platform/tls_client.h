@@ -19,4 +19,5 @@ class TlsTransport : public WiFiClientSecure {
 };
 
 inline uint32_t tlsClockMs() { return millis(); }
-using TlsClient = DeadlineClient<TlsTransport, tlsClockMs>;
+inline void tlsWaitForInput() { delay(1); }
+using TlsClient = DeadlineClient<TlsTransport, tlsClockMs, tlsWaitForInput>;

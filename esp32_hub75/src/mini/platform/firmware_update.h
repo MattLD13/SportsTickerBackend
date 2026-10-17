@@ -47,6 +47,7 @@ class FirmwareUpdater {
   bool tick(uint32_t now, bool registered, const String& tickerId, bool displayHealthy);
   bool bootValidated() const { return firmwareUpdateBootValidated; }
   int bootState() const { return firmwareUpdateBootState; }
+  const char* bootPartition() const { return firmwareUpdateBootPartition; }
   int bootStateError() const { return firmwareUpdateBootStateError; }
 
  private:
@@ -79,6 +80,7 @@ class FirmwareUpdater {
   bool firmwareUpdateTaskRunning = false;
   bool firmwareUpdateBootChecked = false;
   bool firmwareUpdateBootValidated = false;
+  char firmwareUpdateBootPartition[17] = {};
   int firmwareUpdateBootState = ESP_OTA_IMG_UNDEFINED;
   int firmwareUpdateBootStateError = ESP_ERR_INVALID_STATE;
   bool firmwareUpdateAcknowledged = false;

@@ -79,6 +79,7 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   update["detail"] = updateDetail;
   update["boot_validated"] = firmwareUpdater.bootValidated();
   update["boot_state"] = firmwareUpdater.bootState();
+  update["boot_partition"] = firmwareUpdater.bootPartition();
   update["boot_state_error"] = firmwareUpdater.bootStateError();
   JsonObject assets = out["assets"].to<JsonObject>();
   assets["ram_slots"] = spriteAssets.slotCount();

@@ -340,6 +340,6 @@ Provider demand, market calendars, Mini module extraction, and iOS polling extra
 Both physical device credentials authenticate against the production server.
 The next change adds device enforcement, family release quarantine, durable update reports, and Ticker Six product labels.
 Real Pi frame-based rollback passes. Four offline production frames match across the PC and Pi.
-Mini logo recovery and its failed candidate boot remain open hardware gates.
-Mini USB recovery and candidate boot validation now pass. The smaller device replies need a production check.
+Mini logo recovery, stable page timing, and authenticated failed-boot quarantine now pass on the physical device.
+Mini USB recovery, smaller device replies, and both hardware rollback paths now pass.
 TV calibration and local clock interpolation remain excluded.
