@@ -163,4 +163,30 @@ The five requested implementation packages are complete.
 Provider demand and market policy remain published and tested.
 Device authentication, shared wire fields, cache ownership, and iOS extraction retain their checked boundaries.
 Physical Pi rollback, Mini rollback reporting, family quarantine, pixel checks, and fixed-response timing provide release evidence.
-Release 26 receives the final CI and production health checks after publication.
+Release 26 passes its final CI and production health checks.
+
+## Published release 26
+
+The backend deployment, static checks, ESP32 checks, and iOS Debug and Release builds pass.
+The published binary matches the live manifest SHA-256 and image size.
+The physical Mini runs that exact image from `app1` with a valid boot state and 200 Hz refresh.
+Its working `app0` image remains available for rollback. The injected fault image is gone.
+The final published-image capture validates fourteen logos and 1,498 opaque pixels without differences.
+It completes twenty-four timed visits between 3,011.243 and 3,040.803 milliseconds.
+The live server records Mini 26 as installed and retains the Mini 25 boot-failure quarantine.
+Ticker Six remains active on its latest controller release, `025fc615`.
+
+The deployment health probe records 440 samples. Sixteen return 502 during the restart.
+The gap between surrounding healthy samples measures 17.020 seconds. All later samples return 200.
+The prior deployment waits ninety seconds for shutdown. The new shutdown limit and single restart reduce this interruption.
+
+Release evidence:
+
+- Backend deployment: GitHub Actions run `39077326529`.
+- Device builds: GitHub Actions run `39077326483`.
+- Static checks: GitHub Actions run `39077326531`.
+- Live update history: Fleet update control run `39077715691`.
+
+Owner: The SOW records accepted scope and measured release evidence.
+Removed path: Open release-gate statements now reflect completed physical checks.
+Input and output: The exact published image boots on the Mini. The server and both device families retain their validated state.

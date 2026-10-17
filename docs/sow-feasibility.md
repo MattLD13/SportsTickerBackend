@@ -144,7 +144,7 @@ Provider demand and market-session policies are published with deterministic pol
 SpriteAssets and DevicePayload now own Mini cache storage and response commits.
 The iOS response and polling extractions pass the published Debug and Release builds.
 
-Both physical device credentials verify against the server. Device-route enforcement remains an unpublished change.
+Both physical device credentials verify against the server. Device routes now enforce their enrolled credentials.
 A durable update ledger now tests rollback reports, family quarantine, cancellation, retry, and restart persistence.
 The real Pi rollback trial rejects a candidate without frame evidence and restores a valid previous frame.
 Four frozen render baselines match exactly between the PC and Pi.

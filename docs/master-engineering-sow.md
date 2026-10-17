@@ -338,7 +338,7 @@ Use production-shaped API payloads for protocol and projection checks.
 The five final packages and their evidence appear in [Final SOW packages](research/sow-final-packages-2026-10-17.md).
 Provider demand, market calendars, Mini module extraction, and iOS polling extraction are published.
 Both physical device credentials authenticate against the production server.
-The next change adds device enforcement, family release quarantine, durable update reports, and Ticker Six product labels.
+Published changes add device enforcement, family release quarantine, durable update reports, and Ticker Six product labels.
 Real Pi frame-based rollback passes. Four offline production frames match across the PC and Pi.
 Mini logo recovery, stable page timing, and authenticated failed-boot quarantine now pass on the physical device.
 Mini USB recovery, smaller device replies, and both hardware rollback paths now pass.
