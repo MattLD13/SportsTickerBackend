@@ -86,9 +86,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var isEditing: Bool = false
 
     private var isServerReachable = false
-    private var timer: Timer?
-    private var devicesTimer: Timer?
-    private var saveDebounceTimer: Timer?
+    private let polling = TickerPollingCoordinator()
     private let httpClient: any TickerHTTPTransport
     private var currentSaveTask: (any TickerHTTPTask)?
     private var deviceListTask: (any TickerHTTPTask)?
@@ -97,10 +95,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
     private var wifiLocationManager: CLLocationManager?
     private let bleProvisioning = BLEProvisioningCoordinator()
-    private var lastFetchTime: Date = .distantPast
-    // After a mode switch, poll every 1s for 30s so the UI and hardware
-    // board confirm the new state almost immediately.
-    private var burstPollUntil: Date = .distantPast
     private func normalizedPin(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
@@ -474,40 +468,19 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         fetchDevices()
         fetchSpotifyStatus()
 
-        // Adaptive poll: 0.5 s hyper-poll during burst window, 1 s otherwise.
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            Task { @MainActor in
-                guard !self.isEditing else { return }
-                let inBurst = Date() < self.burstPollUntil
-                let interval = inBurst ? 0.5 : self.pollInterval(for: self.state.mode)
-                if Date().timeIntervalSince(self.lastFetchTime) >= interval {
-                    self.lastFetchTime = Date()
-                    self.fetchData()
-                    if self.leagueOptions.isEmpty { self.fetchLeagueOptions() }
-                }
-            }
-        }
-        // Poll device list every 5s to keep last_seen / online beacon fresh.
-        devicesTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            Task { @MainActor in
-                if !self.isEditing { self.fetchDevices() }
-            }
-        }
-    }
-    private func pollInterval(for mode: String) -> TimeInterval {
-        switch mode {
-        case "music":                      return 1.0
-        case "sports":                     return 1.0
-        case "flights", "airports":         return 60.0
-        case "stock":                       return 30.0
-        case "weather", "clock":           return 600.0
-        default:                           return 5.0
-        }
+        polling.start(
+            state: { [weak self] in (self?.state.mode ?? "sports", self?.isEditing ?? true) },
+            poll: { [weak self] in
+                self?.fetchData()
+                if self?.leagueOptions.isEmpty == true { self?.fetchLeagueOptions() }
+            },
+            refreshDevices: { [weak self] in self?.fetchDevices() }
+        )
     }
     /// Call this whenever the user switches modes. The timer will poll every 1 s
     /// for the next 30 s, giving the app (and the hardware board) fast feedback.
     func startBurstPolling() {
-        burstPollUntil = Date().addingTimeInterval(30)
+        polling.beginBurst()
     }
 
     func getBaseURL() -> String {
@@ -627,29 +600,15 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             guard let data = data else { return }
 
             do {
-                let decoded = try JSONDecoder().decode(V2DataResponse.self, from: data)
+                let displayResponse = try TickerDisplayResponse(data: data)
+                let decoded = displayResponse.response
 
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     let scheduleSource = decoded.meta.schedule?.source ?? "base"
                     self.scheduleActive = scheduleSource == "time" || scheduleSource == "condition"
 
-                    // Sports keeps every selected game. Other modes use their own content family.
-                    let isSportsFilterMode = decoded.settings.mode == "sports"
-                    self.games = Array(decoded.games.enumerated()
-                        .filter { $0.element.is_shown || isSportsFilterMode }
-                        .sorted { left, right in
-                            let g1 = left.element
-                            let g2 = right.element
-                            let p1 = self.isPinned(g1)
-                            let p2 = self.isPinned(g2)
-                            if p1 != p2 { return p1 }
-                            if g1.is_shown != g2.is_shown { return g1.is_shown }
-                            if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
-                            if g1.state == "in" && g2.state != "in" { return true }
-                            return left.offset < right.offset
-                        }
-                        .map(\.element))
+                    self.games = displayResponse.orderedGames(pinnedIDs: self.pinnedGameIDs)
 
                     if !self.isEditing {
                         let decodedPins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
@@ -701,10 +660,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
         // C. DEBOUNCE SAVE (Wait 1.5s after last tap) + start hyper polling
         startBurstPolling()
-        saveDebounceTimer?.invalidate()
-        saveDebounceTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            self?.saveSettings()
-        }
+        polling.debounceSave { [weak self] in self?.saveSettings() }
     }
 
     // === 3. TOGGLE PIN ===

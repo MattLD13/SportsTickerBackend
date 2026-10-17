@@ -39,7 +39,7 @@ def build(manifest: list[dict], mini_frames: Path | None, output: Path, provenan
     result = []
     for original in manifest:
         row = {key: deepcopy(original[key]) for key in ("name", "group", "title", "mode", "game")}
-        for key in ("example_time", "note", "mini_source"):
+        for key in ("example_time", "note", "mini_source", "mini_firmware", "mini_source_hashes"):
             if key in original:
                 row[key] = original[key]
         if mini_frames is not None:

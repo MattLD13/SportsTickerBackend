@@ -47,6 +47,8 @@ class SchedulerHealth:
     last_error: str | None = None
     next_due: datetime | None = None
     consecutive_failures: int = 0
+    refresh_calls: int = 0
+    paused_refreshes: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +169,13 @@ class RefreshScheduler:
         self._wall_clock = wall_clock
         self._providers: dict[str, _ProviderJob] = {}
         self._tickers: dict[str, _Ticker] = {}
+        self._refresh_policy: Callable[[str, str, DisplaySettings, datetime], bool] = lambda *args: True
+        self._last_demand: dict[str, frozenset[str]] = {}
+
+    def set_refresh_policy(self, policy: Callable[[str, str, DisplaySettings, datetime], bool]) -> None:
+        """Set the application-owned provider demand policy before runtime startup."""
+        self._refresh_policy = policy
+
 
     def register_provider(
         self,
@@ -275,18 +284,29 @@ class RefreshScheduler:
                 settings_key_cache[cache_key] = _freeze(job.settings_key(settings))
             return settings_key_cache[cache_key]
 
+        wall_now = self._wall_clock()
+        active_by_name = {
+            job.name: frozenset(identifier for identifier, settings in settings_by_ticker.items()
+                                if self._refresh_policy(job.name, identifier, settings, wall_now))
+            for job in self._providers.values()
+        }
         due_by_name = {
             job.name: job
             for job in self._providers.values()
             if current >= job.next_due
         }
         for job in self._providers.values():
+            if active_by_name[job.name] - self._last_demand.get(job.name, frozenset()):
+                due_by_name[job.name] = job
             for ticker_id, settings in settings_by_ticker.items():
+                if ticker_id not in active_by_name[job.name]:
+                    continue
                 cached = job.data_by_ticker.get(ticker_id)
                 if cached is None and job.health.last_success is not None:
                     due_by_name[job.name] = job
                 elif cached is not None and cached.settings_key != settings_key_for(job, ticker_id, settings):
                     due_by_name[job.name] = job
+        self._last_demand = active_by_name
         due = tuple(due_by_name.values())
         if not due:
             return ()
@@ -305,7 +325,12 @@ class RefreshScheduler:
             errors: list[tuple[str, str]] = []
             warnings: list[tuple[str, str]] = []
             success_count = 0
+            attempted = skipped = 0
             for ticker_id, settings in settings_by_ticker.items():
+                if ticker_id not in active_by_name[job.name]:
+                    skipped += 1
+                    continue
+                attempted += 1
                 try:
                     result = _run_provider_refresh(job.refresh, ticker_id, settings)
                     ok, error = _refresh_succeeded(result)
@@ -324,7 +349,9 @@ class RefreshScheduler:
                     )
                     success_count += 1
 
-            if errors:
+            if not attempted:
+                health = replace(job.health, next_due=wall_due)
+            elif errors:
                 health = SchedulerHealth(
                     last_success=wall_now if success_count else job.health.last_success,
                     last_error=_format_ticker_messages(errors + warnings),
@@ -348,7 +375,8 @@ class RefreshScheduler:
             self._providers[job.name] = replace(
                 updated,
                 data_by_ticker=data_by_ticker,
-                health=health,
+                health=replace(health, refresh_calls=job.health.refresh_calls + attempted,
+                               paused_refreshes=job.health.paused_refreshes + skipped),
             )
 
         published: list[str] = []

@@ -25,6 +25,8 @@ from ticker_core.platform import (
     TickerPiLogger,
     WiFiRecoveryService,
 )
+from ticker_core.platform.frame_health import PresentedFrameHealth
+from ticker_core.platform.device_credentials import load_device_token
 from ticker_core.protocol import BackendClient
 from ticker_core.rendering import FrameGeometry
 from ticker_core.runtime import FramePacer, TickerRuntime
@@ -41,6 +43,7 @@ def create_application() -> TickerApplication:
         os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org"),
         timeout_seconds=float(os.environ.get("TICKER_BACKEND_TIMEOUT", "5")),
         verify_tls=_enabled("TICKER_VERIFY_TLS", default=True),
+        device_token=load_device_token(Path(os.environ.get("TICKER_DEVICE_TOKEN_FILE", data_directory / "device_token"))),
     )
     assets = AssetCoordinator(data_directory / "assets")
     frames, viewport = create_default_frame_builder(
@@ -99,6 +102,8 @@ def create_application() -> TickerApplication:
         render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
         poll_cpu=_cpu_setting("TICKER_POLL_CPU"),
         logger=logger,
+        frame_health=PresentedFrameHealth(Path(os.environ["TICKER_FRAME_HEALTH_PATH"]), repository)
+        if os.environ.get("TICKER_FRAME_HEALTH_PATH") else None,
     )
 
 

@@ -110,6 +110,26 @@ int main(int argc, char** argv) {
     }
   }
   assert(ticker_ui::textWidth("3RD & 6") == 23);
+  JsonDocument college;
+  college["sport"] = "march_madness";
+  college["status"] = "2H 04:32";
+  college["away_seed"] = "1";
+  college["home_seed"] = "16";
+  const auto seeded = ticker_ui::sportsPane(college.as<JsonObjectConst>());
+  assert(seeded.awaySeed == "1" && seeded.homeSeed == "16");
+  assert(seeded.awayRank.empty() && seeded.homeRank.empty());
+  Canvas seededCanvas;
+  ticker_ui::renderSports(seededCanvas, seeded);
+  Canvas seedReference;
+  ticker_ui::text(seedReference, "1", 2, 2, {66, 117, 199});
+  ticker_ui::text(seedReference, "16", 62 - ticker_ui::textWidth("16"), 2, {66, 117, 199});
+  for (int y = 2; y < 7; ++y) for (int x = 0; x < 64; ++x) {
+    const auto expected = seedReference.pixels[y * 64 + x];
+    if (expected.r || expected.g || expected.b) {
+      const auto actual = seededCanvas.pixels[y * 64 + x];
+      assert(actual.r == expected.r && actual.g == expected.g && actual.b == expected.b);
+    }
+  }
   assert(ticker_ui::textWidth("4TH & 15") == 27);
   assert(ticker_ui::textWidth("2ND & GOAL", 3, 0, false, 2) == 28);
   assert(ticker_ui::textWidth("4TH & 15") <= ticker_ui::CONTENT_WIDTH);

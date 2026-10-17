@@ -26,6 +26,7 @@ from ticker_core.platform import (
     WiFiSetupState,
 )
 from ticker_core.protocol import BackendClient, DisplayDelta, TickerResponse, apply_display_delta
+from ticker_core.platform.frame_health import PresentedFrameHealth
 from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
@@ -86,11 +87,13 @@ class TickerApplication:
         render_cpu: int | None = None,
         poll_cpu: int | None = None,
         logger: object | None = None,
+        frame_health: PresentedFrameHealth | None = None,
     ) -> None:
         if not device_id.strip():
             raise ValueError("A device id is required.")
         if wifi_check_interval <= 0:
             raise ValueError("The Wi-Fi check interval must be positive.")
+        self._frame_health = frame_health
         self._client = client
         self._poller = poller
         self._cache = cache
@@ -249,6 +252,8 @@ class TickerApplication:
             self._record_tick(decision, presented=False)
             self._complete_step(decision)
             return decision
+        if self._frame_health is not None:
+            self._frame_health.record(frame, decision.kind)
         self._last_frame = frame
         self._last_visual_key = visual_key
         self._last_base_visual_key = base_visual_key

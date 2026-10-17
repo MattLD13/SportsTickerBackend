@@ -85,12 +85,14 @@ class BackendClient:
         timeout_seconds: float = 5.0,
         verify_tls: bool = True,
         session: requests.Session | None = None,
+        device_token: str | None = None,
         stream_connector: Callable[..., object] | None = None,
     ) -> None:
         if not backend_url.strip():
             raise ValueError("backend_url must not be empty")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        self.device_token = device_token
         self.backend_url = backend_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.verify_tls = verify_tls
@@ -182,6 +184,7 @@ class BackendClient:
                 subprotocols=["ticker-v2"],
                 sslopt=sslopt,
                 enable_multithread=True,
+                header={"X-Device-Token": self.device_token} if self.device_token else {},
             )
         except (OSError, websocket.WebSocketException) as error:
             raise BackendTransportError(f"WebSocket {url} failed: {error}") from error
@@ -322,6 +325,8 @@ class BackendClient:
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
         url = f"{self.backend_url}{path}"
+        if self.device_token:
+            kwargs["headers"] = {**kwargs.pop("headers", {}), "X-Device-Token": self.device_token}
         try:
             response = self.session.request(
                 method,

@@ -15,6 +15,7 @@ from sports_ticker.api.app import create_app
 from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.application import BackendApplication, BackendRuntime, RefreshScheduler, RefreshService
 from sports_ticker.application.state_store import SnapshotStore
+from sports_ticker.application.provider_demand import ProviderDemand
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.firmware import FirmwareManifest
@@ -92,6 +93,7 @@ def create_production_application(
         weather_location_resolver=WeatherLocationResolver().resolve,
         mini_sprites=MiniSpriteService(Path(os.environ.get("TICKER_MINI_ASSET_CACHE", path.parent / "mini_sprites"))),
     )
+    scheduler.set_refresh_policy(ProviderDemand(repository, application.schedule_service))
     runtime = BackendRuntime(
         scheduler,
         application.event_service,

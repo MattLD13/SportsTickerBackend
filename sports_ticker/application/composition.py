@@ -276,6 +276,14 @@ class BackendApplication:
                     raise
         raise RuntimeError("could not issue a unique pairing code")
 
+    def authorize_device(self, ticker_id: str, token: str) -> bool:
+        """Authorize the physical device independently of controller sessions."""
+        return self.repository.authorize_device(ticker_id, token)
+
+    def enroll_device_credential(self, ticker_id: str, token_sha256: str) -> None:
+        """Persist an administrator-authorized device credential hash."""
+        self.repository.set_device_credential_hash(ticker_id, token_sha256, now=self._clock())
+
     def authorize_controller(self, ticker_id: str, token: str) -> bool:
         """Validate one opaque controller token for one ticker."""
 

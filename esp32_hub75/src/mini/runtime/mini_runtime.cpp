@@ -34,7 +34,11 @@
 #include "../platform/network_recovery.h"
 #include "../platform/wifi_station.h"
 
-JsonDocument payload;
+#include "../protocol/device_payload.h"
+#include "../assets/sprite_assets.h"
+#include "../platform/device_credentials.h"
+
+DevicePayload payload;
 uint32_t rotationSignature = 0;
 uint32_t logoWorkingSetSignature = 0;
 uint32_t lastFetchAt = 0;
@@ -74,6 +78,7 @@ uint32_t dataJsonFailures = 0;
 uint32_t lastDataDurationMs = 0;
 uint32_t lastDataSuccessAt = 0;
 uint32_t dataDeadlineTimeouts = 0;
+uint32_t reusedDataConnections = 0, freshDataConnections = 0;
 bool lastDataExpired = false;
 uint32_t nextPollBudgetMs = TransferDeadline::DefaultBudgetMs;
 uint32_t lastDataGateWaitMs = 0, lastDataHeadersMs = 0, lastDataBodyMs = 0;
@@ -116,33 +121,23 @@ NimBLECharacteristic* blePairingCharacteristic = nullptr;
 static constexpr uint8_t RAM_LOGO_WORKING_SET_LOGOS = RUNTIME_LOGO_SLOTS;
 static constexpr uint8_t LOGO_WORK_QUEUE_SLOTS = RAM_LOGO_WORKING_SET_LOGOS;
 
-struct RuntimeLogo {
-  String url;
-  uint16_t pixels[RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE] = {};
-  uint8_t mask[RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE] = {};
-  bool valid = false;
-  bool pinned = false;
-};
-
 struct PreparedGameLogos {
   String awayPrimary;
   String homePrimary;
 };
 
-RuntimeLogo* runtimeLogos = nullptr;
-uint8_t runtimeLogoSlotCount = 0;
 String logoRetryUrls[LOGO_FAILURE_SLOTS];
 uint32_t logoRetryAfter[LOGO_FAILURE_SLOTS] = {};
 uint32_t spriteRetryDueAt = 0;
 uint8_t logoRetryCount = 0;
 uint8_t logoRetryIndex = 0;
-bool logoCacheReady = false;
-SemaphoreHandle_t logoCacheMutex = nullptr;
 SemaphoreHandle_t logoWorkMutex = nullptr;
+DeviceCredentials deviceCredentials;
 NetworkGate networkGate;
-NetworkWorker networkWorker(networkGate);
+SpriteAssets spriteAssets(networkGate, BACKEND_URL);
+NetworkWorker networkWorker(networkGate, deviceCredentials.token());
 WifiStation wifiStation(networkGate);
-FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, {
+FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, deviceCredentials.token(), {
   MINI_FIRMWARE_VERSION, MINI_FIRMWARE_TARGET, MINI_FIRMWARE_HARDWARE,
   FIRMWARE_MIN_IMAGE_SIZE, FIRMWARE_MAX_IMAGE_SIZE, FIRMWARE_HTTP_TIMEOUT_MS,
   FIRMWARE_RETRY_BACKOFF_MS, FIRMWARE_BOOT_VALIDATION_MS, FIRMWARE_FAILURE_DISPLAY_MS
@@ -172,6 +167,8 @@ bool lastPresentedClockReady = false;
 PreparedGameLogos preparedGameLogos;
 String configuredTimezone = DEFAULT_TIMEZONE;
 String appliedTimezone;
+
+bool drawLogoAsset(const String& key, int16_t x, int16_t y) { return spriteAssets.draw(key, x, y, *matrix); }
 
 void renderCurrent();
 void drawDownloadingProgress(uint16_t complete, uint16_t total);

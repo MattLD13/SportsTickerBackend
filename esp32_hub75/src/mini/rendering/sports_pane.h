@@ -22,6 +22,7 @@ struct Penalty { std::string clock, number; };
 struct SportsPane {
   std::string status, awayScore, homeScore, footer, awayRank, homeRank, awayLabel, homeLabel;
   std::string powerPlayLabel;
+  std::string awaySeed, homeSeed;
   Rgb awayColor = {86, 104, 132}, homeColor = {86, 104, 132};
   Sport sport = Sport::Other;
   Side active = Side::None, powerPlay = Side::None, emptyNet = Side::None;
@@ -189,9 +190,12 @@ void renderSports(Canvas& canvas, const SportsPane& view) {
   if (!canvas.logo(Side::Home, HOME_LOGO_X, LOGO_Y)) badge(canvas, HOME_LOGO_X, LOGO_Y, view.homeColor, view.homeLabel);
   rank(canvas, view.awayRank, 2);
   rank(canvas, view.homeRank, 62 - textWidth(view.homeRank));
+  text(canvas, view.awaySeed, 2, 2, TOURNAMENT_SEED);
+  text(canvas, view.homeSeed, 62 - textWidth(view.homeSeed), 2, TOURNAMENT_SEED);
 
   const bool headerSides = view.active != Side::None || view.powerPlay != Side::None ||
-                           view.emptyNet != Side::None || view.awayCards || view.homeCards;
+                           view.emptyNet != Side::None || view.awayCards || view.homeCards ||
+                           !view.awaySeed.empty() || !view.homeSeed.empty();
   const bool manpowerHeader = view.sport == Sport::Hockey && view.emptyNet == Side::None && !view.powerPlayLabel.empty();
   const int headerSpan = view.baseballLive ? 32 : manpowerHeader ? 30 : headerSides ? 36 : 62;
   const int headerLeft = (64 - headerSpan) / 2;

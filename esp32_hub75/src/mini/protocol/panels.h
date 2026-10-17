@@ -58,6 +58,10 @@ inline SportsPane sportsPane(JsonObjectConst game) {
     view.awayRank = label(game["away_rank"], "", 2);
     view.homeRank = label(game["home_rank"], "", 2);
   }
+  if (league == "march_madness") {
+    view.awaySeed = label(game["away_seed"], "", 2);
+    view.homeSeed = label(game["home_seed"], "", 2);
+  }
   if (view.sport == Sport::Baseball && view.live) {
     JsonObjectConst inning = game["baseball_inning"].as<JsonObjectConst>();
     const std::string phase = label(inning["phase"]);

@@ -21,7 +21,7 @@ void drawGame(JsonObjectConst game, const PreparedGameLogos& logos) {
 }
 
 bool firstShownModeItem(const char* family, JsonObjectConst& data) {
-  JsonArrayConst items = payload["content"][family].as<JsonArrayConst>();
+  JsonArrayConst items = payload.document()["content"][family].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (!shownItem(item)) {
       continue;

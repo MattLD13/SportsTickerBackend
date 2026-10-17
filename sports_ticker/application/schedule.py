@@ -355,6 +355,25 @@ class ScheduleService:
         )
         return status
 
+    def modes_within(
+        self, ticker_id: str, settings: DisplaySettings, *, now: datetime,
+        horizon_seconds: float, allowed_modes: Iterable[str] = (),
+    ) -> frozenset[str]:
+        """Resolve modes at schedule transitions within the activation horizon."""
+        cursor = _utc_datetime(now)
+        end = cursor.timestamp() + max(0.0, horizon_seconds)
+        modes: set[str] = set()
+        while cursor.timestamp() <= end:
+            modes.add(self.effective_settings(ticker_id, settings, now=cursor, allowed_modes=allowed_modes).mode)
+            transition = self._next_schedule_transition(ticker_id, settings, cursor.timestamp())
+            override = self._repository.schedule_override_expires_at(ticker_id, now=cursor.timestamp())
+            if override is not None:
+                transition = min(transition, override)
+            if transition <= cursor.timestamp() or transition > end:
+                break
+            cursor = _utc_datetime(transition + 0.001)
+        return frozenset(modes)
+
     def live_game_count(self) -> int:
         """Count fresh live games once across all provider snapshots."""
 

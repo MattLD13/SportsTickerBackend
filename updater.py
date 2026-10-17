@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 RELEASE_ROOT = Path(os.environ.get("TICKER_RELEASE_ROOT", "/opt/sports-ticker"))
 RELEASES_DIR = RELEASE_ROOT / "releases"
 CURRENT_LINK = Path(os.environ.get("TICKER_RELEASE_LINK", RELEASE_ROOT / "current"))
+FRAME_HEALTH_PATH = Path(os.environ.get("TICKER_FRAME_HEALTH_PATH", "/run/sports-ticker/frame-health.json"))
 SERVICE_NAME = "ticker-controller"
 SERVICE_PATH = Path("/etc/systemd/system/ticker-controller.service")
 
@@ -89,13 +91,22 @@ def _current_release() -> Path | None:
         return None
 
 
-def _service_is_healthy(timeout_seconds: float = 30.0) -> bool:
-    """Wait for systemd to report the controller active after one release restart."""
+def _service_is_healthy(release: Path, *, not_before: float, timeout_seconds: float = 90.0) -> bool:
+    """Require an active service and a frame receipt from its current process and release."""
+    from ticker_core.platform.frame_health import receipt_matches
+
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        result = subprocess.run(["systemctl", "is-active", "--quiet", SERVICE_NAME], check=False)
-        if result.returncode == 0:
-            return True
+        active = subprocess.run(["systemctl", "is-active", "--quiet", SERVICE_NAME], check=False)
+        if active.returncode == 0:
+            try:
+                process = subprocess.check_output(["systemctl", "show", "--property=MainPID", "--value", SERVICE_NAME],
+                                                  text=True, timeout=5)
+                receipt = json.loads(FRAME_HEALTH_PATH.read_text(encoding="utf-8"))
+                if receipt_matches(receipt, release, int(process.strip()), not_before):
+                    return True
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
         time.sleep(1)
     return False
 
@@ -135,7 +146,7 @@ def _install_service(release: Path) -> None:
     subprocess.run(["systemctl", "daemon-reload"], check=True)
 
 
-def _cleanup_releases(active: Path) -> None:
+def _cleanup_releases(active: Path, previous: Path | None = None) -> None:
     """Keep the active release and two rollback releases."""
 
     releases = sorted(
@@ -143,11 +154,35 @@ def _cleanup_releases(active: Path) -> None:
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
-    for release in releases[2:]:
+    retained = {previous} if previous in releases else set()
+    for path in releases:
+        if len(retained) >= 2:
+            break
+        retained.add(path)
+    for release in releases:
+        if release in retained:
+            continue
         try:
             _git("worktree", "remove", "--force", str(release), capture=False)
         except subprocess.CalledProcessError:
             continue
+
+
+def _install_checked_release(release: Path, previous: Path | None, *, timeout_seconds: float = 90.0) -> None:
+    """Restore the prior immutable release if startup produces no valid display receipt."""
+    _activate_release(release)
+    try:
+        _install_service(release)
+        restart_started = time.time()
+        subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
+        if not _service_is_healthy(release, not_before=restart_started, timeout_seconds=timeout_seconds):
+            raise RuntimeError(f"Release {release.name[:12]} failed its display health check")
+    except Exception:
+        if previous is not None and previous != release:
+            _activate_release(previous)
+            _install_service(previous)
+            subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
+        raise
 
 
 def main() -> int:
@@ -160,17 +195,9 @@ def main() -> int:
         release = _checkout_release(target)
         _validate_release(release)
         _install_requirements(release, changed)
-        _activate_release(release)
-        _install_service(release)
-        _cleanup_releases(release)
-        subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
-        if not _service_is_healthy():
-            if previous is not None and previous != release:
-                _activate_release(previous)
-                _install_service(previous)
-                subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
-            raise RuntimeError(f"Release {target[:12]} failed its startup health check")
-        print(f"[updater] Activated {target[:12]}.")
+        _install_checked_release(release, previous)
+        _cleanup_releases(release, previous)
+        print(f"[updater] Activated {target[:12]} after a successful display frame.")
         return 0
     except Exception as error:
         print(f"[updater] Update failed: {error}", file=sys.stderr)

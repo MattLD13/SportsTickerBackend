@@ -35,7 +35,7 @@ struct FirmwareUpdateConfig {
 class FirmwareUpdater {
  public:
   FirmwareUpdater(Preferences& preferences, NetworkGate& gate, NetworkWorker& worker,
-                  const String& backendUrl, FirmwareUpdateConfig config);
+                  const String& backendUrl, const String& deviceToken, FirmwareUpdateConfig config);
   FirmwareUpdater(const FirmwareUpdater&) = delete;
   FirmwareUpdater& operator=(const FirmwareUpdater&) = delete;
   void displaySnapshot(uint8_t& state, uint32_t& complete, uint32_t& total, char* detail, size_t detailSize);
@@ -44,7 +44,7 @@ class FirmwareUpdater {
   void observe(JsonVariantConst command, bool registered, bool pairingMode, const String& tickerId);
   void initialize();
   void applyAckResponse(const NetworkJob& job);
-  bool tick(uint32_t now, bool registered, const String& tickerId);
+  bool tick(uint32_t now, bool registered, const String& tickerId, bool displayHealthy);
   bool bootValidated() const { return firmwareUpdateBootValidated; }
   int bootState() const { return firmwareUpdateBootState; }
   int bootStateError() const { return firmwareUpdateBootStateError; }
@@ -67,6 +67,7 @@ class FirmwareUpdater {
   NetworkGate& gate_;
   NetworkWorker& worker_;
   String baseUrl_, tickerId_;
+  const String& deviceToken_;
   FirmwareUpdateConfig config_;
   volatile FirmwareUpdateState firmwareUpdateState = FIRMWARE_UPDATE_IDLE;
   volatile uint32_t firmwareUpdateComplete = 0;

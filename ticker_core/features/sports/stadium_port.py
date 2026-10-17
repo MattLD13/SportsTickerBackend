@@ -4,7 +4,7 @@
 from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP, PANE as PF
-from ticker_core.rendering.style import HEADER_RULE, STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT
+from ticker_core.rendering.style import HEADER_RULE, STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import SCROLLING_TEAM_LOGO_SIZE, get_prepared_team_logo, team_logo_layout
@@ -508,8 +508,8 @@ class StadiumRenderer:
             won_a  = g['state'] == 'post' and g['as'] > g['hs']
             won_h  = g['state'] == 'post' and g['hs'] > g['as']
             sa, sh = str(seed_a), str(seed_h)
-            a_col = (100, 210, 100) if won_a else (170, 70, 70) if won_h else (66, 117, 199)
-            h_col = (100, 210, 100) if won_h else (170, 70, 70) if won_a else (66, 117, 199)
+            a_col = (100, 210, 100) if won_a else (170, 70, 70) if won_h else TOURNAMENT_SEED
+            h_col = (100, 210, 100) if won_h else (170, 70, 70) if won_a else TOURNAMENT_SEED
             pf_text(d, sa, 2,                    2, *a_col)
             pf_text(d, sh, CW - pf_w(sh) - 2,   2, *h_col)
 

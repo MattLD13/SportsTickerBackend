@@ -20,6 +20,7 @@ from sports_ticker.markets import MARKET_GROUPS
 
 from .espn import _display_timezone, _event_time
 from .http import JsonHttpClient, UrllibJsonHttpClient
+from .market_sessions import us_equity_session
 from .news_transactions import ConfirmedTransaction, TransactionConfirmationSource
 
 
@@ -230,6 +231,7 @@ class FinnhubStockSource:
         monotonic_clock: callable = monotonic,
         sleeper: callable = sleep,
         refresh_seconds: float = 30.0,
+        market_session: callable = us_equity_session,
     ) -> None:
         self._client = client or UrllibJsonHttpClient()
         self._timeout = _timeout(timeout)
@@ -247,6 +249,8 @@ class FinnhubStockSource:
         self._cache_path = Path(
             cache_path or os.environ.get("TICKER_STOCK_CACHE_PATH", "ticker_data/stocks.json")
         )
+        self._closed_session: str | None = None
+        self._market_session = market_session
         self._quotes = self._load_cache()
         self._next_key = 0
         self._request_interval = 1.1 / len(self._keys) if self._keys else 0.0
@@ -269,17 +273,21 @@ class FinnhubStockSource:
         """Start one shared all-market refresh without delaying a settings change."""
 
         now = self._monotonic()
+        market = self._market_session(self._clock())
         with self._refresh_lock:
+            if not market.open and (market.closed_session is None or market.closed_session == self._closed_session):
+                return
             if self._refreshing or now - self._last_refresh < self._refresh_seconds:
                 return
             self._last_refresh = now
             self._refreshing = True
-        Thread(target=self._refresh_all_markets, name="ticker-stock-refresh", daemon=True).start()
+        Thread(target=self._refresh_all_markets, args=(market.closed_session,), name="ticker-stock-refresh", daemon=True).start()
 
-    def _refresh_all_markets(self) -> None:
+    def _refresh_all_markets(self, closed_session: str | None = None) -> None:
         """Refresh every quote in the source-owned market cache."""
 
         changed = False
+        successful = 0
         try:
             symbols = tuple(
                 dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols)
@@ -290,6 +298,9 @@ class FinnhubStockSource:
                     with self._quote_lock:
                         self._quotes[symbol] = quote
                     changed = True
+                    successful += 1
+            if closed_session is not None and successful == len(symbols):
+                self._closed_session = closed_session
             if changed:
                 self._save_cache()
         finally:
@@ -409,6 +420,8 @@ class FinnhubStockSource:
         try:
             payload = json.loads(self._cache_path.read_text(encoding="utf-8"))
             values = payload.get("quotes", payload) if isinstance(payload, Mapping) else {}
+            if isinstance(payload, Mapping) and isinstance(payload.get("closed_session"), str):
+                self._closed_session = payload["closed_session"]
             return {
                 str(symbol).upper(): {
                     "price": str(data["price"]),
@@ -431,7 +444,7 @@ class FinnhubStockSource:
             with self._quote_lock:
                 quotes = dict(self._quotes)
             temporary.write_text(
-                json.dumps({"quotes": quotes}, sort_keys=True, separators=(",", ":")),
+                json.dumps({"quotes": quotes, "closed_session": self._closed_session}, sort_keys=True, separators=(",", ":")),
                 encoding="utf-8",
             )
             os.replace(temporary, self._cache_path)

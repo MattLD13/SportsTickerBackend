@@ -3,6 +3,7 @@ import time
 from PIL import Image, ImageDraw, ImageStat
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.rendering.style import TOURNAMENT_SEED
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo, team_logo_layout
@@ -778,6 +779,9 @@ class SportsMixin:
 
         # Hockey PP / EN badges
         h_badge = a_badge = ''
+        if sport == 'march_madness':
+            h_badge = str(game.get('home_seed') or '')
+            a_badge = str(game.get('away_seed') or '')
         if is_nhl and sit.get('emptyNet'):
             empty_net_side = str(sit.get('emptyNetSide') or '').upper()
             if empty_net_side == home_ab:
@@ -836,12 +840,12 @@ class SportsMixin:
         a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
         if h_badge:
-            h_col = (255, 90, 90) if h_badge == 'EN' else (255, 204, 0)
+            h_col = TOURNAMENT_SEED if sport == 'march_madness' else (255, 90, 90) if h_badge == 'EN' else (255, 204, 0)
             h_badge_x = int(h_sc_x + h_sc_w + 9)
             self.draw_outlined_text(d, h_badge_x, 1, h_badge,
                                     self.tiny, h_col, (0, 0, 0, 220), anchor='mt')
         if a_badge:
-            a_col = (255, 90, 90) if a_badge == 'EN' else (255, 204, 0)
+            a_col = TOURNAMENT_SEED if sport == 'march_madness' else (255, 90, 90) if a_badge == 'EN' else (255, 204, 0)
             a_badge_x = int(a_sc_x - a_sc_w - 9)
             self.draw_outlined_text(d, a_badge_x, 1, a_badge,
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mt')

@@ -32,14 +32,14 @@ bool fetchData() {
   heartbeat["metadata"]["mini_sprite_protocol"] = 1;
   heartbeat["metadata"]["wifi_available"] = WiFi.status() == WL_CONNECTED;
   heartbeat["metadata"]["wifi_setup_active"] = wifiPairingMode;
-  heartbeat["metadata"]["sprite_cache"]["flash_hits"] = spriteFlashHits;
-  heartbeat["metadata"]["sprite_cache"]["downloads"] = spriteDownloads;
-  heartbeat["metadata"]["sprite_cache"]["invalid_files"] = spriteInvalidFiles;
-  heartbeat["metadata"]["sprite_cache"]["evictions"] = spriteEvictions;
-  heartbeat["metadata"]["sprite_cache"]["heap_before_tls"] = spriteHeapBeforeTls;
-  heartbeat["metadata"]["sprite_cache"]["heap_during_tls"] = spriteHeapDuringTls;
-  heartbeat["metadata"]["sprite_cache"]["heap_after_tls"] = spriteHeapAfterTls;
-  heartbeat["metadata"]["sprite_cache"]["largest_during_tls"] = spriteLargestDuringTls;
+  heartbeat["metadata"]["sprite_cache"]["flash_hits"] = spriteAssets.metrics().flashHits;
+  heartbeat["metadata"]["sprite_cache"]["downloads"] = spriteAssets.metrics().downloads;
+  heartbeat["metadata"]["sprite_cache"]["invalid_files"] = spriteAssets.metrics().invalidFiles;
+  heartbeat["metadata"]["sprite_cache"]["evictions"] = spriteAssets.metrics().evictions;
+  heartbeat["metadata"]["sprite_cache"]["heap_before_tls"] = spriteAssets.metrics().heapBeforeTls;
+  heartbeat["metadata"]["sprite_cache"]["heap_during_tls"] = spriteAssets.metrics().heapDuringTls;
+  heartbeat["metadata"]["sprite_cache"]["heap_after_tls"] = spriteAssets.metrics().heapAfterTls;
+  heartbeat["metadata"]["sprite_cache"]["largest_during_tls"] = spriteAssets.metrics().largestDuringTls;
   populateDisplayMetrics(heartbeat["metadata"]["display_metrics"].to<JsonObject>(), false);
   String body;
   serializeJson(heartbeat, body);
@@ -134,21 +134,20 @@ void miniSetup() {
   Serial0.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
-  setupRuntimeLogoMemory();
+  spriteAssets.begin();
   Serial.printf("Mini firmware: %s sprite_protocol=1\n", MINI_FIRMWARE_VERSION);
-  setupLogoCache();
   loadWifiCredentials();
   firmwareUpdater.initialize();
   setupMatrix();
-  drawMessage("STARTING");
-  logoCacheMutex = xSemaphoreCreateMutex();
+  deviceCredentials.load();
+  drawMessage(deviceCredentials.ready() ? "STARTING" : "DEVICE KEY");
   logoWorkMutex = xSemaphoreCreateMutex();
   networkGate.begin();
   networkWorker.begin();
-  if (logoCacheMutex == nullptr || logoWorkMutex == nullptr || !networkGate.ready()) {
+  if (!spriteAssets.ready() || logoWorkMutex == nullptr || !networkGate.ready()) {
     Serial.println("Sprite synchronization setup failed");
   }
-  if (logoCacheMutex != nullptr && logoWorkMutex != nullptr && networkGate.ready()) {
+  if (spriteAssets.ready() && logoWorkMutex != nullptr && networkGate.ready()) {
     const BaseType_t workerResult = xTaskCreatePinnedToCore(
       logoWorkerTask, "logo-worker", 8192, nullptr, 1, &logoWorkerHandle, 0
     );
@@ -164,6 +163,7 @@ void miniSetup() {
     Serial.println("Logo workbench active. Wi-Fi polling is paused.");
     return;
   }
+  if (!deviceCredentials.ready()) return;
   if (!SOLID_COLOR_TEST) wifiStation.begin(wifiSsid, wifiPassword);
   if (FORCE_PAIRING_TEST) {
     wifiStation.requestSetup();
@@ -197,6 +197,24 @@ void processMiniSerialCommand(Stream* input, const String& command) {
     document["firmware"] = MINI_FIRMWARE_VERSION;
     populateDisplayMetrics(document["display"].to<JsonObject>(), true);
     writeDiagnosticJson(*input, "MINI_STATS:", document);
+    return;
+  }
+  if (command == "CHECKAUTH" || command == "CHECKAUTH:COLD") {
+    if (!registered || !networkWorker.available()) { input->print("MINI_AUTH_CHECK:BUSY\n"); return; }
+    auto* job = new (std::nothrow) NetworkJob(NetworkKind::AuthCheck);
+    if (!job) { input->print("MINI_AUTH_CHECK:BUSY\n"); return; }
+    job->url = backendEndpoint("/api/v2/tickers/") + tickerId + "/device-credential/verify";
+    job->request = "{}";
+    job->requireFreshConnection = command.endsWith(":COLD");
+    networkWorker.enqueue(job);
+    return;
+  }
+  if (command.startsWith("AUTHSET:")) {
+    if (firmwareUpdater.transferActive()) { input->print("MINI_AUTH:BUSY\n"); return; }
+    if (!deviceCredentials.replace(command.substring(8))) { input->print("MINI_AUTH:REJECTED\n"); return; }
+    input->print("MINI_AUTH:STORED\n");
+    input->flush();
+    ESP.restart();
     return;
   }
   if (command == "CAPTURE") { startFrameCapture(*input); return; }
@@ -318,6 +336,11 @@ void miniTick() {
   }
   pollNetworkResults();
   const uint32_t now = millis();
+  if (!deviceCredentials.ready()) {
+    firmwareUpdater.tick(now, false, tickerId, false);
+    delay(10);
+    return;
+  }
   serviceWifi(now);
   static uint32_t buttonsAt = 0;
   static bool buttonsHandled = false;
@@ -328,7 +351,7 @@ void miniTick() {
       buttonsHandled = true;
     }
   } else { buttonsAt = 0; buttonsHandled = false; }
-  if (firmwareUpdater.tick(now, registered, tickerId)) renderCurrent();
+  if (firmwareUpdater.tick(now, registered, tickerId, matrix && displayMetrics.frames > 0 && matrix->calculated_refresh_rate >= 100)) renderCurrent();
   if (firmwareUpdater.transferActive()) {
     delay(1);
     return;

@@ -20,6 +20,7 @@ static constexpr Rgb STRIKE = {255, 140, 40};
 static constexpr Rgb OUT = {210, 70, 70};
 static constexpr Rgb BASE = {255, 200, 55};
 static constexpr Rgb RANK = {255, 220, 80};
+static constexpr Rgb TOURNAMENT_SEED = {66, 117, 199};
 static constexpr Rgb CLOCK_DATE = {200, 200, 200};
 static constexpr Rgb CLOCK_RAIL = {30, 30, 30};
 static constexpr Rgb CLOCK_PROGRESS = {0, 200, 255};

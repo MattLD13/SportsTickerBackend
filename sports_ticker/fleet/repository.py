@@ -214,6 +214,13 @@ class TickerRepository:
                 );
                 """,
                 """
+                CREATE TABLE IF NOT EXISTS device_credentials (
+                    ticker_id TEXT PRIMARY KEY REFERENCES tickers(ticker_id) ON DELETE CASCADE,
+                    token_sha256 TEXT NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS overlay_events (
                     event_id TEXT PRIMARY KEY,
                     event_type TEXT NOT NULL CHECK (event_type IN ('alerts', 'news')),
@@ -487,6 +494,30 @@ class TickerRepository:
             else:
                 if started:
                     self._connection.commit()
+
+    def set_device_credential_hash(self, ticker_id: str, token_sha256: str, *, now: float) -> None:
+        """Rotate one device credential through an authorized application operation."""
+        from .device_credentials import validate_device_hash
+        digest = validate_device_hash(token_sha256)
+        with self._transaction():
+            if self.get_ticker(ticker_id) is None:
+                raise KeyError(ticker_id)
+            self._connection.execute(
+                "INSERT INTO device_credentials(ticker_id, token_sha256, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(ticker_id) DO UPDATE SET token_sha256=excluded.token_sha256, updated_at=excluded.updated_at",
+                (ticker_id, digest, now),
+            )
+
+    def authorize_device(self, ticker_id: str, token: str) -> bool:
+        """Compare one supplied device credential with its durable hash."""
+        from .device_credentials import device_token_hash
+        try:
+            supplied = device_token_hash(token)
+        except ValueError:
+            return False
+        with self._lock:
+            row = self._connection.execute("SELECT token_sha256 FROM device_credentials WHERE ticker_id = ?", (ticker_id,)).fetchone()
+        return row is not None and hmac.compare_digest(supplied, row["token_sha256"])
 
     def close(self) -> None:
         """Close the owned database connection."""

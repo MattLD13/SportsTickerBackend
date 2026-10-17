@@ -5,12 +5,14 @@
 #include "../platform/transfer_deadline.h"
 #include <freertos/queue.h>
 
-enum class NetworkKind { Registration, DevicePoll, FirmwareAck };
+class BackendHttpSession;
+
+enum class NetworkKind { Registration, DevicePoll, FirmwareAck, AuthCheck };
 
 // The display task transfers ownership through two bounded queues.
 struct NetworkJob {
   NetworkKind kind;
-  String url, request, identity, command;
+  String url, request, identity, command, deviceToken;
   ResponseStream response;
   int status = 0, expectedBytes = -1, transferredBytes = 0;
   String contentType, contentEncoding;
@@ -18,6 +20,8 @@ struct NetworkJob {
   uint32_t durationMs = 0;
   uint32_t gateWaitMs = 0, headersMs = 0, bodyMs = 0;
   bool expired = false;
+  bool reusedConnection = false;
+  bool requireFreshConnection = false;
   uint32_t budgetMs = TransferDeadline::DefaultBudgetMs;
   explicit NetworkJob(NetworkKind value) : kind(value) {}
   bool complete() const {
@@ -32,7 +36,7 @@ struct NetworkJob {
 // Instances must outlive their background tasks. Queue methods run on the display task.
 class NetworkWorker {
  public:
-  explicit NetworkWorker(NetworkGate& gate) : gate_(gate) {}
+  explicit NetworkWorker(NetworkGate& gate, const String& deviceToken) : gate_(gate), deviceToken_(deviceToken) {}
   NetworkWorker(const NetworkWorker&) = delete;
   NetworkWorker& operator=(const NetworkWorker&) = delete;
   bool begin();
@@ -43,8 +47,9 @@ class NetworkWorker {
  private:
   static void taskEntry(void* context);
   void run();
-  void execute(NetworkJob& job);
+  void execute(NetworkJob& job, BackendHttpSession& session);
   NetworkGate& gate_;
+  const String& deviceToken_;
   QueueHandle_t requests_ = nullptr;
   QueueHandle_t results_ = nullptr;
   bool pending_ = false;

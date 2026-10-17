@@ -29,6 +29,7 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   out["psram_free"] = ESP.getFreePsram();
   out["wifi_rssi"] = WiFi.RSSI();
   JsonObject network = out["network"].to<JsonObject>();
+  network["device_credentials_ready"] = deviceCredentials.ready();
   network["wifi_connected"] = WiFi.status() == WL_CONNECTED;
   network["ticker_id"] = tickerId;
   network["registration_status"] = lastRegistrationStatus;
@@ -55,6 +56,8 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   network["ble_setup_active"] = blePairingStarted;
   if (lastDataSuccessAt) network["data_age_ms"] = millis() - lastDataSuccessAt;
   else network["data_age_ms"] = nullptr;
+  network["reused_connections"] = reusedDataConnections;
+  network["fresh_connections"] = freshDataConnections;
   network["deadline_timeouts"] = dataDeadlineTimeouts;
   network["last_request_timed_out"] = lastDataExpired;
   network["heartbeat_status"] = lastHeartbeatStatus;
@@ -78,23 +81,21 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   update["boot_state"] = firmwareUpdater.bootState();
   update["boot_state_error"] = firmwareUpdater.bootStateError();
   JsonObject assets = out["assets"].to<JsonObject>();
-  assets["ram_slots"] = runtimeLogoSlotCount;
+  assets["ram_slots"] = spriteAssets.slotCount();
   uint16_t resident = 0;
-  if (logoWorkMutex != nullptr && logoCacheMutex != nullptr) {
+  if (logoWorkMutex != nullptr && spriteAssets.ready()) {
     xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
     assets["planned"] = logoWorkCount;
     assets["generation"] = logoPlanGeneration;
     assets["worker_busy"] = logoWorkerBusy || logoWorkerPending;
-    xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
-    for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) resident += runtimeLogos[index].valid;
-    xSemaphoreGive(logoCacheMutex);
+    resident = spriteAssets.residentCount();
     xSemaphoreGive(logoWorkMutex);
   }
   assets["resident"] = resident;
   assets["foreground_ready"] = foregroundLogoReadyCount();
-  assets["flash_hits"] = spriteFlashHits;
-  assets["downloads"] = spriteDownloads;
-  assets["invalid_files"] = spriteInvalidFiles;
+  assets["flash_hits"] = spriteAssets.metrics().flashHits;
+  assets["downloads"] = spriteAssets.metrics().downloads;
+  assets["invalid_files"] = spriteAssets.metrics().invalidFiles;
   JsonObjectConst currentGame;
   assets["current_ready"] = selectedGame(currentGame) && sportsGameAssetsCached(currentGame);
   describePane(out["pane"].to<JsonObject>(), displayMetrics.current);

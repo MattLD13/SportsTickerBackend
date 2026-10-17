@@ -14,8 +14,8 @@ static_assert(sizeof(FIRMWARE_FAILED_NVS_KEY) <= 16, "NVS keys allow 15 characte
 
 
 FirmwareUpdater::FirmwareUpdater(Preferences& preferences, NetworkGate& gate, NetworkWorker& worker,
-                                 const String& backendUrl, FirmwareUpdateConfig config)
-    : preferences_(preferences), gate_(gate), worker_(worker), baseUrl_(backendUrl), config_(config) {
+                                 const String& backendUrl, const String& deviceToken, FirmwareUpdateConfig config)
+    : preferences_(preferences), gate_(gate), worker_(worker), baseUrl_(backendUrl), deviceToken_(deviceToken), config_(config) {
   while (baseUrl_.endsWith("/")) baseUrl_.remove(baseUrl_.length() - 1);
 }
 
@@ -127,6 +127,7 @@ bool FirmwareUpdater::fetchFirmwareManifest(const String& requestedVersion, Firm
   if (!http.begin(client, url)) {
     return false;
   }
+  http.addHeader("X-Device-Token", deviceToken_);
   const int status = http.GET();
   if (status != HTTP_CODE_OK) {
     logSecureHttpError("Firmware manifest", status, client);
@@ -359,6 +360,10 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
 }
 
 void FirmwareUpdater::initialize() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
+  firmwareUpdateBootStateError = running ? esp_ota_get_state_partition(running, &state) : ESP_ERR_NOT_FOUND;
+  firmwareUpdateBootState = state;
   String pending = preferences_.getString(FIRMWARE_PENDING_NVS_KEY, "");
   pending.trim();
   if (mini_firmware::bootReceipt(pending, String(config_.version)) == mini_firmware::BootReceipt::Confirm) {
@@ -407,7 +412,7 @@ void FirmwareUpdater::applyAckResponse(const NetworkJob& job) {
   } else Serial.println("Firmware acknowledgement declined");
 }
 
-bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId) {
+bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId, bool displayHealthy) {
   if (!firmwareUpdateBootChecked && now >= config_.bootValidationMs) {
     firmwareUpdateBootChecked = true;
     const esp_partition_t* running = esp_ota_get_running_partition();
@@ -416,8 +421,14 @@ bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId
     firmwareUpdateBootState = state;
     const bool stateReady = firmwareUpdateBootStateError == ESP_OK;
     if (stateReady && state == ESP_OTA_IMG_PENDING_VERIFY) {
+      if (!displayHealthy) {
+        Serial.println("Firmware display validation failed. Rolling back.");
+        esp_ota_mark_app_invalid_rollback_and_reboot();
+        return true;
+      }
       firmwareUpdateBootValidated = esp_ota_mark_app_valid_cancel_rollback() == ESP_OK;
       if (firmwareUpdateBootValidated) {
+        firmwareUpdateBootState = ESP_OTA_IMG_VALID;
         Serial.println("Firmware boot validation passed");
       } else {
         Serial.println("Firmware boot validation failed");
@@ -426,8 +437,8 @@ bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId
         firmwareUpdateFailureAt = now;
       }
     } else if (stateReady && (state == ESP_OTA_IMG_VALID || state == ESP_OTA_IMG_UNDEFINED)) {
-      firmwareUpdateBootValidated = true;
-      Serial.println("Firmware boot was already validated");
+      firmwareUpdateBootValidated = displayHealthy;
+      Serial.println(displayHealthy ? "Firmware boot was already validated" : "Firmware display validation failed");
     } else {
       Serial.println("Firmware boot state is not valid");
       setFirmwareUpdateDetail("BOOT STATE");

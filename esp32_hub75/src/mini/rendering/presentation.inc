@@ -15,7 +15,7 @@ bool shownItem(JsonObjectConst item) {
 
 uint16_t countShownGames() {
   uint16_t count = 0;
-  JsonObjectConst content = payload["content"].as<JsonObjectConst>();
+  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
   JsonArrayConst items = content["sports"].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (shownItem(item)) {
@@ -27,7 +27,7 @@ uint16_t countShownGames() {
 
 uint32_t sportsRotationSignature() {
   String sequence = displayMode + "|";
-  JsonObjectConst content = payload["content"].as<JsonObjectConst>();
+  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
   JsonArrayConst items = content["sports"].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (!shownItem(item)) continue;
@@ -53,7 +53,7 @@ uint32_t sportsRotationSignature() {
 
 bool selectedSportsItem(JsonObjectConst& selected) {
   uint16_t index = 0;
-  JsonObjectConst content = payload["content"].as<JsonObjectConst>();
+  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
   JsonArrayConst items = content["sports"].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (!shownItem(item)) {

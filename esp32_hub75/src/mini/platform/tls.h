@@ -73,11 +73,15 @@ inline bool resolveBackendAddress(const String& requestedHost, IPAddress& addres
 class BackendTlsClient : public TlsClient {
   bool resolved_ = false;
   String address_;
+  uint32_t connections_ = 0;
  public:
+  uint32_t connectionAttempts() const { return connections_; }
   bool nameResolved() const { return resolved_; }
   const String& resolvedAddress() const { return address_; }
   using WiFiClientSecure::connect;
   int connect(const char* host, uint16_t port) override {
+    stop();
+    ++connections_;
     IPAddress address;
     resolved_ = resolveBackendAddress(host, address);
     address_ = resolved_ ? address.toString() : String();

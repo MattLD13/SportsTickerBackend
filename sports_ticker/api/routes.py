@@ -180,6 +180,21 @@ def register_routes(
             )
         return jsonify({"api_version": "v2", "observed_at": now, "tickers": entries})
 
+    @app.post("/api/v2/tickers/<ticker_id>/device-credential")
+    def enroll_device_credential(ticker_id: str):
+        _require_deployment_token()
+        identifier = _ticker_id(ticker_id)
+        _require_ticker(application, identifier)
+        payload = _json_object()
+        _check_keys(payload, {"token_sha256"})
+        application.enroll_device_credential(identifier, payload.get("token_sha256"))
+        return jsonify({"ticker_id": identifier, "enrolled": True})
+
+    @app.post("/api/v2/tickers/<ticker_id>/device-credential/verify")
+    def verify_device_credential(ticker_id: str):
+        identifier = _device_ticker_owner(application, ticker_id)
+        return jsonify({"ticker_id": identifier, "authenticated": True})
+
     @app.post("/api/v2/devices/register")
     def register_device():
         payload = _json_object()
@@ -657,6 +672,17 @@ def _catalog(application: BackendApplication):
     return catalog
 
 
+def _device_ticker_owner(application: BackendApplication, ticker_id: str) -> str:
+    identifier = _ticker_id(ticker_id)
+    _require_ticker(application, identifier)
+    token = str(request.headers.get("X-Device-Token") or "")
+    if not token:
+        raise ApiError("device authorization is required", 401, "unauthorized")
+    if not application.authorize_device(identifier, token):
+        raise ApiError("device authorization is invalid", 403, "forbidden")
+    return identifier
+
+
 def _controller_ticker_owner(application: BackendApplication, ticker_id: str) -> str:
     """Require one opaque controller token for one ticker-owned integration."""
 
@@ -864,6 +890,8 @@ def _scheduler_health_value(health: Any) -> dict[str, Any]:
         "last_error": _json_value(last_error),
         "next_due": _json_value(next_due),
         "consecutive_failures": int(failures),
+        "refresh_calls": int(getattr(health, "refresh_calls", 0)),
+        "paused_refreshes": int(getattr(health, "paused_refreshes", 0)),
     }
 
 
