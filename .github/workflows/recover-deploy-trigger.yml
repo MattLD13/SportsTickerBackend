@@ -17,6 +17,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check deploy activity
         id: deploy
@@ -45,11 +47,7 @@ jobs:
             https://ticker.mattdicks.org/ \
             | python -c 'import re, sys; page=sys.stdin.read(); match=re.search(r"chip-ver.*?<span[^>]*>([0-9a-f]{7,12})</span>", page, re.S); print(match.group(1) if match else "")')
           echo "main=${head_sha} live=${live_sha}"
-          if [ -n "${live_sha}" ] && [[ "${head_sha}" == "${live_sha}"* ]]; then
-            echo "needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "needed=true" >> "$GITHUB_OUTPUT"
-          fi
+          python tools/deployment_scope.py --deployed "${live_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch backend recovery deploy
         if: steps.deploy.outputs.busy == 'false' && steps.check.outputs.needed == 'true'

@@ -82,7 +82,6 @@ void applyRegistrationResponse(const NetworkJob& job) {
 
   tickerId = nextTickerId;
   dataUrl = backendEndpoint("/api/v2/tickers/") + tickerId + "/data";
-  heartbeatUrl = backendEndpoint("/api/v2/tickers/") + tickerId + "/heartbeat";
   const bool backendPaired = response["paired"] | false;
   pairingMode = !backendPaired;
   savePairingCode(response["pairing_code"] | "");

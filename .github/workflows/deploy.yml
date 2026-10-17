@@ -37,23 +37,7 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          filters: |
-            backend:
-              - 'sports_ticker/**'
-              - 'ticker_core/**'
-              - '.github/workflows/deploy.yml'
-              - 'requirements.txt'
-              - 'requirements-backend.txt'
-              - '*.json'
-              - 'ticker.service'
-            mini:
-              - 'esp32_hub75/**'
-            controller:
-              - 'ticker_controller/**'
-              - 'ticker_core/**'
-              - 'updater.py'
-              - 'ticker-controller.service'
-              - 'setup.sh'
+          filters: .github/deployment-paths.json
 
       - name: Verify current main
         id: freshness
@@ -141,6 +125,10 @@ jobs:
           /tmp/mini-firmware-check
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
           /tmp/mini-logo-check
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_station_retry.cpp -o /tmp/mini-station-check
+          /tmp/mini-station-check
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_transfer_deadline.cpp -o /tmp/mini-deadline-check
+          /tmp/mini-deadline-check
       - name: Read mini firmware version
         id: version
         shell: bash
@@ -215,9 +203,12 @@ jobs:
             mv -f .env.next .env
             chmod 600 .env
 
-            echo "Restarting ticker after mini firmware deployment..."
-            sudo systemctl restart ticker
-            sudo systemctl status ticker --no-pager
+            if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "The backend deployment will activate the firmware manifest."
+            else
+              sudo systemctl restart ticker
+              sudo systemctl status ticker --no-pager
+            fi
 
   deploy-backend:
     runs-on: ubuntu-latest

@@ -134,6 +134,14 @@ bool updateFromPayload(const ResponseBody& body) {
 
 void applyDataResponse(const NetworkJob& job) {
   lastDataStatus = job.status;
+  lastDataExpired = job.expired;
+  if (job.expired) ++dataDeadlineTimeouts;
+  lastHeartbeatStatus = job.status;
+  if (job.status == HTTP_CODE_OK && job.complete()) {
+    heartbeatSucceeded = true;
+    lastHeartbeatSuccessAt = millis();
+    heartbeatFailures = 0;
+  } else ++heartbeatFailures;
   lastDataExpectedBytes = job.expectedBytes;
   lastDataTransferBytes = job.transferredBytes;
   lastDataBytes = job.response.body.size();
@@ -147,12 +155,12 @@ void applyDataResponse(const NetworkJob& job) {
                 static_cast<unsigned long>(job.durationMs), static_cast<unsigned>(lastDataBytes));
   if (job.status == HTTP_CODE_NOT_FOUND) {
     registered = false;
-    tickerId = dataUrl = heartbeatUrl = "";
+    tickerId = dataUrl = "";
     pageCount = 0;
     message = "REGISTER";
     return;
   }
   if (job.status != HTTP_CODE_OK) { showFetchError("HTTP " + String(job.status)); return; }
   if (!job.complete()) { showFetchError("DATA TRANSFER"); return; }
-  updateFromPayload(job.response.body);
+  if (updateFromPayload(job.response.body)) lastDataSuccessAt = millis();
 }

@@ -155,6 +155,7 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
   NetworkLease lease(gate_, config_.httpTimeoutMs);
   if (!lease) return false;
   BackendTlsClient client;
+  client.setTransferBudget(300000);
   configureTls(client);
   client.setTimeout(config_.httpTimeoutMs / 1000);
   client.setHandshakeTimeout(config_.httpTimeoutMs / 1000);

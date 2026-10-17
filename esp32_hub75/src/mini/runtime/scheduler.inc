@@ -19,8 +19,8 @@ void refreshPreparedClock() {
   preparedClockValid = getLocalTime(&preparedClock, 50);
 }
 
-bool sendHeartbeat() {
-  if (WiFi.status() != WL_CONNECTED || !registered || !networkWorker.available()) return false;
+bool fetchData() {
+  if (WiFi.status() != WL_CONNECTED || wifiPairingMode || !registered || !networkWorker.available()) return false;
   JsonDocument heartbeat;
   heartbeat["metadata"]["build"] = MINI_FIRMWARE_VERSION;
   heartbeat["metadata"]["mode"] = displayMode;
@@ -30,6 +30,8 @@ bool sendHeartbeat() {
   }
   heartbeat["metadata"]["uptime_seconds"] = millis() / 1000;
   heartbeat["metadata"]["mini_sprite_protocol"] = 1;
+  heartbeat["metadata"]["wifi_available"] = WiFi.status() == WL_CONNECTED;
+  heartbeat["metadata"]["wifi_setup_active"] = wifiPairingMode;
   heartbeat["metadata"]["sprite_cache"]["flash_hits"] = spriteFlashHits;
   heartbeat["metadata"]["sprite_cache"]["downloads"] = spriteDownloads;
   heartbeat["metadata"]["sprite_cache"]["invalid_files"] = spriteInvalidFiles;
@@ -41,64 +43,50 @@ bool sendHeartbeat() {
   populateDisplayMetrics(heartbeat["metadata"]["display_metrics"].to<JsonObject>(), false);
   String body;
   serializeJson(heartbeat, body);
-  auto* job = new (std::nothrow) NetworkJob(NetworkKind::Heartbeat);
-  if (!job) return false;
-  job->url = heartbeatUrl;
-  job->request = body;
-  return networkWorker.enqueue(job);
-}
-
-bool fetchData() {
-  if (WiFi.status() != WL_CONNECTED || !registered || !networkWorker.available()) return false;
-  auto* job = new (std::nothrow) NetworkJob(NetworkKind::Data);
+  auto* job = new (std::nothrow) NetworkJob(NetworkKind::DevicePoll);
   if (!job) return false;
   job->url = dataUrl;
-  return networkWorker.enqueue(job);
+  job->request = body;
+  job->budgetMs = nextPollBudgetMs;
+  const bool queued = networkWorker.enqueue(job);
+  if (queued) nextPollBudgetMs = TransferDeadline::DefaultBudgetMs;
+  return queued;
 }
+
 
 void pollMiniSerial();
 
-void connectWifi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.persistent(false);
-  WiFi.setAutoReconnect(true);
-  WiFi.setSleep(false);
-  if (!scanForSavedWifi()) {
-    Serial.println("Saved Wi-Fi was not listed. Trying direct association.");
-    drawMessage("WIFI...");
+void serviceWifi(uint32_t now) {
+  if (networkReconnectRequested) {
+    networkReconnectRequested = false;
+    ++networkReconnects;
+    wifiStation.renew(now);
   }
-  if (!wifiStarted) {
-    WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-    wifiStarted = true;
-  } else {
-    WiFi.reconnect();
-  }
-  uint32_t started = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) {
-    pollMiniSerial();
-    if (logoWorkbenchMode) return;
-    if (!wifiPairingMode) drawMessage("WIFI...");
-    delay(250);
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("WiFi address: ");
-    Serial.println(WiFi.localIP());
-    appliedTimezone = "";
-    applyConfiguredTimezone();
-    wifiWaitStartedAt = 0;
-    if (wifiPairingMode) {
-      wifiPairingMode = false;
-      pairingMode = false;
-      setupCode = "";
-    }
-    message = "";
-    renderCurrent();
-  } else {
-    if (wifiPairingMode) {
+  const bool connected = wifiStation.tick(now, networkWorker.available() && !firmwareUpdater.transferActive());
+  if (connected) {
+    if (!wifiWasConnected) {
+      portENTER_CRITICAL(&bleProvisioningMux);
+      const bool handoffPending = pendingWifiReady && !pendingWifiResultRead;
+      portEXIT_CRITICAL(&bleProvisioningMux);
+      if (handoffPending) return;
+      if (wifiPairingMode && blePairingStarted) stopBlePairing();
+      if (wifiPairingMode && blePairingStarted) return;
+      if (wifiPairingMode) { wifiPairingMode = false; pairingMode = false; setupCode = ""; }
+      wifiWasConnected = true;
+      if (!wifiKnownWorking) { preferences.putBool("wifi_confirmed", true); wifiKnownWorking = true; }
+      appliedTimezone = "";
+      applyConfiguredTimezone();
+      lastFetchAt = now - FETCH_INTERVAL_MS;
+      message = "";
+      Serial.println("Wi-Fi address acquired. Data polling resumes.");
       renderCurrent();
-    } else {
-      showFetchError("WIFI LOST");
     }
+    wifiWaitStartedAt = 0;
+  } else {
+    wifiWasConnected = false;
+    if (wifiWaitStartedAt == 0) wifiWaitStartedAt = now;
+    if (wifiStation.setupReady() && !wifiPairingMode) startPairingMode();
+    if (!wifiKnownWorking && !wifiPairingMode && now - wifiWaitStartedAt >= WIFI_PAIRING_TIMEOUT_MS) wifiStation.requestSetup();
   }
 }
 
@@ -127,10 +115,9 @@ void applyPendingWifiCredentials(uint32_t now) {
   wifiPairingMode = false;
   setupCode = "";
   pairingMode = false;
-  WiFi.disconnect();
-  wifiStarted = false;
+  wifiStation.configure(wifiSsid, wifiPassword, now);
+  wifiWasConnected = false;
   wifiWaitStartedAt = now;
-  lastWifiRetryAt = now - WIFI_RETRY_INTERVAL_MS;
   message = "WIFI...";
   renderCurrent();
   Serial.print("Applying Wi-Fi network: ");
@@ -145,6 +132,8 @@ void miniSetup() {
   while (!Serial && millis() - serialWaitStartedAt < 5000) delay(10);
   Serial.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   Serial0.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
+  pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   setupRuntimeLogoMemory();
   Serial.printf("Mini firmware: %s sprite_protocol=1\n", MINI_FIRMWARE_VERSION);
   setupLogoCache();
@@ -175,19 +164,16 @@ void miniSetup() {
     Serial.println("Logo workbench active. Wi-Fi polling is paused.");
     return;
   }
+  if (!SOLID_COLOR_TEST) wifiStation.begin(wifiSsid, wifiPassword);
   if (FORCE_PAIRING_TEST) {
-    startPairingMode();
-    lastWifiRetryAt = millis();
+    wifiStation.requestSetup();
   } else if (SOLID_COLOR_TEST) {
     // Keep the ticker startup below for the next test. The color test isolates panel output.
     drawSolidColorTest();
     lastSolidColorAt = millis();
   } else {
     wifiWaitStartedAt = millis();
-    lastWifiRetryAt = millis() - WIFI_RETRY_INTERVAL_MS;
-    connectWifi();
     lastFetchAt = millis() - FETCH_INTERVAL_MS;
-    lastHeartbeatAt = millis() - HEARTBEAT_INTERVAL_MS;
     lastRegisterAt = millis() - REGISTER_INTERVAL_MS;
   }
 }
@@ -214,6 +200,29 @@ void processMiniSerialCommand(Stream* input, const String& command) {
     return;
   }
   if (command == "CAPTURE") { startFrameCapture(*input); return; }
+  if (command == "WIFITEST:45000") {
+    if (firmwareUpdater.transferActive()) { input->print("MINI_WIFI_TEST:BUSY\n"); return; }
+    wifiStation.pauseForTest(millis(), 45000);
+    input->print("MINI_WIFI_TEST:STARTED\n");
+    return;
+  }
+  if (command == "TIMEOUTTEST:1") {
+    if (firmwareUpdater.transferActive()) { input->print("MINI_TIMEOUT_TEST:BUSY\n"); return; }
+    nextPollBudgetMs = 1;
+    input->print("MINI_TIMEOUT_TEST:STARTED\n");
+    return;
+  }
+  if (command == "WIFISETUP") { wifiStation.requestSetup(); input->print("MINI_WIFI_SETUP:STARTED\n"); return; }
+  if (command == "WIFIRETRY") {
+    if (blePairingStarted) stopBlePairing();
+    if (blePairingStarted) { input->print("MINI_WIFI_SETUP:BUSY\n"); return; }
+    wifiPairingMode = false;
+    pairingMode = false;
+    setupCode = "";
+    wifiStation.leaveSetup(millis());
+    input->print("MINI_WIFI_SETUP:RECOVERING\n");
+    return;
+  }
   if (command == "CHECKTLS") {
     const char* path = "/tls-close-check.tmp";
     File file = LittleFS.open(path, "w+");
@@ -309,16 +318,16 @@ void miniTick() {
   }
   pollNetworkResults();
   const uint32_t now = millis();
-  if (networkReconnectRequested && !wifiPairingMode && !blePairingStarted && networkWorker.available() && networkGate.acquire(0)) {
-    networkReconnectRequested = false;
-    ++networkReconnects;
-    Serial.println("Network recovery: renewing the saved Wi-Fi connection after DNS or connection failures");
-    WiFi.disconnect(false, false);
-    WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-    wifiWaitStartedAt = now;
-    lastWifiRetryAt = now;
-    networkGate.release();
-  }
+  serviceWifi(now);
+  static uint32_t buttonsAt = 0;
+  static bool buttonsHandled = false;
+  if (digitalRead(PIN_BUTTON_UP) == LOW && digitalRead(PIN_BUTTON_DOWN) == LOW) {
+    if (!buttonsAt) buttonsAt = now;
+    if (!buttonsHandled && now - buttonsAt >= 3000 && !firmwareUpdater.transferActive()) {
+      processMiniSerialCommand(&Serial, wifiPairingMode ? "WIFIRETRY" : "WIFISETUP");
+      buttonsHandled = true;
+    }
+  } else { buttonsAt = 0; buttonsHandled = false; }
   if (firmwareUpdater.tick(now, registered, tickerId)) renderCurrent();
   if (firmwareUpdater.transferActive()) {
     delay(1);
@@ -399,21 +408,6 @@ void miniTick() {
       return;
     }
 
-    if (WiFi.status() == WL_CONNECTED) wifiWaitStartedAt = 0;
-    else if (wifiWaitStartedAt == 0) wifiWaitStartedAt = now;
-    if (WiFi.status() != WL_CONNECTED && !wifiPairingMode && now - wifiWaitStartedAt >= WIFI_PAIRING_TIMEOUT_MS) {
-      startPairingMode();
-    }
-
-    if (wifiPairingMode) {
-      return;
-    }
-
-    if (WiFi.status() != WL_CONNECTED && !wifiPairingMode && now - lastWifiRetryAt >= WIFI_RETRY_INTERVAL_MS) {
-      lastWifiRetryAt = now;
-      connectWifi();
-    }
-
     bool logoPlanBusy = false;
     if (logoWorkMutex != nullptr) {
       xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
@@ -440,9 +434,6 @@ void miniTick() {
 
     if (WiFi.status() == WL_CONNECTED && !registered && now - lastRegisterAt >= REGISTER_INTERVAL_MS) {
       if (registerDevice()) lastRegisterAt = now;
-    }
-    if (now - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
-      if (sendHeartbeat()) lastHeartbeatAt = now;
     }
     const bool prefetch = sportsMode && displayMetrics.prefetchDue(esp_timer_get_time(), 1000) &&
                           lastPrefetchPageUs != displayMetrics.startedUs;

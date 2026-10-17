@@ -1,31 +1,9 @@
-bool scanForSavedWifi() {
-  Serial.print("Scanning for saved Wi-Fi: ");
-  Serial.println(wifiSsid);
-  const int networkCount = WiFi.scanNetworks(false, true);
-  savedWifiVisible = false;
-  if (networkCount < 0) {
-    Serial.print("Wi-Fi scan failed: ");
-    Serial.println(networkCount);
-    WiFi.scanDelete();
-    return false;
-  }
-  for (int index = 0; index < networkCount; ++index) {
-    if (WiFi.SSID(index) == wifiSsid) {
-      savedWifiVisible = true;
-      break;
-    }
-  }
-  Serial.print("Saved Wi-Fi visible: ");
-  Serial.println(savedWifiVisible ? "yes" : "no");
-  WiFi.scanDelete();
-  return savedWifiVisible;
-}
-
 void loadWifiCredentials() {
   preferences.begin("ticker", false);
   wifiSsid = preferences.getString("wifi_ssid", "");
   wifiPassword = preferences.getString("wifi_pass", "");
   pairingCode = preferences.getString("pairing_code", "");
+  wifiKnownWorking = preferences.getBool("wifi_confirmed", false);
   wifiSsid.trim();
   if (wifiSsid.length() == 0 || wifiSsid == "Rem 6") {
     wifiSsid = WIFI_SSID;
@@ -36,6 +14,8 @@ void loadWifiCredentials() {
 }
 
 void saveWifiCredentials(const String& ssid, const String& password) {
+  preferences.putBool("wifi_confirmed", false);
+  wifiKnownWorking = false;
   preferences.putString("wifi_ssid", ssid);
   preferences.putString("wifi_pass", password);
 }
@@ -403,12 +383,9 @@ void startPairingMode() {
   pairingMode = true;
   pageCount = 0;
   message = "";
-  WiFi.disconnect(false, false);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
   startBlePairing();
   renderCurrent();
-  Serial.println("Wi-Fi unavailable for 30 seconds. Entering pairing mode.");
+  Serial.println("Wi-Fi credential setup is available.");
 }
 
 void showFetchError(const String& value) {

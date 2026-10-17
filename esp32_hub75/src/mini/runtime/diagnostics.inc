@@ -49,6 +49,18 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   network["json_error"] = lastDataJsonError;
   network["json_offset"] = lastDataJsonOffset;
   network["json_failures"] = dataJsonFailures;
+  wifiStation.describe(network, millis());
+  network["wifi_setup_active"] = wifiPairingMode;
+  network["saved_network_confirmed"] = wifiKnownWorking;
+  network["ble_setup_active"] = blePairingStarted;
+  if (lastDataSuccessAt) network["data_age_ms"] = millis() - lastDataSuccessAt;
+  else network["data_age_ms"] = nullptr;
+  network["deadline_timeouts"] = dataDeadlineTimeouts;
+  network["last_request_timed_out"] = lastDataExpired;
+  network["heartbeat_status"] = lastHeartbeatStatus;
+  network["heartbeat_failures"] = heartbeatFailures;
+  if (heartbeatSucceeded) network["heartbeat_age_ms"] = millis() - lastHeartbeatSuccessAt;
+  else network["heartbeat_age_ms"] = nullptr;
   network["request_ms"] = lastDataDurationMs;
   network["gate_wait_ms"] = lastDataGateWaitMs;
   network["headers_ms"] = lastDataHeadersMs;

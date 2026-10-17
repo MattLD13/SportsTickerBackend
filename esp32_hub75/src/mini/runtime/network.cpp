@@ -61,6 +61,7 @@ void NetworkWorker::execute(NetworkJob& job) {
   job.gateWaitMs = millis() - started;
   const uint32_t headersStarted = millis();
   BackendTlsClient client;
+  client.setTransferBudget(job.budgetMs);
   configureTls(client);
   client.setTimeout(8);
   client.setHandshakeTimeout(8);
@@ -72,11 +73,8 @@ void NetworkWorker::execute(NetworkJob& job) {
   if (http.begin(client, job.url)) {
     const char* headers[] = {"Content-Type", "Content-Encoding"};
     http.collectHeaders(headers, 2);
-    if (job.kind == NetworkKind::Data) job.status = http.GET();
-    else {
-      http.addHeader("Content-Type", "application/json");
-      job.status = http.POST(job.request);
-    }
+    http.addHeader("Content-Type", "application/json");
+    job.status = http.POST(job.request);
     job.headersMs = millis() - headersStarted;
     job.expectedBytes = http.getSize();
     job.contentType = http.header("Content-Type");
@@ -93,4 +91,6 @@ void NetworkWorker::execute(NetworkJob& job) {
     }
     http.end();
   }
+  job.expired = client.deadlineExpired();
+  if (job.expired) job.errorStage = "timeout";
 }

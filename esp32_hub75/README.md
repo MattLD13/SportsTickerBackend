@@ -1,6 +1,6 @@
 # ESP32 HUB75 mini ticker
 
-This firmware drives one 64x32, 1/16-scan HUB75 panel from an Adafruit Matrix Portal ESP32-S3. It reads V2 ticker data, registers itself, supports backend pairing, and sends a heartbeat.
+This firmware drives one 64x32, 1/16-scan HUB75 panel from an Adafruit Matrix Portal ESP32-S3. It reads V2 ticker data, registers itself, supports backend pairing, and reports presence with each device poll.
 
 Selectable display modes are `sports`, `stock`, `weather`, `music`, `flights`, `airports`, and `clock`. The firmware uses one compact 64x32 layout for each mode.
 
@@ -47,7 +47,9 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | --- | --- |
 | `src/mini/platform/config.h` | Network defaults, panel pins, dimensions, and timing constants |
 | `src/mini/platform/matrix_driver.h/.cpp` | HUB75 construction, double buffering, brightness, and frame presentation |
-| `src/mini/platform/connectivity.inc` | Saved Wi-Fi, reconnects, BLE provisioning, and pairing transition |
+| `src/mini/platform/connectivity.inc` | Saved credentials, BLE provisioning, and pairing transition |
+| `src/mini/platform/wifi_station.h/.cpp` | Station events, association, and bounded background retries |
+| `src/mini/platform/station_retry.h` | Deterministic association timeout and retry policy |
 | `src/mini/protocol/backend.inc` | V2 registration, eFuse device identity, and endpoint construction |
 | `src/mini/protocol/payload.inc` | V2 payload filtering and retained runtime state |
 | `src/mini/platform/firmware_update.h/.cpp` | Manifest checks, SHA-256 download, OTA rollback, and update progress |
@@ -61,7 +63,7 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/runtime/network.h/.cpp` | Bounded request transfer and background HTTP execution |
 | `src/mini/runtime/network_results.inc` | Display-task response application |
 | `src/mini/platform/network_gate.h/.cpp` | Shared TLS and Wi-Fi renewal exclusion |
-| `src/mini/runtime/scheduler.inc` | Startup, polling, heartbeat, Wi-Fi scheduling, and Arduino ticks |
+| `src/mini/runtime/scheduler.inc` | Startup, device polling, Wi-Fi scheduling, and Arduino ticks |
 
 The backend owns source selection and image preparation. The Mini reads versioned asset references from the V2 display projection.
 Each asset contains an 18x18 RGB565 image and a coverage mask. The complete file contains 705 bytes.
@@ -146,8 +148,7 @@ Keep real Wi-Fi credentials out of commits. Bluetooth-provisioned credentials ta
 
 ```text
 POST /api/v2/devices/register
-GET  /api/v2/tickers/<ticker-id>/data
-POST /api/v2/tickers/<ticker-id>/heartbeat
+POST /api/v2/tickers/<ticker-id>/data
 GET  /api/v2/tickers/<ticker-id>/firmware
 POST /api/v2/tickers/<ticker-id>/updates/ack
 ```
@@ -168,11 +169,21 @@ The mini renders checking, downloading, installing, and failure states. It store
 
 ## Pairing and startup
 
-At boot, the firmware loads saved Wi-Fi credentials, initializes the panel and logo worker, then connects to Wi-Fi. It registers with the backend and fetches data every five seconds. It sends a heartbeat every 30 seconds.
+At boot, the firmware loads saved Wi-Fi credentials, initializes the panel and logo worker, then connects to Wi-Fi. It registers with the backend and fetches data every five seconds. Each device poll records backend presence and returns the current snapshot.
 
 If the server reports an unpaired ticker, the panel shows the six-digit backend pairing code. Enter that code in TickerControl. The firmware keeps the code in NVS and stops showing the pairing screen after the server reports `paired: true`.
 
-If Wi-Fi stays disconnected for 30 seconds, the firmware turns Wi-Fi off and starts encrypted BLE provisioning. The panel shows a six-digit setup PIN. The device advertises as `MiniTicker Setup`. In TickerControl, open Wi-Fi setup and submit the PIN with the new credentials. The firmware stores the credentials, reconnects, and registers again.
+After a successful connection, the Mini records that its saved credentials work.
+Later outages retry that network indefinitely. They do not enter credential setup.
+Station retries use a fifteen-second association deadline and a bounded one-to-thirty-second retry delay.
+The runtime keeps rendering during association. It does not run an active scan or a blocking reconnect loop.
+
+If new credentials fail for thirty seconds, the Mini opens encrypted BLE setup.
+To change a confirmed network, hold both board buttons for three seconds or send `WIFISETUP` over USB.
+The panel shows a six-digit setup PIN. The device advertises as `MiniTicker Setup`.
+To cancel setup, hold both buttons again or send `WIFIRETRY` over USB.
+If credentials change, submit them through TickerControl. The firmware stores the credentials and starts association.
+Wi-Fi recovery and BLE credential setup use separate lifecycle states.
 
 The BLE provisioning service uses the service UUID below:
 
@@ -261,7 +272,7 @@ Set both test switches to `false` before normal ticker operation. Reflash after 
 - If the panel shows `REGISTER`, verify `BACKEND_URL` and that the server exposes `/api/v2/devices/register`.
 - If the panel shows `NO <mode>`, verify that the selected V2 mode has at least one shown content item.
 - If the panel shows `DOWNLOAD ASSETS`, keep Wi-Fi available while the logo worker downloads and caches images.
-- If the panel enters BLE setup, read the setup PIN from the panel or the 115200 baud serial log and complete Wi-Fi provisioning.
+- If credentials change, use the setup PIN to complete BLE provisioning. Hold both board buttons for three seconds to open setup.
 
 ### Request timing
 
@@ -278,3 +289,19 @@ Run `python tools/check_mini_tls.py --port COM11` to check repeated TLS cleanup 
 The check preserves the active mode and credentials.
 Run `python tools/verify_mini_logos.py --frames previews/mini-diagnostics/frames --ticker <ticker_id>` after a frame capture.
 That check compares the captured logo pixels with validated backend assets.
+
+### Connection recovery diagnostics
+
+`display.network` includes Wi-Fi disconnect reasons, association counts, heartbeat responses, and ages for successful heartbeats and data.
+Each device poll updates backend presence. The Mini no longer schedules separate heartbeat requests.
+The app's presence indicator uses backend heartbeat time. Radio association has separate telemetry.
+
+Run `python tools/check_mini_wifi.py --port COM11 --output previews/wifi-check` to check two real forty-five-second link outages.
+The diagnostic disconnects the Mini association temporarily and restores saved-network recovery automatically.
+It verifies automatic reconnection, fresh data, fresh presence acknowledgement, and no automatic credential setup.
+The diagnostic retains stored credentials and backend pairing.
+
+Normal TLS transfers use a twenty-second deadline. OTA downloads use a five-minute deadline.
+SDK connection operations also retain their own timeouts. A blocking SDK call can extend the nominal transfer deadline.
+`deadline_timeouts` and `last_request_timed_out` identify expired data requests.
+`TIMEOUTTEST:1` gives one device poll a one-millisecond budget. Later polls restore the normal budget.

@@ -51,6 +51,14 @@ jobs:
         run: |
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
           /tmp/mini-logo-check
+      - name: Check station recovery lifecycle
+        run: |
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_station_retry.cpp -o /tmp/mini-station-check
+          /tmp/mini-station-check
+      - name: Check stalled transfer deadlines
+        run: |
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_transfer_deadline.cpp -o /tmp/mini-deadline-check
+          /tmp/mini-deadline-check
   ios:
     runs-on: macos-latest
     timeout-minutes: 30

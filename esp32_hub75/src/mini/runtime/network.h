@@ -2,9 +2,10 @@
 
 #include "../platform/response_stream.h"
 #include "../platform/network_gate.h"
+#include "../platform/transfer_deadline.h"
 #include <freertos/queue.h>
 
-enum class NetworkKind { Registration, Data, Heartbeat, FirmwareAck };
+enum class NetworkKind { Registration, DevicePoll, FirmwareAck };
 
 // The display task transfers ownership through two bounded queues.
 struct NetworkJob {
@@ -16,9 +17,11 @@ struct NetworkJob {
   String errorStage, resolvedAddress;
   uint32_t durationMs = 0;
   uint32_t gateWaitMs = 0, headersMs = 0, bodyMs = 0;
+  bool expired = false;
+  uint32_t budgetMs = TransferDeadline::DefaultBudgetMs;
   explicit NetworkJob(NetworkKind value) : kind(value) {}
   bool complete() const {
-    return transferredBytes >= 0 && !response.body.failed() &&
+    return !expired && transferredBytes >= 0 && !response.body.failed() &&
            static_cast<size_t>(transferredBytes) == response.body.size() &&
            (expectedBytes < 0 || static_cast<size_t>(expectedBytes) == response.body.size());
   }

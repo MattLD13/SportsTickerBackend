@@ -1,0 +1,21 @@
+{
+  "backend": [
+    "sports_ticker/**",
+    "ticker_core/**",
+    ".github/workflows/deploy.yml",
+    ".github/deployment-paths.json",
+    "tools/deployment_scope.py",
+    "requirements.txt",
+    "requirements-backend.txt",
+    "*.json",
+    "ticker.service"
+  ],
+  "mini": ["esp32_hub75/**"],
+  "controller": [
+    "ticker_controller/**",
+    "ticker_core/**",
+    "updater.py",
+    "ticker-controller.service",
+    "setup.sh"
+  ]
+}

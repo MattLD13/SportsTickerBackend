@@ -32,13 +32,16 @@
 #include "../platform/firmware_update.h"
 #include "../platform/http_diagnostics.h"
 #include "../platform/network_recovery.h"
+#include "../platform/wifi_station.h"
 
 JsonDocument payload;
 uint32_t rotationSignature = 0;
 uint32_t logoWorkingSetSignature = 0;
 uint32_t lastFetchAt = 0;
 uint64_t lastPrefetchPageUs = 0;
-uint32_t lastHeartbeatAt = 0;
+uint32_t lastHeartbeatSuccessAt = 0, heartbeatFailures = 0;
+int lastHeartbeatStatus = 0;
+bool heartbeatSucceeded = false;
 uint32_t lastRegisterAt = 0;
 uint32_t lastMessageAt = 0;
 uint16_t pageIndex = 0;
@@ -49,7 +52,6 @@ uint8_t solidColorIndex = 0;
 uint32_t lastSolidColorAt = 0;
 String tickerId;
 String dataUrl;
-String heartbeatUrl;
 String pairingCode;
 bool pairingMode = false;
 bool sportsMode = true;
@@ -70,14 +72,17 @@ String lastDataJsonError;
 size_t lastDataJsonOffset = 0;
 uint32_t dataJsonFailures = 0;
 uint32_t lastDataDurationMs = 0;
+uint32_t lastDataSuccessAt = 0;
+uint32_t dataDeadlineTimeouts = 0;
+bool lastDataExpired = false;
+uint32_t nextPollBudgetMs = TransferDeadline::DefaultBudgetMs;
 uint32_t lastDataGateWaitMs = 0, lastDataHeadersMs = 0, lastDataBodyMs = 0;
-bool wifiStarted = false;
+bool wifiWasConnected = false;
+bool wifiKnownWorking = false;
 bool wifiPairingMode = false;
 bool blePairingStarted = false;
 uint32_t wifiWaitStartedAt = 0;
-uint32_t lastWifiRetryAt = 0;
 uint32_t lastDebugLogAt = 0;
-bool savedWifiVisible = false;
 String wifiSsid;
 String wifiPassword;
 String setupCode;
@@ -136,6 +141,7 @@ SemaphoreHandle_t logoCacheMutex = nullptr;
 SemaphoreHandle_t logoWorkMutex = nullptr;
 NetworkGate networkGate;
 NetworkWorker networkWorker(networkGate);
+WifiStation wifiStation(networkGate);
 FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, {
   MINI_FIRMWARE_VERSION, MINI_FIRMWARE_TARGET, MINI_FIRMWARE_HARDWARE,
   FIRMWARE_MIN_IMAGE_SIZE, FIRMWARE_MAX_IMAGE_SIZE, FIRMWARE_HTTP_TIMEOUT_MS,
