@@ -13,44 +13,7 @@ void NetworkWorker::run() {
     NetworkJob* job = nullptr;
     if (xQueueReceive(requests_, &job, portMAX_DELAY) != pdTRUE) continue;
     const uint32_t started = millis();
-    if (WiFi.status() == WL_CONNECTED && gate_.acquire(10000)) {
-      job->gateWaitMs = millis() - started;
-      const uint32_t headersStarted = millis();
-      BackendTlsClient client;
-      configureTls(client);
-      client.setTimeout(8);
-      client.setHandshakeTimeout(8);
-      HTTPClient http;
-      http.useHTTP10(true);
-      http.setReuse(false);
-      http.setConnectTimeout(4000);
-      http.setTimeout(4000);
-      if (http.begin(client, job->url)) {
-        const char* headers[] = {"Content-Type", "Content-Encoding"};
-        http.collectHeaders(headers, 2);
-        if (job->kind == NetworkKind::Data) job->status = http.GET();
-        else {
-          http.addHeader("Content-Type", "application/json");
-          job->status = http.POST(job->request);
-        }
-        job->headersMs = millis() - headersStarted;
-        job->expectedBytes = http.getSize();
-        job->contentType = http.header("Content-Type");
-        job->contentEncoding = http.header("Content-Encoding");
-        const uint32_t bodyStarted = millis();
-        if (job->status == HTTP_CODE_OK || job->status == HTTP_CODE_CREATED)
-          job->transferredBytes = http.writeToStream(&job->response);
-        job->bodyMs = millis() - bodyStarted;
-        logSecureHttpError("Network", job->status, client);
-        job->resolvedAddress = client.resolvedAddress();
-        if (job->status < 0) {
-          char detail[96] = {};
-          job->errorStage = !client.nameResolved() ? "dns" : client.lastError(detail, sizeof(detail)) < -1 ? "tls" : "connect";
-        }
-        http.end();
-      }
-      gate_.release();
-    }
+    execute(*job);
     job->durationMs = millis() - started;
     xQueueSend(results_, &job, portMAX_DELAY);
   }
@@ -88,4 +51,46 @@ NetworkJob* NetworkWorker::takeResult() {
   if (!results_ || xQueueReceive(results_, &job, 0) != pdTRUE) return nullptr;
   pending_ = false;
   return job;
+}
+
+void NetworkWorker::execute(NetworkJob& job) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  const uint32_t started = millis();
+  NetworkLease lease(gate_, 10000);
+  if (!lease) return;
+  job.gateWaitMs = millis() - started;
+  const uint32_t headersStarted = millis();
+  BackendTlsClient client;
+  configureTls(client);
+  client.setTimeout(8);
+  client.setHandshakeTimeout(8);
+  HTTPClient http;
+  http.useHTTP10(true);
+  http.setReuse(false);
+  http.setConnectTimeout(4000);
+  http.setTimeout(4000);
+  if (http.begin(client, job.url)) {
+    const char* headers[] = {"Content-Type", "Content-Encoding"};
+    http.collectHeaders(headers, 2);
+    if (job.kind == NetworkKind::Data) job.status = http.GET();
+    else {
+      http.addHeader("Content-Type", "application/json");
+      job.status = http.POST(job.request);
+    }
+    job.headersMs = millis() - headersStarted;
+    job.expectedBytes = http.getSize();
+    job.contentType = http.header("Content-Type");
+    job.contentEncoding = http.header("Content-Encoding");
+    const uint32_t bodyStarted = millis();
+    if (job.status == HTTP_CODE_OK || job.status == HTTP_CODE_CREATED)
+      job.transferredBytes = http.writeToStream(&job.response);
+    job.bodyMs = millis() - bodyStarted;
+    logSecureHttpError("Network", job.status, client);
+    job.resolvedAddress = client.resolvedAddress();
+    if (job.status < 0) {
+      char detail[96] = {};
+      job.errorStage = !client.nameResolved() ? "dns" : client.lastError(detail, sizeof(detail)) < -1 ? "tls" : "connect";
+    }
+    http.end();
+  }
 }

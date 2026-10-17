@@ -47,6 +47,10 @@ jobs:
         run: |
           g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
           /tmp/mini-firmware-check
+      - name: Check rolling logo residency
+        run: |
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
+          /tmp/mini-logo-check
   ios:
     runs-on: macos-latest
     timeout-minutes: 30

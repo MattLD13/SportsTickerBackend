@@ -109,9 +109,11 @@ bool FirmwareUpdater::parseFirmwareManifest(const String& body, const String& re
 }
 
 bool FirmwareUpdater::fetchFirmwareManifest(const String& requestedVersion, FirmwareManifestPayload& manifest) {
-  if (WiFi.status() != WL_CONNECTED || tickerId_.length() == 0 || !gate_.acquire(config_.httpTimeoutMs)) {
+  if (WiFi.status() != WL_CONNECTED || tickerId_.length() == 0) {
     return false;
   }
+  NetworkLease lease(gate_, config_.httpTimeoutMs);
+  if (!lease) return false;
   BackendTlsClient client;
   configureTls(client);
   client.setTimeout(config_.httpTimeoutMs / 1000);
@@ -123,19 +125,16 @@ bool FirmwareUpdater::fetchFirmwareManifest(const String& requestedVersion, Firm
   http.setTimeout(config_.httpTimeoutMs);
   String url = (baseUrl_ + "/api/v2/tickers/") + tickerId_ + "/firmware?version=" + requestedVersion;
   if (!http.begin(client, url)) {
-    gate_.release();
     return false;
   }
   const int status = http.GET();
   if (status != HTTP_CODE_OK) {
     logSecureHttpError("Firmware manifest", status, client);
     http.end();
-    gate_.release();
     return false;
   }
   String body = http.getString();
   http.end();
-  gate_.release();
   return parseFirmwareManifest(body, requestedVersion, manifest);
 }
 
@@ -153,9 +152,8 @@ bool FirmwareUpdater::verifyFirmwareImage(const esp_partition_t* target) {
 }
 
 bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) {
-  if (!gate_.acquire(config_.httpTimeoutMs)) {
-    return false;
-  }
+  NetworkLease lease(gate_, config_.httpTimeoutMs);
+  if (!lease) return false;
   BackendTlsClient client;
   configureTls(client);
   client.setTimeout(config_.httpTimeoutMs / 1000);
@@ -166,7 +164,6 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
   http.setConnectTimeout(4000);
   http.setTimeout(config_.httpTimeoutMs);
   if (!http.begin(client, manifest.binaryUrl)) {
-    gate_.release();
     return false;
   }
   const int status = http.GET();
@@ -175,7 +172,6 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
     logSecureHttpError("Firmware image", status, client);
     http.end();
     abortFirmwareWrite();
-    gate_.release();
     return false;
   }
 
@@ -183,7 +179,6 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
   if (target == nullptr || manifest.size > target->size || !Update.begin(manifest.size, U_FLASH)) {
     http.end();
     abortFirmwareWrite();
-    gate_.release();
     return false;
   }
   mbedtls_md_context_t digest;
@@ -232,20 +227,17 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
   if (!mini_firmware::transferComplete(valid, received, manifest.size, actualSha256, manifest.sha256)) {
     http.end();
     abortFirmwareWrite();
-    gate_.release();
     return false;
   }
   if (preferences_.putString(FIRMWARE_PENDING_NVS_KEY, manifest.version) == 0) {
     http.end();
     abortFirmwareWrite();
-    gate_.release();
     return false;
   }
   if (!Update.end()) {
     preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
     http.end();
     abortFirmwareWrite();
-    gate_.release();
     return false;
   }
   http.end();
@@ -255,7 +247,6 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
     esp_ota_set_boot_partition(esp_ota_get_running_partition());
     preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
   }
-  gate_.release();
   if (!bootSet) {
     return false;
   }
@@ -420,11 +411,10 @@ bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId
     firmwareUpdateBootChecked = true;
     const esp_partition_t* running = esp_ota_get_running_partition();
     esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
-    const bool stateReady = running != nullptr &&
-      esp_ota_get_state_partition(running, &state) == ESP_OK;
-    if (firmwareUpdateConfirmedVersion[0] == '\0') {
-      firmwareUpdateBootValidated = true;
-    } else if (stateReady && state == ESP_OTA_IMG_PENDING_VERIFY) {
+    firmwareUpdateBootStateError = running != nullptr ? esp_ota_get_state_partition(running, &state) : ESP_ERR_NOT_FOUND;
+    firmwareUpdateBootState = state;
+    const bool stateReady = firmwareUpdateBootStateError == ESP_OK;
+    if (stateReady && state == ESP_OTA_IMG_PENDING_VERIFY) {
       firmwareUpdateBootValidated = esp_ota_mark_app_valid_cancel_rollback() == ESP_OK;
       if (firmwareUpdateBootValidated) {
         Serial.println("Firmware boot validation passed");

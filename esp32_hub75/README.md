@@ -269,3 +269,12 @@ Serial `STATS` includes `request_ms`, `gate_wait_ms`, `headers_ms`, and `body_ms
 `headers_ms` includes name resolution, connection, TLS negotiation, and server response headers.
 `body_ms` measures response body transfer. `gate_wait_ms` measures shared network exclusion.
 These values describe the last data request. They do not measure raw radio throughput.
+
+`display.assets` reports current logo readiness, resident slots, planned work, and cache results.
+The worker advances its bounded logo window at each page change and retains the next games in RAM.
+`display.update` reports byte progress and boot validation. `display.reset_reason` records the ESP32 reset cause.
+
+Run `python tools/check_mini_tls.py --port COM11` to check repeated TLS cleanup with a real open cache file.
+The check preserves the active mode and credentials.
+Run `python tools/verify_mini_logos.py --frames previews/mini-diagnostics/frames --ticker <ticker_id>` after a frame capture.
+That check compares the captured logo pixels with validated backend assets.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <WiFiClientSecure.h>
+#include "tls_client.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "response_stream.h"
@@ -14,7 +15,7 @@ inline void configureTls(WiFiClientSecure& client) {
 }
 
 // Bootstrap the resolver with its published address and verified TLS hostname.
-class ResolverTlsClient : public WiFiClientSecure {
+class ResolverTlsClient : public TlsClient {
  public:
   using WiFiClientSecure::connect;
   int connect(const char* host, uint16_t port) override {
@@ -69,7 +70,7 @@ inline bool resolveBackendAddress(const String& requestedHost, IPAddress& addres
 }
 
 // Keep SNI and certificate hostname checks when using the resolved address.
-class BackendTlsClient : public WiFiClientSecure {
+class BackendTlsClient : public TlsClient {
   bool resolved_ = false;
   String address_;
  public:

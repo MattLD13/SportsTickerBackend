@@ -1,5 +1,6 @@
 // Own Mini sprite transfer, validated storage, RAM reads, and worker planning.
 #include "mini_sprite.h"
+#include "logo_residency.h"
 
 uint32_t spriteFlashHits = 0;
 uint32_t spriteDownloads = 0;
@@ -106,7 +107,9 @@ bool logoAvailableInCache(const String& key) {
 }
 
 bool downloadSprite(const mini_sprite::Reference& reference, uint8_t* body) {
-  if (WiFi.status() != WL_CONNECTED || !networkGate.acquire(12000)) return false;
+  if (WiFi.status() != WL_CONNECTED) return false;
+  NetworkLease lease(networkGate, 12000);
+  if (!lease) return false;
   bool success = false;
   spriteHeapBeforeTls = ESP.getFreeHeap();
   {
@@ -133,20 +136,26 @@ bool downloadSprite(const mini_sprite::Reference& reference, uint8_t* body) {
     }
   }
   spriteHeapAfterTls = ESP.getFreeHeap();
-  networkGate.release();
   if (success) ++spriteDownloads;
   return success;
 }
 
-RuntimeLogo* ensureRuntimeLogo(const String& key) {
+bool ensureRuntimeLogo(const String& key, uint32_t generation) {
   mini_sprite::Reference reference;
-  if (!mini_sprite::parseReference(key.c_str(), reference)) return nullptr;
+  if (!mini_sprite::parseReference(key.c_str(), reference)) return false;
+  xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+  if (!mini_sprite::acceptLogoResult(generation, logoPlanGeneration, key, logoWorkPrimary, logoWorkCount)) {
+    xSemaphoreGive(logoWorkMutex);
+    return false;
+  }
   xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
   RuntimeLogo* cached = findCachedLogo(key);
+  if (cached != nullptr) cached->pinned = true;
   xSemaphoreGive(logoCacheMutex);
-  if (cached != nullptr) return cached;
+  xSemaphoreGive(logoWorkMutex);
+  if (cached != nullptr) return true;
   for (uint8_t index = 0; index < logoRetryCount; ++index) {
-    if (logoRetryUrls[index] == key && static_cast<int32_t>(millis() - logoRetryAfter[index]) < 0) return nullptr;
+    if (logoRetryUrls[index] == key && static_cast<int32_t>(millis() - logoRetryAfter[index]) < 0) return false;
   }
   uint8_t bytes[mini_sprite::kBytes];
   const auto loaded = logoCacheReady ? spriteCache.load(reference, bytes) : mini_sprite::LoadResult::Miss;
@@ -164,9 +173,14 @@ RuntimeLogo* ensureRuntimeLogo(const String& key) {
       xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
       if (spriteRetryDueAt == 0 || static_cast<int32_t>(logoRetryAfter[slot] - spriteRetryDueAt) < 0) spriteRetryDueAt = logoRetryAfter[slot];
       xSemaphoreGive(logoWorkMutex);
-      return nullptr;
+      return false;
     }
     if (logoCacheReady && !spriteCache.save(reference, bytes)) Serial.println("Sprite flash write failed");
+  }
+  xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+  if (!mini_sprite::acceptLogoResult(generation, logoPlanGeneration, key, logoWorkPrimary, logoWorkCount)) {
+    xSemaphoreGive(logoWorkMutex);
+    return false;
   }
   xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
   RuntimeLogo* result = freeRuntimeLogoSlot(hashBody(key));
@@ -175,10 +189,11 @@ RuntimeLogo* ensureRuntimeLogo(const String& key) {
     result->url = key;
     mini_sprite::decodeScaled(bytes, result->pixels, result->mask, RUNTIME_LOGO_SIZE);
     result->valid = true;
-    result->pinned = false;
+    result->pinned = true;
   }
   xSemaphoreGive(logoCacheMutex);
-  return result;
+  xSemaphoreGive(logoWorkMutex);
+  return result != nullptr;
 }
 
 bool setupRuntimeLogoMemory() {
@@ -290,12 +305,7 @@ void logoWorkerTask(void* parameter) {
         const bool stale = logoWorkerPending || logoPlanGeneration != generation;
         xSemaphoreGive(logoWorkMutex);
         if (stale) break;
-        RuntimeLogo* logo = ensureRuntimeLogo(keys[index]);
-        if (logo != nullptr) {
-          xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
-          logo->pinned = true;
-          xSemaphoreGive(logoCacheMutex);
-        }
+        ensureRuntimeLogo(keys[index], generation);
       }
       xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
       if (!logoWorkerPending && logoPlanGeneration == generation) {
@@ -311,15 +321,6 @@ void logoWorkerTask(void* parameter) {
 }
 
 void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
-  if (logoCacheMutex != nullptr) {
-    xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
-  }
-  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
-    runtimeLogos[index].pinned = false;
-  }
-  if (logoCacheMutex != nullptr) {
-    xSemaphoreGive(logoCacheMutex);
-  }
   if (!sportsMode || pairingMode) {
     assetsLoading = false;
     return;
@@ -331,7 +332,7 @@ void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
   }
   const uint16_t targetPage = requestedPage == 0xFFFF ? pageIndex : requestedPage % gameCount;
 
-  const uint16_t windowSize = min<uint16_t>(gameCount, RAM_LOGO_WORKING_SET_GAMES);
+  const uint16_t windowSize = min<uint16_t>(gameCount, runtimeLogoSlotCount / 2);
   if (logoWorkMutex != nullptr) {
     xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
   }
@@ -365,6 +366,9 @@ void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
       ++visibleIndex;
     }
   }
+  xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
+  mini_sprite::pinResidentWindow(runtimeLogos, runtimeLogoSlotCount, logoWorkPrimary, logoWorkCount);
+  xSemaphoreGive(logoCacheMutex);
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }

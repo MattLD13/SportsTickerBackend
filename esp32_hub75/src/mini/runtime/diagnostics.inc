@@ -53,6 +53,38 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   network["gate_wait_ms"] = lastDataGateWaitMs;
   network["headers_ms"] = lastDataHeadersMs;
   network["body_ms"] = lastDataBodyMs;
+  uint8_t updateState = 0;
+  uint32_t updateComplete = 0, updateTotal = 0;
+  char updateDetail[24] = {};
+  firmwareUpdater.displaySnapshot(updateState, updateComplete, updateTotal, updateDetail, sizeof(updateDetail));
+  JsonObject update = out["update"].to<JsonObject>();
+  update["state"] = updateState;
+  update["complete_bytes"] = updateComplete;
+  update["total_bytes"] = updateTotal;
+  update["detail"] = updateDetail;
+  update["boot_validated"] = firmwareUpdater.bootValidated();
+  update["boot_state"] = firmwareUpdater.bootState();
+  update["boot_state_error"] = firmwareUpdater.bootStateError();
+  JsonObject assets = out["assets"].to<JsonObject>();
+  assets["ram_slots"] = runtimeLogoSlotCount;
+  uint16_t resident = 0;
+  if (logoWorkMutex != nullptr && logoCacheMutex != nullptr) {
+    xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+    assets["planned"] = logoWorkCount;
+    assets["generation"] = logoPlanGeneration;
+    assets["worker_busy"] = logoWorkerBusy || logoWorkerPending;
+    xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
+    for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) resident += runtimeLogos[index].valid;
+    xSemaphoreGive(logoCacheMutex);
+    xSemaphoreGive(logoWorkMutex);
+  }
+  assets["resident"] = resident;
+  assets["foreground_ready"] = foregroundLogoReadyCount();
+  assets["flash_hits"] = spriteFlashHits;
+  assets["downloads"] = spriteDownloads;
+  assets["invalid_files"] = spriteInvalidFiles;
+  JsonObjectConst currentGame;
+  assets["current_ready"] = selectedGame(currentGame) && sportsGameAssetsCached(currentGame);
   describePane(out["pane"].to<JsonObject>(), displayMetrics.current);
   out["pane"]["shown_us"] = displayMetrics.frames ? now - displayMetrics.startedUs : 0;
   if (history) {

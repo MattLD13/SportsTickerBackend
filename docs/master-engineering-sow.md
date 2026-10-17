@@ -259,6 +259,9 @@ The runtime retains selection, frame presentation, response application, and ret
 `NetworkWorker`, `NetworkGate`, and `FirmwareUpdater` now compile through explicit interfaces.
 Read [transport extraction and Wi-Fi options](research/network-modules-and-wifi-2026-10-16.md) for validation and remaining measurements.
 The physical `mini-1.3.11` check preserves matching pane hashes, 200 Hz refresh, and three-second visits.
+The later transport check detects and corrects repeated TLS socket cleanup across the logo file system.
+The rolling logo window now warms following games and rejects obsolete worker results.
+Native checks cover 15, 20, and 50 games. Physical captures verify logo pixels against backend sprite bytes.
 Read [Gate 6 platform modules](research/platform-modules-2026-10-16.md) for resources and hardware evidence.
 
 ## Workstream 8: Modularize the iOS client

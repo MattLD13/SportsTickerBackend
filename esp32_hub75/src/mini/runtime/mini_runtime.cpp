@@ -109,7 +109,6 @@ NimBLECharacteristic* bleResultCharacteristic = nullptr;
 NimBLECharacteristic* blePairingCharacteristic = nullptr;
 
 static constexpr uint8_t RAM_LOGO_WORKING_SET_LOGOS = RUNTIME_LOGO_SLOTS;
-static constexpr uint8_t RAM_LOGO_WORKING_SET_GAMES = RAM_LOGO_WORKING_SET_LOGOS / 2;
 static constexpr uint8_t LOGO_WORK_QUEUE_SLOTS = RAM_LOGO_WORKING_SET_LOGOS;
 
 struct RuntimeLogo {

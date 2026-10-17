@@ -61,13 +61,19 @@ Timed visits range from 3,004.037 to 3,009.940 milliseconds. Their mean is 3,004
 The panel retains 200 Hz refresh. Registration and data requests return 200. JSON failures remain zero.
 Telemetry records no uptime reset during that capture.
 
-One earlier capture loses USB contact and returns after a device restart. That capture contains no panic diagnosis.
-A 45-second recheck and the later 120-second check complete without another reset.
+The longer release monitor records a panic after the two-minute check.
+Its crash dump traces TLS destruction into lfs_file_close.
+The pinned TLS cleanup clears its context and leaves socket zero after an earlier close.
+A later destructor can close an unrelated LittleFS file.
+The original candidate ELF was not retained. Symbol analysis uses the same source with a changed version label.
+A physical file-ownership check independently validates the cleanup correction.
 Serial telemetry now includes the ESP32 reset reason for future diagnosis.
 The sampled allocation sizes include active TLS work and do not establish a controlled memory comparison.
 
 Native rejection checks do not prove recovery from a physical power cut during flash programming.
-The pinned ESP32 SDK enables bootloader rollback. The updater retains image verification and boot validation before acknowledgement.
+The pinned SDK exposes rollback support. The observed OTA boot reports an already validated partition.
+Automatic bootloader rollback after a power cut remains unverified.
+The updater retains image verification and boot validation before acknowledgement.
 
 ## Wi-Fi hardware
 
@@ -110,3 +116,53 @@ Compare `gate_wait_ms`, `headers_ms`, and `body_ms` on the same board and networ
 If header time dominates, compare persistent HTTPS against the current connection policy.
 Measure request latency, free heap, largest allocation, reconnect recovery, sprite work, and OTA completion.
 Adopt the change only after real hardware results establish its benefit.
+
+## TLS cleanup correction
+
+`TlsClient` owns socket teardown and leaves a closed descriptor at -1.
+Its destructor completes that operation before the Arduino base destructor runs.
+The class rejects copies. Resolver and backend clients share this owner.
+`NetworkLease` holds the network mutex until every client destructor completes, including early return paths.
+The former paths released the mutex before local TLS clients left scope.
+
+The pinned [Arduino TLS implementation](https://github.com/espressif/arduino-esp32/blob/2.0.14/libraries/WiFiClientSecure/src/ssl_client.cpp) resets the socket field with its context.
+The [base destructor and stop method](https://github.com/espressif/arduino-esp32/blob/2.0.14/libraries/WiFiClientSecure/src/WiFiClientSecure.cpp) explain the second close.
+The correction keeps TLS verification and the existing SDK. It does not change certificate policy.
+
+Serial `CHECKTLS` closes and destroys sixteen TLS clients while a real LittleFS file remains open.
+It then writes, reads, and verifies that file before removing it.
+`tools/check_mini_tls.py` automates this check without changing mode, pins, or Wi-Fi credentials.
+Serial `STATS` now includes update state, byte progress, and reset reason.
+The release artifact retains the exact firmware ELF for future crash analysis.
+
+## Rolling logo window
+
+`sprite_pipeline.inc` owns the resident window. `logo_residency.h` owns membership, pin selection, and generation acceptance.
+The former scheduler waited for a missing current logo before refreshing its window.
+The scheduler now advances the window at each page boundary and warms the following games.
+The window uses the allocated slot count, including the eight-slot internal-memory configuration.
+Resident planned logos remain pinned before the worker starts. Results from an older generation cannot pin or replace them.
+
+The real Pi runs 1,020 next-game logo checks at 15, 20, and 50 games with eight and thirty-two slots.
+The physical `mini-1.3.15` capture records 28 frames and 44 telemetry samples over 90 seconds without capture errors.
+All 34 sports telemetry samples report current logos ready.
+The capture includes 11 visible games. The earlier backend selection contains 19 visible games.
+Those different selections do not form a direct cache performance comparison.
+The native checks cover rotation beyond the physical RAM capacity.
+
+`tools/verify_mini_logos.py` compares physical captures with checksum-validated backend sprite bytes.
+All 46 displayed logo checks pass across 5,458 sampled opaque pixels.
+The sample excludes the lower college-rank overlay.
+The physical file-ownership check also passes on `mini-1.3.14`: 80 destroyed clients and five verified file round trips.
+
+The updater validates a pending boot image independently of a server update receipt.
+This also covers a USB-installed image without an OTA acknowledgement receipt.
+Serial telemetry reports boot state, validation, asset readiness, resident counts, and worker progress.
+The `mini-1.3.15` USB boot reports a validated, untracked partition with no state error.
+
+The later `mini-1.3.16` file-ownership check destroys 320 clients and verifies twenty file round trips.
+It completes in 10.751 seconds. One missing diagnostic response triggers a bounded retry.
+The probe uses unconnected TLS clients and does not wait behind network downloads.
+The `mini-1.3.15` runtime also reaches 546 seconds without a reset or JSON failure.
+The final build uses 77,124 bytes of static RAM and 1,292,429 bytes of application flash.
+Debug and Release iOS builds and all fifteen package tests pass in run `38975554030`.

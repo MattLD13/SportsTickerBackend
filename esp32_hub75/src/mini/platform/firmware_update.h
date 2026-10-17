@@ -45,6 +45,9 @@ class FirmwareUpdater {
   void initialize();
   void applyAckResponse(const NetworkJob& job);
   bool tick(uint32_t now, bool registered, const String& tickerId);
+  bool bootValidated() const { return firmwareUpdateBootValidated; }
+  int bootState() const { return firmwareUpdateBootState; }
+  int bootStateError() const { return firmwareUpdateBootStateError; }
 
  private:
   static void taskEntry(void* context);
@@ -76,6 +79,8 @@ class FirmwareUpdater {
   bool firmwareUpdateTaskRunning = false;
   bool firmwareUpdateBootChecked = false;
   bool firmwareUpdateBootValidated = false;
+  int firmwareUpdateBootState = ESP_OTA_IMG_UNDEFINED;
+  int firmwareUpdateBootStateError = ESP_ERR_INVALID_STATE;
   bool firmwareUpdateAcknowledged = false;
   String firmwareUpdateReceiptCommandId;
   uint32_t firmwareUpdateLastAckAt = 0;

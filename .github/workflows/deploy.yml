@@ -137,6 +137,10 @@ jobs:
           /tmp/mini-hockey-check tests/rewrite/debug/mini_hockey_panes.json
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_dns_answer.cpp -o /tmp/mini-dns-check
           /tmp/mini-dns-check
+          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
+          /tmp/mini-firmware-check
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
+          /tmp/mini-logo-check
       - name: Read mini firmware version
         id: version
         shell: bash
@@ -144,11 +148,14 @@ jobs:
           VERSION=$(sed -n 's/.*MINI_FIRMWARE_VERSION\[\].*= "\([^"]*\)";.*/\1/p' esp32_hub75/src/mini/platform/config.h)
           test -n "$VERSION"
           cp esp32_hub75/.pio/build/esp32s3/firmware.bin mini-firmware.bin
+          cp esp32_hub75/.pio/build/esp32s3/firmware.elf mini-firmware.elf
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: mini-firmware
-          path: mini-firmware.bin
+          path: |
+            mini-firmware.bin
+            mini-firmware.elf
           if-no-files-found: error
 
   deploy-mini-firmware:

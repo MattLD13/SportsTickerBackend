@@ -35,6 +35,7 @@ Preserve that order during any translation-unit split.
 The logo worker and OTA task currently use core 0.
 The runtime owns shared JSON, identity, buffers, decoder state, sprite mutexes, and queue generations.
 `NetworkWorker` owns HTTP queues. `NetworkGate` owns their shared TLS mutex.
+`NetworkLease` retains that mutex through client destruction. `TlsClient` owns idempotent socket cleanup.
 `FirmwareUpdater` owns OTA state and captures the ticker identity before starting its task.
 The sprite pipeline owns PSRAM cache slots and validated immutable sprite transfers.
 

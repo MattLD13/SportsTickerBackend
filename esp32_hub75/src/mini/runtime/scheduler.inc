@@ -214,6 +214,29 @@ void processMiniSerialCommand(Stream* input, const String& command) {
     return;
   }
   if (command == "CAPTURE") { startFrameCapture(*input); return; }
+  if (command == "CHECKTLS") {
+    const char* path = "/tls-close-check.tmp";
+    File file = LittleFS.open(path, "w+");
+    if (!file) { input->print("MINI_TLS_CHECK:NO_FILE\n"); return; }
+    bool valid = true;
+    for (unsigned attempt = 0; attempt < 16; ++attempt) {
+      TlsClient client;
+      client.stop();
+      valid = valid && client.fd() == -1;
+      client.stop();
+      valid = valid && client.fd() == -1;
+    }
+    const uint8_t expected[] = {0x54, 0x4c, 0x53};
+    uint8_t actual[sizeof(expected)] = {};
+    valid = valid && file.write(expected, sizeof(expected)) == sizeof(expected);
+    file.flush();
+    valid = valid && file.seek(0) && file.read(actual, sizeof(actual)) == sizeof(actual);
+    valid = valid && memcmp(expected, actual, sizeof(actual)) == 0;
+    file.close();
+    LittleFS.remove(path);
+    input->print(valid ? "MINI_TLS_CHECK:PASS\n" : "MINI_TLS_CHECK:FAIL\n");
+    return;
+  }
   if (command == "PING") {
     logoWorkbenchMode = true;
     beginFrame("workbench");
@@ -411,13 +434,8 @@ void miniTick() {
         pageCount > 1 && displayMetrics.rotationDue(esp_timer_get_time())) {
       const uint16_t nextPage = (pageIndex + 1) % pageCount;
       pageIndex = nextPage;
+      prepareSportsLogoWorkingSet(pageIndex);
       renderCurrent();
-      if (!logoPlanBusy) {
-        JsonObjectConst nextGame;
-        if (selectedGame(nextGame) && !sportsGameAssetsCached(nextGame)) {
-          prepareSportsLogoWorkingSet(pageIndex);
-        }
-      }
     }
 
     if (WiFi.status() == WL_CONNECTED && !registered && now - lastRegisterAt >= REGISTER_INTERVAL_MS) {

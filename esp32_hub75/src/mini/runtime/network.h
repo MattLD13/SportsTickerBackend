@@ -40,6 +40,7 @@ class NetworkWorker {
  private:
   static void taskEntry(void* context);
   void run();
+  void execute(NetworkJob& job);
   NetworkGate& gate_;
   QueueHandle_t requests_ = nullptr;
   QueueHandle_t results_ = nullptr;
