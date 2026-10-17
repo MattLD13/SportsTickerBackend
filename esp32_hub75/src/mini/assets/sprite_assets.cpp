@@ -2,11 +2,11 @@
 #include "mini_sprite.h"
 #include "logo_residency.h"
 #include "../platform/config.h"
-#include "../platform/tls.h"
-#include "../platform/http_diagnostics.h"
+#include "../runtime/network.h"
 #include <Adafruit_GFX.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
+#include <mbedtls/md.h>
 #include <new>
 
 static bool spriteHash(const uint8_t* bytes, size_t length, uint8_t* output) {
@@ -97,7 +97,7 @@ struct SpriteAssets::State {
   }
 };
 
-SpriteAssets::SpriteAssets(NetworkGate& gate, const char* backend) : gate_(gate), backend_(backend) {}
+SpriteAssets::SpriteAssets(NetworkWorker& transport, const char* backend) : transport_(transport), backend_(backend) {}
 
 bool SpriteAssets::begin() {
   if (state_) return ready();
@@ -153,53 +153,33 @@ void SpriteAssets::pinWindow(const String* keys, uint8_t count) {
   xSemaphoreGive(state_->mutex);
 }
 
-static bool downloadSprite(NetworkGate& gate, const char* backend, SpriteAssets::Metrics& metrics_, const mini_sprite::Reference& reference, uint8_t* body) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  NetworkLease lease(gate, 12000);
-  if (!lease) return false;
-  bool success = false;
-  metrics_.heapBeforeTls = ESP.getFreeHeap();
-  {
-    BackendTlsClient client;
-    configureTls(client);
-    client.setTimeout(8);
-    client.setHandshakeTimeout(8);
-    HTTPClient http;
-    http.useHTTP10(true);
-    http.setReuse(false);
-    http.setConnectTimeout(4000);
-    http.setTimeout(8000);
-    if (http.begin(client, String(backend) + "/api/v2/assets/mini-sports/" + reference.id + ".mts")) {
-      const int status = http.GET();
-      metrics_.heapDuringTls = ESP.getFreeHeap();
-      metrics_.largestDuringTls = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-      if (status == HTTP_CODE_OK && http.getSize() == static_cast<int>(mini_sprite::kBytes)) {
-        const size_t received = http.getStreamPtr()->readBytes(body, mini_sprite::kBytes);
-        success = mini_sprite::validate(body, received, reference, spriteHash);
-      }
-      logSecureHttpError("Sprite", status, client);
-      Serial.printf("Sprite HTTP status=%d length=%d valid=%d heap_before=%u heap_during=%u largest=%u\n", status, http.getSize(), success, metrics_.heapBeforeTls, metrics_.heapDuringTls, metrics_.largestDuringTls);
-      http.end();
-    }
-  }
-  metrics_.heapAfterTls = ESP.getFreeHeap();
-  if (success) ++metrics_.downloads;
-  return success;
+bool SpriteAssets::loadCached(const String& key, uint8_t* bytes) {
+  if (!ready()) return false;
+  mini_sprite::Reference reference;
+  if (!mini_sprite::parseReference(key.c_str(), reference) || !state_->mounted) return false;
+  const auto loaded = state_->cache.load(reference, bytes);
+  if (loaded == mini_sprite::LoadResult::Hit) { ++metrics_.flashHits; return true; }
+  if (loaded == mini_sprite::LoadResult::Invalid) ++metrics_.invalidFiles;
+  return false;
 }
-
 
 bool SpriteAssets::load(const String& key, uint8_t* bytes) {
   if (!ready()) return false;
   mini_sprite::Reference reference;
   if (!mini_sprite::parseReference(key.c_str(), reference)) return false;
-  const auto loaded = state_->mounted ? state_->cache.load(reference, bytes) : mini_sprite::LoadResult::Miss;
-  if (loaded == mini_sprite::LoadResult::Hit) {
-    ++metrics_.flashHits;
-  } else {
-    if (loaded == mini_sprite::LoadResult::Invalid) ++metrics_.invalidFiles;
-    if (!downloadSprite(gate_, backend_, metrics_, reference, bytes)) return false;
-    if (state_->mounted && !state_->cache.save(reference, bytes)) Serial.println("Sprite flash write failed");
-  }
+  if (loadCached(key, bytes)) return true;
+  AssetTransfer transfer;
+  const bool received = transport_.fetchAsset(String(backend_) + "/api/v2/assets/mini-sports/" + reference.id + ".mts", bytes, mini_sprite::kBytes, transfer);
+  metrics_.heapBeforeTls = transfer.heapBefore;
+  metrics_.heapDuringTls = transfer.heapDuring;
+  metrics_.largestDuringTls = transfer.largestDuring;
+  metrics_.heapAfterTls = ESP.getFreeHeap();
+  const bool valid = received && mini_sprite::validate(bytes, mini_sprite::kBytes, reference, spriteHash);
+  Serial.printf("Sprite HTTP status=%d valid=%d duration_ms=%lu reused=%d heap=%u\n", transfer.status, valid, static_cast<unsigned long>(transfer.durationMs), transfer.reused, transfer.heapDuring);
+  if (!valid) return false;
+  ++metrics_.downloads;
+  if (transfer.reused) ++metrics_.reusedDownloads;
+  if (state_->mounted && !state_->cache.save(reference, bytes)) Serial.println("Sprite flash write failed");
   return true;
 }
 

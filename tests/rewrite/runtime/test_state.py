@@ -214,3 +214,17 @@ def test_score_alerts_queue_in_fifo_order_for_full_residence() -> None:
     assert runtime.next_frame().alert["id"] == "alert-2"
     clock[0] = 16.0
     assert runtime.next_frame().kind is not FrameKind.SCORE_ALERT
+
+
+def test_cancelled_update_restores_the_active_mode():
+    runtime = _runtime([0.0])
+    payload = _response().to_payload()
+    payload["meta"]["update"] = {"id": "attempt", "version": "new"}
+    runtime.accept_response(TickerResponse.from_payload(payload))
+    request = runtime.take_update_request()
+    assert request.command_id == "attempt"
+    assert runtime.next_frame().kind is FrameKind.UPDATE
+    payload["meta"].pop("update")
+    runtime.accept_response(TickerResponse.from_payload(payload))
+    assert runtime.take_update_request() is None
+    assert runtime.next_frame().kind is not FrameKind.UPDATE

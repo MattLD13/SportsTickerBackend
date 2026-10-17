@@ -48,7 +48,7 @@ Before a commit, state these facts in the change notes:
 - Render a V2 frame: `python tools\render_rewrite.py --snapshot tests\rewrite\debug\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png`
 - Render the offline panel: `python tools\render_offline_screen.py --out-dir previews\offline`
 - Check fleet health: open `http://<backend>/api/v2/health`
-- Push a V2 news overlay: `curl -X POST http://<backend>/api/v2/events/news -H 'Content-Type: application/json' -d '{"payload":{"kind":"TRADE","sport":"nhl","from":"VAN","to":"NYR","text":"Miller for Kakko"},"target_ticker_ids":["<ticker_id>"]}'`
+- Push a V2 news overlay: `curl -X POST http://<backend>/api/v2/events/news -H 'Content-Type: application/json' -H 'X-Deployment-Token: <deployment-token>' -d '{"payload":{"kind":"TRADE","sport":"nhl","from":"VAN","to":"NYR","text":"Miller for Kakko"},"target_ticker_ids":["<ticker_id>"]}'`
 
 ## Git Publishing
 

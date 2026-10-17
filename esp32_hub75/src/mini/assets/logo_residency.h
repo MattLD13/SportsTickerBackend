@@ -17,10 +17,4 @@ void pinResidentWindow(Slot* slots, size_t slotCount, const Text* keys, size_t k
     slots[index].pinned = slots[index].valid && plannedLogo(slots[index].url, keys, keyCount);
 }
 
-template <typename Text>
-bool acceptLogoResult(uint32_t requestedGeneration, uint32_t currentGeneration,
-                      const Text& key, const Text* keys, size_t count) {
-  return requestedGeneration == currentGeneration && plannedLogo(key, keys, count);
-}
-
 }  // namespace mini_sprite

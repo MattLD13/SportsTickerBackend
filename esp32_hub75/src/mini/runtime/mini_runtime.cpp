@@ -134,8 +134,8 @@ uint8_t logoRetryIndex = 0;
 SemaphoreHandle_t logoWorkMutex = nullptr;
 DeviceCredentials deviceCredentials;
 NetworkGate networkGate;
-SpriteAssets spriteAssets(networkGate, BACKEND_URL);
 NetworkWorker networkWorker(networkGate, deviceCredentials.token());
+SpriteAssets spriteAssets(networkWorker, BACKEND_URL);
 WifiStation wifiStation(networkGate);
 FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, deviceCredentials.token(), {
   MINI_FIRMWARE_VERSION, MINI_FIRMWARE_TARGET, MINI_FIRMWARE_HARDWARE,

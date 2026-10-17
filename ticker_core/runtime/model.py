@@ -132,6 +132,7 @@ class UpdateRequest:
     """Request one external updater run."""
 
     version: str
+    command_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -20,6 +20,7 @@ def _register(client, ticker_id: str) -> dict:
     response = client.post(
         "/api/v2/devices/register",
         json={"device_id": ticker_id, "name": ticker_id, "metadata": {}},
+        headers={"X-Device-Token": "a" * 64},
     )
     assert response.status_code == 201
     return response.get_json()
@@ -38,7 +39,7 @@ def test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap(tmp_path) 
         assert registration["pairing_code"]
         assert registration["ticker"]["profile"]["product_family"] == "full"
 
-        response = client.get("/api/v2/tickers/pi-1/data")
+        response = client.get("/api/v2/tickers/pi-1/data", headers={"X-Device-Token": "a" * 64})
         assert response.status_code == 200
         parsed = TickerResponse.from_payload(response.get_json())
         assert parsed.status is DeviceState.PAIRING
@@ -215,6 +216,7 @@ def test_device_registration_renews_expired_pairing_code(tmp_path) -> None:
         second_response = client.post(
             "/api/v2/devices/register",
             json={"device_id": "pi-expired", "name": "pi-expired", "metadata": {}},
+            headers={"X-Device-Token": "a" * 64},
         )
 
         assert second_response.status_code == 200
@@ -242,6 +244,7 @@ def test_device_registration_renews_the_code_exposed_by_ble_session(tmp_path) ->
                 "metadata": {},
                 "pairing_code": first["pairing_code"],
             },
+            headers={"X-Device-Token": "a" * 64},
         )
 
         assert second_response.status_code == 200
@@ -299,10 +302,10 @@ def test_controller_routes_return_only_the_owner_and_protect_mutations(tmp_path)
             json={"name": "Owned"},
         ).status_code == 200
 
-        assert client.get("/api/v2/tickers/pi-1/data").status_code == 200
+        assert client.get("/api/v2/tickers/pi-1/data", headers={"X-Device-Token": "a" * 64}).status_code == 200
         assert client.post(
             "/api/v2/tickers/pi-1/heartbeat", json={"metadata": {"build": "test"}}
-        ).status_code == 200
+        , headers={"X-Device-Token": "a" * 64}).status_code == 200
         assert client.delete(
             "/api/v2/tickers/pi-1",
             headers={"Authorization": f"Bearer {first_token}"},
@@ -361,6 +364,7 @@ def test_registration_persists_mini_profile_and_limits_modes(tmp_path) -> None:
                     "capabilities": {"modes": ["sports"], "asset_cache": False, "ota": True},
                 },
             },
+            headers={"X-Device-Token": "a" * 64},
         )
         assert response.status_code == 201
         payload = response.get_json()
@@ -375,7 +379,7 @@ def test_registration_persists_mini_profile_and_limits_modes(tmp_path) -> None:
             json={"display_settings": {"mode": "weather"}},
         )
         assert updated.status_code == 200
-        data = client.get("/api/v2/tickers/mini-1/data").get_json()
+        data = client.get("/api/v2/tickers/mini-1/data", headers={"X-Device-Token": "a" * 64}).get_json()
         assert data["settings"]["mode"] == "sports"
     finally:
         app.extensions["sports_ticker.backend_application"].close()
@@ -394,17 +398,19 @@ def test_reboot_command_is_durable_and_single_use(tmp_path) -> None:
         queued = client.post("/api/v2/tickers/pi-command/commands/reboot", headers=headers)
         assert queued.status_code == 201
         command_id = queued.get_json()["command_id"]
-        payload = client.get("/api/v2/tickers/pi-command/data").get_json()
+        payload = client.get("/api/v2/tickers/pi-command/data", headers={"X-Device-Token": "a" * 64}).get_json()
         assert payload["meta"]["reboot"]["id"] == command_id
         acknowledged = client.post(
             "/api/v2/tickers/pi-command/commands/reboot/ack",
             json={"id": command_id},
+            headers={"X-Device-Token": "a" * 64},
         )
         assert acknowledged.get_json()["acknowledged"] is True
-        assert "reboot" not in client.get("/api/v2/tickers/pi-command/data").get_json()["meta"]
+        assert "reboot" not in client.get("/api/v2/tickers/pi-command/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]
         assert client.post(
             "/api/v2/tickers/pi-command/commands/reboot/ack",
             json={"id": command_id},
+            headers={"X-Device-Token": "a" * 64},
         ).get_json()["acknowledged"] is False
     finally:
         app.extensions["sports_ticker.backend_application"].close()
@@ -421,6 +427,7 @@ def test_custom_registration_requires_display_geometry(tmp_path) -> None:
                 "device_id": "custom-1",
                 "profile": {"product_family": "custom"},
             },
+            headers={"X-Device-Token": "a" * 64},
         )
         assert response.status_code == 400
     finally:

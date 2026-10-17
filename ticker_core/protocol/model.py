@@ -304,6 +304,7 @@ class TickerResponse:
     reboot_request_id: str | None
     payload_key: str
     data: Mapping[str, FrozenJson]
+    update_request_id: str | None = None
 
     @property
     def fingerprint(self) -> str:
@@ -350,6 +351,7 @@ class TickerResponse:
             self.reboot_request_id,
             self.payload_key,
             _thaw(self.data),
+            self.update_request_id,
         )
         return _restore_pickled_response, (serialized,)
 
@@ -403,6 +405,7 @@ class TickerResponse:
         if pairing_code is not None and not isinstance(pairing_code, str):
             raise PayloadValidationError("response.meta.pairing.code must be a string")
         update = _object(meta.get("update", {}), "response.meta.update")
+        update_id = _string(update.get("id"), "response.meta.update.id", default="") or None
         update_version = update.get("version")
         if update_version is not None and not isinstance(update_version, str):
             raise PayloadValidationError("response.meta.update.version must be a string")
@@ -419,6 +422,7 @@ class TickerResponse:
             alerts=alerts,
             news=news,
             update_version=update_version.strip() if isinstance(update_version, str) else None,
+            update_request_id=update_id,
             reboot_request_id=reboot_request_id.strip() if isinstance(reboot_request_id, str) else None,
             payload_key=_display_payload_hash(data),
             data=data,
@@ -452,6 +456,7 @@ class DisplayDelta:
     update_version: str | None
     reboot_request_id: str | None
     payload_key: str
+    update_request_id: str | None = None
 
 
 def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayDelta:
@@ -479,6 +484,7 @@ def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayD
         current.update_version,
         current.reboot_request_id,
         current.payload_key,
+        current.update_request_id,
     )
 
 
@@ -509,6 +515,7 @@ def apply_display_delta(previous: TickerResponse, delta: DisplayDelta) -> Ticker
         delta.reboot_request_id,
         delta.payload_key,
         previous.data,
+        delta.update_request_id,
     )
 
 
@@ -529,6 +536,7 @@ def _restore_pickled_response(serialized: tuple[Any, ...]) -> TickerResponse:
         reboot_request_id,
         payload_key,
         data,
+        update_request_id,
     ) = serialized
     mode, presentation, pinned, brightness, scroll_speed, inverted, raw_settings = settings_data
     settings = TickerSettings(
@@ -558,6 +566,7 @@ def _restore_pickled_response(serialized: tuple[Any, ...]) -> TickerResponse:
         reboot_request_id,
         payload_key,
         _frozen_mapping(data),
+        update_request_id,
     )
 
 

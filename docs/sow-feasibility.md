@@ -135,3 +135,22 @@ Keep these checks in Gate 0. Do not repeat destructive cleanup when the evidence
 7. Benchmark rendering alternatives, then refactor only measured hot paths.
 
 Do not add TV calibration to gates, APIs, UI, or acceptance checks.
+
+
+## Evidence update: 2026-10-17
+
+The backend and Pi WebSocket path are published. They retain HTTP bootstrap and reconnect recovery.
+Provider demand and market-session policies are published with deterministic policy tests.
+SpriteAssets and DevicePayload now own Mini cache storage and response commits.
+The iOS response and polling extractions pass the published Debug and Release builds.
+
+Both physical device credentials verify against the server. Device-route enforcement remains an unpublished change.
+A durable update ledger now tests rollback reports, family quarantine, cancellation, retry, and restart persistence.
+The real Pi rollback trial rejects a candidate without frame evidence and restores a valid previous frame.
+Four frozen render baselines match exactly between the PC and Pi.
+
+The Mini memory limit remains a real release risk.
+A 152-game response leaves insufficient internal heap for verified TLS.
+The candidate moves retained JSON into PSRAM, defers initialization, and removes duplicate OTA activation.
+Its build and native 160-game checks pass. Its physical boot and logo checks remain open.
+The detailed release gate record appears in [Final SOW packages](research/sow-final-packages-2026-10-17.md).

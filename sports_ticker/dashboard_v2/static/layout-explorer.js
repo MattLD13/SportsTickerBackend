@@ -191,7 +191,7 @@
         const data = device === 'main' ? row.main.available : row.mini;
         if (!data) continue;
         const img = document.createElement('img');
-        img.className = `thumb-${device}`; img.loading = 'lazy'; img.alt = device === 'main' ? 'Big ticker' : 'Mini ticker'; img.src = device === 'main' ? mainUrl(row) : png(data);
+        img.className = `thumb-${device}`; img.loading = 'lazy'; img.alt = device === 'main' ? 'Ticker Six' : 'Mini ticker'; img.src = device === 'main' ? mainUrl(row) : png(data);
         img.width = device === 'main' ? 384 : 64; img.height = 32;
         screens.append(img);
       }

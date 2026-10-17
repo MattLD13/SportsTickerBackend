@@ -4,7 +4,7 @@
 
 **Repository:** SportsTickerBackend
 **Baseline:** `a74596046a3672a912ade0dbc7b112d7c167a9d0`
-**Status date:** 2026-10-16
+**Status date:** 2026-10-17
 **Status:** Replaces the original draft as the active engineering plan.
 
 ## Objective
@@ -38,7 +38,7 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 | Snapshot history | `sports_ticker/application/state_store.py` | Immutable snapshots use bounded per-ticker deques. |
 | Fleet storage | `sports_ticker/fleet/repository.py` | SQLite stores device and schedule state. |
 | Pi image cache | `ticker_core/platform/assets.py` | Original image bytes use SHA-256 storage. |
-| Mini image cache | `esp32_hub75/src/mini/assets/sprite_pipeline.inc` | Backend sprites use validated LittleFS transactions and RAM rendering. |
+| Mini image cache | `esp32_hub75/src/mini/assets/sprite_assets.cpp` | SpriteAssets owns LittleFS transactions and RAM pixels. Runtime planning owns page generations. |
 | Pi deployment | `updater.py` | Immutable worktrees and rollback already exist. |
 | ESP32 update flow | `esp32_hub75/src/mini/platform/firmware_update.cpp` | Dual-slot update and boot validation already exist. |
 | CI | `.github/workflows/` | Python static and device build workflows exist. |
@@ -331,3 +331,15 @@ Every gate records owner, former path changed, real input, real output, and test
 Use the Pi performance log to compare deployed frame and stream behavior after release.
 Use hardware measurements for panel power, refresh stability, and Mini memory claims.
 Use production-shaped API payloads for protocol and projection checks.
+
+
+## Current release evidence: 2026-10-17
+
+The five final packages and their evidence appear in [Final SOW packages](research/sow-final-packages-2026-10-17.md).
+Provider demand, market calendars, Mini module extraction, and iOS polling extraction are published.
+Both physical device credentials authenticate against the production server.
+The next change adds device enforcement, family release quarantine, durable update reports, and Ticker Six product labels.
+Real Pi frame-based rollback passes. Four offline production frames match across the PC and Pi.
+Mini logo recovery and its failed candidate boot remain open hardware gates.
+Mini USB recovery and candidate boot validation now pass. The smaller device replies need a production check.
+TV calibration and local clock interpolation remain excluded.

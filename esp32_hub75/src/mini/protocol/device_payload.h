@@ -13,6 +13,8 @@ class DevicePayload {
   size_t offset() const { return offset_; }
 
  private:
+  void initializeFilter();
+  bool filterReady_ = false;
   JsonDocument filter_, document_;
   const char* error_ = "";
   size_t offset_ = 0;

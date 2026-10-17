@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
+from .update_journal import UpdateJournal
 import sys
 
 from .commands import PlatformCommands
@@ -36,12 +38,19 @@ class OtaUpdaterService:
         """Return the current OTA update state."""
         return self._state
 
-    def request_update(self, version: str = "") -> bool:
+    def request_update(self, version: str, *, command_id: str, ticker_id: str) -> bool:
         """Start the updater once and return true for a new request."""
         if self._state.active:
             return False
+        if not all((version.strip(), command_id.strip(), ticker_id.strip())):
+            raise ValueError("Update requires a version, command id, and ticker id")
+        journal = UpdateJournal(Path(os.environ.get("TICKER_DATA_DIR", "/home/mld/ticker"))).load()
+        if journal and journal.get("id") == command_id and journal.get("status") in {"started", "installed", "rolled_back", "download_failed"}:
+            self._state = UpdateState(active=True, version=version)
+            return True
+        self._commands.run_update((self._executable, self._updater_path, "--version", version,
+                                   "--command-id", command_id, "--ticker-id", ticker_id))
         self._state = UpdateState(active=True, version=version)
-        self._commands.run_update((self._executable, self._updater_path, "--no-display"))
         return True
 
     def finish_update(self) -> None:

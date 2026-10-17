@@ -134,8 +134,13 @@ class BackendASGI:
             await send({"type": "websocket.close", "code": 1002})
             return
         application = self.flask_app.extensions.get("sports_ticker.backend_application")
-        if application is None or await asyncio.to_thread(application.get_ticker, ticker_id) is None:
-            await send({"type": "websocket.close", "code": 4404})
+        headers = {bytes(key).lower(): bytes(value) for key, value in scope.get("headers", ())}
+        token = headers.get(b"x-device-token", b"").decode("ascii", errors="ignore")
+        if not token:
+            await send({"type": "websocket.close", "code": 4401})
+            return
+        if application is None or not await asyncio.to_thread(application.authorize_device, ticker_id, token):
+            await send({"type": "websocket.close", "code": 4403})
             return
         query = parse_qs(bytes(scope.get("query_string", b"")).decode("ascii", errors="ignore"))
         resume_stream_id = query.get("stream_id", [None])[0]
@@ -176,9 +181,12 @@ class BackendASGI:
             receive_task = asyncio.create_task(receive())
             queue_task = asyncio.create_task(subscriber.queue.get())
             while True:
+                if not await asyncio.to_thread(application.authorize_device, ticker_id, token):
+                    await send({"type": "websocket.close", "code": 4403})
+                    return
                 done, _ = await asyncio.wait(
                     {receive_task, queue_task},
-                    return_when=asyncio.FIRST_COMPLETED,
+                    return_when=asyncio.FIRST_COMPLETED, timeout=5,
                 )
                 if receive_task in done:
                     incoming = receive_task.result()
@@ -189,6 +197,9 @@ class BackendASGI:
                         return
                     receive_task = asyncio.create_task(receive())
                 if queue_task in done:
+                    if not await asyncio.to_thread(application.authorize_device, ticker_id, token):
+                        await send({"type": "websocket.close", "code": 4403})
+                        return
                     message = queue_task.result()
                     await send({"type": "websocket.send", "text": encode_message(message)})
                     queue_task = asyncio.create_task(subscriber.queue.get())
@@ -198,6 +209,7 @@ class BackendASGI:
             for task in (receive_task, queue_task):
                 if task is not None and not task.done():
                     task.cancel()
+            await asyncio.gather(*(task for task in (receive_task, queue_task) if task is not None), return_exceptions=True)
             if subscriber is not None:
                 self._stream_hub.unsubscribe(ticker_id, subscriber)
 

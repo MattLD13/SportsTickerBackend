@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import os
+import argparse
+import re
 import json
 import shutil
 import subprocess
@@ -50,11 +52,14 @@ def _prepare_release_directory() -> None:
         os.chown(RELEASES_DIR, owner.pw_uid, owner.pw_gid)
 
 
-def _revision() -> str:
+def _revision(version: str) -> str:
     """Fetch the selected branch and return its immutable Git revision."""
 
+    if not re.fullmatch(r"[0-9a-f]{40}", version):
+        raise ValueError("Ticker Six updates require an immutable commit id")
     _git("fetch", "--quiet", "origin", "main")
-    return _git("rev-parse", "origin/main").stdout.strip()
+    _git("merge-base", "--is-ancestor", version, "origin/main")
+    return version
 
 
 def _changed_files(target: str) -> tuple[str, ...]:
@@ -185,23 +190,113 @@ def _install_checked_release(release: Path, previous: Path | None, *, timeout_se
         raise
 
 
-def main() -> int:
-    """Install one clean Git worktree and restart the controller."""
+def _install_boot_guard() -> None:
+    """Keep the last working updater available after a power interruption."""
+    unit = "\n".join((
+        "[Unit]", "Description=Ticker Six update recovery", "After=network-online.target ticker-controller.service",
+        "[Service]", "Type=oneshot", "Environment=TICKER_DATA_DIR=" + os.environ.get("TICKER_DATA_DIR", "/home/mld/ticker"),
+        "Environment=TICKER_RELEASE_ROOT=" + str(RELEASE_ROOT), "Environment=TICKER_RELEASE_LINK=" + str(CURRENT_LINK),
+        "ExecStart=/usr/bin/python3 " + str(PROJECT_DIR / "updater.py") + " --recover", "TimeoutStartSec=180",
+        "[Install]", "WantedBy=multi-user.target", "",
+    ))
+    Path("/etc/systemd/system/ticker-update-guard.service").write_text(unit, encoding="utf-8")
+    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "enable", "ticker-update-guard.service"], check=True)
 
+
+def _recover_pending_boot(journal, client, ticker_id: str) -> int:
+    receipt = journal.load()
+    if receipt is None:
+        return 0
+    if receipt.get("phase") != "activating":
+        if receipt.get("status") == "started":
+            receipt.update(status="download_failed", reason="manifest", phase="finished")
+            journal.save(receipt)
+        journal.flush(client, ticker_id)
+        return 0
+    previous = Path(receipt["previous_release"]).resolve(strict=True)
+    release = Path(receipt["target_release"]).resolve(strict=True)
+    root = RELEASES_DIR.resolve(strict=True)
+    if previous.parent != root or release.parent != root or previous == release:
+        raise ValueError("Update recovery paths do not identify two managed releases")
+    boot_time = time.time() - float(Path("/proc/uptime").read_text(encoding="ascii").split()[0])
+    if _current_release() == release and _service_is_healthy(release, not_before=boot_time):
+        receipt.update(status="installed", running_version=receipt["version"], reason="", phase="finished")
+    else:
+        _activate_release(previous)
+        _install_service(previous)
+        subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
+        receipt.update(status="rolled_back", running_version=previous.name, reason="boot_reset", phase="finished")
+    journal.save(receipt)
+    journal.flush(client, ticker_id)
+    return 0
+
+
+def main() -> int:
+    """Install one assigned release and persist its verified boot result."""
+    from ticker_core.platform.update_journal import UpdateJournal
+    from ticker_core.platform.device_credentials import load_device_token
+    from ticker_core.protocol import BackendClient
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--recover", action="store_true")
+    parser.add_argument("--version")
+    parser.add_argument("--command-id")
+    parser.add_argument("--ticker-id")
+    args = parser.parse_args()
+    data = Path(os.environ.get("TICKER_DATA_DIR", "/home/mld/ticker"))
+    journal = UpdateJournal(data)
+    client = BackendClient(os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org"),
+                           device_token=load_device_token(Path(os.environ.get("TICKER_DEVICE_TOKEN_FILE", data / "device_token"))))
+    if args.recover:
+        from ticker_core.composition import load_device_id
+        try:
+            return _recover_pending_boot(journal, client, load_device_id(data))
+        finally:
+            client.close()
+    if not all((args.version, args.command_id, args.ticker_id)):
+        parser.error("Update requires --version, --command-id, and --ticker-id")
+    previous = _current_release()
+    if previous is None:
+        raise RuntimeError("The last known good release is missing")
+    receipt = {"id": args.command_id, "version": args.version, "status": "started", "running_version": previous.name,
+               "reason": "", "previous_release": str(previous), "target_release": "", "phase": "preparing"}
+    journal.save(receipt)
+    activated = False
     try:
-        target = _revision()
+        result = journal.flush(client, args.ticker_id)
+        if result is not None and result.get("quarantined"):
+            raise RuntimeError("The server quarantined this release")
+        target = _revision(args.version)
         changed = _changed_files(target)
-        previous = _current_release()
         release = _checkout_release(target)
         _validate_release(release)
         _install_requirements(release, changed)
+        _install_boot_guard()
+        confirmed = client.report_update(args.ticker_id, {key: receipt[key] for key in ("id", "version", "status", "running_version", "reason")})
+        if not confirmed.get("accepted") or confirmed.get("quarantined"):
+            raise RuntimeError("The server stopped this update before activation")
+        receipt.update(target_release=str(release), phase="activating")
+        journal.save(receipt)
+        activated = True
         _install_checked_release(release, previous)
+        receipt.update(status="installed", running_version=args.version, phase="finished")
+        journal.save(receipt)
         _cleanup_releases(release, previous)
         print(f"[updater] Activated {target[:12]} after a successful display frame.")
         return 0
     except Exception as error:
+        restored = activated and _current_release() == previous
+        receipt.update(status="rolled_back" if restored else "download_failed",
+                       reason="render_validation" if restored else "manifest", phase="finished")
+        journal.save(receipt)
         print(f"[updater] Update failed: {error}", file=sys.stderr)
         return 1
+    finally:
+        try:
+            journal.flush(client, args.ticker_id)
+        except Exception:
+            print("[updater] Saved the update result for a later server report.", file=sys.stderr)
+        client.close()
 
 
 if __name__ == "__main__":

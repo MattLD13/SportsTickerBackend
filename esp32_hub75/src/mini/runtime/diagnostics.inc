@@ -95,6 +95,7 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   assets["foreground_ready"] = foregroundLogoReadyCount();
   assets["flash_hits"] = spriteAssets.metrics().flashHits;
   assets["downloads"] = spriteAssets.metrics().downloads;
+  assets["reused_downloads"] = spriteAssets.metrics().reusedDownloads;
   assets["invalid_files"] = spriteAssets.metrics().invalidFiles;
   JsonObjectConst currentGame;
   assets["current_ready"] = selectedGame(currentGame) && sportsGameAssetsCached(currentGame);

@@ -15,7 +15,8 @@ void NetworkWorker::run() {
     const uint32_t started = millis();
     execute(*job, session);
     job->durationMs = millis() - started;
-    xQueueSend(results_, &job, portMAX_DELAY);
+    if (job->completion) xSemaphoreGive(job->completion);
+    else xQueueSend(results_, &job, portMAX_DELAY);
   }
 }
 
@@ -23,7 +24,7 @@ bool NetworkWorker::begin() {
   if (requests_) return true;
   if (deviceToken_.length() != 64) return false;
   if (!gate_.ready()) { Serial.println("Network synchronization setup failed"); return false; }
-  requests_ = xQueueCreate(1, sizeof(NetworkJob*));
+  requests_ = xQueueCreate(2, sizeof(NetworkJob*));
   results_ = xQueueCreate(1, sizeof(NetworkJob*));
   TaskHandle_t worker = nullptr;
   if (requests_ && results_ &&
@@ -53,6 +54,30 @@ NetworkJob* NetworkWorker::takeResult() {
   if (!results_ || xQueueReceive(results_, &job, 0) != pdTRUE) return nullptr;
   pending_ = false;
   return job;
+}
+
+bool NetworkWorker::fetchAsset(const String& url, uint8_t* bytes, size_t expectedBytes, AssetTransfer& transfer) {
+  if (!requests_) return false;
+  NetworkJob job(NetworkKind::AssetGet);
+  job.url = url;
+  job.completion = xSemaphoreCreateBinary();
+  if (!job.completion) return false;
+  NetworkJob* queued = &job;
+  if (xQueueSend(requests_, &queued, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    vSemaphoreDelete(job.completion);
+    return false;
+  }
+  xSemaphoreTake(job.completion, portMAX_DELAY);
+  vSemaphoreDelete(job.completion);
+  transfer.status = job.status;
+  transfer.durationMs = job.durationMs;
+  transfer.heapBefore = job.heapBefore;
+  transfer.heapDuring = job.heapDuring;
+  transfer.largestDuring = job.largestDuring;
+  transfer.reused = job.reusedConnection;
+  if (job.status != HTTP_CODE_OK || !job.complete() || job.response.body.size() != expectedBytes) return false;
+  memcpy(bytes, job.response.body.data(), expectedBytes);
+  return true;
 }
 
 void NetworkWorker::execute(NetworkJob& job, BackendHttpSession& session) {

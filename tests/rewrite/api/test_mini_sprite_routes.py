@@ -7,6 +7,7 @@ import io
 from PIL import Image
 import pytest
 
+from sports_ticker.fleet.device_credentials import device_token_hash
 from sports_ticker.assets.mini_service import MiniSpriteService, SourceReply
 from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
@@ -30,7 +31,7 @@ def test_mini_asset_contract_prepares_once_and_serves_checked_immutable_bytes(tm
     client = app.test_client()
     try:
         for ticker_id, family in (("mini", "mini"), ("pi", "full")):
-            application.create_ticker(ticker_id, pairing={"paired": True})
+            application.create_ticker(ticker_id, pairing={"paired": True}, credential_hash=device_token_hash("a" * 64))
             application.register_device(ticker_id, profile={"product_family": family}, metadata={"mini_sprite_protocol": 1})
             application.snapshot_store.replace(TickerSnapshot(
                 ticker_id=ticker_id, revision=1, observed_at=datetime.now(timezone.utc),
@@ -40,10 +41,15 @@ def test_mini_asset_contract_prepares_once_and_serves_checked_immutable_bytes(tm
                           "away_logo": "https://a.espncdn.com/team.png", "home_logo": "https://a.espncdn.com/team.png"},
                 ),),
             ))
-        pending = client.get("/api/v2/tickers/mini/data").get_json()
+        pending = client.get("/api/v2/tickers/mini/data", headers={"X-Device-Token": "a" * 64}).get_json()
         assert pending["content"]["sports"][0]["data"]["away_logo_asset"]["state"] == "pending"
         service.wait()
-        data = client.get("/api/v2/tickers/mini/data").get_json()["content"]["sports"][0]["data"]
+        data = client.get("/api/v2/tickers/mini/data", headers={"X-Device-Token": "a" * 64}).get_json()["content"]["sports"][0]["data"]
+        compact = client.post("/api/v2/tickers/mini/data", json={}, headers={"X-Device-Token": "a" * 64}).get_json()["content"]["sports"][0]["data"]
+        assert compact["away_logo_asset"]["asset_id"] == data["away_logo_asset"]["asset_id"]
+        assert compact["away_logo_asset"]["sha256"] == data["away_logo_asset"]["sha256"]
+        assert "away_logo" not in compact
+        assert "url" not in compact["away_logo_asset"]
         asset = data["away_logo_asset"]
         assert asset["state"] == "ready" and len(calls) == 1
         response = client.get(asset["url"])
@@ -53,7 +59,7 @@ def test_mini_asset_contract_prepares_once_and_serves_checked_immutable_bytes(tm
         assert "immutable" in response.headers["Cache-Control"]
         assert client.get(asset["url"], headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
         assert client.get("/api/v2/assets/mini-sports/not-a-hash.mts").status_code == 404
-        full = client.get("/api/v2/tickers/pi/data").get_json()
+        full = client.get("/api/v2/tickers/pi/data", headers={"X-Device-Token": "a" * 64}).get_json()
         assert "away_logo_asset" not in full["content"]["sports"][0]["data"]
     finally:
         application.close()

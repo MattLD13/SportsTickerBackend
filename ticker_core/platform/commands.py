@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
@@ -60,7 +61,10 @@ class SubprocessPlatformCommands:
     def run_update(self, command: Sequence[str]) -> None:
         if not command:
             raise ValueError("Update command must not be empty.")
-        self._spawn(list(command))
+        environment = ["--setenv=" + key + "=" + value for key, value in os.environ.items()
+                       if key in {"TICKER_DATA_DIR", "TICKER_BACKEND_URL", "TICKER_DEVICE_TOKEN_FILE",
+                                  "TICKER_RELEASE_ROOT", "TICKER_RELEASE_LINK", "TICKER_FRAME_HEALTH_PATH"}]
+        self._run(["systemd-run", "--collect", "--unit=sports-ticker-updater", *environment, *command], check=True)
 
     def list_wifi_networks(self) -> list[WiFiNetwork]:
         result = self._run(

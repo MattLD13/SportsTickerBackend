@@ -36,6 +36,7 @@ def _register_mini(client, ticker_id: str = "mini-firmware") -> dict:
                 "capabilities": {"modes": ["sports"], "asset_cache": False, "ota": True},
             },
         },
+        headers={"X-Device-Token": "a" * 64},
     )
     assert response.status_code == 201
     return response.get_json()
@@ -47,7 +48,7 @@ def test_device_can_fetch_matching_manifest_by_existing_ticker_identity(tmp_path
         client = app.test_client()
         _register_mini(client)
 
-        response = client.get("/api/v2/tickers/mini-firmware/firmware?version=mini-1.2.0")
+        response = client.get("/api/v2/tickers/mini-firmware/firmware?version=mini-1.2.0", headers={"X-Device-Token": "a" * 64})
 
         assert response.status_code == 200
         assert response.get_json() == {
@@ -84,7 +85,7 @@ def test_manifest_rejects_unknown_release_and_mismatched_hardware(tmp_path) -> N
         client = app.test_client()
         _register_mini(client)
 
-        assert client.get("/api/v2/tickers/mini-firmware/firmware?version=missing").status_code == 404
+        assert client.get("/api/v2/tickers/mini-firmware/firmware?version=missing", headers={"X-Device-Token": "a" * 64}).status_code == 404
 
         incompatible = FirmwareManifest(
             version=MANIFEST.version,
@@ -103,7 +104,7 @@ def test_manifest_rejects_unknown_release_and_mismatched_hardware(tmp_path) -> N
         try:
             incompatible_client = incompatible_app.test_client()
             _register_mini(incompatible_client, "mini-incompatible")
-            response = incompatible_client.get("/api/v2/tickers/mini-incompatible/firmware")
+            response = incompatible_client.get("/api/v2/tickers/mini-incompatible/firmware", headers={"X-Device-Token": "a" * 64})
             assert response.status_code == 409
         finally:
             incompatible_app.extensions["sports_ticker.backend_application"].close()

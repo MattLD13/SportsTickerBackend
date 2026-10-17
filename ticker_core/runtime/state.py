@@ -391,8 +391,11 @@ class TickerRuntime:
             self._queue_events(_value(response, "alerts", ()), self._alerts, self._seen_alerts, self.config.alert_dedupe_age)
             self._queue_events(_value(response, "news", ()), self._news, self._seen_news, self.config.news_dedupe_age)
             update_version = str(_value(response, "update_version", "") or "").strip()
-            if update_version and (self._update is None or self._update.version != update_version):
-                self._update = UpdateRequest(update_version)
+            if not update_version:
+                self.finish_update()
+            update_id = str(_value(response, "update_request_id", "") or "")
+            if update_version and (self._update is None or self._update.command_id != update_id or self._update.version != update_version):
+                self._update = UpdateRequest(update_version, update_id)
                 self._update_request_pending = True
                 self._update_started_at = now
         return snapshot

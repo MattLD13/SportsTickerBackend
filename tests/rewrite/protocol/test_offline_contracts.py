@@ -154,7 +154,7 @@ def test_registration_contract_matches_route_defaults_and_normalization():
         ]
         for request in requests:
             validate("device-registration-request", request)
-            response = client.post("/api/v2/devices/register", json=request)
+            response = client.post("/api/v2/devices/register", json=request, headers={"X-Device-Token": "a" * 64})
             assert response.status_code == 201
             document = response.get_json()
             validate("device-registration-response", document)
@@ -163,12 +163,12 @@ def test_registration_contract_matches_route_defaults_and_normalization():
             assert document["ticker"]["profile"]["product_family"] == (
                 "mini" if request["device_id"] == "mini-contract" else "full"
             )
-            validate("display-response", client.get(f"/api/v2/tickers/{document['ticker_id']}/data").get_json())
-        repeat = client.post("/api/v2/devices/register", json=requests[0])
+            validate("display-response", client.get(f"/api/v2/tickers/{document['ticker_id']}/data", headers={"X-Device-Token": "a" * 64}).get_json())
+        repeat = client.post("/api/v2/devices/register", json=requests[0], headers={"X-Device-Token": "a" * 64})
         assert repeat.status_code == 200
         validate("device-registration-response", repeat.get_json())
         for invalid in ({"device_id": " "}, {"device_id": "x", "unknown": True}, {"device_id": "x", "metadata": []}):
-            assert client.post("/api/v2/devices/register", json=invalid).status_code == 400
+            assert client.post("/api/v2/devices/register", json=invalid, headers={"X-Device-Token": "a" * 64}).status_code == 400
             with pytest.raises(AssertionError):
                 validate("device-registration-request", invalid)
     finally:

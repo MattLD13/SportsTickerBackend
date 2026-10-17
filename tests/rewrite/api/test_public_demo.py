@@ -131,6 +131,7 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
         client.post(
             "/api/v2/devices/register",
             json={"device_id": "private-pi", "name": "Private", "metadata": {}},
+            headers={"X-Device-Token": "a" * 64},
         )
 
         for route in ("/", "/demo", "/demo/portfolio"):
@@ -247,6 +248,7 @@ def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_pa
         registration = client.post(
             "/api/v2/devices/register",
             json={"device_id": "test-device", "name": "Living Room", "metadata": {}},
+            headers={"X-Device-Token": "a" * 64},
         ).get_json()
         ticker_id = registration["ticker_id"]
 
@@ -312,6 +314,7 @@ def test_public_demo_sports_keeps_hardware_ads_off_server(tmp_path) -> None:
         registration = client.post(
             "/api/v2/devices/register",
             json={"device_id": "test-device", "name": "Living Room", "metadata": {}},
+            headers={"X-Device-Token": "a" * 64},
         ).get_json()
         ticker_id = registration["ticker_id"]
         backend = app.extensions["sports_ticker.backend_application"]

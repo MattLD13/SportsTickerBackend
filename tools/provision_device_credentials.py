@@ -21,6 +21,22 @@ def mini_digest(port: str, identity: str) -> str:
     filename = hashlib.sha256(identity.encode()).hexdigest() + ".token"
     token = load_device_token(directory / filename)
     with serial.Serial(port, 115200, timeout=0.1, write_timeout=2) as connection:
+        deadline = time.monotonic() + 60
+        incoming = bytearray()
+        validated = False
+        while time.monotonic() < deadline and not validated:
+            connection.write(b"STATS\n")
+            sample_until = time.monotonic() + .5
+            while time.monotonic() < sample_until:
+                incoming.extend(connection.read(min(4096, connection.in_waiting or 1)))
+                while b"\n" in incoming:
+                    raw, _, incoming = incoming.partition(b"\n")
+                    marker = raw.find(b"MINI_STATS:")
+                    if marker >= 0:
+                        stats = json.loads(raw[marker + 11:])
+                        validated = stats["display"]["update"]["boot_validated"]
+        if not validated:
+            raise RuntimeError("The Mini has not confirmed a healthy boot")
         connection.write(("AUTHSET:" + token + "\n").encode("ascii"))
         incoming = bytearray()
         deadline = time.monotonic() + 20

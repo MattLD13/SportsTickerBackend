@@ -27,6 +27,7 @@ from ticker_core.platform import (
 )
 from ticker_core.platform.frame_health import PresentedFrameHealth
 from ticker_core.platform.device_credentials import load_device_token
+from ticker_core.platform.update_journal import UpdateJournal
 from ticker_core.protocol import BackendClient
 from ticker_core.rendering import FrameGeometry
 from ticker_core.runtime import FramePacer, TickerRuntime
@@ -84,6 +85,7 @@ def create_application() -> TickerApplication:
             telemetry=health.snapshot,
             profile=device_profile,
             registration_callback=partial(_persist_pairing_code, data_directory / "pairing_code.json"),
+            update_journal=UpdateJournal(data_directory),
         ),
         cache=ShortTermContentCache(data_directory / "content" / "last-good.json"),
         assets=assets,

@@ -1,0 +1,18 @@
+{
+  "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/dal.png": {
+    "file": "nfl-dal.png",
+    "sha256": "f4ea9a2ec7d7d500f08db94c8c6f1b23f75361ffe39c4d4b480a684a511ce61e"
+  },
+  "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/nyg.png": {
+    "file": "nfl-nyg.png",
+    "sha256": "62e361850e7ba3a50dfd09cbb38429e994d1c23b0f999c74421f10e37c7067e7"
+  },
+  "https://a.espncdn.com/i/teamlogos/mlb/500/scoreboard/nyy.png": {
+    "file": "mlb-nyy.png",
+    "sha256": "d98856c36bc8d3b0fb0bab5fabd79d2ae057619164365845cbc817b04ae74a26"
+  },
+  "https://a.espncdn.com/i/teamlogos/mlb/500/scoreboard/bos.png": {
+    "file": "mlb-bos.png",
+    "sha256": "471966c3b3f4ab7b567b9cd29e7eefc138963182e98b31c01c922335ad265597"
+  }
+}

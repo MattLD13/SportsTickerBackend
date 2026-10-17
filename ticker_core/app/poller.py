@@ -85,6 +85,7 @@ class BackendPoller:
         profile: Mapping[str, Any] | None = None,
         heartbeat_interval: float = 30.0,
         registration_callback: Callable[[object], None] | None = None,
+        update_journal: object | None = None,
     ) -> None:
         if not device_id:
             raise ValueError("A device id is required.")
@@ -99,6 +100,7 @@ class BackendPoller:
         self._profile = dict(profile or {})
         self._heartbeat_interval = heartbeat_interval
         self._registration_callback = registration_callback
+        self._update_journal = update_journal
 
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
         """Bootstrap over HTTP, then receive sequenced updates over WebSocket."""
@@ -125,6 +127,7 @@ class BackendPoller:
                     if self._registration_callback is not None:
                         self._registration_callback(registration_result)
                     registered = True
+                    self._flush_update_result()
                 if not bootstrapped:
                     payload = self._client.fetch_data(self._device_id)
                     previous_payload = payload
@@ -149,7 +152,7 @@ class BackendPoller:
                         reconnect=stream_attempts > 1,
                         error_type=type(error).__name__,
                     ))
-                if isinstance(error, BackendHttpError) and error.status_code == 404:
+                if (isinstance(error, BackendHttpError) and error.status_code in {403, 404}) or (isinstance(error, websocket.WebSocketBadStatusException) and error.status_code == 403):
                     registered = False
                     previous_payload = None
                     bootstrapped = False
@@ -214,7 +217,7 @@ class BackendPoller:
                     reconnect=stream_attempts > 1,
                     error_type=type(error).__name__,
                 ))
-                if isinstance(error, BackendHttpError) and error.status_code == 404:
+                if (isinstance(error, BackendHttpError) and error.status_code in {403, 404}) or (isinstance(error, websocket.WebSocketBadStatusException) and error.status_code == 403):
                     registered = False
                     previous_payload = None
                     bootstrapped = False
@@ -246,6 +249,7 @@ class BackendPoller:
     def _send_heartbeat(self) -> None:
         """Report device facts without turning heartbeat failure into link loss."""
 
+        self._flush_update_result()
         heartbeat = getattr(self._client, "heartbeat", None)
         if not callable(heartbeat):
             return
@@ -254,6 +258,13 @@ class BackendPoller:
             heartbeat(self._device_id, metadata)
         except Exception:
             return
+
+    def _flush_update_result(self) -> None:
+        if self._update_journal is not None:
+            try:
+                self._update_journal.flush(self._client, self._device_id)
+            except Exception:
+                pass
 
     def _telemetry_metadata(self) -> dict[str, Any]:
         """Copy bounded device facts for registration and heartbeat requests."""

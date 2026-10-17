@@ -70,6 +70,7 @@ bool updateFromPayload(const ResponseBody& body) {
 
 void applyDataResponse(const NetworkJob& job) {
   lastDataStatus = job.status;
+  if (job.status == 401 || job.status == 403 || job.status == 404) registered = false;
   if (job.reusedConnection) ++reusedDataConnections;
   else ++freshDataConnections;
   lastDataExpired = job.expired;

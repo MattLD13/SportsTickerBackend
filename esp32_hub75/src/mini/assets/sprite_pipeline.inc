@@ -2,22 +2,23 @@
 #include "mini_sprite.h"
 #include "logo_residency.h"
 
-bool ensureRuntimeLogo(const String& key, uint32_t generation) {
+bool ensureRuntimeLogo(const String& key, bool allowDownload) {
   mini_sprite::Reference reference;
   if (!mini_sprite::parseReference(key.c_str(), reference)) return false;
   xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-  if (!mini_sprite::acceptLogoResult(generation, logoPlanGeneration, key, logoWorkPrimary, logoWorkCount)) {
+  if (!mini_sprite::plannedLogo(key, logoWorkPrimary, logoWorkCount)) {
     xSemaphoreGive(logoWorkMutex);
     return false;
   }
   const bool cached = spriteAssets.pinCached(key);
   xSemaphoreGive(logoWorkMutex);
   if (cached) return true;
-  for (uint8_t index = 0; index < logoRetryCount; ++index) {
+  for (uint8_t index = 0; allowDownload && index < logoRetryCount; ++index) {
     if (logoRetryUrls[index] == key && static_cast<int32_t>(millis() - logoRetryAfter[index]) < 0) return false;
   }
   uint8_t bytes[mini_sprite::kBytes];
-  if (!spriteAssets.load(key, bytes)) {
+  if (!(allowDownload ? spriteAssets.load(key, bytes) : spriteAssets.loadCached(key, bytes))) {
+      if (!allowDownload) return false;
       uint8_t slot = 0;
       for (; slot < logoRetryCount; ++slot) if (logoRetryUrls[slot] == key) break;
       if (slot == logoRetryCount) slot = logoRetryCount < LOGO_FAILURE_SLOTS ? logoRetryCount++ : logoRetryIndex++ % LOGO_FAILURE_SLOTS;
@@ -29,7 +30,7 @@ bool ensureRuntimeLogo(const String& key, uint32_t generation) {
       return false;
     }
   xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-  if (!mini_sprite::acceptLogoResult(generation, logoPlanGeneration, key, logoWorkPrimary, logoWorkCount)) {
+  if (!mini_sprite::plannedLogo(key, logoWorkPrimary, logoWorkCount)) {
     xSemaphoreGive(logoWorkMutex);
     return false;
   }
@@ -105,12 +106,14 @@ void logoWorkerTask(void* parameter) {
       const uint8_t count = logoWorkCount;
       for (uint8_t index = 0; index < count; ++index) keys[index] = logoWorkPrimary[index];
       xSemaphoreGive(logoWorkMutex);
+      for (uint8_t index = 0; index < count; ++index) ensureRuntimeLogo(keys[index], false);
       for (uint8_t index = 0; index < count; ++index) {
         xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
         const bool stale = logoWorkerPending || logoPlanGeneration != generation;
         xSemaphoreGive(logoWorkMutex);
         if (stale) break;
-        ensureRuntimeLogo(keys[index], generation);
+        ensureRuntimeLogo(keys[index], true);
+        delay(1);
       }
       xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
       if (!logoWorkerPending && logoPlanGeneration == generation) {

@@ -18,10 +18,10 @@ def test_update_request_launches_once_until_finished() -> None:
     commands = Commands()
     service = OtaUpdaterService(commands, executable="python", updater_path="/opt/ticker/updater.py")
 
-    assert service.request_update("r100") is True
-    assert service.request_update("r100") is False
+    assert service.request_update("r100", command_id="attempt", ticker_id="six") is True
+    assert service.request_update("r100", command_id="attempt", ticker_id="six") is False
     assert service.state().active is True
-    assert commands.commands == [("python", "/opt/ticker/updater.py", "--no-display")]
+    assert commands.commands == [("python", "/opt/ticker/updater.py", "--version", "r100", "--command-id", "attempt", "--ticker-id", "six")]
 
 
 def test_updater_compiles_runtime_packages_before_activation(tmp_path: Path) -> None:

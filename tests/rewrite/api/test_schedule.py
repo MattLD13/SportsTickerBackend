@@ -19,6 +19,7 @@ def _register_and_exchange(client, ticker_id: str) -> str:
     registration = client.post(
         "/api/v2/devices/register",
         json={"device_id": ticker_id, "name": ticker_id, "metadata": {}},
+        headers={"X-Device-Token": "a" * 64},
     )
     assert registration.status_code == 201
     exchange = client.post(
@@ -205,7 +206,7 @@ def test_schedule_uses_ticker_timezone_condition_precedence_and_expiry(tmp_path)
         assert status["live_games"] == 1
         assert backend.schedule_status("other-effective-pi")["source"] == "base"
         assert backend.schedule_status("other-effective-pi")["sports_filter"] == "all"
-        projected = client.get("/api/v2/tickers/effective-pi/data")
+        projected = client.get("/api/v2/tickers/effective-pi/data", headers={"X-Device-Token": "a" * 64})
         assert projected.status_code == 200
         assert projected.get_json()["settings"]["sports_filter"] == "live"
         assert projected.get_json()["meta"]["schedule"]["source"] == "condition"

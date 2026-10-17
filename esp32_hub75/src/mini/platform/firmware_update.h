@@ -43,7 +43,7 @@ class FirmwareUpdater {
   bool transferActive();
   void observe(JsonVariantConst command, bool registered, bool pairingMode, const String& tickerId);
   void initialize();
-  void applyAckResponse(const NetworkJob& job);
+  void applyResultResponse(const NetworkJob& job);
   bool tick(uint32_t now, bool registered, const String& tickerId, bool displayHealthy);
   bool bootValidated() const { return firmwareUpdateBootValidated; }
   int bootState() const { return firmwareUpdateBootState; }
@@ -57,12 +57,12 @@ class FirmwareUpdater {
   bool copyFirmwareUpdateVersion(const char* source, String& destination);
   bool parseFirmwareManifest(const String& body, const String& requestedVersion, FirmwareManifestPayload& manifest);
   bool fetchFirmwareManifest(const String& requestedVersion, FirmwareManifestPayload& manifest);
-  void abortFirmwareWrite();
-  bool verifyFirmwareImage(const esp_partition_t* target);
   bool downloadFirmware(const FirmwareManifestPayload& manifest);
   void finishFirmwareUpdateTask(bool success, const char* detail);
   void runTask();
-  void acknowledgeConfirmedFirmware(bool registered, const String& tickerId);
+  void reportFirmwareResult(bool registered, const String& tickerId);
+  bool saveTrial(const String& version, const char* status, const char* reason);
+  bool confirmServerAttempt(const String& version);
   Preferences& preferences_;
   NetworkGate& gate_;
   NetworkWorker& worker_;
@@ -76,7 +76,6 @@ class FirmwareUpdater {
   char firmwareUpdateRequestedVersion[64] = {};
   char firmwareUpdateFailedVersion[64] = {};
   char firmwareUpdateDetail[24] = {};
-  char firmwareUpdateConfirmedVersion[64] = {};
   bool firmwareUpdateTaskRunning = false;
   bool firmwareUpdateBootChecked = false;
   bool firmwareUpdateBootValidated = false;
@@ -84,6 +83,7 @@ class FirmwareUpdater {
   int firmwareUpdateBootStateError = ESP_ERR_INVALID_STATE;
   bool firmwareUpdateAcknowledged = false;
   String firmwareUpdateReceiptCommandId;
+  String resultVersion_, resultStatus_, resultReason_;
   uint32_t firmwareUpdateLastAckAt = 0;
   uint32_t firmwareUpdateFailureAt = 0;
   uint32_t firmwareUpdateLastFrameAt = 0;

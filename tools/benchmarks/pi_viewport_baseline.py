@@ -223,7 +223,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=ROOT / "previews/benchmarks/pi-baseline")
     parser.add_argument("--frames", type=int, default=6000)
     parser.add_argument("--paced-frames", type=int, default=300)
-    parser.add_argument("--case", type=int, choices=(1, 10, 60))
+    parser.add_argument("--case", type=int, choices=(1, 10, 15, 60))
     args = parser.parse_args()
     assert args.frames > 0 and args.paced_frames > 0
     if args.case:

@@ -30,7 +30,7 @@ struct TickerSwitcherView: View {
                                     .foregroundColor(device.id == vm.activeTicker?.id ? .blue : .secondary)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(device.name).foregroundColor(.primary)
-                                    let family = device.profile?.product_family.uppercased() ?? "TICKER"
+                                    let family = device.profile?.displayName.uppercased() ?? "TICKER"
                                     let dimensions = device.profile.map { "\($0.display.width)×\($0.display.height)" } ?? ""
                                     Text([family, dimensions].filter { !$0.isEmpty }.joined(separator: " • "))
                                         .font(.caption)
@@ -160,7 +160,7 @@ struct DeviceRow: View {
                     Text(device.name).font(.headline).foregroundColor(.white)
                     Text("ID: \(device.id.prefix(8))...").font(.caption).foregroundColor(.gray)
                     if let profile = device.profile {
-                        Text("\(profile.product_family.uppercased()) • \(profile.display.width)×\(profile.display.height)")
+                        Text("\(profile.displayName.uppercased()) • \(profile.display.width)×\(profile.display.height)")
                             .font(.caption2)
                             .foregroundColor(.blue.opacity(0.8))
                     }

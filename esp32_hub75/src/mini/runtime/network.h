@@ -7,9 +7,15 @@
 
 class BackendHttpSession;
 
-enum class NetworkKind { Registration, DevicePoll, FirmwareAck, AuthCheck };
+struct AssetTransfer {
+  int status = 0;
+  uint32_t durationMs = 0, heapBefore = 0, heapDuring = 0, largestDuring = 0;
+  bool reused = false;
+};
 
-// The display task transfers ownership through two bounded queues.
+enum class NetworkKind { Registration, DevicePoll, FirmwareResult, AuthCheck, AssetGet };
+
+// Main jobs return through the result queue. Asset jobs signal their waiting owner.
 struct NetworkJob {
   NetworkKind kind;
   String url, request, identity, command, deviceToken;
@@ -19,6 +25,8 @@ struct NetworkJob {
   String errorStage, resolvedAddress;
   uint32_t durationMs = 0;
   uint32_t gateWaitMs = 0, headersMs = 0, bodyMs = 0;
+  SemaphoreHandle_t completion = nullptr;
+  uint32_t heapBefore = 0, heapDuring = 0, largestDuring = 0;
   bool expired = false;
   bool reusedConnection = false;
   bool requireFreshConnection = false;
@@ -33,7 +41,8 @@ struct NetworkJob {
 
 // The caller owns jobs before enqueue and after takeResult.
 // enqueue consumes each non-null job, including rejected jobs.
-// Instances must outlive their background tasks. Queue methods run on the display task.
+// Instances must outlive their tasks. The display task owns enqueue and takeResult.
+// One asset task uses fetchAsset and retains its job until completion.
 class NetworkWorker {
  public:
   explicit NetworkWorker(NetworkGate& gate, const String& deviceToken) : gate_(gate), deviceToken_(deviceToken) {}
@@ -43,6 +52,7 @@ class NetworkWorker {
   bool available() const;
   bool enqueue(NetworkJob* job);
   NetworkJob* takeResult();
+  bool fetchAsset(const String& url, uint8_t* bytes, size_t expectedBytes, AssetTransfer& transfer);
 
  private:
   static void taskEntry(void* context);

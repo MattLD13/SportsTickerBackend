@@ -562,21 +562,14 @@ class TickerApplication:
         request = self._runtime.take_update_request()
         if request is None or self._update_latched:
             return
-        acknowledge = getattr(self._client, "acknowledge_update", None)
-        if not callable(acknowledge):
+        if not request.command_id or self._update_service is None:
             return
         try:
-            result = acknowledge(self._device_id, request.version)
+            self._update_latched = self._update_service.request_update(
+                request.version, command_id=request.command_id, ticker_id=self._device_id,
+            )
         except Exception as error:
-            self._logger.record_issue("update_ack", error, version=request.version)
-            return
-        if not bool(result.get("acknowledged")):
-            return
-        self._update_latched = True
-        if self._update_service is not None:
-            self._update_service.request_update(request.version)
-            return
-        self._commands.run_update(self._update_command)
+            self._logger.record_issue("update_start", error, version=request.version)
 
     def _launch_requested_reboot(self) -> None:
         """Acknowledge one server reboot command, then restart the host once."""

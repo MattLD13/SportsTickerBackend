@@ -15,6 +15,7 @@ def test_dashboard_shell_does_not_render_fleet_before_controller_token(tmp_path)
         client.post(
             "/api/v2/devices/register",
             json={"device_id": "private-pi", "name": "Private", "metadata": {}},
+            headers={"X-Device-Token": "a" * 64},
         )
 
         response = client.get("/dashboard")

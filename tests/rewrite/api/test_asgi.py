@@ -208,7 +208,7 @@ def test_asgi_preserves_http_health_security_and_mutation_contracts(tmp_path, mo
     flask = create_backend_application(tmp_path / "asgi.sqlite3", [], scheduler=None, clock=lambda: 1000)
     adapted = asgi.BackendASGI(flask)
     client = flask.test_client()
-    registered = client.post("/api/v2/devices/register", json={"device_id": "asgi-device"}).get_json()
+    registered = client.post("/api/v2/devices/register", json={"device_id": "asgi-device"}, headers={"X-Device-Token": "a" * 64}).get_json()
     paired = client.post("/api/v2/pairings/exchange", json={"pairing_code": registered["pairing_code"]}).get_json()
     auth = ((b"authorization", f"Bearer {paired['controller_token']}".encode()),)
 

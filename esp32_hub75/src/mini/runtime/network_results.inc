@@ -23,6 +23,6 @@ void pollNetworkResults() {
     serializeJson(result, Serial);
     Serial.println();
   }
-  else if (job->kind == NetworkKind::FirmwareAck) firmwareUpdater.applyAckResponse(*job);
+  else if (job->kind == NetworkKind::FirmwareResult) firmwareUpdater.applyResultResponse(*job);
   delete job;
 }

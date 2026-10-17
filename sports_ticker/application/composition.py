@@ -17,6 +17,7 @@ from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import DeviceMetadata, TickerProfile, TickerRecord, TickerRepository
 from sports_ticker.providers import ProviderHealth
 from sports_ticker.projections import project_data_v2, select_display_content
+from sports_ticker.projections.device_data import project_device_data, compact_mini_data
 
 from .events import EventService, event_to_mapping
 from .scheduler import RefreshScheduler, SchedulerHealth
@@ -118,6 +119,7 @@ class BackendApplication:
         metadata: Mapping[str, Any] | None = None,
         profile: Mapping[str, Any] | TickerProfile | None = None,
         pairing_code: str | None = None,
+        credential_hash: str | None = None,
     ) -> tuple[TickerRecord, str | None, bool]:
         """Create or refresh one device-owned ticker and its pairing session code."""
 
@@ -134,6 +136,7 @@ class BackendApplication:
             try:
                 current = self.create_ticker(
                     identifier,
+                    credential_hash=credential_hash,
                     name=str(name).strip() or "Ticker",
                     display_settings={"mode": "sports"},
                     pairing={"paired": False},
@@ -147,7 +150,11 @@ class BackendApplication:
         if current is None:
             raise KeyError(identifier)
 
-        current = self.heartbeat(identifier, {"metadata": device_metadata})
+        if credential_hash is not None and not self.repository.authorize_device_hash(identifier, credential_hash):
+            raise PermissionError("device authorization is invalid")
+        if credential_hash is not None and not created and current.profile.product_family != device_profile.product_family:
+            raise ValueError("registered product family cannot change")
+        current = self.heartbeat(identifier, {"metadata": device_metadata}, registration=True)
         self._ensure_display_snapshot(current)
         current, response_pairing_code = self._device_pairing_record(identifier, pairing_code)
         return current, response_pairing_code, created
@@ -300,6 +307,7 @@ class BackendApplication:
         display_settings: DisplaySettings | Mapping[str, Any] | None = None,
         pairing: Mapping[str, Any] | None = None,
         device: Mapping[str, Any] | None = None,
+        credential_hash: str | None = None,
     ) -> TickerRecord:
         """Create one configured ticker."""
 
@@ -309,6 +317,7 @@ class BackendApplication:
             name=name,
             pairing=pairing,
             device=device,
+            credential_hash=credential_hash,
         )
         self._register_scheduler_ticker(ticker.ticker_id)
         return ticker
@@ -455,6 +464,7 @@ class BackendApplication:
         meta: Mapping[str, Any] | None = None,
         *,
         mode: str | None = None,
+        device_view: bool = False,
     ) -> dict[str, Any]:
         """Project one snapshot with active durable events appended."""
 
@@ -494,6 +504,8 @@ class BackendApplication:
             settings,
             allowed_modes=ticker.profile.capabilities.modes,
         )
+        if device_view:
+            data = project_device_data(data)
         if (
             self.mini_sprites is not None and ticker.profile.product_family == "mini"
             and ticker.device.metadata.get("mini_sprite_protocol") == 1
@@ -537,7 +549,7 @@ class BackendApplication:
         event_payload["news"] = list(event_payload["news"])
         for event in events:
             event_payload[event.event_type].append(event_to_mapping(event))
-        return data
+        return compact_mini_data(data) if device_view and ticker.profile.product_family == "mini" else data
 
     def get_data(self, ticker_id: str, meta: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Return one projected ticker data response."""
@@ -559,7 +571,7 @@ class BackendApplication:
 
         return self.event_service.acknowledge(ticker_id, event_id)
 
-    def heartbeat(self, ticker_id: str, payload: Mapping[str, Any]) -> TickerRecord:
+    def heartbeat(self, ticker_id: str, payload: Mapping[str, Any], *, registration: bool = False) -> TickerRecord:
         """Persist one device heartbeat and return the updated ticker."""
 
         current = self.repository.get_ticker(ticker_id)
@@ -575,17 +587,12 @@ class BackendApplication:
             }
         if not isinstance(raw_metadata, Mapping):
             raise ValueError("metadata must be an object")
-        metadata = dict(current.device.metadata)
-        metadata.update(
-            {
-                key: value
-                for key, value in raw_metadata.items()
-                if key not in {"last_seen", "last_seen_at"}
-            }
-        )
-
-        device = DeviceMetadata(last_seen_at=self._clock(), metadata=metadata)
-        return self.repository.update_ticker(ticker_id, device=device)
+        reserved = {"pending_commands", "pending_update", "pending_reboot", "last_update_result"}
+        if not registration:
+            reserved.add("profile")
+        if reserved.intersection(raw_metadata):
+            raise ValueError("device telemetry contains server-owned fields")
+        return self.repository.merge_device_telemetry(ticker_id, raw_metadata, now=self._clock())
 
     def request_update(self, ticker_id: str, version: str) -> TickerRecord:
         """Persist one pending controller update for the target ticker."""
@@ -597,29 +604,7 @@ class BackendApplication:
         release = str(version).strip()
         if not release:
             raise ValueError("update version must not be empty")
-        metadata = self._queue_command_metadata(current, "update", {"version": release})
-        return self.repository.update_ticker(
-            identifier,
-            device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
-        )
-
-    def acknowledge_update(self, ticker_id: str, version: str) -> bool:
-        """Clear the matching pending update before the Pi restarts itself."""
-
-        identifier = str(ticker_id).strip()
-        current = self.repository.get_ticker(identifier)
-        if current is None:
-            raise KeyError(identifier)
-        metadata = dict(current.device.metadata)
-        command = self._find_command(metadata, "update", lambda payload: str(payload.get("version") or "") == str(version).strip())
-        if command is None:
-            return False
-        self._remove_command(metadata, command["id"])
-        self.repository.update_ticker(
-            identifier,
-            device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
-        )
-        return True
+        return self.repository.updates.queue(identifier, release, self._clock())
 
     def request_reboot(self, ticker_id: str) -> TickerRecord:
         """Persist one reboot command for the target controller."""
@@ -668,14 +653,10 @@ class BackendApplication:
         commands = [item for item in commands if str(item.get("type") or "") != command_type]
         commands.append(command)
         metadata["pending_commands"] = commands
-        if command_type == "update":
-            metadata["pending_update"] = dict(payload)
-        elif command_type == "reboot":
-            metadata["pending_reboot"] = {"id": command["id"]}
         return metadata
 
     def _active_commands(self, ticker: TickerRecord) -> tuple[Mapping[str, Any], ...]:
-        """Return unexpired durable commands, migrating legacy metadata on read."""
+        """Return unexpired durable commands."""
 
         raw = ticker.device.metadata.get("pending_commands", ())
         now = self._clock()
@@ -692,13 +673,6 @@ class BackendApplication:
                     except (TypeError, ValueError):
                         continue
                 commands.append(dict(item))
-        if not commands:
-            legacy_update = ticker.device.metadata.get("pending_update")
-            legacy_reboot = ticker.device.metadata.get("pending_reboot")
-            if isinstance(legacy_update, Mapping):
-                commands.append({"id": "legacy-update", "type": "update", "payload": dict(legacy_update), "expires_at": None})
-            if isinstance(legacy_reboot, Mapping):
-                commands.append({"id": str(legacy_reboot.get("id") or "legacy-reboot"), "type": "reboot", "payload": {}, "expires_at": None})
         return tuple(commands)
 
     @staticmethod
@@ -711,11 +685,6 @@ class BackendApplication:
     ) -> Mapping[str, Any] | None:
         raw = metadata.get("pending_commands", ())
         items = list(raw) if isinstance(raw, (list, tuple)) else []
-        if not items:
-            if command_type == "update" and isinstance(metadata.get("pending_update"), Mapping):
-                items = [{"id": "legacy-update", "type": "update", "payload": metadata["pending_update"]}]
-            elif command_type == "reboot" and isinstance(metadata.get("pending_reboot"), Mapping):
-                items = [{"id": metadata["pending_reboot"].get("id"), "type": "reboot", "payload": {}}]
         for item in items:
             if not isinstance(item, Mapping) or str(item.get("type") or "") != command_type:
                 continue
@@ -728,14 +697,12 @@ class BackendApplication:
 
     @staticmethod
     def _remove_command(metadata: dict[str, Any], command_id: object) -> None:
-        """Remove one acknowledged command and its legacy compatibility field."""
+        """Remove one acknowledged command."""
 
         identifier = str(command_id)
         raw = metadata.get("pending_commands", ())
         if isinstance(raw, (list, tuple)):
             metadata["pending_commands"] = [item for item in raw if not isinstance(item, Mapping) or str(item.get("id") or "") != identifier]
-        metadata.pop("pending_update", None)
-        metadata.pop("pending_reboot", None)
 
     def _maximum_live_delay(self) -> float:
         """Return the event retention needed by every delayed ticker."""

@@ -23,6 +23,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from tools.device_auth import device_headers
 from ticker_core import RenderContext
 from ticker_core.assets import AssetPlanner
 from ticker_core.modes import DisplayMode, display_mode
@@ -56,6 +57,7 @@ def load_snapshot(
     endpoint: str,
     mode: str,
     timeout: float,
+    token_file: Path | None = None,
 ) -> dict[str, Any]:
     """Load one raw backend response from disk or HTTP."""
     if snapshot_path is not None:
@@ -65,7 +67,7 @@ def load_snapshot(
             raise ValueError(f"Cannot read snapshot {snapshot_path}: {error}") from error
     else:
         target = urljoin(url.rstrip('/') + '/', endpoint.lstrip('/'))
-        response = requests.get(target, timeout=timeout)
+        response = requests.get(target, timeout=timeout, headers=device_headers(token_file))
         response.raise_for_status()
         data = response.json()
     return normalize_snapshot(data, mode)
@@ -180,6 +182,7 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, help="Read a backend JSON snapshot from this file.")
     parser.add_argument("--url", default=DEFAULT_BACKEND_URL, help="Backend base URL when --snapshot is absent.")
     parser.add_argument("--endpoint", default="", help="Override the V2 data endpoint.")
+    parser.add_argument("--device-token-file", type=Path, help="Read this device credential for a live render.")
     parser.add_argument("--ticker-id", default="", help="Ticker id for the V2 data request.")
     parser.add_argument("--mode", choices=[str(value) for value in DisplayMode], default="sports")
     parser.add_argument("--item-id", default="", help="Render this content item id.")
@@ -194,7 +197,7 @@ def main() -> int:
         endpoint = arguments.endpoint or f"/api/v2/tickers/{arguments.ticker_id}/data"
         if arguments.snapshot is None and not arguments.ticker_id and not arguments.endpoint:
             raise ValueError("Provide --ticker-id when loading from a backend.")
-        snapshot = load_snapshot(arguments.snapshot, arguments.url, endpoint, arguments.mode, 10.0)
+        snapshot = load_snapshot(arguments.snapshot, arguments.url, endpoint, arguments.mode, 10.0, arguments.device_token_file)
         image = render_snapshot(snapshot, arguments.mode, item_id=arguments.item_id, index=arguments.index, now=arguments.datetime, asset_directory=arguments.assets, prefetch=not arguments.no_prefetch, pinned=arguments.pinned)
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         image.save(arguments.output)

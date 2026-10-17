@@ -1,0 +1,222 @@
+{
+  "pixels": {
+    "nfl-live-pane": "7a5d86514d2e932012d9945dd76d062fd0a1473fce484bbb65ba6df56ca4cba6",
+    "nfl-live-pinned": "f1c79e5e83b8224aff767c4c415b9ae693ff26995c0a35afb877813fed8b6d6f",
+    "mlb-live-pane": "282c2648dec618ae3778e8e601bb151995b1d1f0dbb3bf8c1edf5a7f63de0cad",
+    "mlb-live-pinned": "a37d88936db3c2fa4d483bae5af2d6ad2e6ebb7c37e3da07c52646179d1f2e8b"
+  },
+  "profiles": {
+    "ab5c178f5e0c76e3": {
+      "pillow": "11.1.0",
+      "freetype": "2.13.3",
+      "fonts": [
+        {
+          "role": "normal",
+          "name": [
+            "DejaVu Sans Mono",
+            "Bold"
+          ],
+          "size": 10,
+          "file": "DejaVuSansMono-Bold.ttf",
+          "sha256": "0d3c03d1b667192f91223660a3163325cf83132662fe4d9f7d6e596bf7a995c2"
+        },
+        {
+          "role": "medium",
+          "name": [
+            "DejaVu Sans Mono",
+            "Bold"
+          ],
+          "size": 12,
+          "file": "DejaVuSansMono-Bold.ttf",
+          "sha256": "0d3c03d1b667192f91223660a3163325cf83132662fe4d9f7d6e596bf7a995c2"
+        },
+        {
+          "role": "big",
+          "name": [
+            "DejaVu Sans Mono",
+            "Bold"
+          ],
+          "size": 14,
+          "file": "DejaVuSansMono-Bold.ttf",
+          "sha256": "0d3c03d1b667192f91223660a3163325cf83132662fe4d9f7d6e596bf7a995c2"
+        },
+        {
+          "role": "huge",
+          "name": [
+            "DejaVu Sans",
+            "Bold"
+          ],
+          "size": 20,
+          "file": "DejaVuSans-Bold.ttf",
+          "sha256": "a4c5bc453ca281d90ea079e596da7ae0dfeb5777497c29ec254e76d97ff6f890"
+        },
+        {
+          "role": "clock",
+          "name": [
+            "DejaVu Sans",
+            "Bold"
+          ],
+          "size": 28,
+          "file": "DejaVuSans-Bold.ttf",
+          "sha256": "a4c5bc453ca281d90ea079e596da7ae0dfeb5777497c29ec254e76d97ff6f890"
+        },
+        {
+          "role": "tiny",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 9,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "tiny_small",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 8,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "micro",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 7,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "nano",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 5,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "score_default",
+          "name": [
+            "Aileron",
+            "Regular"
+          ],
+          "size": 10,
+          "file": "Pillow embedded font",
+          "sha256": "69853909b940023570964e29cffe30da95aea8de3627736b5cd15ab30143169f"
+        }
+      ]
+    },
+    "cf7970630e0e9d70": {
+      "pillow": "12.0.0",
+      "freetype": "2.14.1",
+      "fonts": [
+        {
+          "role": "normal",
+          "name": [
+            "DejaVu Sans Mono",
+            "Bold"
+          ],
+          "size": 10,
+          "file": "DejaVuSansMono-Bold.ttf",
+          "sha256": "0d3c03d1b667192f91223660a3163325cf83132662fe4d9f7d6e596bf7a995c2"
+        },
+        {
+          "role": "medium",
+          "name": [
+            "DejaVu Sans Mono",
+            "Bold"
+          ],
+          "size": 12,
+          "file": "DejaVuSansMono-Bold.ttf",
+          "sha256": "0d3c03d1b667192f91223660a3163325cf83132662fe4d9f7d6e596bf7a995c2"
+        },
+        {
+          "role": "big",
+          "name": [
+            "DejaVu Sans Mono",
+            "Bold"
+          ],
+          "size": 14,
+          "file": "DejaVuSansMono-Bold.ttf",
+          "sha256": "0d3c03d1b667192f91223660a3163325cf83132662fe4d9f7d6e596bf7a995c2"
+        },
+        {
+          "role": "huge",
+          "name": [
+            "DejaVu Sans",
+            "Bold"
+          ],
+          "size": 20,
+          "file": "DejaVuSans-Bold.ttf",
+          "sha256": "a4c5bc453ca281d90ea079e596da7ae0dfeb5777497c29ec254e76d97ff6f890"
+        },
+        {
+          "role": "clock",
+          "name": [
+            "DejaVu Sans",
+            "Bold"
+          ],
+          "size": 28,
+          "file": "DejaVuSans-Bold.ttf",
+          "sha256": "a4c5bc453ca281d90ea079e596da7ae0dfeb5777497c29ec254e76d97ff6f890"
+        },
+        {
+          "role": "tiny",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 9,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "tiny_small",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 8,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "micro",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 7,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "nano",
+          "name": [
+            "DejaVu Sans Mono",
+            "Book"
+          ],
+          "size": 5,
+          "file": "DejaVuSansMono.ttf",
+          "sha256": "54bf827eb99404e8f430c330ad30f063334f637eba0109b6a18d4f566a8e9dd8"
+        },
+        {
+          "role": "score_default",
+          "name": [
+            "Aileron",
+            "Regular"
+          ],
+          "size": 10,
+          "file": "Pillow embedded font",
+          "sha256": "69853909b940023570964e29cffe30da95aea8de3627736b5cd15ab30143169f"
+        }
+      ]
+    }
+  }
+}

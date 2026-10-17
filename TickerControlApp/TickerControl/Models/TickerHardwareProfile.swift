@@ -6,6 +6,14 @@ struct TickerProfile: Decodable, Sendable {
     let firmware: String
     let display: TickerDisplayGeometry
     let capabilities: TickerProfileCapabilities
+
+    var displayName: String {
+        switch product_family {
+        case "full": return "Ticker Six"
+        case "mini": return "Ticker Mini"
+        default: return "Ticker"
+        }
+    }
 }
 
 struct TickerDisplayGeometry: Decodable, Sendable {

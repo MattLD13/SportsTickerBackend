@@ -14,10 +14,11 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sports_ticker.assets.mini_sprite import validate_sprite
+from tools.device_auth import device_headers
 
 
-def verify(frames: Path, backend: str, ticker: str) -> dict:
-    headers = {"User-Agent": "SportsTicker-Hardware-Check/1.0"}
+def verify(frames: Path, backend: str, ticker: str, token_file: Path | None = None) -> dict:
+    headers = {"User-Agent": "SportsTicker-Hardware-Check/1.0", **device_headers(token_file)}
     response = requests.get(
         f"{backend}/api/v2/tickers/{ticker}/data", params={"_t": time.time()}, headers=headers, timeout=20,
     )
@@ -92,9 +93,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames", type=Path, required=True)
     parser.add_argument("--backend", default="https://ticker.mattdicks.org")
+    parser.add_argument("--device-token-file", type=Path)
     parser.add_argument("--ticker", required=True)
     args = parser.parse_args()
-    result = verify(args.frames, args.backend.rstrip("/"), args.ticker)
+    result = verify(args.frames, args.backend.rstrip("/"), args.ticker, args.device_token_file)
     print(json.dumps(result, indent=2))
     if result["failures"]:
         raise SystemExit(1)

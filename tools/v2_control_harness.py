@@ -74,7 +74,7 @@ class V2ControlHarness:
     def load(self) -> Mapping[str, Any]:
         """Load the server settings that the iOS app edits."""
 
-        response = self.session.get(self.data_url, timeout=10)
+        response = self.session.get(self.data_url, timeout=10, headers={"Authorization": f"Bearer {self.controller_token}"})
         response.raise_for_status()
         payload = _object(response.json(), "data response")
         self.settings = _settings(payload)

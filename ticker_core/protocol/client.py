@@ -18,7 +18,7 @@ STREAM_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/stream"
 REGISTRATION_ENDPOINT = "/api/v2/devices/register"
 TICKER_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}"
 HEARTBEAT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/heartbeat"
-UPDATE_ACK_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/updates/ack"
+UPDATE_RESULT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/updates/result"
 REBOOT_ACK_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/commands/reboot/ack"
 
 
@@ -299,17 +299,10 @@ class BackendClient:
         )
         return self._json_object(response, "POST /api/v2/tickers/<id>/heartbeat")
 
-    def acknowledge_update(self, device_id: str, version: str) -> Mapping[str, Any]:
-        """Acknowledge one received update before the updater restarts the Pi."""
-
-        if not device_id.strip() or not version.strip():
-            raise ValueError("device_id and version must not be empty")
-        response = self._request(
-            "POST",
-            UPDATE_ACK_ENDPOINT_TEMPLATE.format(device_id=device_id),
-            json={"version": version},
-        )
-        return self._json_object(response, "POST /api/v2/tickers/<id>/updates/ack")
+    def report_update(self, device_id: str, result: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Send one durable installation result for an assigned update attempt."""
+        response = self._request("POST", UPDATE_RESULT_ENDPOINT_TEMPLATE.format(device_id=device_id), json=dict(result))
+        return self._json_object(response, "POST /api/v2/tickers/<id>/updates/result")
 
     def acknowledge_reboot(self, device_id: str, command_id: str) -> Mapping[str, Any]:
         """Acknowledge one reboot command before the controller restarts."""

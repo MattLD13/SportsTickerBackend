@@ -1,71 +1,44 @@
 #include "device_payload.h"
 #include "payload_reader.h"
+#include "fields_generated.h"
 #include <utility>
+#ifdef ARDUINO_ARCH_ESP32
+#include <esp_heap_caps.h>
+#endif
 
-DevicePayload::DevicePayload() {
-  filter_["api_version"] = true;
-  filter_["meta"]["pairing"]["paired"] = true;
-  filter_["meta"]["pairing"]["code"] = true;
-  filter_["meta"]["update"]["version"] = true;
-  filter_["meta"]["update"]["id"] = true;
-  filter_["meta"]["update"]["expires_at"] = true;
-  filter_["settings"]["mode"] = true;
-  filter_["settings"]["timezone"] = true;
-  filter_["settings"]["scroll_speed"] = true;
-  filter_["settings"]["brightness"] = true;
-  filter_["content"]["sports"][0]["is_shown"] = true;
-  filter_["content"]["sports"][0]["id"] = true;
-  filter_["content"]["sports"][0]["identifier"] = true;
-  filter_["content"]["sports"][0]["key"] = true;
-  for (const char* family : {"weather", "music", "flights", "airports", "stock", "clock"}) {
-    filter_["content"][family][0]["is_shown"] = true;
-    filter_["content"][family][0]["id"] = true;
-    filter_["content"][family][0]["data"] = true;
+namespace {
+class PayloadAllocator final : public ArduinoJson::Allocator {
+ public:
+  void* allocate(size_t size) override { return reallocate(nullptr, size); }
+  void deallocate(void* pointer) override {
+#ifdef ARDUINO_ARCH_ESP32
+    heap_caps_free(pointer);
+#else
+    std::free(pointer);
+#endif
   }
-  JsonObject filterGame = filter_["content"]["sports"][0]["data"].to<JsonObject>();
-  filterGame["sport"] = true;
-  filterGame["league"] = true;
-  filterGame["away_logo_asset"] = true;
-  filterGame["home_logo_asset"] = true;
-  filterGame["away_abbr"] = true;
-  filterGame["home_abbr"] = true;
-  filterGame["away_score"] = true;
-  filterGame["home_score"] = true;
-  filterGame["away_color"] = true;
-  filterGame["home_color"] = true;
-  filterGame["status"] = true;
-  filterGame["state"] = true;
-  filterGame["baseball_inning"] = true;
-  filterGame["away_rank"] = true;
-  filterGame["home_rank"] = true;
-  filterGame["away_seed"] = true;
-  filterGame["home_seed"] = true;
-  JsonObject filterSituation = filterGame["situation"].to<JsonObject>();
-  filterSituation["downDist"] = true;
-  filterSituation["activeTeam"] = true;
-  filterSituation["possession"] = true;
-  filterSituation["balls"] = true;
-  filterSituation["strikes"] = true;
-  filterSituation["outs"] = true;
-  filterSituation["onFirst"] = true;
-  filterSituation["onSecond"] = true;
-  filterSituation["onThird"] = true;
-  filterSituation["powerPlay"] = true;
-  filterSituation["powerPlayTeam"] = true;
-  filterSituation["manpower"]["scrollLabel"] = true;
-  filterSituation["manpower"]["powerPlayLabel"] = true;
-  filterSituation["manpower"]["penalties"][0]["timeRemaining"] = true;
-  filterSituation["manpower"]["penalties"][0]["jerseyNumber"] = true;
-  filterSituation["shootout"] = true;
-  filterSituation["isRedZone"] = true;
-  filterSituation["emptyNet"] = true;
-  filterSituation["emptyNetSide"] = true;
-  filterSituation["red_cards"][0]["is_home"] = true;
+  void* reallocate(void* pointer, size_t size) override {
+#ifdef ARDUINO_ARCH_ESP32
+    return heap_caps_realloc(pointer, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    return std::realloc(pointer, size);
+#endif
+  }
+};
+PayloadAllocator payloadAllocator;
+}
 
+DevicePayload::DevicePayload() : filter_(&payloadAllocator), document_(&payloadAllocator) {}
+
+void DevicePayload::initializeFilter() {
+  const auto error = deserializeJson(filter_, MINI_PAYLOAD_FILTER);
+  filterReady_ = !error && !filter_.overflowed();
 }
 
 bool DevicePayload::accept(const ResponseBody& body) {
-  JsonDocument candidate;
+  if (!filterReady_) initializeFilter();
+  if (!filterReady_) { error_ = "Filter allocation failed"; return false; }
+  JsonDocument candidate(&payloadAllocator);
   PayloadReader reader(body.data(), body.size());
   const auto error = deserializeJson(candidate, reader, DeserializationOption::Filter(filter_));
   offset_ = reader.position();

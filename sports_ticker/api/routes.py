@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, redirect, request, send_from_directory
 
+from sports_ticker.fleet.device_credentials import device_token_hash
 from sports_ticker.application.composition import BackendApplication
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.firmware import FirmwareManifest
@@ -89,6 +90,8 @@ def register_routes(
 
         if firmware_manifest is None or firmware_directory is None:
             raise ApiError("firmware binary is unavailable", 404, "not_found")
+        if application.repository.updates.quarantined("mini", firmware_manifest.version):
+            raise ApiError("firmware release is quarantined", 409, "firmware_quarantined")
         requested = Path(filename)
         published = Path(urlparse(firmware_manifest.binary_url).path).name
         if requested.name != filename or requested.name != published or requested.suffix != ".bin":
@@ -197,6 +200,10 @@ def register_routes(
 
     @app.post("/api/v2/devices/register")
     def register_device():
+        token = str(request.headers.get("X-Device-Token") or "")
+        if not token:
+            raise ApiError("device authorization is required", 401, "unauthorized")
+        digest = device_token_hash(token)
         payload = _json_object()
         _check_keys(payload, {"device_id", "name", "metadata", "profile", "pairing_code"})
         device_id = _ticker_id(payload.get("device_id", ""))
@@ -215,11 +222,14 @@ def register_routes(
         try:
             ticker, pairing_code, created = application.register_device(
                 device_id,
+                credential_hash=digest,
                 name=name,
                 metadata=metadata,
                 profile=profile,
                 pairing_code=pairing_code,
             )
+        except PermissionError as error:
+            raise ApiError(str(error), 403, "forbidden") from error
         except ValueError as error:
             raise ApiError(str(error), 400, "invalid_request") from error
         return jsonify(
@@ -283,13 +293,13 @@ def register_routes(
 
     @app.get("/api/v2/tickers/<ticker_id>")
     def get_ticker(ticker_id: str):
-        identifier = _controller_ticker_owner(application, ticker_id)
+        identifier = _device_or_controller_owner(application, ticker_id)
         ticker = _require_ticker(application, identifier)
         return jsonify(_ticker_value(ticker, application))
 
     @app.patch("/api/v2/tickers/<ticker_id>")
     def update_ticker(ticker_id: str):
-        identifier = _controller_ticker_owner(application, ticker_id)
+        identifier = _device_or_controller_owner(application, ticker_id)
         payload = _json_object()
         changes = _patch_values(payload)
         ticker = application.update_ticker(identifier, **changes)
@@ -373,30 +383,28 @@ def register_routes(
             raise ApiError(f"ticker not found: {identifier}", 404, "not_found")
         return jsonify({"deleted": True, "ticker_id": identifier})
 
-    @app.get("/api/v2/tickers/<ticker_id>/data")
-    def ticker_data(ticker_id: str):
-        identifier = _ticker_id(ticker_id)
+    def ticker_data_response(identifier: str, *, device_view: bool = False):
         snapshot = application.get_snapshot(identifier)
         if snapshot is None:
             raise ApiError(f"ticker snapshot not found: {identifier}", 404, "not_found")
-        data = application.project_data(identifier, {"stale": False})
-        return jsonify(data)
+        return jsonify(application.project_data(identifier, {"stale": False}, device_view=device_view))
+
+    @app.get("/api/v2/tickers/<ticker_id>/data")
+    def ticker_data(ticker_id: str):
+        return ticker_data_response(_device_or_controller_owner(application, ticker_id))
 
     @app.post("/api/v2/tickers/<ticker_id>/data")
     def poll_ticker_data(ticker_id: str):
-        """Record device presence and return its current snapshot in one request."""
-
-        identifier = _ticker_id(ticker_id)
-        _require_ticker(application, identifier)
+        identifier = _device_ticker_owner(application, ticker_id)
         payload = _json_object()
         _check_keys(payload, {"metadata"})
         application.heartbeat(identifier, payload)
-        return ticker_data(identifier)
+        return ticker_data_response(identifier, device_view=True)
 
     @app.post("/api/v2/tickers/<ticker_id>/heartbeat")
     def ticker_heartbeat(ticker_id: str):
-        payload = _json_object()
-        ticker = application.heartbeat(_ticker_id(ticker_id), payload)
+        identifier = _device_ticker_owner(application, ticker_id)
+        ticker = application.heartbeat(identifier, _json_object())
         return jsonify(_ticker_value(ticker, application))
 
     @app.post("/api/v2/tickers/<ticker_id>/updates")
@@ -421,7 +429,7 @@ def register_routes(
     def check_ticker_firmware(ticker_id: str):
         """Return one device-compatible firmware manifest after ticker identity lookup."""
 
-        identifier = _ticker_id(ticker_id)
+        identifier = _device_or_controller_owner(application, ticker_id)
         ticker = _require_ticker(application, identifier)
         if ticker.profile.product_family != "mini" or not ticker.profile.capabilities.ota:
             raise ApiError("firmware updates are not available for this ticker", 409, "firmware_unavailable")
@@ -432,6 +440,8 @@ def register_routes(
             raise ApiError("requested firmware version is unavailable", 404, "not_found")
         if firmware_manifest.hardware != ticker.profile.hardware:
             raise ApiError("firmware hardware does not match ticker hardware", 409, "firmware_incompatible")
+        if application.repository.updates.quarantined(ticker.profile.product_family, firmware_manifest.version):
+            raise ApiError("firmware release is quarantined", 409, "firmware_quarantined")
         return jsonify(
             {
                 "api_version": "v2",
@@ -440,30 +450,34 @@ def register_routes(
             }
         )
 
-    @app.post("/api/v2/tickers/<ticker_id>/updates/ack")
-    def acknowledge_ticker_update(ticker_id: str):
+    @app.post("/api/v2/tickers/<ticker_id>/updates/result")
+    def report_ticker_update(ticker_id: str):
+        identifier = _device_ticker_owner(application, ticker_id)
         payload = _json_object()
-        _check_keys(payload, {"version"})
-        version = payload.get("version")
-        if not isinstance(version, str) or not version.strip():
-            raise ApiError("version must be a non-empty string", 400, "invalid_request")
-        return jsonify({"acknowledged": application.acknowledge_update(_ticker_id(ticker_id), version)})
+        _check_keys(payload, {"id", "version", "status", "running_version", "reason"})
+        return jsonify(application.repository.updates.report(identifier, payload, application._clock()))
+
+    @app.get("/api/v2/fleet/updates")
+    def fleet_update_history():
+        _require_deployment_token()
+        return jsonify(application.repository.updates.history())
 
     @app.post("/api/v2/tickers/<ticker_id>/commands/reboot")
     def request_ticker_reboot(ticker_id: str):
         identifier = _controller_ticker_owner(application, ticker_id)
         ticker = application.request_reboot(identifier)
-        command = ticker.device.metadata.get("pending_reboot", {})
+        command = next(item for item in ticker.device.metadata["pending_commands"] if item["type"] == "reboot")
         return jsonify({"accepted": True, "command_id": command.get("id")}), 201
 
     @app.post("/api/v2/tickers/<ticker_id>/commands/reboot/ack")
     def acknowledge_ticker_reboot(ticker_id: str):
+        identifier = _device_ticker_owner(application, ticker_id)
         payload = _json_object()
         _check_keys(payload, {"id"})
         command_id = payload.get("id")
         if not isinstance(command_id, str) or not command_id.strip():
             raise ApiError("id must be a non-empty string", 400, "invalid_request")
-        return jsonify({"acknowledged": application.acknowledge_reboot(_ticker_id(ticker_id), command_id)})
+        return jsonify({"acknowledged": application.acknowledge_reboot(identifier, command_id)})
 
     @app.post("/api/v2/tickers/<ticker_id>/integrations/spotify/authorizations")
     def start_spotify_authorization(ticker_id: str):
@@ -526,12 +540,14 @@ def register_routes(
 
     @app.post("/api/v2/events/alerts")
     def publish_alert_event():
+        _require_deployment_token()
         payload = _json_object()
         event = application.publish_alert_event(**_event_values(payload, "score_alert"))
         return jsonify(_event_value(event)), 201
 
     @app.post("/api/v2/events/news")
     def publish_news_event():
+        _require_deployment_token()
         payload = _json_object()
         event = application.publish_news_event(**_event_values(payload, "news"))
         return jsonify(_event_value(event)), 201
@@ -674,13 +690,18 @@ def _catalog(application: BackendApplication):
 
 def _device_ticker_owner(application: BackendApplication, ticker_id: str) -> str:
     identifier = _ticker_id(ticker_id)
-    _require_ticker(application, identifier)
     token = str(request.headers.get("X-Device-Token") or "")
     if not token:
         raise ApiError("device authorization is required", 401, "unauthorized")
     if not application.authorize_device(identifier, token):
         raise ApiError("device authorization is invalid", 403, "forbidden")
     return identifier
+
+
+def _device_or_controller_owner(application: BackendApplication, ticker_id: str) -> str:
+    if "X-Device-Token" in request.headers:
+        return _device_ticker_owner(application, ticker_id)
+    return _controller_ticker_owner(application, ticker_id)
 
 
 def _controller_ticker_owner(application: BackendApplication, ticker_id: str) -> str:

@@ -12,7 +12,7 @@ struct Logo {
 int main() {
   size_t checks = 0;
   for (size_t capacity : {8u, 32u}) {
-    for (size_t games : {15u, 20u, 50u}) {
+    for (size_t games : {15u, 20u, 50u, 160u}) {
       std::vector<Logo> slots(capacity);
       const size_t window = capacity / 2;
       auto keysFor = [&](size_t page) {
@@ -47,11 +47,14 @@ int main() {
           }
           assert(loaded);
         }
-        assert(mini_sprite::acceptLogoResult(7, 7, keys[0], keys.data(), keys.size()));
-        assert(!mini_sprite::acceptLogoResult(6, 7, keys[0], keys.data(), keys.size()));
-        assert(!mini_sprite::acceptLogoResult(7, 7, std::string("obsolete"), keys.data(), keys.size()));
+        assert(mini_sprite::plannedLogo(keys[0], keys.data(), keys.size()));
+        assert(!mini_sprite::plannedLogo(std::string("obsolete"), keys.data(), keys.size()));
+        // A completed content identity remains useful after the page advances.
+        const auto earlier = keysFor(page - 1);
+        assert(mini_sprite::plannedLogo(earlier[2], keys.data(), keys.size()));
+        assert(mini_sprite::plannedLogo(earlier[0], keys.data(), keys.size()) == (games <= window));
       }
     }
   }
-  std::cout << "Mini logo window: " << checks << " next-game logo checks passed at 15, 20, and 50 games\n";
+  std::cout << "Mini logo window: " << checks << " next-game logo checks passed at 15, 20, 50, and 160 games\n";
 }

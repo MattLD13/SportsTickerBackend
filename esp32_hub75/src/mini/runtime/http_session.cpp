@@ -28,12 +28,15 @@ void BackendHttpSession::execute(NetworkJob& job) {
   client_.setTransferBudget(job.budgetMs);
   const uint32_t attempts = client_.connectionAttempts();
   const uint32_t started = millis();
+  job.heapBefore = ESP.getFreeHeap();
   if (http_.begin(client_, job.url)) {
     const char* headers[] = {"Content-Type", "Content-Encoding"};
     http_.collectHeaders(headers, 2);
     http_.addHeader("Content-Type", "application/json");
-    http_.addHeader("X-Device-Token", job.deviceToken);
-    job.status = http_.POST(job.request);
+    if (job.kind != NetworkKind::AssetGet) http_.addHeader("X-Device-Token", job.deviceToken);
+    job.status = job.kind == NetworkKind::AssetGet ? http_.GET() : http_.POST(job.request);
+    job.heapDuring = ESP.getFreeHeap();
+    job.largestDuring = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     job.headersMs = millis() - started;
     job.expectedBytes = http_.getSize();
     job.contentType = http_.header("Content-Type");

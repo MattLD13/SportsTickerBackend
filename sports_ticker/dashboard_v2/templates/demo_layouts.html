@@ -29,7 +29,7 @@
     <span class="plus tl"></span><span class="plus tr"></span>
     <p class="sec-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">LAYOUT EXPLORER</p>
     <h1 class="sec-title">Every situation.<br>Both <span data-led data-led-inline data-led-scale="2" data-led-color="amber" data-led-pad="0">tickers</span>.</h1>
-    <p class="sec-note">Pick a game situation or display mode. Compare the big ticker and Mini, then zoom in to inspect the pixels.</p>
+    <p class="sec-note">Pick a game situation or display mode. Compare the Ticker Six and Mini, then zoom in to inspect the pixels.</p>
     <p class="sample-note">Sample data · Preview controls affect this page only</p>
   </section>
 
@@ -39,15 +39,15 @@
       <div class="step-controls"><button id="previous" type="button" aria-label="Previous example">←</button><span id="position"></span><button id="next" type="button" aria-label="Next example">→</button></div>
     </div>
     <div class="toolbar">
-      <label>Show<select id="device"><option value="both">Both tickers</option><option value="main">Big ticker</option><option value="mini">Mini ticker</option></select></label>
-      <label>Big ticker layout<select id="layout"><option value="pinned">Pinned / full screen</option><option value="pane">Scrolling panes</option></select></label>
+      <label>Show<select id="device"><option value="both">Both tickers</option><option value="main">Ticker Six</option><option value="mini">Mini ticker</option></select></label>
+      <label>Ticker Six layout<select id="layout"><option value="pinned">Pinned / full screen</option><option value="pane">Scrolling panes</option></select></label>
       <label>View<select id="pixels"><option value="clean">Clean pixels</option><option value="led">LED dots</option></select></label>
       <label class="brightness">Preview brightness <output id="brightness-value">100%</output><input id="brightness" type="range" min="20" max="100" value="100"></label>
     </div>
     <div class="boards">
       <article class="board big-board" data-board="main">
-        <header><h3>Big ticker</h3><span>384 × 32</span></header>
-        <button class="screen" id="main-screen" type="button" aria-label="Enlarge big ticker"><canvas id="main-frame" width="384" height="32"></canvas></button>
+        <header><h3>Ticker Six</h3><span>384 × 32</span></header>
+        <button class="screen" id="main-screen" type="button" aria-label="Enlarge Ticker Six"><canvas id="main-frame" width="384" height="32"></canvas></button>
         <p id="main-note">Production Pi renderer</p>
       </article>
       <article class="board mini-board" data-board="mini">
@@ -78,7 +78,7 @@
     <p id="empty" hidden>No examples match. Try another search or clear the filters.</p>
   </section>
   <p class="status" id="status" role="status" aria-live="polite">Loading the layout library…</p>
-  <footer class="page-foot"><a href="/demo">Back to live demo</a><span>Big ticker layouts update with each release. Mini images show captured examples.</span></footer>
+  <footer class="page-foot"><a href="/demo">Back to live demo</a><span>Ticker Six layouts update with each release. Mini images show captured examples.</span></footer>
 </main>
 <dialog id="zoom" aria-labelledby="zoom-title">
   <div class="zoom-head"><h2 id="zoom-title">Pixel inspector</h2><button id="close-zoom" type="button">Close</button></div>

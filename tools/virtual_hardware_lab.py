@@ -42,6 +42,7 @@ from sports_ticker.fleet import PairingState
 
 
 DEVICE_ID = "virtual-ticker-01"
+DEVICE_TOKEN = sha256(b"isolated-virtual-ticker-credential").hexdigest()
 SNAPSHOT = REPOSITORY / "tests" / "rewrite" / "debug" / "v2_render_snapshot.json"
 
 
@@ -94,6 +95,7 @@ class RestPollProbe:
         self.error: str | None = None
         self._thread = threading.Thread(target=self._run, name="virtual-rest-poll-probe", daemon=True)
         self._session = requests.Session()
+        self._session.headers["X-Device-Token"] = DEVICE_TOKEN
 
     def start(self) -> None:
         self._thread.start()
@@ -420,6 +422,7 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
             DEVICE_ID,
             display_settings=DisplaySettings(mode="sports"),
             name="Virtual Sports Ticker",
+            credential_hash=sha256(DEVICE_TOKEN.encode()).hexdigest(),
             pairing=PairingState(paired=True),
         )
         snapshot_store = flask_app.extensions["sports_ticker.snapshot_store"]
@@ -443,6 +446,7 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
                 server.base_url,
                 session=session,
                 stream_connector=stream_transport,
+                device_token=DEVICE_TOKEN,
             )  # type: ignore[arg-type]
             assets = VirtualAssets()
             frames, viewport = create_default_frame_builder(assets, geometry=FrameGeometry(384, 32, "scale"))

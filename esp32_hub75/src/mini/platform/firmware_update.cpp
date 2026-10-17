@@ -3,11 +3,9 @@
 #include "http_diagnostics.h"
 #include "../protocol/payload_reader.h"
 #include <WiFi.h>
-#include <Update.h>
-#include <esp_image_format.h>
 #include <mbedtls/md.h>
 
-static constexpr char FIRMWARE_PENDING_NVS_KEY[] = "ota_pending";
+static constexpr char FIRMWARE_PENDING_NVS_KEY[] = "ota_trial";
 static constexpr char FIRMWARE_FAILED_NVS_KEY[] = "ota_failed";
 static_assert(sizeof(FIRMWARE_PENDING_NVS_KEY) <= 16, "NVS keys allow 15 characters");
 static_assert(sizeof(FIRMWARE_FAILED_NVS_KEY) <= 16, "NVS keys allow 15 characters");
@@ -139,19 +137,6 @@ bool FirmwareUpdater::fetchFirmwareManifest(const String& requestedVersion, Firm
   return parseFirmwareManifest(body, requestedVersion, manifest);
 }
 
-void FirmwareUpdater::abortFirmwareWrite() {
-  Update.abort();
-}
-
-bool FirmwareUpdater::verifyFirmwareImage(const esp_partition_t* target) {
-  if (target == nullptr) {
-    return false;
-  }
-  esp_image_metadata_t metadata = {};
-  const esp_partition_pos_t position = {target->address, target->size};
-  return esp_image_verify(ESP_IMAGE_VERIFY, &position, &metadata) == ESP_OK;
-}
-
 bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) {
   NetworkLease lease(gate_, config_.httpTimeoutMs);
   if (!lease) return false;
@@ -173,16 +158,21 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
   if (status != HTTP_CODE_OK || (contentLength >= 0 && static_cast<size_t>(contentLength) != manifest.size)) {
     logSecureHttpError("Firmware image", status, client);
     http.end();
-    abortFirmwareWrite();
     return false;
   }
 
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
-  if (target == nullptr || manifest.size > target->size || !Update.begin(manifest.size, U_FLASH)) {
+  struct Transfer {
+    esp_ota_handle_t handle = 0;
+    bool active = false;
+    ~Transfer() { if (active) esp_ota_abort(handle); }
+  } transfer;
+  if (target == nullptr || manifest.size > target->size ||
+      esp_ota_begin(target, manifest.size, &transfer.handle) != ESP_OK) {
     http.end();
-    abortFirmwareWrite();
     return false;
   }
+  transfer.active = true;
   mbedtls_md_context_t digest;
   const mbedtls_md_info_t* sha256 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
   mbedtls_md_init(&digest);
@@ -205,7 +195,7 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
     }
     const size_t requested = min(sizeof(buffer), min(available, manifest.size - received));
     const size_t readCount = stream->readBytes(buffer, requested);
-    if (readCount == 0 || mbedtls_md_update(&digest, buffer, readCount) != 0 || Update.write(buffer, readCount) != readCount) {
+    if (readCount == 0 || mbedtls_md_update(&digest, buffer, readCount) != 0 || esp_ota_write(transfer.handle, buffer, readCount) != ESP_OK) {
       valid = false;
       break;
     }
@@ -228,28 +218,14 @@ bool FirmwareUpdater::downloadFirmware(const FirmwareManifestPayload& manifest) 
   mbedtls_md_free(&digest);
   if (!mini_firmware::transferComplete(valid, received, manifest.size, actualSha256, manifest.sha256)) {
     http.end();
-    abortFirmwareWrite();
     return false;
   }
-  if (preferences_.putString(FIRMWARE_PENDING_NVS_KEY, manifest.version) == 0) {
-    http.end();
-    abortFirmwareWrite();
-    return false;
-  }
-  if (!Update.end()) {
-    preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
-    http.end();
-    abortFirmwareWrite();
-    return false;
-  }
+  const esp_err_t imageStatus = esp_ota_end(transfer.handle);
+  transfer.active = false;
   http.end();
-  const bool imageValid = verifyFirmwareImage(target);
-  const bool bootSet = imageValid && esp_ota_set_boot_partition(target) == ESP_OK;
-  if (!bootSet) {
-    esp_ota_set_boot_partition(esp_ota_get_running_partition());
+  if (imageStatus != ESP_OK || !confirmServerAttempt(manifest.version) ||
+      !saveTrial(manifest.version, "pending_boot", "") || esp_ota_set_boot_partition(target) != ESP_OK) {
     preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
-  }
-  if (!bootSet) {
     return false;
   }
   return true;
@@ -263,6 +239,7 @@ void FirmwareUpdater::finishFirmwareUpdateTask(bool success, const char* detail)
     strncpy(firmwareUpdateFailedVersion, requested, sizeof(firmwareUpdateFailedVersion) - 1);
     firmwareUpdateFailureAt = millis();
     portEXIT_CRITICAL(&firmwareUpdateMux);
+    saveTrial(String(requested), "download_failed", strcmp(detail, "MANIFEST") == 0 ? "manifest" : "download");
     setFirmwareUpdateDetail(detail);
     setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
     Serial.printf("Firmware update failed: %s\n", detail);
@@ -317,8 +294,7 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
     const String commandId = update["id"] | "";
     if (commandId.length() == 0 || commandId == firmwareUpdateReceiptCommandId) return;
     firmwareUpdateReceiptCommandId = commandId;
-    firmwareUpdateAcknowledged = false;
-    setFirmwareUpdateVersion(firmwareUpdateConfirmedVersion, sizeof(firmwareUpdateConfirmedVersion), requested);
+    saveTrial(requested, "installed", "");
     return;
   }
   char failedVersion[sizeof(firmwareUpdateFailedVersion)] = {};
@@ -339,9 +315,6 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
   }
   const String persistedFailure = preferences_.getString(FIRMWARE_FAILED_NVS_KEY, "");
   if (persistedFailure == requested) {
-    setFirmwareUpdateDetail("RETRY BLOCKED");
-    setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
-    firmwareUpdateFailureAt = millis();
     return;
   }
   char requestedBuffer[sizeof(firmwareUpdateRequestedVersion)] = {};
@@ -354,6 +327,7 @@ void FirmwareUpdater::observe(JsonVariantConst command, bool registered, bool pa
   setFirmwareUpdateDetail("CHECKING");
   setFirmwareUpdateState(FIRMWARE_UPDATE_CHECKING, 0, 0);
   tickerId_ = tickerId;
+  firmwareUpdateReceiptCommandId = update["id"] | "";
   if (xTaskCreatePinnedToCore(taskEntry, "firmware-update", 12288, this, 1, &firmwareUpdateTaskHandle, 0) != pdPASS) {
     finishFirmwareUpdateTask(false, "NO TASK");
   }
@@ -364,52 +338,98 @@ void FirmwareUpdater::initialize() {
   esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
   firmwareUpdateBootStateError = running ? esp_ota_get_state_partition(running, &state) : ESP_ERR_NOT_FOUND;
   firmwareUpdateBootState = state;
-  String pending = preferences_.getString(FIRMWARE_PENDING_NVS_KEY, "");
-  pending.trim();
-  if (mini_firmware::bootReceipt(pending, String(config_.version)) == mini_firmware::BootReceipt::Confirm) {
-    pending.toCharArray(firmwareUpdateConfirmedVersion, sizeof(firmwareUpdateConfirmedVersion));
-  } else if (mini_firmware::bootReceipt(pending, String(config_.version)) == mini_firmware::BootReceipt::Rollback) {
-    preferences_.putString(FIRMWARE_FAILED_NVS_KEY, pending);
-    preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
-    firmwareUpdateConfirmedVersion[0] = '\0';
-    setFirmwareUpdateDetail("ROLLBACK");
-    setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
-    firmwareUpdateFailureAt = millis();
-    Serial.printf("Firmware rollback detected for %s\n", pending.c_str());
+  JsonDocument trial;
+  const String stored = preferences_.getString(FIRMWARE_PENDING_NVS_KEY, "");
+  if (stored.isEmpty()) return;
+  if (deserializeJson(trial, stored)) { Serial.println("Invalid durable update receipt"); return; }
+  resultVersion_ = trial["version"] | "";
+  firmwareUpdateReceiptCommandId = trial["id"] | "";
+  resultStatus_ = trial["status"] | "";
+  resultReason_ = trial["reason"] | "";
+  if (resultStatus_ == "pending_boot") {
+    if (resultVersion_ == config_.version) saveTrial(resultVersion_, "installed", "");
+    else {
+      saveTrial(resultVersion_, "rolled_back", "boot_reset");
+      preferences_.putString(FIRMWARE_FAILED_NVS_KEY, resultVersion_);
+      setFirmwareUpdateDetail("ROLLBACK");
+      setFirmwareUpdateState(FIRMWARE_UPDATE_FAILED, 0, 0);
+      firmwareUpdateFailureAt = millis();
+    }
   }
 }
 
-void FirmwareUpdater::acknowledgeConfirmedFirmware(bool registered, const String& tickerId) {
-  if (!firmwareUpdateBootValidated || firmwareUpdateAcknowledged ||
-      firmwareUpdateConfirmedVersion[0] == '\0' || !registered ||
-      WiFi.status() != WL_CONNECTED) {
-    return;
-  }
+bool FirmwareUpdater::saveTrial(const String& version, const char* status, const char* reason) {
+  JsonDocument trial;
+  trial["version"] = version;
+  trial["id"] = firmwareUpdateReceiptCommandId;
+  trial["status"] = status;
+  trial["reason"] = reason;
+  String stored;
+  serializeJson(trial, stored);
+  if (preferences_.putString(FIRMWARE_PENDING_NVS_KEY, stored) == 0) return false;
+  resultVersion_ = version;
+  resultStatus_ = status;
+  resultReason_ = reason;
+  firmwareUpdateAcknowledged = false;
+  return true;
+}
+
+bool FirmwareUpdater::confirmServerAttempt(const String& version) {
+  BackendTlsClient client;
+  configureTls(client);
+  client.setTransferBudget(config_.httpTimeoutMs);
+  HTTPClient http;
+  http.setReuse(false);
+  http.setConnectTimeout(4000);
+  http.setTimeout(config_.httpTimeoutMs);
+  if (!http.begin(client, baseUrl_ + "/api/v2/tickers/" + tickerId_ + "/updates/result")) return false;
+  http.addHeader("X-Device-Token", deviceToken_);
+  http.addHeader("Content-Type", "application/json");
+  JsonDocument report;
+  report["id"] = firmwareUpdateReceiptCommandId;
+  report["version"] = version;
+  report["running_version"] = config_.version;
+  report["status"] = "started";
+  report["reason"] = "";
+  String body;
+  serializeJson(report, body);
+  const int status = http.POST(body);
+  JsonDocument response;
+  const bool accepted = status == HTTP_CODE_OK && !deserializeJson(response, http.getString()) &&
+      response["accepted"] == true && response["quarantined"] == false;
+  http.end();
+  return accepted;
+}
+
+void FirmwareUpdater::reportFirmwareResult(bool registered, const String& tickerId) {
+  if (transferActive() || !firmwareUpdateBootValidated || firmwareUpdateAcknowledged || resultVersion_.isEmpty() ||
+      resultStatus_ == "pending_boot" || !registered || WiFi.status() != WL_CONNECTED) return;
   const uint32_t now = millis();
   if (now - firmwareUpdateLastAckAt < 5000 || !worker_.available()) return;
-  auto* job = new (std::nothrow) NetworkJob(NetworkKind::FirmwareAck);
+  auto* job = new (std::nothrow) NetworkJob(NetworkKind::FirmwareResult);
   if (!job) return;
-  job->url = (baseUrl_ + "/api/v2/tickers/") + tickerId + "/updates/ack";
-  job->identity = firmwareUpdateConfirmedVersion;
-  job->command = firmwareUpdateReceiptCommandId;
-  JsonDocument request;
-  request["version"] = job->identity;
-  serializeJson(request, job->request);
+  job->url = baseUrl_ + "/api/v2/tickers/" + tickerId + "/updates/result";
+  job->identity = resultVersion_;
+  job->command = firmwareUpdateReceiptCommandId + "|" + resultStatus_;
+  JsonDocument report;
+  report["id"] = firmwareUpdateReceiptCommandId;
+  report["version"] = resultVersion_;
+  report["running_version"] = config_.version;
+  report["status"] = resultStatus_;
+  report["reason"] = resultReason_;
+  serializeJson(report, job->request);
   if (worker_.enqueue(job)) firmwareUpdateLastAckAt = now;
 }
 
-void FirmwareUpdater::applyAckResponse(const NetworkJob& job) {
-  if (!mini_firmware::sameReceipt(job.identity, job.command, String(firmwareUpdateConfirmedVersion), firmwareUpdateReceiptCommandId)) return;
+void FirmwareUpdater::applyResultResponse(const NetworkJob& job) {
+  if (job.identity != resultVersion_ || job.command != firmwareUpdateReceiptCommandId + "|" + resultStatus_) return;
   JsonDocument response;
   PayloadReader reader(job.response.body.data(), job.response.body.size());
-  const bool acknowledged = job.status == HTTP_CODE_OK && job.complete() &&
-    !deserializeJson(response, reader) && response["acknowledged"].is<bool>() && response["acknowledged"].as<bool>();
-  if (acknowledged) {
+  if (job.status == HTTP_CODE_OK && job.complete() && !deserializeJson(response, reader) && response["accepted"] == true) {
     firmwareUpdateAcknowledged = true;
     preferences_.remove(FIRMWARE_PENDING_NVS_KEY);
-    firmwareUpdateConfirmedVersion[0] = '\0';
-    Serial.println("Firmware boot confirmed and acknowledged");
-  } else Serial.println("Firmware acknowledgement declined");
+    Serial.println("Firmware result saved by server");
+  }
 }
 
 bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId, bool displayHealthy) {
@@ -447,7 +467,7 @@ bool FirmwareUpdater::tick(uint32_t now, bool registered, const String& tickerId
     }
   }
   bool redraw = false;
-  acknowledgeConfirmedFirmware(registered, tickerId);
+  reportFirmwareResult(registered, tickerId);
   if (firmwareUpdateState == FIRMWARE_UPDATE_FAILED && now - firmwareUpdateFailureAt >= config_.failureDisplayMs) {
     setFirmwareUpdateState(FIRMWARE_UPDATE_IDLE, 0, 0);
     setFirmwareUpdateDetail("");

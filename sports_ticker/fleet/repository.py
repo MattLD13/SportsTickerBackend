@@ -172,6 +172,8 @@ class TickerRepository:
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._lock = threading.RLock()
         self._create_schema()
+        from .update_ledger import UpdateLedger
+        self.updates = UpdateLedger(self)
 
     def _create_schema(self) -> None:
         with self._transaction():
@@ -495,6 +497,16 @@ class TickerRepository:
                 if started:
                     self._connection.commit()
 
+    def merge_device_telemetry(self, ticker_id: str, values: Mapping[str, Any], *, now: float) -> TickerRecord:
+        """Merge device facts without overwriting concurrent server commands."""
+        with self._transaction():
+            ticker = self.get_ticker(ticker_id)
+            if ticker is None:
+                raise KeyError(ticker_id)
+            metadata = dict(ticker.device.metadata)
+            metadata.update({key: value for key, value in values.items() if key not in {"last_seen", "last_seen_at"}})
+            return self.update_ticker(ticker_id, device=DeviceMetadata(last_seen_at=now, metadata=metadata))
+
     def set_device_credential_hash(self, ticker_id: str, token_sha256: str, *, now: float) -> None:
         """Rotate one device credential through an authorized application operation."""
         from .device_credentials import validate_device_hash
@@ -515,9 +527,13 @@ class TickerRepository:
             supplied = device_token_hash(token)
         except ValueError:
             return False
+        return self.authorize_device_hash(ticker_id, supplied)
+
+    def authorize_device_hash(self, ticker_id: str, digest: str) -> bool:
+        """Authorize a registration digest inside the registration transaction boundary."""
         with self._lock:
             row = self._connection.execute("SELECT token_sha256 FROM device_credentials WHERE ticker_id = ?", (ticker_id,)).fetchone()
-        return row is not None and hmac.compare_digest(supplied, row["token_sha256"])
+        return row is not None and hmac.compare_digest(digest, row["token_sha256"])
 
     def close(self) -> None:
         """Close the owned database connection."""
@@ -540,6 +556,7 @@ class TickerRepository:
         name: str = "Ticker",
         pairing: PairingState | Mapping[str, Any] | None = None,
         device: DeviceMetadata | Mapping[str, Any] | None = None,
+        credential_hash: str | None = None,
     ) -> TickerRecord:
         if isinstance(ticker_id, TickerRecord):
             record = ticker_id
@@ -558,6 +575,8 @@ class TickerRepository:
         with self._transaction():
             try:
                 self._insert_record(record)
+                if credential_hash is not None:
+                    self.set_device_credential_hash(record.ticker_id, credential_hash, now=record.created_at)
             except sqlite3.IntegrityError as exc:
                 raise ValueError(f"ticker already exists: {record.ticker_id}") from exc
         return self.get_ticker(record.ticker_id)  # type: ignore[return-value]

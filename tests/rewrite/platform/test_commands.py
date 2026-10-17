@@ -37,7 +37,9 @@ def test_platform_commands_delegate_to_injected_subprocesses() -> None:
         "password",
         "setup1234",
     ]
-    assert spawned == [["python", "updater.py"]]
+    assert not spawned
+    assert runs[-2][0][:3] == ["systemd-run", "--collect", "--unit=sports-ticker-updater"]
+    assert runs[-2][0][-2:] == ["python", "updater.py"]
     assert runs[-1][0] == ["systemctl", "--no-block", "reboot"]
 
 
