@@ -1,0 +1,34 @@
+name: Read fleet diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker_id:
+        description: Ticker identifier
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read device presence
+        env:
+          DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
+          TICKER_ID: ${{ inputs.ticker_id }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          request = urllib.request.Request(
+              "https://ticker.mattdicks.org/api/v2/fleet/health",
+              headers={"X-Deployment-Token": os.environ["DEPLOY_TOKEN"]},
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              value = json.load(response)
+          device = next(item for item in value["tickers"] if item["ticker_id"] == os.environ["TICKER_ID"])
+          print(json.dumps({key: device.get(key) for key in (
+              "ticker_id", "online", "heartbeat_age_seconds", "build", "pairing",
+          )}, indent=2))
+          PY
