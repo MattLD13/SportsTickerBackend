@@ -1,0 +1,48 @@
+name: Fleet update control
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Inspect update history or request one device update
+        type: choice
+        options: [inspect, request]
+        default: inspect
+      ticker_id:
+        description: Device identity for an update request
+        required: false
+      version:
+        description: Published version for an update request
+        required: false
+permissions:
+  contents: read
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute the authorized fleet operation
+        env:
+          DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
+          ACTION: ${{ inputs.action }}
+          TICKER_ID: ${{ inputs.ticker_id }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.parse
+          base = "https://ticker.mattdicks.org"
+          headers = {"X-Deployment-Token": os.environ["DEPLOY_TOKEN"], "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+          if os.environ["ACTION"] == "request":
+              identity, version = os.environ["TICKER_ID"].strip(), os.environ["VERSION"].strip()
+              if not identity or not version:
+                  raise SystemExit("An update request requires a device and published version")
+              request = urllib.request.Request(base + "/api/v2/tickers/" + urllib.parse.quote(identity, safe="") + "/updates", data=json.dumps({"version": version}).encode(), headers=headers)
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.load(response)
+              commands = result["device"]["metadata"]["pending_commands"]
+              command = next(item for item in commands if item["type"] == "update")
+              print(json.dumps({"ticker_id": identity, "version": version, "command_id": command["id"], "accepted": True}))
+          else:
+              request = urllib.request.Request(base + "/api/v2/fleet/updates", headers=headers)
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.load(response)
+              print(json.dumps({"releases": result["releases"], "events": result["events"][:20]}, indent=2))
+          PY
