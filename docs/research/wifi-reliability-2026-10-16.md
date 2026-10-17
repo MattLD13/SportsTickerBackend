@@ -70,3 +70,13 @@ The final lifecycle separates these operations. Failed candidates were not publi
 
 Local evidence lives under `previews/wifi-reliability/`. Generated logs and binaries are not source files.
 The association diagnostic tests link recovery. It does not control the campus access point or its internet service.
+
+## Published release
+
+Source commit `140d3089` publishes `mini-1.3.21`.
+Deploy run `38998125977` passes runtime validation, firmware build, backend deployment, and the OTA request.
+Device build run `38998125980` passes ESP32 and iOS Debug and Release builds.
+The real Mini installs the 1,298,144-byte image through OTA, validates its boot, and resumes HTTP 200 device polls.
+The confirmed-network NVS flag survives the update. Credentials and app pairing remain intact.
+The recovery workflow is active again. Run `38998230541` verifies that an active deployment prevents another dispatch.
+The deployment activates its firmware manifest through the backend job and performs one backend restart.
