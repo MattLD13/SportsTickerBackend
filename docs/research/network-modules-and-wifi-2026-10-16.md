@@ -166,3 +166,21 @@ The probe uses unconnected TLS clients and does not wait behind network download
 The `mini-1.3.15` runtime also reaches 546 seconds without a reset or JSON failure.
 The final build uses 77,124 bytes of static RAM and 1,292,429 bytes of application flash.
 Debug and Release iOS builds and all fifteen package tests pass in run `38975554030`.
+
+## Published recovery check
+
+Source commit `69addf8d` publishes `mini-1.3.17`.
+Device build run `38994400051` passes firmware checks and Debug and Release iOS checks.
+Deploy run `38994400070` passes runtime, firmware, backend, and update-request steps.
+The runtime job passes all 623 Python tests and the native firmware and logo checks.
+
+The automated hardware monitor interrupts the first download after at least 262,144 bytes.
+It resets the device through the ROM without changing either application image or runtime storage.
+The device boots the working `mini-1.3.16` image and automatically starts the download again.
+The retry verifies all 1,292,688 bytes and installs `mini-1.3.17`.
+The new firmware reports a validated boot with no boot-state error and acknowledges the server command.
+The public device projection confirms firmware `mini-1.3.17`, paired state, and no pending update.
+
+During backend restarts, telemetry records HTTP failures while cached sports frames continue.
+All 39 sampled sports frames in that interval report current logos ready, with no reset or timing overrun.
+This check proves interrupted download recovery. It does not prove rollback from an intentionally invalid boot image.
