@@ -367,6 +367,17 @@ def register_routes(
         data = application.project_data(identifier, {"stale": False})
         return jsonify(data)
 
+    @app.post("/api/v2/tickers/<ticker_id>/data")
+    def poll_ticker_data(ticker_id: str):
+        """Record device presence and return its current snapshot in one request."""
+
+        identifier = _ticker_id(ticker_id)
+        _require_ticker(application, identifier)
+        payload = _json_object()
+        _check_keys(payload, {"metadata"})
+        application.heartbeat(identifier, payload)
+        return ticker_data(identifier)
+
     @app.post("/api/v2/tickers/<ticker_id>/heartbeat")
     def ticker_heartbeat(ticker_id: str):
         payload = _json_object()
