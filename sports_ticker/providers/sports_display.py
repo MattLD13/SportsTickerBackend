@@ -908,7 +908,7 @@ def nhl_manpower_situation(
         result["powerPlayTeam"] = away_abbr if away_pp else home_abbr
         advantage = away_skaters if away_pp else home_skaters
         opponent = home_skaters if away_pp else away_skaters
-        manpower["powerPlayLabel"] = f"{advantage}v{opponent}"
+        manpower["powerPlayLabel"] = "PP" if (advantage, opponent) in {(5, 4), (4, 3)} else f"{advantage}v{opponent}"
     result["emptyNet"] = not away_goalie or not home_goalie
     if away_goalie != home_goalie:
         result["emptyNetSide"] = away_abbr if not away_goalie else home_abbr

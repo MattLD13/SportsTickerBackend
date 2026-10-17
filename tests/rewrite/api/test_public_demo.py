@@ -209,7 +209,8 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
             row["game"].get("situation", {}).get("manpower", {}).get("powerPlayLabel", "")
             for row in rows
         }
-        assert {"5v4", "5v3", "4v3"} <= labels
+        assert {"PP", "5v3"} <= labels
+        assert not {"5v4", "4v3"} & labels
         assert any(row["game"].get("status") == "OT4" and row["game"].get("sport") == "ncf_fbs" for row in rows)
         for row in rows:
             assert row["mini_source"] in {"firmware", "hardware"}

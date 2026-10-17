@@ -567,7 +567,7 @@ def test_hockey_power_play_renders_for_its_team_in_both_layouts(
         "penaltyBox": {"home" if away_pp else "away": [{"jerseyNumber": 55, "secondsRemaining": 107, "kind": "MIN"}]},
     }, home_abbr="NYI", away_abbr="NYR")
     situation["activeTeam"] = "NYI" if away_pp else "NYR"
-    badge = f"{advantage}v{opponent}"
+    badge = "5v3" if (advantage, opponent) == (5, 3) else "PP"
     game = {
         "sport": "nhl",
         "state": "in",
