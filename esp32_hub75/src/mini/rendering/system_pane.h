@@ -42,10 +42,10 @@ inline SystemPane systemPane(SystemKind kind, const std::string& detail, uint32_
     case SystemKind::TimeSync: view.title = "CLOCK SYNC"; view.footer = "PLEASE WAIT"; break;
     case SystemKind::DeviceKey: view.title = "DEVICE KEY"; view.footer = "USB SETUP"; break;
   }
-  if (kind == SystemKind::Downloading || kind == SystemKind::Assets) {
+  if (kind == SystemKind::Downloading || kind == SystemKind::Assets || kind == SystemKind::Installing) {
     if (total) view.percent = static_cast<int>(std::min<uint64_t>(100, static_cast<uint64_t>(complete) * 100 / total));
     view.footer = kind == SystemKind::Assets ? std::to_string(complete) + "/" + std::to_string(total) :
-        (view.percent < 0 ? "PLEASE WAIT" : std::to_string(view.percent) + "%");
+        "PLEASE WAIT";
   }
   return view;
 }
@@ -71,35 +71,28 @@ void renderSystemOverlay(Canvas& canvas, const SystemPane& view) {
   const bool offline = view.kind == SystemKind::Offline;
   const Rgb accent = failure ? red : cyan;
   if (offline || view.kind == SystemKind::Error) {
-    for (int y = 0; y < 10; ++y) {
-      const int inset = y == 0 || y == 9 ? 2 : y == 1 || y == 8 ? 1 : 0;
-      canvas.rect(52 + inset, y, 12 - 2 * inset, 1, {0, 0, 0});
-    }
-    for (int x = 54; x <= 60; ++x) { canvas.pixel(x, 2, {210, 215, 225}); canvas.pixel(x, 7, {210, 215, 225}); }
-    for (int y = 2; y <= 7; ++y) { canvas.pixel(54, y, {210, 215, 225}); canvas.pixel(60, y, {210, 215, 225}); }
-    canvas.rect(55, 4, 5, 1, {100, 110, 125});
-    canvas.pixel(55, 6, {255, 180, 20});
-    for (int index = 0; index < 10; ++index) {
-      const int x = 53 + index, y = 8 - (index * 8 + 4) / 9;
-      canvas.pixel(x, y, {255, 70, 70});
-      canvas.pixel(x, y + 1, {255, 70, 70});
+    canvas.rect(56, 0, 8, 7, {0, 0, 0});
+    for (int x = 57; x <= 61; ++x) { canvas.pixel(x, 1, {210, 215, 225}); canvas.pixel(x, 5, {210, 215, 225}); }
+    for (int y = 1; y <= 5; ++y) { canvas.pixel(57, y, {210, 215, 225}); canvas.pixel(61, y, {210, 215, 225}); }
+    canvas.rect(58, 3, 3, 1, {100, 110, 125});
+    for (int index = 0; index < 8; ++index) {
+      canvas.pixel(56 + index, 6 - (index * 6 + 3) / 7, {255, 70, 70});
     }
     return;
   }
   canvas.rect(30, 19, 34, 13, {2, 6, 10});
   canvas.rect(30, 19, 34, 1, {25, 50, 60});
-  centered(canvas, "UPDATE", 32, 30, 20, accent);
-  std::string detail;
-  if (view.kind == SystemKind::UpdateFailed) detail = "FAILED";
-  else if (view.kind == SystemKind::Installing) detail = "INSTALL";
-  else if (view.kind == SystemKind::Checking) detail = "CHECK";
-  else detail = view.percent < 0 ? "WAIT" : std::to_string(view.percent) + "%";
-  systemMarquee(canvas, detail, 32, 62, 26, accent, view.elapsedMs);
-  canvas.rect(32, 31, 30, 1, {25, 50, 60});
-  if (view.percent >= 0 && !failure) {
-    const int fill = std::min(100, view.percent) * 30 / 100;
-    if (fill) canvas.rect(32, 31, fill, 1, {0, 200, 120});
+  centered(canvas, failure ? "FAILED" : "UPDATE", 32, 30, 20, accent);
+  canvas.rect(33, 27, 28, 3, failure ? Rgb{75, 20, 20} : Rgb{25, 50, 60});
+  if (failure) return;
+  if (view.percent >= 0) {
+    const int fill = std::min(100, view.percent) * 28 / 100;
+    if (fill) canvas.rect(33, 27, fill, 3, {0, 200, 120});
+  } else {
+    const int start = (view.elapsedMs / 100) % 36 - 8;
+    for (int x = std::max(0, start); x < std::min(28, start + 8); ++x) canvas.rect(33 + x, 27, 1, 3, cyan);
   }
+
 }
 
 template<class Canvas>

@@ -122,6 +122,11 @@ void drawSystemNotice(ticker_ui::SystemKind kind, const String& detail) {
   beginFrame("system", detail.c_str());
   MiniCanvas canvas;
   const auto view = preparedSystemNotice(kind, detail);
+  if (kind == ticker_ui::SystemKind::Empty) {
+    ticker_ui::renderSystem(canvas, view);
+    presentContentFrame();
+    return;
+  }
   if (ticker_ui::systemOverlay(kind) && matrix->restoreBaseFrame()) ticker_ui::renderSystemOverlay(canvas, view);
   else ticker_ui::renderSystem(canvas, view);
   presentFrame();

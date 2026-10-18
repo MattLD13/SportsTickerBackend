@@ -58,12 +58,16 @@ int main(int argc, char** argv) {
     ticker_ui::renderSystemOverlay(overlay, ticker_ui::systemPane(kind, "HTTP 503", 50, 100, 1700));
     for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
       const bool connection = kind == SystemKind::Offline || kind == SystemKind::Error;
-      if (connection ? x >= 52 && y < 10 : x >= 30 && y >= 19) continue;
+      if (connection ? x >= 56 && y < 7 : x >= 30 && y >= 19) continue;
       const int offset = (y * 64 + x) * 3;
       for (int channel = 0; channel < 3; ++channel) assert(overlay.pixels[offset + channel] == original[offset + channel]);
     }
     assert(overlay.pixels != original);
   }
+  Canvas downloading;
+  ticker_ui::renderSystemOverlay(downloading, ticker_ui::systemPane(SystemKind::Downloading, "", 50, 100));
+  for (int x = 33; x < 47; ++x) assert(downloading.pixels[(27 * 64 + x) * 3 + 1] == 200);
+  for (int x = 47; x < 61; ++x) assert(downloading.pixels[(27 * 64 + x) * 3 + 1] == 50);
   ticker_ui::SystemKind unknown;
   assert(!ticker_ui::systemKind("unknown", unknown));
   std::cout << "System lifecycle states, animation, progress bounds, pairing, and frame bounds pass\n";
