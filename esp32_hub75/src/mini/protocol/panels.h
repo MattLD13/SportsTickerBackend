@@ -6,6 +6,7 @@
 #include "../rendering/utility_panels.h"
 #include "../rendering/music_pane.h"
 #include "../rendering/weather_pane.h"
+#include "../rendering/auxiliary_panels.h"
 
 namespace ticker_ui {
 inline std::string label(JsonVariantConst value, const char* empty = "", size_t limit = 64) {
@@ -178,6 +179,37 @@ inline WeatherPane weatherPane(JsonObjectConst weather, uint32_t elapsedMs) {
   else if (icon == "fog") { view.sky = WeatherSky::Fog; view.condition = "FOG"; }
   else if (icon == "storm") { view.sky = WeatherSky::Storm; view.condition = "STORM"; }
   else view.condition = "--";
+  return view;
+}
+
+inline FlightPane flightPane(JsonObjectConst flight) {
+  FlightPane view;
+  view.id = label(flight["id"], "FLIGHT", 8);
+  view.live = flight["is_live"] | false;
+  view.delayed = (flight["is_delayed"] | false) || (flight["delay_min"] | 0) > 0;
+  const auto origin = flight["origin_iata"].isNull() ? flight["origin_city"] : flight["origin_iata"];
+  const auto destination = flight["dest_iata"].isNull() ? flight["dest_city"] : flight["dest_iata"];
+  view.route = label(origin, "DEP", 3) + ">" + label(destination, "ARR", 3);
+  view.eta = label(flight["eta_str"], "--", 6);
+  view.speed = label(flight["speed"], "--", 4);
+  view.detail = view.delayed ? "D" + label(flight["delay_min"], "--", 3) : "A" + std::to_string((flight["alt"] | 0) / 1000) + "K";
+  view.status = label(flight["status"], "SCHEDULED", 8);
+  view.footer = label(flight["status"], "EN ROUTE", 7);
+  view.progress = flight["progress"] | 0;
+  return view;
+}
+
+inline AirportPane airportPane(JsonObjectConst airport) {
+  AirportPane view;
+  JsonObjectConst weather = airport["weather"].as<JsonObjectConst>();
+  view.code = label(weather["iata"], "AIRPORT", 8);
+  view.temperature = label(weather["away_abbr"], "--", 4);
+  JsonObjectConst arrival = airport["arrivals"][0].as<JsonObjectConst>();
+  JsonObjectConst departure = airport["departures"][0].as<JsonObjectConst>();
+  view.arrival = label(arrival["flight_number"], "---", 7);
+  view.arrivalAirport = label(arrival["airport_code"], "---", 3);
+  view.departure = label(departure["flight_number"], "---", 7);
+  view.departureAirport = label(departure["airport_code"], "---", 3);
   return view;
 }
 

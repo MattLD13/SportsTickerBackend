@@ -75,6 +75,8 @@ jobs:
         run: python -m ruff check sports_ticker ticker_core
       - name: Check scoped Python types
         run: python -m mypy
+      - name: Build public layouts from current Mini firmware
+        run: python tools/build_demo_layouts.py --work-dir "${RUNNER_TEMP}/public-demo-build"
       - name: Verify approved public demo assets
         run: python tools/verify_public_demo.py
       - name: Verify public demo route
@@ -96,6 +98,12 @@ jobs:
         run: |
           g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_display_metrics.cpp -o /tmp/mini-display-check
           /tmp/mini-display-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-demo-${{ github.sha }}
+          path: sports_ticker/dashboard_v2/static/layout-gallery.json
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@v4
         with:
           name: runtime-validation-${{ github.sha }}
@@ -224,6 +232,12 @@ jobs:
     if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') && needs.verify-runtime.result == 'success' && (needs.deploy-mini-firmware.result == 'success' || needs.deploy-mini-firmware.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install verified public layout artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: public-demo-${{ github.sha }}
+          path: sports_ticker/dashboard_v2/static/
 
       - name: Generate VERSION file
         run: |

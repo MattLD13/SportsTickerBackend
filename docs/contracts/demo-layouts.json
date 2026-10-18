@@ -1,0 +1,3957 @@
+{
+  "schema_version": 1,
+  "example_time": "2026-10-16T12:34:27-04:00",
+  "cases": [
+    {
+      "name": "FB01",
+      "group": "Football",
+      "title": "Scheduled / kickoff time",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "pre",
+        "status": "SUN 1:00 PM",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": 0,
+        "home_score": 0,
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB02",
+      "group": "Football",
+      "title": "Away possession",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "DAL",
+          "isRedZone": false,
+          "downDist": "1ST & 10"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB03",
+      "group": "Football",
+      "title": "Home possession",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "NYG",
+          "isRedZone": false,
+          "downDist": "3RD & 6"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB04",
+      "group": "Football",
+      "title": "Away in red zone",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "DAL",
+          "isRedZone": true,
+          "downDist": "2ND & 6"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB05",
+      "group": "Football",
+      "title": "Home in red zone",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "NYG",
+          "isRedZone": true,
+          "downDist": "1ST & GOAL"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB06",
+      "group": "Football",
+      "title": "Fourth and 15",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "NYG",
+          "isRedZone": false,
+          "downDist": "4TH & 15"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB07",
+      "group": "Football",
+      "title": "Long goal-to-go footer",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "DAL",
+          "isRedZone": false,
+          "downDist": "4TH & GOAL"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB08",
+      "group": "Football",
+      "title": "Quarter ended",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q1 END",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB09",
+      "group": "Football",
+      "title": "Halftime",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "HALFTIME",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB10",
+      "group": "Football",
+      "title": "Overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "OT 05:00",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB11",
+      "group": "Football",
+      "title": "College football second overtime / untimed",
+      "mode": "sports",
+      "game": {
+        "sport": "ncf_fbs",
+        "state": "in",
+        "status": "2OT",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB12",
+      "group": "Football",
+      "title": "Final",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "post",
+        "status": "FINAL",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB13",
+      "group": "Football",
+      "title": "Postponed",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "POSTPONED",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB14",
+      "group": "Football",
+      "title": "College football ranks",
+      "mode": "sports",
+      "game": {
+        "sport": "ncf_fbs",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "downDist": "3RD & 9"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "away_rank": 8,
+        "home_rank": 12,
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB15",
+      "group": "Football",
+      "title": "Missing logos: current badge fallback",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {},
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB16",
+      "group": "Football",
+      "title": "Second and goal",
+      "mode": "sports",
+      "game": {
+        "sport": "nfl",
+        "state": "in",
+        "status": "Q3 08:12",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "DAL",
+          "isRedZone": false,
+          "downDist": "2ND & GOAL"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB17",
+      "group": "Football",
+      "title": "College football active first overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "ncf_fbs",
+        "state": "in",
+        "status": "OT",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "DAL",
+          "isRedZone": false,
+          "downDist": "1ST & 10"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "FB18",
+      "group": "Football",
+      "title": "College football active fourth overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "ncf_fbs",
+        "state": "in",
+        "status": "OT4",
+        "away_abbr": "DAL",
+        "home_abbr": "NYG",
+        "away_score": "17",
+        "home_score": "14",
+        "situation": {
+          "activeTeam": "DAL",
+          "isRedZone": false,
+          "downDist": "2ND & GOAL"
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS01",
+      "group": "Baseball",
+      "title": "Scheduled / first pitch",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "pre",
+        "status": "7:10 PM",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": 0,
+        "home_score": 0,
+        "situation": {
+          "activeTeam": "NYY"
+        },
+        "baseball_inning": {
+          "number": 7,
+          "half": "top",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS02",
+      "group": "Baseball",
+      "title": "Bases empty / top inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Top 5th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "NYY",
+          "onFirst": false,
+          "onSecond": false,
+          "onThird": false,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 0,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 5,
+          "half": "top",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS03",
+      "group": "Baseball",
+      "title": "Runner on first / bottom inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Bot 9th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "BOS",
+          "onFirst": true,
+          "onSecond": false,
+          "onThird": false,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 9,
+          "half": "bottom",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS04",
+      "group": "Baseball",
+      "title": "Runner on second / top inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Top 5th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "NYY",
+          "onFirst": false,
+          "onSecond": true,
+          "onThird": false,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 0,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 5,
+          "half": "top",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS05",
+      "group": "Baseball",
+      "title": "First and second / bottom inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Bot 9th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "BOS",
+          "onFirst": true,
+          "onSecond": true,
+          "onThird": false,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 9,
+          "half": "bottom",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS06",
+      "group": "Baseball",
+      "title": "Runner on third / top inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Top 5th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "NYY",
+          "onFirst": false,
+          "onSecond": false,
+          "onThird": true,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 0,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 5,
+          "half": "top",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS07",
+      "group": "Baseball",
+      "title": "First and third / bottom inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Bot 9th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "BOS",
+          "onFirst": true,
+          "onSecond": false,
+          "onThird": true,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 9,
+          "half": "bottom",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS08",
+      "group": "Baseball",
+      "title": "Second and third / top inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Top 5th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "NYY",
+          "onFirst": false,
+          "onSecond": true,
+          "onThird": true,
+          "balls": 1,
+          "strikes": 0,
+          "outs": 0,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 5,
+          "half": "top",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS09",
+      "group": "Baseball",
+      "title": "Bases loaded / full count / two outs",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Bot 9th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "BOS",
+          "onFirst": true,
+          "onSecond": true,
+          "onThird": true,
+          "balls": 3,
+          "strikes": 2,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 9,
+          "half": "bottom",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS10",
+      "group": "Baseball",
+      "title": "Extra inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Top 12th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "NYY",
+          "onFirst": true,
+          "onSecond": true,
+          "onThird": false,
+          "balls": 3,
+          "strikes": 2,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 12,
+          "half": "top",
+          "phase": "playing"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS11",
+      "group": "Baseball",
+      "title": "Middle of inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Mid 7th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "",
+          "onFirst": false,
+          "onSecond": false,
+          "onThird": false,
+          "balls": 0,
+          "strikes": 0,
+          "outs": 3,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 7,
+          "half": "break",
+          "phase": "break"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS12",
+      "group": "Baseball",
+      "title": "End of inning",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "End 8th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "",
+          "onFirst": false,
+          "onSecond": false,
+          "onThird": false,
+          "balls": 0,
+          "strikes": 0,
+          "outs": 3,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 8,
+          "half": "break",
+          "phase": "break"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS13",
+      "group": "Baseball",
+      "title": "Rain delay",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Rain Delay",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "",
+          "onFirst": true,
+          "onSecond": true,
+          "onThird": false,
+          "balls": 3,
+          "strikes": 2,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 0,
+          "half": "none",
+          "phase": "paused"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BS14",
+      "group": "Baseball",
+      "title": "Final after extras",
+      "mode": "sports",
+      "game": {
+        "sport": "mlb",
+        "state": "post",
+        "status": "FINAL/12",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": "3",
+        "home_score": "2",
+        "situation": {
+          "activeTeam": "",
+          "onFirst": true,
+          "onSecond": true,
+          "onThird": false,
+          "balls": 3,
+          "strikes": 2,
+          "outs": 2,
+          "batter_name": "Aaron Judge",
+          "batter_h": "2",
+          "batter_ab": "4",
+          "batter_avg": ".298",
+          "pitcher_name": "Garrett Whitlock",
+          "pitcher_pitches": "82",
+          "last_pitch_speed": 96,
+          "last_pitch_type": "4S Fastball"
+        },
+        "baseball_inning": {
+          "number": 0,
+          "half": "none",
+          "phase": "inactive"
+        },
+        "away_logo": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/New_York_Yankees_logo.svg.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK01",
+      "group": "Basketball",
+      "title": "Scheduled",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "pre",
+        "status": "7:30 PM",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": 0,
+        "home_score": 0,
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK02",
+      "group": "Basketball",
+      "title": "Two-digit scores",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "Q3 06:24",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "78",
+        "home_score": "81",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK03",
+      "group": "Basketball",
+      "title": "Three-digit scores",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "Q4 0:15",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "112",
+        "home_score": "108",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK04",
+      "group": "Basketball",
+      "title": "Fractional clock",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "Q4 0.3",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "99",
+        "home_score": "99",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK05",
+      "group": "Basketball",
+      "title": "Quarter ended",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "Q1 END",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "22",
+        "home_score": "20",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK06",
+      "group": "Basketball",
+      "title": "Halftime",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "HALFTIME",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "52",
+        "home_score": "49",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK07",
+      "group": "Basketball",
+      "title": "First overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "OT 02:10",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "114",
+        "home_score": "114",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK08",
+      "group": "Basketball",
+      "title": "Third overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "in",
+        "status": "3OT 01:00",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "132",
+        "home_score": "130",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK09",
+      "group": "Basketball",
+      "title": "Final",
+      "mode": "sports",
+      "game": {
+        "sport": "nba",
+        "state": "post",
+        "status": "FINAL",
+        "away_abbr": "BOS",
+        "home_abbr": "NYK",
+        "away_score": "118",
+        "home_score": "115",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "BK10",
+      "group": "Basketball",
+      "title": "College basketball / March Madness",
+      "mode": "sports",
+      "game": {
+        "sport": "march_madness",
+        "state": "in",
+        "status": "2H 04:32",
+        "away_abbr": "DUKE",
+        "home_abbr": "HOU",
+        "away_score": "67",
+        "home_score": "64",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/150.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+        "type": "scoreboard",
+        "away_seed": "1",
+        "home_seed": "2"
+      },
+      "note": "Example tournament matchup with seeds."
+    },
+    {
+      "name": "HK01",
+      "group": "Hockey",
+      "title": "Scheduled",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "pre",
+        "status": "7:00 PM",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": 0,
+        "home_score": 0,
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK02",
+      "group": "Hockey",
+      "title": "Even strength",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P2 12:34",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK03",
+      "group": "Hockey",
+      "title": "Away power play; clock only",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "power_play",
+            "awaySkaters": 5,
+            "homeSkaters": 4,
+            "label": "5v4",
+            "scrollLabel": "0:45",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK04",
+      "group": "Hockey",
+      "title": "Home power play; clock only",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "BOS",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "power_play",
+            "awaySkaters": 4,
+            "homeSkaters": 5,
+            "label": "4v5",
+            "scrollLabel": "0:45",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK05",
+      "group": "Hockey",
+      "title": "Single penalty #88",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "power_play",
+            "awaySkaters": 5,
+            "homeSkaters": 4,
+            "label": "5v4",
+            "scrollLabel": "0:45 #88",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [
+              88
+            ],
+            "penalties": [
+              {
+                "jerseyNumber": 88,
+                "secondsRemaining": 45,
+                "timeRemaining": "0:45"
+              }
+            ]
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK06",
+      "group": "Hockey",
+      "title": "Long clock and #20",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "power_play",
+            "awaySkaters": 5,
+            "homeSkaters": 4,
+            "label": "5v4",
+            "scrollLabel": "10:00 #20",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [
+              20
+            ],
+            "penalties": [
+              {
+                "jerseyNumber": 20,
+                "secondsRemaining": 600,
+                "timeRemaining": "10:00"
+              }
+            ]
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK07",
+      "group": "Hockey",
+      "title": "Two equal clocks; stacked",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "power_play",
+            "awaySkaters": 5,
+            "homeSkaters": 3,
+            "label": "5v3",
+            "scrollLabel": "0:45 #88/#99",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "5v3",
+            "penaltyNumbers": [
+              88,
+              99
+            ],
+            "penalties": [
+              {
+                "jerseyNumber": 88,
+                "secondsRemaining": 45,
+                "timeRemaining": "0:45"
+              },
+              {
+                "jerseyNumber": 99,
+                "secondsRemaining": 45,
+                "timeRemaining": "0:45"
+              }
+            ]
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK08",
+      "group": "Hockey",
+      "title": "Two different clocks; stacked",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "power_play",
+            "awaySkaters": 5,
+            "homeSkaters": 3,
+            "label": "5v3",
+            "scrollLabel": "0:45 #88 | 1:30 #99",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "5v3",
+            "penaltyNumbers": [
+              88,
+              99
+            ],
+            "penalties": [
+              {
+                "jerseyNumber": 88,
+                "secondsRemaining": 45,
+                "timeRemaining": "0:45"
+              },
+              {
+                "jerseyNumber": 99,
+                "secondsRemaining": 90,
+                "timeRemaining": "1:30"
+              }
+            ]
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK09",
+      "group": "Hockey",
+      "title": "Four on four",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": false,
+          "powerPlayTeam": "",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "reduced_strength",
+            "awaySkaters": 4,
+            "homeSkaters": 4,
+            "label": "4v4",
+            "scrollLabel": "4v4",
+            "powerPlayTimeRemaining": "",
+            "powerPlayLabel": "",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK10",
+      "group": "Hockey",
+      "title": "Three on three",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": false,
+          "powerPlayTeam": "",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "regulation",
+            "state": "reduced_strength",
+            "awaySkaters": 3,
+            "homeSkaters": 3,
+            "label": "3v3",
+            "scrollLabel": "3v3",
+            "powerPlayTimeRemaining": "",
+            "powerPlayLabel": "",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK11",
+      "group": "Hockey",
+      "title": "Away empty net",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": false,
+          "powerPlayTeam": "",
+          "emptyNet": true,
+          "emptyNetSide": "NYR",
+          "manpower": {
+            "phase": "regulation",
+            "state": "empty_net",
+            "awaySkaters": 5,
+            "homeSkaters": 5,
+            "label": "5v5",
+            "scrollLabel": "5v5",
+            "powerPlayTimeRemaining": "",
+            "powerPlayLabel": "",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK12",
+      "group": "Hockey",
+      "title": "Home empty net",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": false,
+          "powerPlayTeam": "",
+          "emptyNet": true,
+          "emptyNetSide": "BOS",
+          "manpower": {
+            "phase": "regulation",
+            "state": "empty_net",
+            "awaySkaters": 5,
+            "homeSkaters": 5,
+            "label": "5v5",
+            "scrollLabel": "5v5",
+            "powerPlayTimeRemaining": "",
+            "powerPlayLabel": "",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK13",
+      "group": "Hockey",
+      "title": "Empty net plus power play",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P3 03:21",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": true,
+          "emptyNetSide": "BOS",
+          "manpower": {
+            "phase": "regulation",
+            "state": "empty_net",
+            "awaySkaters": 5,
+            "homeSkaters": 4,
+            "label": "5v4",
+            "scrollLabel": "0:45",
+            "powerPlayTimeRemaining": "0:45",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK14",
+      "group": "Hockey",
+      "title": "Period ended",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "P1 END",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK15",
+      "group": "Hockey",
+      "title": "Intermission",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "END P2",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK16",
+      "group": "Hockey",
+      "title": "Regular-season overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "OT 02:00",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK17",
+      "group": "Hockey",
+      "title": "Playoff second overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "2OT 12:34",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK18",
+      "group": "Hockey",
+      "title": "Playoff third overtime",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "3OT 01:00",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK19",
+      "group": "Hockey",
+      "title": "Final",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "post",
+        "status": "FINAL",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK20",
+      "group": "Hockey",
+      "title": "Shootout: initial home next",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "S/O",
+        "away_abbr": "SEA",
+        "home_abbr": "PHI",
+        "away_score": "2",
+        "home_score": "2",
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+        "situation": {
+          "shootout": {
+            "away": [],
+            "home": [],
+            "state": "active",
+            "round": 1,
+            "stage": "initial",
+            "nextSide": "home",
+            "awayGoals": 0,
+            "homeGoals": 0,
+            "roundLabel": "R1-3",
+            "displayRounds": [
+              {
+                "round": 1,
+                "nextSide": "home",
+                "away": "pending",
+                "home": "pending"
+              },
+              {
+                "round": 2,
+                "nextSide": "",
+                "away": "pending",
+                "home": "pending"
+              },
+              {
+                "round": 3,
+                "nextSide": "",
+                "away": "pending",
+                "home": "pending"
+              }
+            ]
+          }
+        },
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK21",
+      "group": "Hockey",
+      "title": "Shootout: third away next",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "S/O",
+        "away_abbr": "SEA",
+        "home_abbr": "PHI",
+        "away_score": "2",
+        "home_score": "2",
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+        "situation": {
+          "shootout": {
+            "away": [
+              "goal",
+              "miss"
+            ],
+            "home": [
+              "miss",
+              "goal"
+            ],
+            "state": "active",
+            "round": 3,
+            "stage": "initial",
+            "nextSide": "away",
+            "awayGoals": 1,
+            "homeGoals": 1,
+            "roundLabel": "R1-3",
+            "displayRounds": [
+              {
+                "round": 1,
+                "nextSide": "",
+                "away": "goal",
+                "home": "miss"
+              },
+              {
+                "round": 2,
+                "nextSide": "",
+                "away": "miss",
+                "home": "goal"
+              },
+              {
+                "round": 3,
+                "nextSide": "away",
+                "away": "pending",
+                "home": "pending"
+              }
+            ]
+          }
+        },
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK22",
+      "group": "Hockey",
+      "title": "Shootout: round twelve home next",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "S/O",
+        "away_abbr": "SEA",
+        "home_abbr": "PHI",
+        "away_score": "2",
+        "home_score": "2",
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+        "situation": {
+          "shootout": {
+            "away": [
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "goal"
+            ],
+            "home": [
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss",
+              "miss"
+            ],
+            "state": "active",
+            "round": 12,
+            "stage": "sudden_death",
+            "nextSide": "home",
+            "awayGoals": 1,
+            "homeGoals": 0,
+            "roundLabel": "R10-12",
+            "displayRounds": [
+              {
+                "round": 10,
+                "nextSide": "",
+                "away": "miss",
+                "home": "miss"
+              },
+              {
+                "round": 11,
+                "nextSide": "",
+                "away": "miss",
+                "home": "miss"
+              },
+              {
+                "round": 12,
+                "nextSide": "home",
+                "away": "goal",
+                "home": "pending"
+              }
+            ]
+          }
+        },
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK23",
+      "group": "Hockey",
+      "title": "Shootout: early complete",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "post",
+        "status": "FINAL/SO",
+        "away_abbr": "SEA",
+        "home_abbr": "PHI",
+        "away_score": "2",
+        "home_score": "3",
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+        "situation": {
+          "shootout": {
+            "away": [
+              "goal",
+              "miss"
+            ],
+            "home": [
+              "goal",
+              "goal",
+              "goal"
+            ],
+            "state": "complete",
+            "round": 3,
+            "stage": "initial",
+            "nextSide": "",
+            "awayGoals": 1,
+            "homeGoals": 3,
+            "roundLabel": "R1-3",
+            "displayRounds": [
+              {
+                "round": 1,
+                "nextSide": "",
+                "away": "goal",
+                "home": "goal"
+              },
+              {
+                "round": 2,
+                "nextSide": "",
+                "away": "miss",
+                "home": "goal"
+              },
+              {
+                "round": 3,
+                "nextSide": "",
+                "away": "not_taken",
+                "home": "goal"
+              }
+            ]
+          }
+        },
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK24",
+      "group": "Hockey",
+      "title": "Shootout: captured final",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "post",
+        "status": "FINAL/SO",
+        "away_abbr": "SEA",
+        "home_abbr": "PHI",
+        "away_score": "3",
+        "home_score": "2",
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+        "situation": {
+          "shootout": {
+            "away": [
+              "goal",
+              "miss",
+              "miss",
+              "miss",
+              "goal"
+            ],
+            "home": [
+              "miss",
+              "goal",
+              "miss",
+              "miss",
+              "miss"
+            ],
+            "state": "complete",
+            "round": 5,
+            "stage": "sudden_death",
+            "nextSide": "",
+            "awayGoals": 2,
+            "homeGoals": 1,
+            "roundLabel": "R3-5",
+            "displayRounds": [
+              {
+                "round": 3,
+                "nextSide": "",
+                "away": "miss",
+                "home": "miss"
+              },
+              {
+                "round": 4,
+                "nextSide": "",
+                "away": "miss",
+                "home": "miss"
+              },
+              {
+                "round": 5,
+                "nextSide": "",
+                "away": "goal",
+                "home": "miss"
+              }
+            ]
+          }
+        },
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK25",
+      "group": "Hockey",
+      "title": "Playoff third OT / no shootout",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "3OT 01:00",
+        "away_abbr": "SEA",
+        "home_abbr": "PHI",
+        "away_score": "2",
+        "home_score": "2",
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sea.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+        "situation": {
+          "shootout": null
+        },
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK26",
+      "group": "Hockey",
+      "title": "Overtime away power play / 4v3",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "OT 03:00",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "NYR",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "overtime",
+            "state": "power_play",
+            "awaySkaters": 4,
+            "homeSkaters": 3,
+            "label": "4v3",
+            "scrollLabel": "1:00",
+            "powerPlayTimeRemaining": "1:00",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "HK27",
+      "group": "Hockey",
+      "title": "Overtime home power play / 4v3",
+      "mode": "sports",
+      "game": {
+        "sport": "nhl",
+        "state": "in",
+        "status": "OT 03:00",
+        "away_abbr": "NYR",
+        "home_abbr": "BOS",
+        "away_score": "2",
+        "home_score": "1",
+        "situation": {
+          "powerPlay": true,
+          "powerPlayTeam": "BOS",
+          "emptyNet": false,
+          "emptyNetSide": "",
+          "manpower": {
+            "phase": "overtime",
+            "state": "power_play",
+            "awaySkaters": 3,
+            "homeSkaters": 4,
+            "label": "3v4",
+            "scrollLabel": "1:00",
+            "powerPlayTimeRemaining": "1:00",
+            "powerPlayLabel": "PP",
+            "penaltyNumbers": [],
+            "penalties": []
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC01",
+      "group": "Soccer",
+      "title": "Scheduled",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "pre",
+        "status": "3:00 PM",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": 0,
+        "home_score": 0,
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC02",
+      "group": "Soccer",
+      "title": "Live",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "78'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC03",
+      "group": "Soccer",
+      "title": "Halftime",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "HALFTIME",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC04",
+      "group": "Soccer",
+      "title": "Stoppage time",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "90+7'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC05",
+      "group": "Soccer",
+      "title": "Extra time",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "ET 112'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC06",
+      "group": "Soccer",
+      "title": "Final",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "post",
+        "status": "FINAL",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {},
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC07",
+      "group": "Soccer",
+      "title": "Away red card",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "78'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {
+          "red_cards": [
+            {
+              "is_home": false
+            }
+          ]
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC08",
+      "group": "Soccer",
+      "title": "Home red card",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "78'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {
+          "red_cards": [
+            {
+              "is_home": true
+            }
+          ]
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC09",
+      "group": "Soccer",
+      "title": "Both teams red cards",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "78'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {
+          "red_cards": [
+            {
+              "is_home": false
+            },
+            {
+              "is_home": true
+            }
+          ]
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC10",
+      "group": "Soccer",
+      "title": "Two home red cards",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "78'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {
+          "red_cards": [
+            {
+              "is_home": true
+            },
+            {
+              "is_home": true
+            }
+          ]
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC11",
+      "group": "Soccer",
+      "title": "Three away red cards",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "78'",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {
+          "red_cards": [
+            {
+              "is_home": false
+            },
+            {
+              "is_home": false
+            },
+            {
+              "is_home": false
+            }
+          ]
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC12",
+      "group": "Soccer",
+      "title": "Penalty shootout in progress",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "in",
+        "status": "PENS",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "2",
+        "situation": {
+          "shootout": {
+            "away": [
+              "goal",
+              "miss",
+              "goal",
+              "pending",
+              "pending"
+            ],
+            "home": [
+              "goal",
+              "goal",
+              "miss",
+              "pending",
+              "pending"
+            ]
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "SC13",
+      "group": "Soccer",
+      "title": "Penalty shootout completed",
+      "mode": "sports",
+      "game": {
+        "sport": "soccer_epl",
+        "state": "post",
+        "status": "FINAL/PENS",
+        "away_abbr": "ARS",
+        "home_abbr": "CHE",
+        "away_score": "1",
+        "home_score": "1",
+        "situation": {
+          "shootout": {
+            "away": [
+              "goal",
+              "miss",
+              "goal",
+              "goal",
+              "miss"
+            ],
+            "home": [
+              "goal",
+              "goal",
+              "miss",
+              "goal",
+              "goal"
+            ]
+          }
+        },
+        "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
+        "type": "scoreboard"
+      }
+    },
+    {
+      "name": "OS01",
+      "group": "Other sports",
+      "title": "F1 / current generic Mini output",
+      "mode": "sports",
+      "game": {
+        "sport": "f1",
+        "state": "in",
+        "f1": {
+          "short_name": "Example Grand Prix",
+          "session_type": "Race",
+          "flag": "GREEN",
+          "drivers": [
+            {
+              "pos": "1",
+              "abbr": "VER",
+              "name": "Max Verstappen",
+              "car": "1",
+              "gap": ""
+            }
+          ]
+        },
+        "type": "racing"
+      },
+      "note": "The Mini currently uses its generic scoreboard for this sport. A dedicated Mini layout is not available."
+    },
+    {
+      "name": "OS02",
+      "group": "Other sports",
+      "title": "INDYCAR / current generic Mini output",
+      "mode": "sports",
+      "game": {
+        "sport": "indycar",
+        "state": "in",
+        "indycar": {
+          "short_name": "Example Grand Prix",
+          "session_type": "Race",
+          "flag": "GREEN",
+          "drivers": [
+            {
+              "pos": "1",
+              "abbr": "VER",
+              "name": "Max Verstappen",
+              "car": "1",
+              "gap": ""
+            }
+          ]
+        },
+        "type": "racing"
+      },
+      "note": "The Mini currently uses its generic scoreboard for this sport. A dedicated Mini layout is not available."
+    },
+    {
+      "name": "OS03",
+      "group": "Other sports",
+      "title": "IMSA / current generic Mini output",
+      "mode": "sports",
+      "game": {
+        "sport": "imsa",
+        "state": "in",
+        "imsa": {
+          "short_name": "Example Grand Prix",
+          "session_type": "Race",
+          "flag": "GREEN",
+          "drivers": [
+            {
+              "pos": "1",
+              "abbr": "VER",
+              "name": "Max Verstappen",
+              "car": "1",
+              "gap": ""
+            }
+          ]
+        },
+        "type": "racing"
+      },
+      "note": "The Mini currently uses its generic scoreboard for this sport. A dedicated Mini layout is not available."
+    },
+    {
+      "name": "OS04",
+      "group": "Other sports",
+      "title": "WEC / current generic Mini output",
+      "mode": "sports",
+      "game": {
+        "sport": "wec",
+        "state": "in",
+        "wec": {
+          "short_name": "Example Grand Prix",
+          "session_type": "Race",
+          "flag": "GREEN",
+          "drivers": [
+            {
+              "pos": "1",
+              "abbr": "VER",
+              "name": "Max Verstappen",
+              "car": "1",
+              "gap": ""
+            }
+          ]
+        },
+        "type": "racing"
+      },
+      "note": "The Mini currently uses its generic scoreboard for this sport. A dedicated Mini layout is not available."
+    },
+    {
+      "name": "OS05",
+      "group": "Other sports",
+      "title": "Golf / current generic Mini output",
+      "mode": "sports",
+      "game": {
+        "sport": "golf",
+        "state": "in",
+        "status": "Round 1",
+        "golf": {
+          "event_name": "Example Open",
+          "round": "Round 1",
+          "players": [
+            {
+              "pos": "1",
+              "name": "Scottie Scheffler",
+              "total": -8,
+              "today": -3,
+              "thru": 14
+            },
+            {
+              "pos": "2",
+              "name": "Rory McIlroy",
+              "total": -6,
+              "today": -2,
+              "thru": 12
+            },
+            {
+              "pos": "3",
+              "name": "Collin Morikawa",
+              "total": -5,
+              "today": -1,
+              "thru": 11
+            }
+          ]
+        },
+        "type": "golf"
+      },
+      "note": "The Mini currently uses its generic scoreboard for this sport. A dedicated Mini layout is not available."
+    },
+    {
+      "name": "MD01",
+      "group": "Other modes",
+      "title": "Stock gain",
+      "mode": "stock",
+      "game": {
+        "symbol": "AAPL",
+        "home_score": "212.48",
+        "away_score": "+1.25%",
+        "situation": {
+          "change": "2.62"
+        },
+        "type": "stock_ticker",
+        "sport": "stock",
+        "home_abbr": "AAPL"
+      }
+    },
+    {
+      "name": "MD02",
+      "group": "Other modes",
+      "title": "Stock loss",
+      "mode": "stock",
+      "game": {
+        "symbol": "AAPL",
+        "home_score": "208.10",
+        "away_score": "-2.06%",
+        "situation": {
+          "change": "-4.38"
+        },
+        "type": "stock_ticker",
+        "sport": "stock",
+        "home_abbr": "AAPL"
+      }
+    },
+    {
+      "name": "MD03",
+      "group": "Other modes",
+      "title": "Stock flat",
+      "mode": "stock",
+      "game": {
+        "symbol": "AAPL",
+        "home_score": "210.00",
+        "away_score": "0.00%",
+        "situation": {
+          "change": "0.00"
+        },
+        "type": "stock_ticker",
+        "sport": "stock",
+        "home_abbr": "AAPL"
+      }
+    },
+    {
+      "name": "MD04",
+      "group": "Other modes",
+      "title": "Weather: sun",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 72,
+        "situation": {
+          "icon": "sun",
+          "stats": {
+            "feels": "70",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "sun",
+              "high": 74,
+              "low": 66,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 76,
+              "low": 68,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 70,
+              "low": 62,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 73,
+              "low": 65,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 77,
+              "low": 69,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "72",
+        "status": "SUN",
+        "icon": "sun",
+        "is_day": 1,
+        "feels": 70,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "sun",
+            "high": 74,
+            "low": 66,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 76,
+            "low": 68,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 70,
+            "low": 62,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 73,
+            "low": 65,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 77,
+            "low": 69,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD05",
+      "group": "Other modes",
+      "title": "Weather: cloud",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 62,
+        "situation": {
+          "icon": "cloud",
+          "stats": {
+            "feels": "60",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "cloud",
+              "high": 64,
+              "low": 56,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 66,
+              "low": 58,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 60,
+              "low": 52,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 63,
+              "low": 55,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 67,
+              "low": 59,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "62",
+        "status": "CLOUD",
+        "icon": "cloud",
+        "is_day": 1,
+        "feels": 60,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "cloud",
+            "high": 64,
+            "low": 56,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 66,
+            "low": 58,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 60,
+            "low": 52,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 63,
+            "low": 55,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 67,
+            "low": 59,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD06",
+      "group": "Other modes",
+      "title": "Weather: rain",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 55,
+        "situation": {
+          "icon": "rain",
+          "stats": {
+            "feels": "53",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "rain",
+              "high": 57,
+              "low": 49,
+              "pop": 65
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 59,
+              "low": 51,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 53,
+              "low": 45,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 56,
+              "low": 48,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 60,
+              "low": 52,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "55",
+        "status": "RAIN",
+        "icon": "rain",
+        "is_day": 1,
+        "feels": 53,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "rain",
+            "high": 57,
+            "low": 49,
+            "pop": 65
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 59,
+            "low": 51,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 53,
+            "low": 45,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 56,
+            "low": 48,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 60,
+            "low": 52,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD07",
+      "group": "Other modes",
+      "title": "Weather: snow",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 22,
+        "situation": {
+          "icon": "snow",
+          "stats": {
+            "feels": "20",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "snow",
+              "high": 24,
+              "low": 16,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 26,
+              "low": 18,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 20,
+              "low": 12,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 23,
+              "low": 15,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 27,
+              "low": 19,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "22",
+        "status": "SNOW",
+        "icon": "snow",
+        "is_day": 1,
+        "feels": 20,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "snow",
+            "high": 24,
+            "low": 16,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 26,
+            "low": 18,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 20,
+            "low": 12,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 23,
+            "low": 15,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 27,
+            "low": 19,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD08",
+      "group": "Other modes",
+      "title": "Weather: fog",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 45,
+        "situation": {
+          "icon": "fog",
+          "stats": {
+            "feels": "43",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "fog",
+              "high": 47,
+              "low": 39,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 49,
+              "low": 41,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 43,
+              "low": 35,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 46,
+              "low": 38,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 50,
+              "low": 42,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "45",
+        "status": "FOG",
+        "icon": "fog",
+        "is_day": 1,
+        "feels": 43,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "fog",
+            "high": 47,
+            "low": 39,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 49,
+            "low": 41,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 43,
+            "low": 35,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 46,
+            "low": 38,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 50,
+            "low": 42,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD09",
+      "group": "Other modes",
+      "title": "Weather: storm",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 91,
+        "situation": {
+          "icon": "storm",
+          "stats": {
+            "feels": "89",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "storm",
+              "high": 93,
+              "low": 85,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 95,
+              "low": 87,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 89,
+              "low": 81,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 92,
+              "low": 84,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 96,
+              "low": 88,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "91",
+        "status": "STORM",
+        "icon": "storm",
+        "is_day": 1,
+        "feels": 89,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "storm",
+            "high": 93,
+            "low": 85,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 95,
+            "low": 87,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 89,
+            "low": 81,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 92,
+            "low": 84,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 96,
+            "low": 88,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD10",
+      "group": "Other modes",
+      "title": "Music playing",
+      "mode": "music",
+      "game": {
+        "name": "MR. BLUE SKY",
+        "artist": "ELECTRIC LIGHT ORCHESTRA",
+        "is_playing": true,
+        "progress": 78,
+        "type": "music",
+        "sport": "music",
+        "duration": 303,
+        "fetch_ts": 1792168467.0,
+        "cover": "demo:album"
+      }
+    },
+    {
+      "name": "MD11",
+      "group": "Other modes",
+      "title": "Music paused",
+      "mode": "music",
+      "game": {
+        "name": "MR. BLUE SKY",
+        "artist": "ELECTRIC LIGHT ORCHESTRA",
+        "is_playing": false,
+        "progress": 78,
+        "type": "music",
+        "sport": "music",
+        "duration": 303,
+        "fetch_ts": 1792168467.0,
+        "cover": "demo:album"
+      }
+    },
+    {
+      "name": "MD12",
+      "group": "Other modes",
+      "title": "Music long title",
+      "mode": "music",
+      "game": {
+        "name": "AN EXTREMELY LONG SONG TITLE",
+        "artist": "ELECTRIC LIGHT ORCHESTRA",
+        "is_playing": true,
+        "progress": 78,
+        "type": "music",
+        "sport": "music",
+        "duration": 303,
+        "fetch_ts": 1792168467.0,
+        "cover": "demo:album"
+      }
+    },
+    {
+      "name": "MD13",
+      "group": "Other modes",
+      "title": "Flight en route",
+      "mode": "flights",
+      "game": {
+        "type": "flight_visitor",
+        "sport": "flight",
+        "id": "UA123",
+        "guest_name": "VISITOR",
+        "route": "EWR > LAX",
+        "origin_city": "Newark",
+        "dest_city": "Los Angeles",
+        "alt": 36000,
+        "altitude_ft": 36000,
+        "dist": 1100,
+        "distance_miles": 1100,
+        "eta_str": "2H 20M",
+        "speed": 495,
+        "speed_mph": 495,
+        "progress": 55,
+        "progress_pct": 55,
+        "status": "EN ROUTE",
+        "delay_min": 0,
+        "is_delayed": false,
+        "is_live": true,
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "",
+        "aircraft_type": "Boeing 737-8 MAX",
+        "aircraft_code": "B38M",
+        "origin_iata": "EWR",
+        "dest_iata": "LAX"
+      }
+    },
+    {
+      "name": "MD14",
+      "group": "Other modes",
+      "title": "Flight delayed",
+      "mode": "flights",
+      "game": {
+        "type": "flight_visitor",
+        "sport": "flight",
+        "id": "UA123",
+        "guest_name": "VISITOR",
+        "route": "EWR > LAX",
+        "origin_city": "Newark",
+        "dest_city": "Los Angeles",
+        "alt": 36000,
+        "altitude_ft": 36000,
+        "dist": 1100,
+        "distance_miles": 1100,
+        "eta_str": "2H 20M",
+        "speed": 495,
+        "speed_mph": 495,
+        "progress": 40,
+        "progress_pct": 55,
+        "status": "DELAYED",
+        "delay_min": 20,
+        "is_delayed": true,
+        "is_live": true,
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "",
+        "aircraft_type": "Boeing 737-8 MAX",
+        "aircraft_code": "B38M",
+        "origin_iata": "EWR",
+        "dest_iata": "LAX"
+      }
+    },
+    {
+      "name": "MD15",
+      "group": "Other modes",
+      "title": "Flight scheduled",
+      "mode": "flights",
+      "game": {
+        "type": "flight_visitor",
+        "sport": "flight",
+        "id": "UA123",
+        "guest_name": "VISITOR",
+        "route": "EWR > LAX",
+        "origin_city": "Newark",
+        "dest_city": "Los Angeles",
+        "alt": 36000,
+        "altitude_ft": 36000,
+        "dist": 1100,
+        "distance_miles": 1100,
+        "eta_str": "2H 20M",
+        "speed": 495,
+        "speed_mph": 495,
+        "progress": 0,
+        "progress_pct": 55,
+        "status": "SCHEDULED",
+        "delay_min": 0,
+        "is_delayed": false,
+        "is_live": false,
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "",
+        "aircraft_type": "Boeing 737-8 MAX",
+        "aircraft_code": "B38M",
+        "origin_iata": "EWR",
+        "dest_iata": "LAX"
+      }
+    },
+    {
+      "name": "MD16",
+      "group": "Other modes",
+      "title": "Flight landed",
+      "mode": "flights",
+      "game": {
+        "type": "flight_visitor",
+        "sport": "flight",
+        "id": "UA123",
+        "guest_name": "VISITOR",
+        "route": "EWR > LAX",
+        "origin_city": "Newark",
+        "dest_city": "Los Angeles",
+        "alt": 36000,
+        "altitude_ft": 36000,
+        "dist": 1100,
+        "distance_miles": 1100,
+        "eta_str": "2H 20M",
+        "speed": 495,
+        "speed_mph": 495,
+        "progress": 100,
+        "progress_pct": 55,
+        "status": "LANDED",
+        "delay_min": 0,
+        "is_delayed": false,
+        "is_live": false,
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "",
+        "aircraft_type": "Boeing 737-8 MAX",
+        "aircraft_code": "B38M",
+        "origin_iata": "EWR",
+        "dest_iata": "LAX"
+      }
+    },
+    {
+      "name": "MD17",
+      "group": "Other modes",
+      "title": "Flight canceled",
+      "mode": "flights",
+      "game": {
+        "type": "flight_visitor",
+        "sport": "flight",
+        "id": "UA123",
+        "guest_name": "VISITOR",
+        "route": "EWR > LAX",
+        "origin_city": "Newark",
+        "dest_city": "Los Angeles",
+        "alt": 36000,
+        "altitude_ft": 36000,
+        "dist": 1100,
+        "distance_miles": 1100,
+        "eta_str": "2H 20M",
+        "speed": 495,
+        "speed_mph": 495,
+        "progress": 0,
+        "progress_pct": 55,
+        "status": "CANCELED",
+        "delay_min": 0,
+        "is_delayed": false,
+        "is_live": false,
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "",
+        "aircraft_type": "Boeing 737-8 MAX",
+        "aircraft_code": "B38M",
+        "origin_iata": "EWR",
+        "dest_iata": "LAX"
+      }
+    },
+    {
+      "name": "MD18",
+      "group": "Other modes",
+      "title": "Airport arrivals and departures",
+      "mode": "airports",
+      "game": {
+        "type": "flight_airport_hud",
+        "sport": "airport",
+        "id": "airport:EWR",
+        "weather": {
+          "iata": "EWR",
+          "city": "Newark",
+          "away_abbr": "72F",
+          "status": "CLEAR"
+        },
+        "arrivals": [
+          {
+            "flight_number": "DL456",
+            "airport_code": "ATL",
+            "airport_city": "Atlanta",
+            "status": "ARRIVING",
+            "state": "arriving"
+          }
+        ],
+        "departures": [
+          {
+            "flight_number": "UA789",
+            "airport_code": "ORD",
+            "airport_city": "Chicago",
+            "status": "BOARDING",
+            "state": "boarding"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD19",
+      "group": "Other modes",
+      "title": "Airport empty boards",
+      "mode": "airports",
+      "game": {
+        "type": "flight_airport_hud",
+        "sport": "airport",
+        "id": "airport:EWR",
+        "weather": {
+          "iata": "EWR",
+          "city": "Newark",
+          "away_abbr": "72F",
+          "status": "CLEAR"
+        },
+        "arrivals": [],
+        "departures": []
+      }
+    },
+    {
+      "name": "MD20",
+      "group": "Other modes",
+      "title": "Clock morning",
+      "mode": "clock",
+      "game": {
+        "date": "THU OCT 15",
+        "time": "9:04:27",
+        "seconds": 27,
+        "ready": true,
+        "type": "clock",
+        "sport": "clock"
+      },
+      "example_time": "2026-10-15T09:04:27-04:00"
+    },
+    {
+      "name": "MD21",
+      "group": "Other modes",
+      "title": "Clock twelve-hour width",
+      "mode": "clock",
+      "game": {
+        "date": "THU OCT 15",
+        "time": "12:34:56",
+        "seconds": 56,
+        "ready": true,
+        "type": "clock",
+        "sport": "clock"
+      },
+      "example_time": "2026-10-15T12:34:56-04:00"
+    },
+    {
+      "name": "MD22",
+      "group": "Other modes",
+      "title": "Clock waiting for time",
+      "mode": "clock",
+      "game": {
+        "date": "THU OCT 15",
+        "time": "",
+        "seconds": 0,
+        "ready": false,
+        "type": "clock",
+        "sport": "clock"
+      }
+    },
+    {
+      "name": "MD23",
+      "group": "Other modes",
+      "title": "Weather: clear night",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 55,
+        "situation": {
+          "icon": "sun",
+          "stats": {
+            "feels": "53",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "sun",
+              "high": 74,
+              "low": 66,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 76,
+              "low": 68,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 70,
+              "low": 62,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 73,
+              "low": 65,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 77,
+              "low": 69,
+              "pop": 0
+            }
+          ],
+          "is_day": 0
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "55",
+        "status": "SUN",
+        "icon": "sun",
+        "is_day": 0,
+        "feels": 53,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "sun",
+            "high": 74,
+            "low": 66,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 76,
+            "low": 68,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 70,
+            "low": 62,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 73,
+            "low": 65,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 77,
+            "low": 69,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD24",
+      "group": "Other modes",
+      "title": "Weather: three-digit heat",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": 105,
+        "situation": {
+          "icon": "sun",
+          "stats": {
+            "feels": "112",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "sun",
+              "high": 74,
+              "low": 66,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 76,
+              "low": 68,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 70,
+              "low": 62,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 73,
+              "low": 65,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 77,
+              "low": 69,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "105",
+        "status": "SUN",
+        "icon": "sun",
+        "is_day": 1,
+        "feels": 112,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "sun",
+            "high": 74,
+            "low": 66,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 76,
+            "low": 68,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 70,
+            "low": 62,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 73,
+            "low": 65,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 77,
+            "low": 69,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD25",
+      "group": "Other modes",
+      "title": "Weather: below zero",
+      "mode": "weather",
+      "game": {
+        "city": "BETHLEHEM",
+        "temperature": -12,
+        "situation": {
+          "icon": "snow",
+          "stats": {
+            "feels": "-24",
+            "wind": "12",
+            "humidity": "68",
+            "aqi": "24"
+          },
+          "forecast": [
+            {
+              "day": "TODAY",
+              "icon": "sun",
+              "high": 74,
+              "low": 66,
+              "pop": 0
+            },
+            {
+              "day": "SAT",
+              "icon": "sun",
+              "high": 76,
+              "low": 68,
+              "pop": 0
+            },
+            {
+              "day": "SUN",
+              "icon": "rain",
+              "high": 70,
+              "low": 62,
+              "pop": 65
+            },
+            {
+              "day": "MON",
+              "icon": "cloud",
+              "high": 73,
+              "low": 65,
+              "pop": 0
+            },
+            {
+              "day": "TUE",
+              "icon": "sun",
+              "high": 77,
+              "low": 69,
+              "pop": 0
+            }
+          ],
+          "is_day": 1
+        },
+        "type": "weather",
+        "sport": "weather",
+        "away_abbr": "BETHLEHEM",
+        "home_abbr": "-12",
+        "status": "SNOW",
+        "icon": "snow",
+        "is_day": 1,
+        "feels": -24,
+        "wind": 12,
+        "humidity": 68,
+        "aqi": 24,
+        "forecast": [
+          {
+            "day": "TODAY",
+            "icon": "sun",
+            "high": 74,
+            "low": 66,
+            "pop": 0
+          },
+          {
+            "day": "SAT",
+            "icon": "sun",
+            "high": 76,
+            "low": 68,
+            "pop": 0
+          },
+          {
+            "day": "SUN",
+            "icon": "rain",
+            "high": 70,
+            "low": 62,
+            "pop": 65
+          },
+          {
+            "day": "MON",
+            "icon": "cloud",
+            "high": 73,
+            "low": 65,
+            "pop": 0
+          },
+          {
+            "day": "TUE",
+            "icon": "sun",
+            "high": 77,
+            "low": 69,
+            "pop": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "SY01",
+      "group": "System screens",
+      "title": "Wi-Fi setup / sample PIN",
+      "mode": "pairing",
+      "game": {
+        "wifi_setup": true,
+        "wifi_pin": "123456",
+        "app_code": "654321"
+      }
+    },
+    {
+      "name": "SY02",
+      "group": "System screens",
+      "title": "App pairing / sample code",
+      "mode": "pairing",
+      "game": {
+        "wifi_setup": false,
+        "wifi_pin": "123456",
+        "app_code": "654321"
+      }
+    },
+    {
+      "name": "SY03",
+      "group": "System screens",
+      "title": "NO SPORTS",
+      "mode": "message",
+      "game": {
+        "message": "NO SPORTS"
+      }
+    },
+    {
+      "name": "SY04",
+      "group": "System screens",
+      "title": "WIFI LOST",
+      "mode": "message",
+      "game": {
+        "message": "WIFI LOST"
+      }
+    },
+    {
+      "name": "SY05",
+      "group": "System screens",
+      "title": "JSON ERROR",
+      "mode": "message",
+      "game": {
+        "message": "JSON ERROR"
+      },
+      "note": "Mini diagnostic screen. The Ticker Six keeps the last valid game frame instead."
+    }
+  ]
+}

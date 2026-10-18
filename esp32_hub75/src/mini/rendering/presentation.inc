@@ -1,3 +1,6 @@
+#include "../protocol/panels.h"
+#include "matrix_canvas.h"
+
 String shortValue(JsonVariantConst value, const char* fallback, size_t limit) {
   String result = value.isNull() ? String(fallback) : value.as<String>();
   result.trim();
@@ -89,9 +92,8 @@ uint32_t pageHoldMillis(float scrollSpeed) {
 
 void drawMessage(const String& value) {
   beginFrame("message", value.c_str());
-  matrix->fillScreen(0);
-  matrix->drawFastHLine(0, 0, 64, color(30, 150, 220));
-  mini_text::drawTextFit(*matrix, value, 2, 13, color(255, 220, 80), 60);
+  MiniCanvas canvas;
+  ticker_ui::renderMessage(canvas, value.c_str());
   presentFrame();
 }
 

@@ -2,6 +2,13 @@
   "backend": [
     "sports_ticker/**",
     "ticker_core/**",
+    "esp32_hub75/src/mini/**",
+    "esp32_hub75/platformio.ini",
+    "docs/contracts/demo-layouts.json",
+    "docs/contracts/demo-assets/**",
+    "tools/build_demo_layouts.py",
+    "tools/render_mini_ui.cpp",
+    "tools/verify_public_demo.py",
     ".github/workflows/deploy.yml",
     ".github/deployment-paths.json",
     "tools/deployment_scope.py",

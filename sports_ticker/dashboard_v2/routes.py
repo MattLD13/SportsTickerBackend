@@ -120,7 +120,8 @@ def demo_frame():
     row = layout_case(name) if name else None
     if name and row is None:
         abort(404)
-    presentation = request.args.get("presentation", "rotation" if not row else "pinned")
+    default_presentation = "rotation" if not row or not row["main"]["full"] else "pinned"
+    presentation = request.args.get("presentation", default_presentation)
     if presentation not in {"rotation", "pinned"}:
         abort(400)
     mode = row["mode"] if row else request.args.get("mode", "sports")
@@ -128,6 +129,8 @@ def demo_frame():
         if not row["main"]["available"]:
             abort(404)
         if presentation == "rotation" and not row["main"]["pane"]:
+            abort(400)
+        if presentation == "pinned" and not row["main"]["full"]:
             abort(400)
         items = case_items(row, presentation)
         content = {mode: [{"data": item} for item in items]}

@@ -22,7 +22,7 @@ from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 @lru_cache(maxsize=1)
 def layout_library() -> dict:
-    """Read reviewed sample inputs and the Mini capture catalog."""
+    """Read reviewed sample inputs and generated Mini frames."""
     return json.loads((Path(__file__).parent / "static/layout-gallery.json").read_text(encoding="utf-8"))
 
 
@@ -35,10 +35,10 @@ def main_layout(row: dict) -> dict:
     """Describe which production views exist for one reviewed example."""
     mode, game = row["mode"], row["game"]
     if mode == "message" and game["message"] == "JSON ERROR":
-        return {"available": False, "pane": False, "note": "The big ticker keeps its last valid frame after an invalid data response."}
+        return {"available": False, "pane": False, "full": False, "note": "The big ticker keeps its last valid frame after an invalid data response."}
     if mode == "clock" and not game.get("ready", True):
-        return {"available": False, "pane": False, "note": "The big ticker uses its system clock. This Mini time-sync screen has no matching big ticker screen."}
-    return {"available": True, "pane": mode in {"sports", "stock"}}
+        return {"available": False, "pane": False, "full": False, "note": "The big ticker uses its system clock. This Mini time-sync screen has no matching big ticker screen."}
+    return {"available": True, "pane": mode in {"sports", "stock"}, "full": mode != "stock"}
 
 
 def case_items(row: dict, presentation: str) -> list[dict]:

@@ -1,4 +1,4 @@
-// Render the production Mini sports code into portable RGB images.
+// Render the production Mini panels into portable RGB frame atlases.
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -42,9 +42,9 @@ struct Canvas {
   void pixel(int x, int y, ticker_ui::Rgb ink) {
     if (x < 0 || x >= 64 || y < 0 || y >= 32) return;
     const int offset = (y * 64 + x) * 3;
-    pixels[offset] = (ink.r >> 3) * 255 / 31;
-    pixels[offset + 1] = (ink.g >> 2) * 255 / 63;
-    pixels[offset + 2] = (ink.b >> 3) * 255 / 31;
+    pixels[offset] = (ink.r & 248) | (ink.r >> 5);
+    pixels[offset + 1] = (ink.g & 252) | (ink.g >> 6);
+    pixels[offset + 2] = (ink.b & 248) | (ink.b >> 5);
   }
   void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) {
     for (int dy = 0; dy < height; ++dy) for (int dx = 0; dx < width; ++dx) pixel(x + dx, y + dy, ink);
@@ -60,11 +60,7 @@ struct Canvas {
     }
     return true;
   }
-  void save(const std::filesystem::path& path) {
-    std::ofstream stream(path, std::ios::binary);
-    stream << "P6\n64 32\n255\n";
-    stream.write(reinterpret_cast<const char*>(pixels.data()), pixels.size());
-  }
+
 };
 
 int main(int argc, char** argv) {
@@ -75,20 +71,31 @@ int main(int argc, char** argv) {
   std::filesystem::create_directories(argv[2]);
   int count = 0;
   for (JsonObjectConst row : document.as<JsonArrayConst>()) {
-    Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "", row["cover_artwork"] | "");
-    const std::string mode = row["mode"] | "sports";
-    if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(row["game"]["wifi_setup"] | false, row["game"]["wifi_pin"] | "", row["game"]["app_code"] | ""));
-    else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
-    else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(row["game"].as<JsonObjectConst>(), row["elapsed_ms"] | 0));
-    else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(row["game"].as<JsonObjectConst>(), row["now_epoch"] | 1800000000.0, row["scroll_ms"] | 0));
-    else if (mode == "clock") {
-      ticker_ui::ClockPane view;
-      view.ready = true; view.date = row["game"]["date"] | ""; view.time = row["game"]["time"] | ""; view.seconds = row["game"]["seconds"] | 0;
-      ticker_ui::renderClock(canvas, view);
-    } else ticker_ui::renderSports(canvas, ticker_ui::sportsPane(row["game"].as<JsonObjectConst>()));
     const std::string name = row["name"] | "frame";
-    canvas.save(std::filesystem::path(argv[2]) / (name + ".ppm"));
-    ++count;
+    const int frames = row["frame_count"] | 1;
+    if (frames < 1 || frames > 2000) return 4;
+    std::ofstream output(std::filesystem::path(argv[2]) / (name + ".ppm"), std::ios::binary);
+    output << "P6\n64 " << frames * 32 << "\n255\n";
+    for (int index = 0; index < frames; ++index) {
+      const uint32_t elapsed = index * (row["frame_ms"] | 100);
+      Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "", row["cover_artwork"] | "");
+      const std::string mode = row["mode"] | "sports";
+      if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(row["game"]["wifi_setup"] | false, row["game"]["wifi_pin"] | "", row["game"]["app_code"] | ""));
+      else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
+      else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(row["game"].as<JsonObjectConst>(), (row["elapsed_ms"] | 0) + elapsed));
+      else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(row["game"].as<JsonObjectConst>(), (row["now_epoch"] | 1800000000.0) + elapsed / 1000.0, (row["scroll_ms"] | 0) + elapsed));
+      else if (mode == "flights") ticker_ui::renderFlight(canvas, ticker_ui::flightPane(row["game"].as<JsonObjectConst>()));
+      else if (mode == "airports") ticker_ui::renderAirport(canvas, ticker_ui::airportPane(row["game"].as<JsonObjectConst>()));
+      else if (mode == "message") ticker_ui::renderMessage(canvas, row["game"]["message"] | "");
+      else if (mode == "clock") {
+        ticker_ui::ClockPane view;
+        view.ready = row["game"]["ready"] | true; view.date = row["game"]["date"] | ""; view.time = row["game"]["time"] | ""; view.seconds = row["game"]["seconds"] | 0;
+        ticker_ui::renderClock(canvas, view);
+      } else if (mode == "sports") ticker_ui::renderSports(canvas, ticker_ui::sportsPane(row["game"].as<JsonObjectConst>()));
+      else return 5;
+      output.write(reinterpret_cast<const char*>(canvas.pixels.data()), canvas.pixels.size());
+      ++count;
+    }
   }
   std::cout << "Rendered " << count << " Mini frames from the firmware drawing code\n";
 }

@@ -1,10 +1,6 @@
 #include "../protocol/panels.h"
 
-class MiniCanvas {
- public:
-  void pixel(int x, int y, ticker_ui::Rgb ink) { matrix->drawPixel(x, y, color(ink.r, ink.g, ink.b)); }
-  void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) { matrix->fillRect(x, y, width, height, color(ink.r, ink.g, ink.b)); }
-};
+#include "../rendering/matrix_canvas.h"
 
 class MiniSportsCanvas : public MiniCanvas {
  public:
@@ -34,12 +30,6 @@ bool firstShownModeItem(const char* family, JsonObjectConst& data) {
   return false;
 }
 
-void drawModeHeader(const String& label, uint16_t accent) {
-  matrix->fillScreen(color(0, 0, 0));
-  matrix->drawFastHLine(0, 7, 64, color(55, 76, 130));
-  mini_text::drawPixelTextFit(*matrix, label, 2, 1, accent, 1, 60);
-}
-
 void drawWeather(JsonObjectConst weather) {
   static String visibleCity;
   static uint32_t visibleSince = 0;
@@ -67,50 +57,14 @@ void drawMusic(JsonObjectConst music) {
 }
 
 void drawFlight(JsonObjectConst flight) {
-  const uint16_t orange = color(255, 145, 45);
-  const uint16_t blue = color(50, 150, 255);
-  const uint16_t red = color(255, 80, 75);
-  const uint16_t green = color(50, 225, 125);
-  const bool live = flight["is_live"] | false;
-  const bool delayed = flight["is_delayed"] | false || (flight["delay_min"] | 0) > 0;
-  String flightId = shortValue(flight["id"], "FLIGHT", 8);
-  drawModeHeader(flightId, delayed ? red : orange);
-  mini_text::drawPixelText(*matrix, "^", 54, 1, delayed ? red : green, 1);
-  String origin = shortValue(flight["origin_iata"], flight["origin_city"].isNull() ? "DEP" : flight["origin_city"].as<String>().c_str(), 3);
-  String destination = shortValue(flight["dest_iata"], flight["dest_city"].isNull() ? "ARR" : flight["dest_city"].as<String>().c_str(), 3);
-  mini_text::drawPixelTextFit(*matrix, origin + ">" + destination, 2, 10, color(242, 246, 255), 1, 27);
-  if (live) {
-    mini_text::drawPixelTextFit(*matrix, "E" + shortValue(flight["eta_str"], "--", 6), 2, 18, blue, 1, 31);
-    mini_text::drawPixelTextFit(*matrix, "S" + shortValue(flight["speed"], "--", 4), 40, 18, color(120, 210, 230), 1, 21);
-  } else {
-    mini_text::drawPixelTextFit(*matrix, shortValue(flight["status"], "SCHEDULED", 8), 2, 18, orange, 1, 34);
-  }
-  String detail = delayed ? "D" + shortValue(flight["delay_min"], "--", 3) : "A" + String((flight["alt"] | 0) / 1000) + "K";
-  mini_text::drawPixelTextFit(*matrix, detail, 2, 24, delayed ? red : color(220, 225, 240), 1, 25);
-  mini_text::drawPixelTextFit(*matrix, shortValue(flight["status"], "EN ROUTE", 7), 31, 24, delayed ? red : green, 1, 31);
-  const int progress = min(100, max(0, static_cast<int>(flight["progress"] | 0)));
-  matrix->fillRect(2, 29, 60, 3, delayed ? color(60, 10, 10) : color(15, 35, 15));
-  matrix->fillRect(2, 29, max(1, progress * 60 / 100), 3, delayed ? red : green);
+  MiniCanvas canvas;
+  ticker_ui::renderFlight(canvas, ticker_ui::flightPane(flight));
   presentFrame();
 }
 
 void drawAirport(JsonObjectConst airport) {
-  const uint16_t green = color(45, 220, 125);
-  const uint16_t red = color(255, 75, 75);
-  JsonObjectConst weather = airport["weather"].as<JsonObjectConst>();
-  String code = shortValue(weather["iata"], "AIRPORT", 8);
-  drawModeHeader(code, green);
-  mini_text::drawPixelTextFit(*matrix, shortValue(weather["away_abbr"], "--", 4), 39, 1, color(255, 220, 70), 1, 24);
-  JsonArrayConst arrivals = airport["arrivals"].as<JsonArrayConst>();
-  JsonArrayConst departures = airport["departures"].as<JsonArrayConst>();
-  JsonObjectConst arrival = arrivals.size() > 0 ? arrivals[0].as<JsonObjectConst>() : JsonObjectConst();
-  JsonObjectConst departure = departures.size() > 0 ? departures[0].as<JsonObjectConst>() : JsonObjectConst();
-  mini_text::drawPixelText(*matrix, "IN", 2, 10, green, 1);
-  mini_text::drawPixelTextFit(*matrix, shortValue(arrival["flight_number"], "---", 7), 13, 10, color(242, 246, 255), 1, 27);
-  mini_text::drawPixelTextFit(*matrix, shortValue(arrival["airport_code"], "---", 3), 43, 10, color(155, 175, 205), 1, 19);
-  mini_text::drawPixelText(*matrix, "OUT", 0, 19, red, 1);
-  mini_text::drawPixelTextFit(*matrix, shortValue(departure["flight_number"], "---", 7), 18, 19, color(242, 246, 255), 1, 22);
-  mini_text::drawPixelTextFit(*matrix, shortValue(departure["airport_code"], "---", 3), 46, 19, color(155, 175, 205), 1, 17);
+  MiniCanvas canvas;
+  ticker_ui::renderAirport(canvas, ticker_ui::airportPane(airport));
   presentFrame();
 }
 

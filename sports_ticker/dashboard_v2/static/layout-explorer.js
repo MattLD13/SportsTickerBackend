@@ -6,6 +6,7 @@
   const $ = id => document.getElementById(id);
   const png = data => `data:image/png;base64,${data}`;
   function mainUrl(row, presentation = 'pinned') {
+    if (!row.main.full) presentation = 'rotation';
     const url = new URL(root.dataset.frameUrl, location.href);
     url.searchParams.set('case', row.name); url.searchParams.set('presentation', presentation);
     return url.href;
@@ -14,8 +15,9 @@
   const images = new Map();
   const sources = new Map();
   let cases = [], filtered = [], current = null, generation = 0;
-  let playing = false, timer = null, animating = false, animation = null;
+  let playing = false, timer = null, animating = !reducedMotion, animation = null;
   let strip = null, offset = 0, lastTime = null;
+  let miniAtlas = null, motionMs = 0, lastMiniFrame = -1;
   let zoomSource = null;
 
   function status(message) { $('status').textContent = message; }
@@ -99,32 +101,52 @@
 
   function animate(time) {
     animation = null;
-    if (!animating || document.hidden || $('layout').value !== 'pane' || !strip) return;
-    const previousPixel = Math.floor(offset);
-    if (lastTime !== null) offset = (offset + Math.min((time - lastTime) / 1000, 0.1) * 33) % strip.width;
+    if (!animating || document.hidden) return;
+    const elapsed = lastTime === null ? 0 : Math.min(time - lastTime, 100);
+    motionMs += elapsed;
+    if (strip && $('layout').value === 'pane' && $('device').value !== 'mini') {
+      const previousPixel = Math.floor(offset);
+      offset = (offset + elapsed / 1000 * 33) % strip.width;
+      if (Math.floor(offset) !== previousPixel) drawStrip();
+    }
+    if (miniAtlas && $('device').value !== 'main') {
+      const index = Math.floor(motionMs / miniAtlas.frameMs) % miniAtlas.frames;
+      if (index !== lastMiniFrame) {
+        const frame = document.createElement('canvas'); frame.width = 64; frame.height = 32;
+        frame.getContext('2d').drawImage(miniAtlas.source, 0, index * 32, 64, 32, 0, 0, 64, 32);
+        setBoard('mini', frame); lastMiniFrame = index;
+      }
+    }
     lastTime = time;
-    if (Math.floor(offset) !== previousPixel) drawStrip();
     animation = requestAnimationFrame(animate);
   }
 
   function startAnimation() {
     stopAnimation();
-    if (animating && !document.hidden && strip && $('device').value !== 'mini') animation = requestAnimationFrame(animate);
+    const activeMini = miniAtlas && $('device').value !== 'main';
+    const activeMain = strip && $('device').value !== 'mini' && $('layout').value === 'pane';
+    if (animating && !document.hidden && !$('zoom').open && (activeMini || activeMain)) animation = requestAnimationFrame(animate);
   }
 
   async function drawCurrent() {
     if (!current) return;
     const token = ++generation;
     const row = current;
-    stopAnimation(); strip = null; offset = 0;
-    $('layout').disabled = !row.main.pane;
-    if (!row.main.pane) $('layout').value = 'pinned';
-    $('motion').hidden = $('layout').value !== 'pane' || !row.main.pane || $('device').value === 'mini';
+    stopAnimation(); strip = null; miniAtlas = null; offset = 0; motionMs = 0; lastMiniFrame = -1;
+    $('layout').disabled = !row.main.pane || !row.main.full;
+    if (!row.main.full) $('layout').value = 'pane';
+    else if (!row.main.pane) $('layout').value = 'pinned';
+    $('motion').hidden = !(row.mini_animation && $('device').value !== 'main') &&
+      !($('layout').value === 'pane' && row.main.pane && $('device').value !== 'mini');
+    $('motion').setAttribute('aria-pressed', String(animating));
+    $('motion').textContent = animating ? 'Pause animation' : 'Animate views';
     try {
-      const mini = await image(row.mini);
+      const [mini, atlas] = await Promise.all([image(row.mini), row.mini_animation ? image(row.mini_animation.image) : null]);
       if (token !== generation) return;
       setBoard('mini', canvasFrom(mini));
-      $('mini-note').textContent = row.mini_source === 'hardware' ? 'Exact physical Mini capture · sample data' : 'Production firmware renderer · sample data';
+      if (atlas) miniAtlas = {source: atlas, frames: row.mini_animation.frames, frameMs: row.mini_animation.frame_ms};
+      $('mini-note').textContent = atlas ? 'Current Mini layout · repeating example' : 'Current Mini layout · sample data';
+      startAnimation();
       if (!row.main.available) {
         sources.delete('main');
         root.querySelector('[data-board="main"]').classList.add('unavailable');
@@ -240,7 +262,7 @@
       const response = await fetch(root.dataset.galleryUrl, {credentials:'omit'});
       if (!response.ok) throw new Error('The layout library is unavailable. Reload to try again.');
       const data = await response.json();
-      if (data.schema_version !== 2 || !Array.isArray(data.cases) || !data.cases.length) throw new Error('The layout library is invalid.');
+      if (data.schema_version !== 3 || !Array.isArray(data.cases) || !data.cases.length) throw new Error('The layout library is invalid.');
       cases = data.cases;
       for (const group of [...new Set(cases.map(row => row.group))]) $('category').add(new Option(group, group));
       for (const option of $('category').options) {
@@ -287,7 +309,7 @@
   };
   $('motion').onclick = () => {
     animating = !animating; $('motion').setAttribute('aria-pressed', String(animating));
-    $('motion').textContent = animating ? 'Pause scroll' : 'Animate scroll'; startAnimation();
+    $('motion').textContent = animating ? 'Pause animation' : 'Animate views'; startAnimation();
   };
   $('share').onclick = async () => {
     writeUrl();

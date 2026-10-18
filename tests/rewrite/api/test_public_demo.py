@@ -199,7 +199,10 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
         response = client.get("/dashboard/static/layout-gallery.json")
         assert response.status_code == 200
         data = response.get_json()
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == 3
+        from tools.build_demo_layouts import provenance
+        assert data["mini_firmware"] == provenance()["mini_firmware"]
+        assert data["mini_source_hashes"] == provenance()["mini_source_hashes"]
         rows = data["cases"]
         assert len(rows) >= 114
         assert len({row["name"] for row in rows}) == len(rows)
@@ -218,12 +221,19 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
             with Image.open(BytesIO(base64.b64decode(row["mini"], validate=True))) as mini:
                 assert mini.size == (64, 32), row["name"]
                 mini.load()
+                if row["mode"] in {"weather", "music"}:
+                    motion = row["mini_animation"]
+                    assert motion["frame_ms"] == 100
+                    with Image.open(BytesIO(base64.b64decode(motion["image"], validate=True))) as atlas:
+                        assert atlas.size == (64, 32 * motion["frames"])
+                        assert atlas.crop((0, 0, 64, 32)).tobytes() == mini.tobytes()
             assert "pinned" not in row["main"]
             if row["main"]["available"]:
                 response = client.get(f"/api/v2/demo/frame.png?case={row['name']}")
                 assert response.status_code == 200, row["name"]
                 with Image.open(BytesIO(response.data)) as main:
-                    assert main.size == (384, 32), row["name"]
+                    assert main.height == 32, row["name"]
+                    assert main.width == 384 if row["main"]["full"] else main.width >= 384
                     main.load()
             else:
                 assert row["main"]["note"]
@@ -237,6 +247,39 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
         assert client.post("/demo/layouts").status_code == 405
     finally:
         _close(app)
+
+
+def test_public_mini_animation_uses_complete_artwork_and_current_weather_contract():
+    """Keep album art fixed while text scrolls and weather statistics change."""
+    from sports_ticker.dashboard_v2.preview import layout_library
+    rows = {row["name"]: row for row in layout_library()["cases"]}
+    for name in ("MD06", "MD10", "MD12"):
+        row = rows[name]
+        with Image.open(BytesIO(base64.b64decode(row["mini_animation"]["image"]))) as atlas:
+            first = atlas.crop((0, 0, 64, 32))
+            later = atlas.crop((0, 32 * 50, 64, 32 * 51))
+            assert first.tobytes() != later.tobytes()
+            if row["mode"] == "music":
+                assert first.crop((0, 0, 32, 32)).tobytes() == later.crop((0, 0, 32, 32)).tobytes()
+                assert len(first.crop((0, 0, 32, 32)).getcolors(1024)) > 20
+    for row in rows.values():
+        if row["mode"] == "weather":
+            assert isinstance(row["game"]["temperature"], int)
+            assert isinstance(row["game"]["is_day"], (int, bool))
+            assert all(key in row["game"] for key in ("feels", "wind", "humidity", "aqi", "icon"))
+    assert rows["MD23"]["game"]["is_day"] == 0
+    assert rows["MD24"]["game"]["temperature"] == 105
+    assert rows["MD25"]["game"]["temperature"] == -12
+
+
+def test_public_mini_gallery_rejects_stale_renderer_provenance(monkeypatch):
+    """Stop release verification when a renderer input changes without rebuilt frames."""
+    from tools import build_demo_layouts, verify_public_demo
+    changed = build_demo_layouts.provenance()
+    changed["mini_source_hashes"]["esp32_hub75/src/mini/rendering/utility_panels.h"] = "changed"
+    monkeypatch.setattr(build_demo_layouts, "provenance", lambda: changed)
+    with pytest.raises(SystemExit, match="current renderer"):
+        verify_public_demo.main()
 
 def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_path) -> None:
     from datetime import datetime, timezone
