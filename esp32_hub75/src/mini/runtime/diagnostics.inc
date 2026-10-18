@@ -31,6 +31,10 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   JsonObject network = out["network"].to<JsonObject>();
   network["device_credentials_ready"] = deviceCredentials.ready();
   network["artwork_downloads"] = musicArtwork.downloads();
+  const auto artwork = musicArtwork.metrics();
+  network["artwork_resident"] = artwork.resident;
+  network["artwork_planned"] = artwork.planned;
+  network["artwork_cache_hits"] = artwork.hits;
   network["wifi_connected"] = WiFi.status() == WL_CONNECTED;
   network["ticker_id"] = tickerId;
   network["registration_status"] = lastRegistrationStatus;

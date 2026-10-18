@@ -523,7 +523,7 @@ class BackendApplication:
         if self.mini_artwork is not None and ticker.profile.product_family == "mini":
             for item in data["content"].get("music", ()):
                 music = item["data"]
-                music["cover_asset"] = self.mini_artwork.reference(str(music.get("cover") or ""))
+                music.update(self.mini_artwork.music_references(music))
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),

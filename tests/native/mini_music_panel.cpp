@@ -26,10 +26,14 @@ int main() {
   data["progress"] = 100.0;
   data["fetch_ts"] = 1800000000.0;
   data["is_playing"] = true;
+  auto accent = data["cover_asset"]["accent_rgb"].to<JsonArray>();
+  accent.add(220); accent.add(90); accent.add(40);
   auto view = ticker_ui::musicPane(data.as<JsonObjectConst>(), 1800000001.0, 0);
   assert(view.remaining == "-1:39" && view.fraction > .50 && view.fraction < .51);
+  assert(view.accent.r == 220 && view.accent.g == 90 && view.accent.b == 40);
   Canvas first;
   ticker_ui::renderMusic(first, view);
+  assert(first.pixels[(31 * 64 + 34) * 3] == 220);
   view.scrollMs = 4000;
   Canvas scrolled;
   ticker_ui::renderMusic(scrolled, view);
@@ -41,6 +45,7 @@ int main() {
   data["is_playing"] = false;
   auto paused = ticker_ui::musicPane(data.as<JsonObjectConst>(), 1800000100.0, 0);
   assert(paused.remaining == "-1:40" && paused.fraction == .5);
+  assert(paused.accent.r == 220);
   data["progress"] = 250.0;
   assert(ticker_ui::musicPane(data.as<JsonObjectConst>(), 1800000000.0, 0).remaining == "-0:00");
   data["duration"] = 0;

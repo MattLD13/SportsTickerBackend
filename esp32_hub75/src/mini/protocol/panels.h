@@ -129,6 +129,12 @@ inline MusicPane musicPane(JsonObjectConst music, double now, uint32_t scrollMs)
   view.artist = label(music["artist"], "", 120);
   view.playing = music["is_playing"] | false;
   view.scrollMs = scrollMs;
+  JsonArrayConst accent = music["cover_asset"]["accent_rgb"].as<JsonArrayConst>();
+  if (accent.size() == 3) {
+    view.accent = {static_cast<uint8_t>(std::max(0, std::min(255, accent[0] | 160))),
+                   static_cast<uint8_t>(std::max(0, std::min(255, accent[1] | 175))),
+                   static_cast<uint8_t>(std::max(0, std::min(255, accent[2] | 195)))};
+  }
   const double duration = music["duration"] | 0.0;
   double progress = music["progress"] | 0.0;
   const double fetched = music["fetch_ts"] | 0.0;
@@ -147,11 +153,15 @@ inline MusicPane musicPane(JsonObjectConst music, double now, uint32_t scrollMs)
 inline StockPane stockPane(JsonObjectConst stock) {
   StockPane view;
   view.symbol = label(stock["symbol"].isNull() ? stock["home_abbr"] : stock["symbol"], "STOCK", 10);
-  if (!view.symbol.empty() && view.symbol[0] != '$') view.symbol = "$" + view.symbol;
-  view.price = label(stock["home_score"], "--", 10);
+  view.price = label(stock["home_score"], "--", 15);
   if (!view.price.empty() && view.price[0] != '$') view.price = "$" + view.price;
-  view.percent = label(stock["away_score"], "--", 8);
-  view.change = label(stock["situation"]["change"], "--", 6);
+  view.percent = label(stock["away_score"], "--", 12);
+  view.change = label(stock["situation"]["change"], "--", 15);
+  if (view.change != "--") {
+    const bool signedValue = view.change[0] == '-' || view.change[0] == '+';
+    const size_t currency = signedValue ? 1 : 0;
+    if (view.change.find('$') == std::string::npos) view.change.insert(currency, "$");
+  }
   return view;
 }
 

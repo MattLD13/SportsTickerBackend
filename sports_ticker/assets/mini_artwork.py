@@ -12,6 +12,7 @@ from PIL import Image, ImageOps
 import requests
 
 from .mini_service import fetch_source
+from .music_palette import artwork_colors
 
 SIZE = 32
 HEADER = struct.Struct("<4sBBBBHHHH")
@@ -61,10 +62,19 @@ class MiniArtworkService:
                 return {"state": "ready", "asset_id": identity, "sha256": identity,
                         "width": SIZE, "height": SIZE, "length": WIRE_BYTES,
                         "format": "rgb565-le", "pipeline_version": 1,
+                        "accent_rgb": list(self._bodies[identity][1]),
                         "url": f"/api/v2/assets/mini-artwork/{identity}.mta"}
             if not self._closed and url not in self._pending and len(self._pending) < self._limit and self._clock() >= self._retry.get(url, 0):
                 self._pending[url] = self._worker.submit(self._prepare, url)
             return {"state": "pending" if url in self._pending else "unavailable"}
+
+    def music_references(self, music: dict) -> dict:
+        """Prepare the current cover, three queued covers, and one previous cover."""
+        current = self.reference(str(music.get("cover") or ""))
+        queued = music.get("next_covers")
+        upcoming = [self.reference(str(url or "")) for url in queued[:3]] if isinstance(queued, list) else []
+        previous = self.reference(str(music.get("last_cover") or ""))
+        return {"cover_asset": current, "next_cover_assets": upcoming, "last_cover_asset": previous}
 
     def _prepare(self, url):
         try:
@@ -72,9 +82,11 @@ class MiniArtworkService:
             if not reply.body or len(reply.body) > 256 * 1024:
                 raise ValueError("invalid artwork source size")
             identity, body = encode_artwork(reply.body)
+            with Image.open(io.BytesIO(reply.body)) as original:
+                accent, _ = artwork_colors(ImageOps.fit(original.convert("RGB"), (42, 42)))
             with self._lock:
                 self._urls[url] = identity
-                self._bodies[identity] = body
+                self._bodies[identity] = (body, accent)
                 self._retry.pop(url, None)
                 while len(self._urls) > self._limit:
                     self._urls.popitem(last=False)
@@ -93,8 +105,8 @@ class MiniArtworkService:
         if not isinstance(identity, str) or len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
             return None
         with self._lock:
-            body = self._bodies.get(identity)
-            return (body, identity) if body else None
+            entry = self._bodies.get(identity)
+            return (entry[0], identity) if entry else None
 
     def wait(self):
         with self._lock:

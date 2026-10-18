@@ -16,12 +16,12 @@ pytestmark = pytest.mark.critical
 
 
 def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path):
-    source = io.BytesIO()
-    Image.new("RGB", (90, 60), (240, 80, 32)).save(source, format="JPEG")
     calls = []
 
     def fetch(url, *_):
         calls.append(url)
+        source = io.BytesIO()
+        Image.new("RGB", (90, 60), (240, 80 + len(calls) * 12, 32)).save(source, format="JPEG")
         return SourceReply(source.getvalue())
 
     service = MiniArtworkService(fetcher=fetch, clock=lambda: 100)
@@ -37,6 +37,8 @@ def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path
                 ContentItem("track", "music", "spotify", True, {
                     "id": "track", "name": "Song", "artist": "Artist", "is_playing": True,
                     "cover": "https://i.scdn.co/image/album", "duration": 200.0, "progress": 93.0, "fetch_ts": 100.0,
+                    "last_cover": "https://i.scdn.co/image/previous",
+                    "next_covers": [f"https://i.scdn.co/image/next{index}" for index in range(4)],
                 }),), (), (), DisplaySettings(mode="music")))
         headers = {"X-Device-Token": "a" * 64}
         first = client.get("/api/v2/tickers/mini/data?mode=music", headers=headers)
@@ -46,6 +48,11 @@ def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path
         payload = client.get("/api/v2/tickers/mini/data?mode=music", headers=headers).get_json()
         music = payload["content"]["music"][0]["data"]
         asset = music["cover_asset"]
+        assert len(music["next_cover_assets"]) == 3
+        assert music["last_cover_asset"]["state"] == "ready"
+        assert all(value["state"] == "ready" for value in music["next_cover_assets"])
+        assert len({value["asset_id"] for value in [asset, music["last_cover_asset"], *music["next_cover_assets"]]}) == 5
+        assert asset["accent_rgb"][0] > asset["accent_rgb"][1] > asset["accent_rgb"][2]
         assert music["duration"] == 200.0 and music["progress"] == 93.0
         assert asset["width"] == asset["height"] == 32 and asset["length"] == WIRE_BYTES == 2064
         response = client.get(asset["url"])
@@ -54,7 +61,8 @@ def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path
         assert hashlib.sha256(response.data).hexdigest() == asset["sha256"] == asset["asset_id"]
         assert client.get(asset["url"], headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
         assert "cover_asset" not in client.get("/api/v2/tickers/six/data?mode=music", headers=headers).get_json()["content"]["music"][0]["data"]
-        assert len(calls) == 1
+        assert calls == ["https://i.scdn.co/image/album", *[f"https://i.scdn.co/image/next{index}" for index in range(3)],
+                         "https://i.scdn.co/image/previous"]
         assert client.get("/api/v2/assets/mini-artwork/invalid.mta").status_code == 404
     finally:
         application.close()

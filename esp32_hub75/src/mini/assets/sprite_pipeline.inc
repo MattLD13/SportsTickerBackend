@@ -130,15 +130,15 @@ void logoWorkerTask(void* parameter) {
 }
 
 void prepareMusicArtwork() {
-  JsonObjectConst asset;
+  JsonObjectConst music;
   if (displayMode == "music" && !pairingMode) {
     for (JsonObjectConst item : payload.document()["content"]["music"].as<JsonArrayConst>()) {
       if (!shownItem(item)) continue;
-      asset = item["data"]["cover_asset"].as<JsonObjectConst>();
+      music = item["data"].as<JsonObjectConst>();
       break;
     }
   }
-  if (musicArtwork.request(asset) && logoWorkerHandle) xTaskNotifyGive(logoWorkerHandle);
+  if (musicArtwork.request(music) && logoWorkerHandle) xTaskNotifyGive(logoWorkerHandle);
 }
 
 void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {

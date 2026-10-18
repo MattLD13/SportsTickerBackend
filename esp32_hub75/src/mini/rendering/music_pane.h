@@ -8,6 +8,7 @@ struct MusicPane {
   bool playing = false;
   float fraction = 0;
   uint32_t scrollMs = 0;
+  Rgb accent = {160, 175, 195};
 };
 
 template<class Canvas>
@@ -28,12 +29,13 @@ void renderMusic(Canvas& canvas, const MusicPane& view) {
     canvas.rect(11, 9, 9, 2, {105, 130, 150});
     canvas.rect(10, 20, 10, 4, {105, 130, 150});
   }
-  canvas.rect(32, 0, 1, 32, {30, 36, 45});
+  const Rgb dim = {static_cast<uint8_t>(view.accent.r / 5), static_cast<uint8_t>(view.accent.g / 5), static_cast<uint8_t>(view.accent.b / 5)};
+  canvas.rect(32, 0, 1, 32, dim);
   musicMarquee(canvas, view.title, 2, {245, 245, 255}, view.scrollMs, 10);
   musicMarquee(canvas, view.artist, 12, {155, 180, 205}, view.scrollMs, 7);
-  const Rgb progress = view.playing ? Rgb{60, 220, 125} : Rgb{150, 165, 185};
+  const Rgb progress = view.accent;
   text(canvas, view.remaining, 34, 23, progress, 3, 5, 1, false, 34, 64);
-  canvas.rect(34, 31, 30, 1, {30, 40, 50});
+  canvas.rect(34, 31, 30, 1, dim);
   canvas.rect(34, 31, std::max(0, std::min(30, static_cast<int>(view.fraction * 30))), 1, progress);
 }
 }  // namespace ticker_ui

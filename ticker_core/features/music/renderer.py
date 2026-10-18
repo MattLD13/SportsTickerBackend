@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import colorsys
 import math
 from dataclasses import dataclass, replace
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageOps, ImageStat
+from PIL import Image, ImageDraw, ImageOps
+
+from sports_ticker.assets.music_palette import artwork_colors
 
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, normal_text
@@ -73,7 +74,7 @@ class MusicRenderer:
         previous_artwork = state.previous_artwork
         previous_dominant = state.previous_dominant
         fade_alpha = state.fade_alpha
-        dominant, spindle = self._colors(artwork, state.dominant, state.spindle)
+        dominant, spindle = artwork_colors(artwork, state.dominant, state.spindle)
         if cover_url != state.cover_url or (artwork is not None and state.artwork is None):
             previous_artwork = state.artwork
             if previous_artwork is None:
@@ -81,7 +82,7 @@ class MusicRenderer:
                 last_cover = str(game.get("last_cover") or game.get("last_logo") or last_song.get("cover") or "")
                 previous_artwork = self._logos.get(last_cover, (self._cover_size, self._cover_size)) if last_cover else None
             if previous_artwork is not None:
-                previous_dominant, _ = self._colors(previous_artwork, state.dominant, state.spindle)
+                previous_dominant, _ = artwork_colors(previous_artwork, state.dominant, state.spindle)
             else:
                 previous_dominant = state.dominant
             fade_alpha = 0.5 if previous_artwork is not None and artwork is not None else 1.0
@@ -189,15 +190,3 @@ class MusicRenderer:
     def _time_text(seconds: float) -> str:
         minutes, remaining = divmod(int(max(0.0, seconds)), 60)
         return f"{minutes}:{remaining:02d}"
-
-    @staticmethod
-    def _colors(image: Image.Image | None, dominant: tuple[int, int, int], spindle: str) -> tuple[tuple[int, int, int], str]:
-        if image is None:
-            return dominant, spindle
-        red, green, blue = ImageStat.Stat(image.convert("RGB")).mean[:3]
-        brightness = 0.299 * red + 0.587 * green + 0.114 * blue
-        hue, saturation, value = colorsys.rgb_to_hsv(red / 255, green / 255, blue / 255)
-        saturation = 0.0 if saturation < 0.2 else min(1.0, saturation * 1.5) if saturation < 0.5 else saturation
-        value = 0.5 if value < 0.3 else min(1.0, value * 1.3) if value < 0.8 else value
-        result = colorsys.hsv_to_rgb(hue, saturation, value)
-        return tuple(int(channel * 255) for channel in result), "white" if brightness < 140 else "black"
