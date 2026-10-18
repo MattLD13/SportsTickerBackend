@@ -19,8 +19,9 @@ The production scheduler wakes the music provider every 0.6 seconds.
 The service replaces the fixed upstream polling and repeated access-token refresh path.
 
 - Playing accounts poll every 0.6 seconds.
-- Paused accounts poll every five seconds.
-- Idle accounts poll every 30 seconds.
+- Paused accounts poll every 1.5 seconds.
+- Idle accounts poll every three seconds.
+- Polling follows Spotify's observed state, including idle responses that retain the last song's display metadata.
 - Transient errors use a 15-second retry interval.
 - Each group and Spotify account shares one poll across its tickers.
 - A single-flight lock prevents concurrent duplicate requests.

@@ -423,30 +423,36 @@ def test_spotify_adaptive_polling_and_access_token_cache(tmp_path) -> None:
         assert http.queue_calls == 1
         assert http.refresh_calls == 1
 
-        now[0] += 4.0
+        now[0] += 1.4
         assert service.playback("ticker-1")["status"] == "paused"
         assert http.playback_calls == 2
-        now[0] += 1.0
+        now[0] = 2002.1
         http.playback_response = None
         assert service.playback("ticker-1")["status"] == "paused"
         assert http.playback_calls == 3
         assert http.refresh_calls == 1
+        now[0] = 2005.0
+        assert service.playback("ticker-1")["status"] == "paused"
+        assert http.playback_calls == 3
+        now[0] = 2005.1
+        service.playback("ticker-1")
+        assert http.playback_calls == 4
     finally:
         repository.close()
 
 
 def test_spotify_adaptive_idle_polling_uses_cached_record(tmp_path) -> None:
-    """Poll an idle account every 30 seconds and reuse its record between polls."""
+    """Poll an idle account every three seconds and reuse its record between polls."""
     now = [3000.0]
     http = FakeSpotifyHttp()
     service, repository = _setup_service(tmp_path, http, clock=lambda: now[0])
 
     try:
         assert service.playback("ticker-1")["status"] == "idle"
-        now[0] += 29.0
+        now[0] = 3002.9
         assert service.playback("ticker-1")["status"] == "idle"
         assert http.playback_calls == 1
-        now[0] += 1.0
+        now[0] = 3003.0
         assert service.playback("ticker-1")["status"] == "idle"
         assert http.playback_calls == 2
         assert http.refresh_calls == 1

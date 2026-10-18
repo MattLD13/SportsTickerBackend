@@ -27,8 +27,8 @@ SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_URL = "https://api.spotify.com/v1"
 SPOTIFY_SCOPES = ("user-read-playback-state", "user-read-currently-playing")
 SPOTIFY_PLAYING_REFRESH_SECONDS = 0.6
-SPOTIFY_PAUSED_REFRESH_SECONDS = 5.0
-SPOTIFY_IDLE_REFRESH_SECONDS = 30.0
+SPOTIFY_PAUSED_REFRESH_SECONDS = 1.5
+SPOTIFY_IDLE_REFRESH_SECONDS = 3.0
 SPOTIFY_ERROR_REFRESH_SECONDS = 15.0
 SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS = 30.0
 SPOTIFY_RATE_LIMIT_MAX_BACKOFF_SECONDS = 900.0
@@ -482,7 +482,7 @@ class SpotifyIntegrationService:
             record["spotify_account_id"] = connection.spotify_account_id
             record["connection_name"] = connection.display_name
             record["priority"] = connection.priority
-            cadence = _playback_refresh_seconds(record)
+            cadence = _playback_refresh_seconds(playback)
             with self._playback_lock:
                 self._playback_failures.pop(window_key, None)
                 self._next_playback_poll_at[window_key] = float(self._clock()) + cadence
@@ -1002,14 +1002,12 @@ def _retry_after_seconds(headers: object) -> float | None:
     return retry_after if retry_after >= 0.0 and retry_after < float("inf") else None
 
 
-def _playback_refresh_seconds(record: Mapping[str, Any]) -> float:
-    """Choose the V2 source polling cadence from the last playback state."""
+def _playback_refresh_seconds(playback: Mapping[str, Any] | None) -> float:
+    """Choose polling cadence from Spotify's observed state before retaining display metadata."""
 
-    if bool(record.get("is_playing")):
-        return SPOTIFY_PLAYING_REFRESH_SECONDS
-    if str(record.get("status") or "").strip().lower() == "idle":
+    if not isinstance(playback, Mapping) or not playback.get("item"):
         return SPOTIFY_IDLE_REFRESH_SECONDS
-    return SPOTIFY_PAUSED_REFRESH_SECONDS
+    return SPOTIFY_PLAYING_REFRESH_SECONDS if bool(playback.get("is_playing")) else SPOTIFY_PAUSED_REFRESH_SECONDS
 
 
 __all__ = [
