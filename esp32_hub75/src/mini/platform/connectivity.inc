@@ -392,25 +392,14 @@ void startPairingMode() {
   Serial.println("Wi-Fi credential setup is available.");
 }
 
-void showFetchError(const String& value) {
+void showFetchError(ticker_ui::SystemKind kind, const String& value) {
   if (pairingMode) {
     message = "";
     renderCurrent();
     return;
   }
-  String displayValue = value;
-  if (displayValue.startsWith("REGISTER ")) {
-    displayValue = "REG " + displayValue.substring(9);
-  }
-  if (displayValue.startsWith("REGISTER")) {
-    displayValue = "REG" + displayValue.substring(8);
-  }
-  if (pageCount == 0) {
-    message = displayValue;
-    return;
-  }
-  // Keep the last valid sports page visible while the backend is unavailable.
-  message = "";
+  message = value;
+  messageKind = kind;
   renderCurrent();
 }
 // Owns saved Wi-Fi state, reconnect policy, BLE provisioning, and pairing transition.

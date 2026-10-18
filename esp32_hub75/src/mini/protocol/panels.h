@@ -125,6 +125,16 @@ inline SportsPane sportsPane(JsonObjectConst game) {
   }
   return view;
 }
+inline bool systemPane(JsonObjectConst data, uint32_t elapsedMs, SystemPane& view) {
+  SystemKind kind;
+  if (!systemKind(data["utility_kind"] | "", kind)) return false;
+  view = systemPane(kind, label(data["detail"]), data["complete"] | 0U, data["total"] | 0U, elapsedMs);
+  view.clock = label(data["clock"], "--:--");
+  view.date = label(data["date"]);
+  view.ageSeconds = (data["age_seconds"] | 0U) + elapsedMs / 1000;
+  return true;
+}
+
 inline MusicPane musicPane(JsonObjectConst music, double now, uint32_t scrollMs) {
   MusicPane view;
   view.title = label(music["name"], "SPOTIFY", 160);

@@ -145,6 +145,8 @@ jobs:
         run: |
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
           /tmp/mini-aviation-check docs/contracts/demo-layouts.json
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_system_panels.cpp -o /tmp/mini-system-check
+          /tmp/mini-system-check docs/contracts/demo-layouts.json
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
           /tmp/mini-music-check
       - name: Read mini firmware version

@@ -89,6 +89,10 @@ void serviceWifi(uint32_t now) {
   } else {
     wifiWasConnected = false;
     if (wifiWaitStartedAt == 0) wifiWaitStartedAt = now;
+    if (!pairingMode) {
+      message = wifiKnownWorking ? "RECONNECTING" : "JOINING WIFI";
+      messageKind = wifiKnownWorking ? ticker_ui::SystemKind::Offline : ticker_ui::SystemKind::Connecting;
+    }
     if (wifiStation.setupReady() && !wifiPairingMode) startPairingMode();
     if (!wifiKnownWorking && !wifiPairingMode && now - wifiWaitStartedAt >= WIFI_PAIRING_TIMEOUT_MS) wifiStation.requestSetup();
   }
@@ -128,7 +132,8 @@ void applyPendingWifiCredentials(uint32_t now) {
   wifiStation.configure(wifiSsid, wifiPassword, now);
   wifiWasConnected = false;
   wifiWaitStartedAt = now;
-  message = "WIFI...";
+  message = "JOINING WIFI";
+  messageKind = ticker_ui::SystemKind::Connecting;
   renderCurrent();
   Serial.print("Applying Wi-Fi network: ");
   Serial.println(wifiSsid);
@@ -152,7 +157,7 @@ void miniSetup() {
   firmwareUpdater.initialize();
   setupMatrix();
   deviceCredentials.load();
-  drawMessage(deviceCredentials.ready() ? "STARTING" : "DEVICE KEY");
+  drawSystemNotice(deviceCredentials.ready() ? ticker_ui::SystemKind::Startup : ticker_ui::SystemKind::DeviceKey, deviceCredentials.ready() ? "PLEASE WAIT" : "AUTH REQUIRED");
   logoWorkMutex = xSemaphoreCreateMutex();
   networkWorker.begin();
   if (!spriteAssets.ready() || logoWorkMutex == nullptr || !networkGate.ready()) {
@@ -368,6 +373,7 @@ void miniTick() {
   } else { buttonsAt = 0; buttonsHandled = false; }
   if (firmwareUpdater.tick(now, registered, tickerId, matrix && displayMetrics.frames > 0 && matrix->calculated_refresh_rate >= 100)) renderCurrent();
   if (firmwareUpdater.transferActive()) {
+    if (now - lastAnimatedFrameAt >= 100) { lastAnimatedFrameAt = now; renderCurrent(); }
     delay(1);
     return;
   }
@@ -391,7 +397,9 @@ void miniTick() {
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
-  if ((displayMode == "music" || displayMode == "weather") && !pairingMode && message.length() == 0 && now - lastAnimatedFrameAt >= 100) {
+  if (((displayMode == "music" || displayMode == "weather" || displayMode == "airports" || (displayMode == "clock" && !preparedClockValid)) || pairingMode ||
+       message.length() > 0 || firmwareUpdater.displayActive() || (assetsLoading && !sportsFrameReady)) &&
+      now - lastAnimatedFrameAt >= 100) {
     lastAnimatedFrameAt = now;
     renderCurrent();
   }
@@ -489,7 +497,7 @@ void miniTick() {
     if (message.length() > 0) {
       if (now - lastMessageAt >= MESSAGE_REFRESH_MS) {
         lastMessageAt = now;
-        drawMessage(message);
+        drawSystemNotice(messageKind, message);
       }
       return;
     }

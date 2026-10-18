@@ -3931,25 +3931,65 @@
       "title": "NO SPORTS",
       "mode": "message",
       "game": {
-        "message": "NO SPORTS"
+        "utility_kind": "empty",
+        "detail": "NO SPORTS",
+        "clock": "9:04",
+        "date": "THU OCT 15"
       }
     },
     {
       "name": "SY04",
       "group": "System screens",
-      "title": "WIFI LOST",
+      "title": "WIFI LOST / corner overlay",
       "mode": "message",
       "game": {
-        "message": "WIFI LOST"
+        "utility_kind": "offline",
+        "detail": "RECONNECTING",
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "age_seconds": 60,
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
       }
     },
     {
       "name": "SY05",
       "group": "System screens",
-      "title": "JSON ERROR",
+      "title": "JSON ERROR / corner overlay",
       "mode": "message",
       "game": {
-        "message": "JSON ERROR"
+        "utility_kind": "error",
+        "detail": "JSON ERROR",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
       },
       "note": "Mini diagnostic screen. The Ticker Six keeps the last valid game frame instead."
     },
@@ -4129,6 +4169,284 @@
         "registration": "",
         "source_updated_at": null,
         "updated_at": null
+      }
+    },
+    {
+      "name": "SY06",
+      "group": "System screens",
+      "title": "Mini startup",
+      "mode": "message",
+      "game": {
+        "utility_kind": "startup",
+        "detail": "PLEASE WAIT",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15"
+      }
+    },
+    {
+      "name": "SY07",
+      "group": "System screens",
+      "title": "Joining Wi-Fi",
+      "mode": "message",
+      "game": {
+        "utility_kind": "connecting",
+        "detail": "JOINING WIFI",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15"
+      }
+    },
+    {
+      "name": "SY08",
+      "group": "System screens",
+      "title": "Connecting to the server",
+      "mode": "message",
+      "game": {
+        "utility_kind": "registering",
+        "detail": "REGISTER DEVICE",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15"
+      }
+    },
+    {
+      "name": "SY09",
+      "group": "System screens",
+      "title": "Loading team artwork",
+      "mode": "message",
+      "game": {
+        "utility_kind": "assets",
+        "detail": "TEAM LOGOS",
+        "complete": 7,
+        "total": 12,
+        "clock": "9:04",
+        "date": "THU OCT 15"
+      }
+    },
+    {
+      "name": "SY10",
+      "group": "System screens",
+      "title": "Checking firmware update / corner overlay",
+      "mode": "message",
+      "game": {
+        "utility_kind": "checking",
+        "detail": "MINI 1.3.32",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
+      }
+    },
+    {
+      "name": "SY11",
+      "group": "System screens",
+      "title": "Downloading firmware / corner overlay",
+      "mode": "message",
+      "game": {
+        "utility_kind": "downloading",
+        "detail": "",
+        "complete": 720896,
+        "total": 1459237,
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
+      }
+    },
+    {
+      "name": "SY12",
+      "group": "System screens",
+      "title": "Installing firmware / corner overlay",
+      "mode": "message",
+      "game": {
+        "utility_kind": "installing",
+        "detail": "",
+        "complete": 1,
+        "total": 1,
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
+      }
+    },
+    {
+      "name": "SY13",
+      "group": "System screens",
+      "title": "Update failed / corner overlay",
+      "mode": "message",
+      "game": {
+        "utility_kind": "update_failed",
+        "detail": "RETRY BLOCKED",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
+      }
+    },
+    {
+      "name": "SY14",
+      "group": "System screens",
+      "title": "Server request error / corner overlay",
+      "mode": "message",
+      "game": {
+        "utility_kind": "error",
+        "detail": "HTTP 503",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
+      }
+    },
+    {
+      "name": "SY15",
+      "group": "System screens",
+      "title": "Wi-Fi address lookup error / corner overlay",
+      "mode": "message",
+      "game": {
+        "utility_kind": "offline",
+        "detail": "DNS RETRY",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15",
+        "background": {
+          "mode": "sports",
+          "game": {
+            "sport": "nhl",
+            "state": "pre",
+            "status": "7:00 PM",
+            "away_abbr": "NYR",
+            "home_abbr": "BOS",
+            "away_score": 0,
+            "home_score": 0,
+            "situation": {},
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png",
+            "type": "scoreboard"
+          }
+        }
+      }
+    },
+    {
+      "name": "SY16",
+      "group": "System screens",
+      "title": "Clock synchronization",
+      "mode": "message",
+      "game": {
+        "utility_kind": "time_sync",
+        "detail": "SETTING TIME",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15"
+      }
+    },
+    {
+      "name": "SY17",
+      "group": "System screens",
+      "title": "Device credentials required",
+      "mode": "message",
+      "game": {
+        "utility_kind": "device_key",
+        "detail": "AUTH REQUIRED",
+        "complete": 0,
+        "total": 0,
+        "clock": "9:04",
+        "date": "THU OCT 15"
+      }
+    },
+    {
+      "name": "SY18",
+      "group": "System screens",
+      "title": "Loading complete",
+      "mode": "message",
+      "game": {
+        "utility_kind": "assets",
+        "detail": "TEAM LOGOS",
+        "complete": 12,
+        "total": 12,
+        "clock": "9:04",
+        "date": "THU OCT 15"
       }
     }
   ]

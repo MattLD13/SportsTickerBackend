@@ -64,19 +64,19 @@ bool registerDevice() {
 void applyRegistrationResponse(const NetworkJob& job) {
   Serial.printf("Register HTTP status: %d\n", job.status);
   if (job.status != HTTP_CODE_OK && job.status != HTTP_CODE_CREATED) {
-    if (job.errorStage == "dns") showFetchError("DNS RETRY");
-    else if (job.errorStage == "connect") showFetchError("NET RETRY");
-    else if (job.errorStage == "tls") showFetchError("TLS ERROR");
-    else showFetchError("REGISTER " + String(job.status));
+    if (job.errorStage == "dns") showFetchError(ticker_ui::SystemKind::Offline, "DNS RETRY");
+    else if (job.errorStage == "connect") showFetchError(ticker_ui::SystemKind::Offline, "NET RETRY");
+    else if (job.errorStage == "tls") showFetchError(ticker_ui::SystemKind::Error, "TLS ERROR");
+    else showFetchError(ticker_ui::SystemKind::Error, "REGISTER " + String(job.status));
     return;
   }
   JsonDocument response;
   PayloadReader reader(job.response.body.data(), job.response.body.size());
-  if (!job.complete() || deserializeJson(response, reader)) { showFetchError("REGISTER JSON"); return; }
+  if (!job.complete() || deserializeJson(response, reader)) { showFetchError(ticker_ui::SystemKind::Error, "REGISTER JSON"); return; }
   String nextTickerId = response["ticker_id"] | "";
   nextTickerId.trim();
   if (nextTickerId.length() == 0) {
-    showFetchError("REGISTER ID");
+    showFetchError(ticker_ui::SystemKind::Error, "REGISTER ID");
     return;
   }
 

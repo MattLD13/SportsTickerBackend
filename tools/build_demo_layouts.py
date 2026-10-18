@@ -72,8 +72,11 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", example["name"]):
             raise ValueError("Invalid public example name")
         row = {"name": example["name"], "mode": example["mode"], "game": deepcopy(example["game"])}
+        background = row["game"].get("background", {})
+        asset_mode = background.get("mode", row["mode"])
+        asset_game = background.get("game", row["game"])
         for side in ("away", "home"):
-            urls = mini_logo_sources(row["game"], side) if row["mode"] == "sports" else ()
+            urls = mini_logo_sources(asset_game, side) if asset_mode == "sports" else ()
             if not urls:
                 continue
             url = urls[0]
@@ -94,6 +97,8 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
         if row["mode"] == "airports":
             pages = max(1, min(4, max(len(row["game"].get("arrivals", [])), len(row["game"].get("departures", [])))))
             row.update(frame_count=pages * 40, frame_ms=100)
+        if row["mode"] in {"message", "pairing"} or (row["mode"] == "clock" and not row["game"].get("ready", True)):
+            row.update(frame_count=80, frame_ms=100)
         rows.append(row)
     return rows
 

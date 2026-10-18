@@ -58,6 +58,21 @@ uint16_t color(uint8_t red, uint8_t green, uint8_t blue) {
   return matrix->color565(red, green, blue);
 }
 
+bool MiniMatrix::restoreBaseFrame() {
+  if (!baseFrameReady || !baseFrame) return false;
+  for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
+    const size_t offset = (y * 64 + x) * 3;
+    drawPixelRGB888(x, y, baseFrame[offset], baseFrame[offset + 1], baseFrame[offset + 2]);
+  }
+  return true;
+}
+
+void MiniMatrix::retainBaseFrame() {
+  if (!baseFrame || !mirror.drawing()) return;
+  memcpy(baseFrame, mirror.drawing(), mini_display::FRAME_BYTES);
+  baseFrameReady = true;
+}
+
 void presentFrame() {
   matrix->flipDMABuffer();
   matrix->mirror.present();
@@ -78,9 +93,10 @@ void setupMatrix() {
   // Retain low-bit color precision at the configured 8 MHz clock.
   config.min_refresh_rate = 200;
   matrix = new MiniMatrix(config);
-  auto* pixels = static_cast<uint8_t*>(heap_caps_calloc(2, mini_display::FRAME_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  auto* pixels = static_cast<uint8_t*>(heap_caps_calloc(3, mini_display::FRAME_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   matrix->mirror.attach(pixels);
-  Serial.printf("Display capture PSRAM bytes=%u available=%d\n", 2 * mini_display::FRAME_BYTES, pixels != nullptr);
+  matrix->baseFrame = pixels ? pixels + 2 * mini_display::FRAME_BYTES : nullptr;
+  Serial.printf("Display capture PSRAM bytes=%u available=%d\n", 3 * mini_display::FRAME_BYTES, pixels != nullptr);
   matrix->begin();
   matrix->setBrightness8(PANEL_BRIGHTNESS);
   matrix->setTextWrap(false);

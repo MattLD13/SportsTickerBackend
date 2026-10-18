@@ -9,7 +9,7 @@ bool updateFromPayload(const ResponseBody& body) {
     ++dataJsonFailures;
     Serial.printf("Data JSON error: %s bytes=%u offset=%u\n", payload.error(),
                   static_cast<unsigned>(body.size()), static_cast<unsigned>(payload.offset()));
-    showFetchError("JSON ERROR");
+    showFetchError(ticker_ui::SystemKind::Error, "JSON ERROR");
     return false;
   }
 
@@ -98,9 +98,10 @@ void applyDataResponse(const NetworkJob& job) {
     tickerId = dataUrl = "";
     pageCount = 0;
     message = "REGISTER";
+    messageKind = ticker_ui::SystemKind::Registering;
     return;
   }
-  if (job.status != HTTP_CODE_OK) { showFetchError("HTTP " + String(job.status)); return; }
-  if (!job.complete()) { showFetchError("DATA TRANSFER"); return; }
+  if (job.status != HTTP_CODE_OK) { showFetchError(ticker_ui::SystemKind::Error, "HTTP " + String(job.status)); return; }
+  if (!job.complete()) { showFetchError(ticker_ui::SystemKind::Error, "DATA TRANSFER"); return; }
   if (updateFromPayload(job.response.body)) lastDataSuccessAt = millis();
 }

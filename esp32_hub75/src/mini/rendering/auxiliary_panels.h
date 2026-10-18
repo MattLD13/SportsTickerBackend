@@ -1,6 +1,5 @@
 #pragma once
 #include "sports_pane.h"
-#include "classic_font.h"
 
 namespace ticker_ui {
 struct FlightPane {
@@ -72,16 +71,4 @@ void renderAirport(Canvas& canvas, const AirportPane& view) {
   centered(canvas, view.detail, 0, 64, 27, view.detailWarning ? amber : MUTED_TEXT);
 }
 
-template<class Canvas>
-void renderMessage(Canvas& canvas, const std::string& value) {
-  canvas.rect(0, 0, 64, 32, BACKGROUND);
-  canvas.rect(0, 0, 64, 1, {30, 150, 220});
-  const std::string visible = value.substr(0, 10);
-  for (size_t index = 0; index < visible.size(); ++index) {
-    const unsigned char ch = visible[index];
-    const auto* glyph = classicFont[ch >= 32 && ch <= 126 ? ch - 32 : 0];
-    for (int x = 0; x < 5; ++x) for (int y = 0; y < 8; ++y)
-      if (glyph[x] & (1 << y)) canvas.pixel(2 + index * 6 + x, 13 + y, {255, 220, 80});
-  }
-}
 }  // namespace ticker_ui

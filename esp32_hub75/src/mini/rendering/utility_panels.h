@@ -1,15 +1,18 @@
 #pragma once
 #include "sports_pane.h"
+#include "system_pane.h"
 
 namespace ticker_ui {
 enum class PairingStage { WiFiSetup, AppPairing };
 struct PairingPane {
   PairingStage stage = PairingStage::WiFiSetup;
   std::string code;
+  uint32_t elapsedMs = 0;
 };
 
-inline PairingPane pairingPane(bool wifiSetup, const std::string& wifiPin, const std::string& appCode) {
+inline PairingPane pairingPane(bool wifiSetup, const std::string& wifiPin, const std::string& appCode, uint32_t elapsedMs = 0) {
   PairingPane view;
+  view.elapsedMs = elapsedMs;
   view.stage = wifiSetup ? PairingStage::WiFiSetup : PairingStage::AppPairing;
   view.code = wifiSetup ? wifiPin : appCode;
   return view;
@@ -19,13 +22,16 @@ template<class Canvas>
 void renderPairing(Canvas& canvas, const PairingPane& view) {
   canvas.rect(0, 0, 64, 32, BACKGROUND);
   const bool wifi = view.stage == PairingStage::WiFiSetup;
-  centered(canvas, wifi ? "WIFI PIN" : "APP PAIR", 0, 64, 1, CLOCK_PROGRESS);
-  centered(canvas, view.code.empty() ? "WAIT" : view.code, 0, 64, 11, STATUS_TEXT, 5, 9, 1);
-  centered(canvas, wifi ? "WIFI SETUP" : "ADD TICKER", 0, 64, 26, MUTED_TEXT);
+  canvas.rect(0, 31, 64, 1, {35, 45, 55});
+  centered(canvas, wifi ? "WIFI PIN" : "PAIR CODE", 0, 64, 1, {255, 200, 0});
+  if ((view.elapsedMs / 500) % 2 == 0) canvas.rect(60, 1, 2, 2, {0, 200, 255});
+  centered(canvas, view.code.empty() ? "WAIT" : view.code, 0, 64, 11, SCORE_TEXT, 5, 9, 1);
+  centered(canvas, wifi ? "OPEN APP" : "ADD TICKER", 0, 64, 26, {125, 165, 190});
 }
 
 struct ClockPane {
   std::string date, time;
+  uint32_t elapsedMs = 0;
   int seconds = 0;
   bool ready = false;
 };
@@ -37,7 +43,7 @@ template<class Canvas>
 void renderClock(Canvas& canvas, const ClockPane& view) {
   canvas.rect(0, 0, 64, 32, BACKGROUND);
   if (!view.ready) {
-    centered(canvas, "SYNC", 0, 64, 12, STATUS_TEXT, 6, 10, 1);
+    renderSystem(canvas, systemPane(SystemKind::TimeSync, "SETTING TIME", 0, 0, view.elapsedMs));
     return;
   }
   centered(canvas, view.date, 0, 64, 0, CLOCK_DATE);

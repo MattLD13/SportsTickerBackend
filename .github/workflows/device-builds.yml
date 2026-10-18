@@ -59,6 +59,8 @@ jobs:
         run: |
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
           /tmp/mini-aviation-check docs/contracts/demo-layouts.json
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_system_panels.cpp -o /tmp/mini-system-check
+          /tmp/mini-system-check docs/contracts/demo-layouts.json
       - name: Check Mini artwork window and stock layout
         run: |
           g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_artwork_window.cpp -o /tmp/mini-artwork-check

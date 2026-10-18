@@ -32,6 +32,7 @@ class FrameMirror {
       for (int column = std::max(0, x); column < right; ++column) pixel(column, row, r, g, b);
   }
   void present() { front_ = back_; back_ ^= 1; }
+  const uint8_t* drawing() const { return ready() ? buffers_ + back_ * FRAME_BYTES : nullptr; }
   const uint8_t* front() const { return ready() ? buffers_ + front_ * FRAME_BYTES : nullptr; }
  private:
   uint8_t* buffers_ = nullptr;

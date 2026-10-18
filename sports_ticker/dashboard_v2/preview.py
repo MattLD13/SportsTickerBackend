@@ -34,8 +34,8 @@ def layout_case(name: str) -> dict | None:
 def main_layout(row: dict) -> dict:
     """Describe which production views exist for one reviewed example."""
     mode, game = row["mode"], row["game"]
-    if mode == "message" and game["message"] == "JSON ERROR":
-        return {"available": False, "pane": False, "full": False, "note": "The big ticker keeps its last valid frame after an invalid data response."}
+    if mode == "message" and game["utility_kind"] not in {"empty", "offline", "checking", "downloading", "installing"}:
+        return {"available": False, "pane": False, "full": False, "note": "This Mini status screen has no separate Ticker Six screen. Ticker Six retains its current display."}
     if mode == "clock" and not game.get("ready", True):
         return {"available": False, "pane": False, "full": False, "note": "The big ticker uses its system clock. This Mini time-sync screen has no matching big ticker screen."}
     return {"available": True, "pane": mode in {"sports", "stock"}, "full": mode != "stock"}
@@ -101,13 +101,29 @@ class PreviewRenderer:
                     game["sports_presentation"] = "pinned"
                 content = Content(str(game.get("id") or "public-demo"), str(game.get("type") or "scoreboard"), str(game.get("sport") or mode), game) if items else None
                 extra = {}
+                frame_mode = mode
                 if row and mode == "pairing":
                     kind = FrameKind.WIFI_SETUP if game["wifi_setup"] else FrameKind.PAIRING
                     extra = {"wifi_state": WiFiSetupState(False, False, HotspotDetails("SportsTicker Setup", ""), setup_code=game["wifi_pin"])} if game["wifi_setup"] else {"pairing_code": game["app_code"]}
                 elif row and mode == "message":
-                    kind = FrameKind.OFFLINE if game["message"] == "WIFI LOST" else FrameKind.EMPTY
-                    extra = {"offline_for": 60.0}
-                decision = FrameDecision(kind, 1 / 30, 100, False, now, mode, content=content, **extra)
+                    utility_kind = game["utility_kind"]
+                    background = game.get("background")
+                    if background:
+                        frame_mode = background["mode"]
+                        base_game = deepcopy(background["game"])
+                        base_game["sports_presentation"] = "pinned"
+                        content = Content(str(base_game.get("id") or "demo-base"), str(base_game.get("type") or "scoreboard"), str(base_game.get("sport") or "sports"), base_game)
+                        builder.build(FrameDecision(FrameKind.STATIC, 1 / 30, 100, False, now, background["mode"], content=content))
+                    if utility_kind == "offline":
+                        kind = FrameKind.STATIC if background else FrameKind.OFFLINE
+                        extra = {"connection_lost": True} if background else {"offline_for": float(game.get("age_seconds", 60))}
+                    elif utility_kind == "empty":
+                        kind = FrameKind.EMPTY
+                    else:
+                        kind = FrameKind.UPDATE
+                        total = max(1, int(game.get("total", 1)))
+                        extra = {"update_version": "DEMO", "update_progress": min(1.0, float(game.get("complete", 0)) / total)}
+                decision = FrameDecision(kind, 1 / 30, 100, False, now, frame_mode, content=content, **extra)
                 image = builder.build(decision)
             stream = BytesIO()
             image.convert("RGB").save(stream, format="PNG")

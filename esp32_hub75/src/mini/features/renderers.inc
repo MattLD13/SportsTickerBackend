@@ -13,7 +13,7 @@ class MiniSportsCanvas : public MiniCanvas {
 void drawGame(JsonObjectConst game, const PreparedGameLogos& logos) {
   MiniSportsCanvas canvas(logos);
   ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game));
-  presentFrame();
+  presentContentFrame();
 }
 
 bool firstShownModeItem(const char* family, JsonObjectConst& data) {
@@ -37,7 +37,7 @@ void drawWeather(JsonObjectConst weather) {
   if (city != visibleCity) { visibleCity = city; visibleSince = millis(); }
   MiniCanvas canvas;
   ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(weather, millis() - visibleSince));
-  presentFrame();
+  presentContentFrame();
 }
 
 void drawMusic(JsonObjectConst music) {
@@ -53,13 +53,13 @@ void drawMusic(JsonObjectConst music) {
   const String identity = selectedModeItemId;
   if (identity != visibleTrack) { visibleTrack = identity; visibleSince = millis(); }
   ticker_ui::renderMusic(canvas, ticker_ui::musicPane(music, static_cast<double>(time(nullptr)), millis() - visibleSince));
-  presentFrame();
+  presentContentFrame();
 }
 
 void drawFlight(JsonObjectConst flight) {
   MiniCanvas canvas;
   ticker_ui::renderFlight(canvas, ticker_ui::flightPane(flight));
-  presentFrame();
+  presentContentFrame();
 }
 
 void drawAirport(JsonObjectConst airport) {
@@ -69,13 +69,13 @@ void drawAirport(JsonObjectConst airport) {
   const String identity = selectedModeItemId;
   if (identity != visibleAirport) { visibleAirport = identity; visibleSince = millis(); }
   ticker_ui::renderAirport(canvas, ticker_ui::airportPane(airport, millis() - visibleSince));
-  presentFrame();
+  presentContentFrame();
 }
 
 void drawStock(JsonObjectConst stock) {
   MiniCanvas canvas;
   ticker_ui::renderStock(canvas, ticker_ui::stockPane(stock));
-  presentFrame();
+  presentContentFrame();
 }
 
 void drawClock(const struct tm& localTime, bool clockReady) {
@@ -83,6 +83,7 @@ void drawClock(const struct tm& localTime, bool clockReady) {
   MiniCanvas canvas;
   ticker_ui::ClockPane view;
   view.ready = clockReady;
+  view.elapsedMs = millis();
   if (clockReady) {
     char dateBuffer[16] = {}, timeBuffer[12] = {};
     strftime(dateBuffer, sizeof(dateBuffer), "%a %b %d", &localTime);
@@ -92,7 +93,7 @@ void drawClock(const struct tm& localTime, bool clockReady) {
     view.seconds = localTime.tm_sec;
   }
   ticker_ui::renderClock(canvas, view);
-  presentFrame();
+  if (view.ready) presentContentFrame(); else presentFrame();
   lastPresentedClockReady = view.ready;
   lastPresentedClockSecond = view.ready ? view.seconds : -1;
 }
@@ -111,6 +112,10 @@ void renderCurrent() {
     drawPairingCode();
     return;
   }
+  if (message.length() > 0 && !(ticker_ui::systemOverlay(messageKind) && matrix->baseFrameReady)) {
+    drawSystemNotice(messageKind, message);
+    return;
+  }
   bool loading = false;
   uint16_t complete = 0;
   uint16_t total = 0;
@@ -121,7 +126,7 @@ void renderCurrent() {
   }
   if (sportsMode) {
     if (pageCount == 0) {
-      drawMessage("NO SPORTS");
+      drawSystemNotice(ticker_ui::SystemKind::Empty, "NO SPORTS");
       return;
     }
     if (pageIndex >= pageCount) {
@@ -129,7 +134,7 @@ void renderCurrent() {
     }
     JsonObjectConst game;
     if (!selectedGame(game)) {
-      drawMessage("BAD DATA");
+      drawSystemNotice(ticker_ui::SystemKind::Error, "BAD DATA");
       return;
     }
     prepareSelectedGameLogoSources(game);
@@ -147,6 +152,6 @@ void renderCurrent() {
   else if (displayMode == "airports" && firstShownModeItem("airports", item)) drawAirport(item);
   else if (displayMode == "stock" && firstShownModeItem("stock", item)) drawStock(item);
   else if (displayMode == "clock") drawClock(preparedClock, preparedClockValid);
-  else drawMessage("NO " + displayMode);
+  else drawSystemNotice(ticker_ui::SystemKind::Empty, "NO " + displayMode);
 }
 // Owns sports indicators and renderers for all selectable display modes.

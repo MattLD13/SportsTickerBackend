@@ -63,6 +63,33 @@ struct Canvas {
 
 };
 
+bool renderPanel(Canvas& canvas, const std::string& mode, JsonObjectConst game, JsonObjectConst row, uint32_t elapsed) {
+      if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(game["wifi_setup"] | false, game["wifi_pin"] | "", game["app_code"] | "", elapsed));
+      else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(game));
+      else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(game, (row["elapsed_ms"] | 0) + elapsed));
+      else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(game, (row["now_epoch"] | 1800000000.0) + elapsed / 1000.0, (row["scroll_ms"] | 0) + elapsed));
+      else if (mode == "flights") ticker_ui::renderFlight(canvas, ticker_ui::flightPane(game));
+      else if (mode == "airports") ticker_ui::renderAirport(canvas, ticker_ui::airportPane(game, (row["elapsed_ms"] | 0) + elapsed));
+      else if (mode == "message") {
+        ticker_ui::SystemPane view;
+        if (!ticker_ui::systemPane(game, (row["elapsed_ms"] | 0) + elapsed, view)) return false;
+        JsonObjectConst background = game["background"].as<JsonObjectConst>();
+        const std::string backgroundMode = background["mode"] | "";
+        if (!background.isNull() && ticker_ui::systemOverlay(view.kind) && backgroundMode != "message") {
+          if (!renderPanel(canvas, backgroundMode, background["game"].as<JsonObjectConst>(), row, elapsed)) return false;
+          ticker_ui::renderSystemOverlay(canvas, view);
+        } else ticker_ui::renderSystem(canvas, view);
+      }
+      else if (mode == "clock") {
+        ticker_ui::ClockPane view;
+        view.elapsedMs = elapsed;
+        view.ready = game["ready"] | true; view.date = game["date"] | ""; view.time = game["time"] | ""; view.seconds = game["seconds"] | 0;
+        ticker_ui::renderClock(canvas, view);
+      } else if (mode == "sports") ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game));
+      else return false;
+  return true;
+}
+
 int main(int argc, char** argv) {
   if (argc != 3) return 2;
   std::ifstream input(argv[1]);
@@ -80,19 +107,7 @@ int main(int argc, char** argv) {
       const uint32_t elapsed = index * (row["frame_ms"] | 100);
       Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "", row["cover_artwork"] | "");
       const std::string mode = row["mode"] | "sports";
-      if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(row["game"]["wifi_setup"] | false, row["game"]["wifi_pin"] | "", row["game"]["app_code"] | ""));
-      else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
-      else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(row["game"].as<JsonObjectConst>(), (row["elapsed_ms"] | 0) + elapsed));
-      else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(row["game"].as<JsonObjectConst>(), (row["now_epoch"] | 1800000000.0) + elapsed / 1000.0, (row["scroll_ms"] | 0) + elapsed));
-      else if (mode == "flights") ticker_ui::renderFlight(canvas, ticker_ui::flightPane(row["game"].as<JsonObjectConst>()));
-      else if (mode == "airports") ticker_ui::renderAirport(canvas, ticker_ui::airportPane(row["game"].as<JsonObjectConst>(), (row["elapsed_ms"] | 0) + elapsed));
-      else if (mode == "message") ticker_ui::renderMessage(canvas, row["game"]["message"] | "");
-      else if (mode == "clock") {
-        ticker_ui::ClockPane view;
-        view.ready = row["game"]["ready"] | true; view.date = row["game"]["date"] | ""; view.time = row["game"]["time"] | ""; view.seconds = row["game"]["seconds"] | 0;
-        ticker_ui::renderClock(canvas, view);
-      } else if (mode == "sports") ticker_ui::renderSports(canvas, ticker_ui::sportsPane(row["game"].as<JsonObjectConst>()));
-      else return 5;
+      if (!renderPanel(canvas, mode, row["game"].as<JsonObjectConst>(), row, elapsed)) return 5;
       output.write(reinterpret_cast<const char*>(canvas.pixels.data()), canvas.pixels.size());
       ++count;
     }

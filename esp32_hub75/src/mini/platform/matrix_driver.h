@@ -15,6 +15,10 @@ class MiniMatrix : public MatrixPanel_I2S_DMA {
   void setBrightness8(const uint8_t value) { brightness = value; MatrixPanel_I2S_DMA::setBrightness8(value); }
   uint8_t brightness = 0;
   mini_display::FrameMirror mirror;
+  uint8_t* baseFrame = nullptr;
+  bool baseFrameReady = false;
+  bool restoreBaseFrame();
+  void retainBaseFrame();
 };
 
 extern MiniMatrix* matrix;
