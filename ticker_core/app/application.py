@@ -30,7 +30,7 @@ from ticker_core.platform.frame_health import PresentedFrameHealth
 from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
-from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded
+from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded, PollUpdateResult
 from .viewport import CardViewport
 
 
@@ -131,6 +131,7 @@ class TickerApplication:
         self._reboot_latched = False
         self._pending_reboot_id: str | None = None
         self._update_latched = False
+        self._update_notice_ack: tuple[str, str] | None = None
         self._asset_revision = self._asset_revision_now()
         self._last_response: TickerResponse | None = None
         self._logger = logger or _NullPiLogger()
@@ -217,6 +218,7 @@ class TickerApplication:
                 kind=FrameKind.WIFI_SETUP,
                 wifi_state=wifi_state,
                 connection_lost=False,
+                update_failure=None,
             )
         preparation_finished_at = monotonic()
         try:
@@ -254,6 +256,16 @@ class TickerApplication:
             return decision
         if self._frame_health is not None:
             self._frame_health.record(frame, decision.kind)
+        if decision.update_failure is not None:
+            self._runtime.mark_update_failure_presented(decision.update_failure["id"])
+        if decision.update_failure is not None and self._update_service is not None:
+            identity = decision.update_failure["id"], decision.update_failure["status"]
+            if identity != self._update_notice_ack:
+                try:
+                    self._update_service.mark_result_presented(dict(decision.update_failure))
+                    self._update_notice_ack = identity
+                except OSError as error:
+                    self._logger.record_issue("update_notice", error)
         self._last_frame = frame
         self._last_visual_key = visual_key
         self._last_base_visual_key = base_visual_key
@@ -343,6 +355,11 @@ class TickerApplication:
             elif isinstance(event, PollConnected):
                 self._runtime.confirm_connection()
                 self._disconnected = False
+            elif isinstance(event, PollUpdateResult):
+                self._runtime.observe_update_result(event.receipt, show_notice=event.show_notice)
+                self._update_latched = False
+                if self._update_service is not None:
+                    self._update_service.finish_update()
             elif isinstance(event, PollStreamEvent):
                 record_stream = getattr(self._logger, "record_stream", None)
                 if callable(record_stream):

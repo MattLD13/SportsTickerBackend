@@ -203,6 +203,9 @@ class TickerRuntime:
         self._update: UpdateRequest | None = None
         self._update_request_pending = False
         self._update_started_at = 0.0
+        self._completed_update_id = ""
+        self._update_failure: Mapping[str, str] | None = None
+        self._update_failure_until = 0.0
         self._strip: StripLayout | None = None
         self._strip_key: str | None = None
         self._strip_offset = 0
@@ -275,6 +278,19 @@ class TickerRuntime:
         """Leave the update state after the external updater returns."""
         self._update = None
         self._update_request_pending = False
+
+    def observe_update_result(self, receipt: Mapping[str, str], *, show_notice: bool) -> None:
+        """End a completed attempt and schedule one timed failure overlay."""
+        self._completed_update_id = receipt["id"]
+        self.finish_update()
+        if show_notice and receipt["status"] in {"rolled_back", "download_failed"}:
+            self._update_failure = MappingProxyType(dict(receipt))
+            self._update_failure_until = 0.0
+
+    def mark_update_failure_presented(self, identifier: str) -> None:
+        """Start the notice timer when the matrix presents its first failure frame."""
+        if self._update_failure is not None and self._update_failure["id"] == identifier and self._update_failure_until == 0.0:
+            self._update_failure_until = self._monotonic() + self.config.update_failure_duration
 
     def accept_response(self, response: object) -> PayloadSnapshot:
         """Accept one parsed backend response without polling it."""
@@ -394,7 +410,11 @@ class TickerRuntime:
             if not update_version:
                 self.finish_update()
             update_id = str(_value(response, "update_request_id", "") or "")
+            if update_id and update_id == self._completed_update_id:
+                update_version = ""
+                self.finish_update()
             if update_version and (self._update is None or self._update.command_id != update_id or self._update.version != update_version):
+                self._update_failure = None
                 self._update = UpdateRequest(update_version, update_id)
                 self._update_request_pending = True
                 self._update_started_at = now
@@ -579,6 +599,7 @@ class TickerRuntime:
         selected_brightness = brightness
         if selected_brightness is None:
             selected_brightness = round((snapshot.brightness if snapshot else 1.0) * 100)
+        failure_visible = kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.PAIRING, FrameKind.WIFI_SETUP}
         return FrameDecision(
             kind=kind,
             interval=interval,
@@ -587,6 +608,7 @@ class TickerRuntime:
             wall_time=wall_time,
             mode=snapshot.mode if snapshot else self._mode,
             payload_key=snapshot.strip_key if snapshot else None,
+            update_failure=self._update_failure if failure_visible and (self._update_failure_until == 0.0 or self._monotonic() < self._update_failure_until) else None,
             news=self._active_news.data if self._active_news else None,
             news_elapsed=self._monotonic() - self._active_news.started_at if self._active_news else None,
             stale=snapshot.stale if snapshot else False,

@@ -8,6 +8,7 @@ from pathlib import Path
 class UpdateJournal:
     def __init__(self, directory: Path):
         self.path = Path(directory) / "update-result.json"
+        self.notice_path = Path(directory) / "update-notice-shown.json"
         self.ack_path = Path(directory) / "update-result-ack.json"
 
     @staticmethod
@@ -39,6 +40,16 @@ class UpdateJournal:
 
     def save(self, value):
         self._write(self.path, value)
+
+    def notice_pending(self, receipt):
+        """Keep display acknowledgement separate from server delivery."""
+        return receipt.get("status") in {"rolled_back", "download_failed"} and self._read(self.notice_path) != {
+            "id": receipt["id"], "status": receipt["status"],
+        }
+
+    def mark_notice_shown(self, receipt):
+        """Acknowledge a failure only after the display presents its frame."""
+        self._write(self.notice_path, {"id": receipt["id"], "status": receipt["status"]})
 
     def flush(self, client, ticker_id):
         receipt = self.load()

@@ -28,7 +28,9 @@ class OtaUpdaterService:
         *,
         executable: str = sys.executable,
         updater_path: str | Path | None = None,
+        journal: UpdateJournal | None = None,
     ) -> None:
+        self._journal = journal or UpdateJournal(Path(os.environ.get("TICKER_DATA_DIR", "/home/mld/ticker")))
         self._commands = commands
         self._executable = executable
         self._updater_path = str(updater_path) if updater_path else str(Path(__file__).parents[2] / "updater.py")
@@ -44,14 +46,20 @@ class OtaUpdaterService:
             return False
         if not all((version.strip(), command_id.strip(), ticker_id.strip())):
             raise ValueError("Update requires a version, command id, and ticker id")
-        journal = UpdateJournal(Path(os.environ.get("TICKER_DATA_DIR", "/home/mld/ticker"))).load()
+        journal = self._journal.load()
         if journal and journal.get("id") == command_id and journal.get("status") in {"started", "installed", "rolled_back", "download_failed"}:
+            if journal["status"] != "started":
+                return False
             self._state = UpdateState(active=True, version=version)
             return True
         self._commands.run_update((self._executable, self._updater_path, "--version", version,
                                    "--command-id", command_id, "--ticker-id", ticker_id))
         self._state = UpdateState(active=True, version=version)
         return True
+
+    def mark_result_presented(self, receipt: dict[str, str]) -> None:
+        """Persist acknowledgement after a failure frame reaches the matrix."""
+        self._journal.mark_notice_shown(receipt)
 
     def finish_update(self) -> None:
         """Clear active state after the updater returns or fails."""

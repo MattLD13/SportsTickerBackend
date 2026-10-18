@@ -589,3 +589,71 @@ def test_poll_failure_grants_grace_period_for_disconnected_content(tmp_path) -> 
         assert expired_decision.kind == FrameKind.OFFLINE
     finally:
         application.close()
+
+
+@pytest.mark.parametrize("status", ["download_failed", "rolled_back"])
+def test_update_result_reaches_real_failure_overlay_once(tmp_path, monkeypatch, status):
+    """Connect durable failure results to real pixels and acknowledge successful presentation."""
+    from PIL import ImageChops
+    from ticker_core.app import poller as poller_module
+    from ticker_core.app.poller import BackendPoller
+    from ticker_core.bootstrap import create_default_frame_builder
+    from ticker_core.platform import OtaUpdaterService
+    from ticker_core.platform.update_journal import UpdateJournal
+
+    now = [100.0]
+    monkeypatch.setattr(poller_module, "monotonic", lambda: now[0])
+    wall = datetime(2026, 10, 18, 12, 30, tzinfo=timezone.utc)
+    journal = UpdateJournal(tmp_path)
+    receipt = {"id": "attempt", "version": "new", "status": status, "running_version": "old", "reason": "render_validation"}
+    journal.save(receipt)
+    source = payload()
+    source["settings"]["mode"] = "clock"
+    runtime = TickerRuntime(monotonic=lambda: now[0], wall_clock=lambda: wall)
+    runtime.accept_response(TickerResponse.from_payload(source))
+    assets = Assets()
+    frames, viewport = create_default_frame_builder(assets)
+
+    class FailingSink(Sink):
+        fail = False
+        def present(self, image, **kwargs):
+            if self.fail:
+                self.fail = False
+                raise OSError("display temporarily unavailable")
+            super().present(image, **kwargs)
+
+    sink = FailingSink()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=assets, runtime=runtime, viewport=viewport, frames=frames,
+        pacer=FramePacer(lambda: now[0]), sink=sink, commands=Commands(), device_id="ticker-1",
+        repository=tmp_path, wall_clock=lambda: wall,
+        update_service=OtaUpdaterService(Commands(), journal=journal),
+    )
+    try:
+        application.step()
+        baseline = sink.presented[-1][0].copy()
+        worker = BackendPoller(Client(), "ticker-1", telemetry=dict, update_journal=journal)
+        worker._publish_update_result(application._events)
+        sink.fail = True
+        decision = application.step()
+        assert decision.mode == "clock" and decision.update_failure["status"] == status
+        assert journal.notice_pending(receipt)
+        application.step()
+        failed = sink.presented[-1][0]
+        box = ImageChops.difference(baseline, failed).getbbox()
+        assert box and box[0] >= 256 and box[1] >= 19 and box[2] <= 382 and box[3] <= 31
+        assert not UpdateJournal(tmp_path).notice_pending(receipt)
+        assert not journal.ack_path.exists()
+        source["meta"]["update"] = {"id": "attempt", "version": "new"}
+        runtime.accept_response(TickerResponse.from_payload(source))
+        assert runtime.take_update_request() is None
+        assert runtime.next_frame().kind != FrameKind.UPDATE
+        now[0] += 10.1
+        assert application.step().update_failure is None
+        assert sink.presented[-1][0].tobytes() == baseline.tobytes()
+        restarted = BackendPoller(Client(), "ticker-1", telemetry=dict, update_journal=UpdateJournal(tmp_path))
+        restarted._publish_update_result(application._events)
+        assert application.step().update_failure is None
+    finally:
+        application.close()

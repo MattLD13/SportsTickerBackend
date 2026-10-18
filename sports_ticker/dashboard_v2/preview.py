@@ -34,7 +34,7 @@ def layout_case(name: str) -> dict | None:
 def main_layout(row: dict) -> dict:
     """Describe which production views exist for one reviewed example."""
     mode, game = row["mode"], row["game"]
-    if mode == "message" and game["utility_kind"] not in {"empty", "offline", "checking", "downloading", "installing"}:
+    if mode == "message" and game["utility_kind"] not in {"empty", "offline", "checking", "downloading", "installing", "update_failed"}:
         return {"available": False, "pane": False, "full": False, "note": "This Mini status screen has no separate Ticker Six screen. Ticker Six retains its current display."}
     if mode == "clock" and not game.get("ready", True):
         return {"available": False, "pane": False, "full": False, "note": "The big ticker uses its system clock. This Mini time-sync screen has no matching big ticker screen."}
@@ -119,6 +119,9 @@ class PreviewRenderer:
                         extra = {"connection_lost": True} if background else {"offline_for": float(game.get("age_seconds", 60))}
                     elif utility_kind == "empty":
                         kind = FrameKind.EMPTY
+                    elif utility_kind == "update_failed":
+                        kind = FrameKind.STATIC if background else FrameKind.EMPTY
+                        extra = {"update_failure": {"id": "demo-update", "version": "DEMO", "status": game["update_result"], "reason": "render_validation"}}
                     else:
                         kind = FrameKind.UPDATE
                         total = max(1, int(game.get("total", 1)))

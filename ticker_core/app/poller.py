@@ -69,7 +69,15 @@ class PollStreamEvent:
     error_type: str | None = None
 
 
-PollEvent = PollSucceeded | PollFailed | PollConnected | PollStreamEvent
+@dataclass(frozen=True, slots=True)
+class PollUpdateResult:
+    """Deliver a durable updater result independently of server delivery."""
+
+    receipt: dict[str, str]
+    show_notice: bool
+
+
+PollEvent = PollSucceeded | PollFailed | PollConnected | PollStreamEvent | PollUpdateResult
 
 
 class BackendPoller:
@@ -101,6 +109,8 @@ class BackendPoller:
         self._heartbeat_interval = heartbeat_interval
         self._registration_callback = registration_callback
         self._update_journal = update_journal
+        self._next_result_check = 0.0
+        self._last_result_identity: tuple[str, str] | None = None
 
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
         """Bootstrap over HTTP, then receive sequenced updates over WebSocket."""
@@ -112,6 +122,7 @@ class BackendPoller:
         stream_attempts = 0
         next_heartbeat = monotonic() + self._heartbeat_interval
         while not stop.is_set():
+            self._publish_update_result(events)
             request_started = monotonic()
             connection = None
             connecting = False
@@ -167,12 +178,13 @@ class BackendPoller:
                     except Exception:
                         pass
                     connection = None
-                if stop.wait(backoff.delay_seconds):
+                if self._wait_with_update_results(stop, backoff.delay_seconds, events):
                     return
                 continue
             try:
                 backoff = backoff.after_success()
                 while not stop.is_set():
+                    self._publish_update_result(events)
                     try:
                         raw = connection.recv()
                     except websocket.WebSocketTimeoutException:
@@ -232,7 +244,7 @@ class BackendPoller:
                 except Exception:
                     pass
                 connection = None
-                if stop.wait(backoff.delay_seconds):
+                if self._wait_with_update_results(stop, backoff.delay_seconds, events):
                     return
             finally:
                 if connection is not None:
@@ -240,6 +252,38 @@ class BackendPoller:
                         connection.close()
                     except Exception:
                         pass
+
+    def _publish_update_result(self, events: Queue[PollEvent]) -> None:
+        """Read local results on the worker without blocking the render loop."""
+        if self._update_journal is None or monotonic() < self._next_result_check:
+            return
+        self._next_result_check = monotonic() + 1.0
+        try:
+            receipt = self._update_journal.load()
+            if not receipt or receipt.get("status") not in {"installed", "rolled_back", "download_failed"}:
+                return
+            identity = receipt["id"], receipt["status"]
+            if identity == self._last_result_identity:
+                return
+            result = {key: str(receipt[key]) for key in ("id", "version", "status", "running_version", "reason")}
+            events.put(PollUpdateResult(result, self._update_journal.notice_pending(receipt)))
+            self._last_result_identity = identity
+        except (OSError, ValueError, KeyError):
+            return
+
+    def _wait_with_update_results(self, stop: Event, delay: float, events: Queue[PollEvent]) -> bool:
+        """Keep local failure delivery active during network retry delays."""
+        if self._update_journal is None:
+            return stop.wait(delay)
+        deadline = monotonic() + delay
+        while not stop.is_set():
+            self._publish_update_result(events)
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                return False
+            if stop.wait(min(1.0, remaining)):
+                return True
+        return True
 
     def close(self) -> None:
         """Close the worker-owned HTTP session after a process poller exits."""

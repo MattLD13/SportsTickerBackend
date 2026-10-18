@@ -76,6 +76,7 @@ class FrameBuilder:
         if decision.news is not None:
             key.append(_stable_value(decision.news))
             key.append(int(max(0.0, decision.news_elapsed or 0.0) * 30))
+        key.append(_stable_value(decision.update_failure))
         key.append(decision.connection_lost)
         return tuple(key)
 
@@ -129,6 +130,8 @@ class FrameBuilder:
         frame = self._panel_frame(frame)
         if decision.connection_lost and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.OFFLINE}:
             frame = self._connection_status.apply(frame)
+        if decision.update_failure is not None:
+            frame = self._utility.update_overlay(frame, 0.0, failure_status=decision.update_failure["status"])
         return frame
 
     def _panel_frame(self, frame: Image.Image) -> Image.Image:

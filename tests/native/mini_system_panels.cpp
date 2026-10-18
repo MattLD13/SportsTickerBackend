@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
       }
     }
   }
-  assert(statuses == 16);
+  assert(statuses == 17);
   using ticker_ui::SystemKind;
   assert(ticker_ui::systemPane(SystemKind::Downloading, "", 0, 0).percent == -1);
   assert(ticker_ui::systemPane(SystemKind::Downloading, "", UINT32_MAX, 1).percent == 100);

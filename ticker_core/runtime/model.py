@@ -119,6 +119,7 @@ class FrameDecision:
     pairing_code: str | None = None
     update_version: str | None = None
     update_progress: float | None = None
+    update_failure: Mapping[str, str] | None = None
     offline_for: float | None = None
     stale: bool = False
     stale_for: float = 0.0
@@ -158,6 +159,7 @@ class RuntimeConfig:
     news_max_age: float = 300.0
     news_dedupe_age: float = 3600.0
     news_duration: float = 6.0
+    update_failure_duration: float = 10.0
 
     def __post_init__(self) -> None:
         if self.panel_width <= 0:
@@ -174,6 +176,7 @@ class RuntimeConfig:
             self.news_max_age,
             self.news_dedupe_age,
             self.news_duration,
+            self.update_failure_duration,
         ):
             if value < 0:
                 raise ValueError("Runtime durations cannot be negative.")

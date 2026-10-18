@@ -77,6 +77,7 @@ def create_application() -> TickerApplication:
     )
     health.set_wifi_status_provider(wifi_recovery.telemetry)
     device_profile = _device_profile()
+    update_journal = UpdateJournal(data_directory)
     return TickerApplication(
         client=client,
         poller=BackendPoller(
@@ -85,7 +86,7 @@ def create_application() -> TickerApplication:
             telemetry=health.snapshot,
             profile=device_profile,
             registration_callback=partial(_persist_pairing_code, data_directory / "pairing_code.json"),
-            update_journal=UpdateJournal(data_directory),
+            update_journal=update_journal,
         ),
         cache=ShortTermContentCache(data_directory / "content" / "last-good.json"),
         assets=assets,
@@ -98,7 +99,7 @@ def create_application() -> TickerApplication:
         device_id=device_id,
         repository=repository,
         wall_clock=datetime.now,
-        update_service=OtaUpdaterService(commands, updater_path=repository / "updater.py"),
+        update_service=OtaUpdaterService(commands, updater_path=repository / "updater.py", journal=update_journal),
         wifi_recovery=wifi_recovery,
         poll_in_process=_enabled("TICKER_POLL_PROCESS"),
         render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
