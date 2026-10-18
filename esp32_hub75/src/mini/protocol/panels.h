@@ -130,6 +130,8 @@ inline MusicPane musicPane(JsonObjectConst music, double now, uint32_t scrollMs)
   view.title = label(music["name"], "SPOTIFY", 160);
   view.artist = label(music["artist"], "", 120);
   view.playing = music["is_playing"] | false;
+  view.idle = label(music["status"]) == "IDLE";
+  if (view.idle) { view.title = "NO MUSIC"; view.artist = "PLAY A SONG"; }
   view.scrollMs = scrollMs;
   JsonArrayConst accent = music["cover_asset"]["accent_rgb"].as<JsonArrayConst>();
   if (accent.size() == 3) {
@@ -184,32 +186,54 @@ inline WeatherPane weatherPane(JsonObjectConst weather, uint32_t elapsedMs) {
 
 inline FlightPane flightPane(JsonObjectConst flight) {
   FlightPane view;
-  view.id = label(flight["id"], "FLIGHT", 8);
+  view.id = label(flight["id"], "FLIGHT", 10);
+  view.setup = label(flight["id"]) == "FLIGHT_BLANK";
   view.live = flight["is_live"] | false;
-  view.delayed = (flight["is_delayed"] | false) || (flight["delay_min"] | 0) > 0;
-  const auto origin = flight["origin_iata"].isNull() ? flight["origin_city"] : flight["origin_iata"];
-  const auto destination = flight["dest_iata"].isNull() ? flight["dest_city"] : flight["dest_iata"];
-  view.route = label(origin, "DEP", 3) + ">" + label(destination, "ARR", 3);
-  view.eta = label(flight["eta_str"], "--", 6);
-  view.speed = label(flight["speed"], "--", 4);
-  view.detail = view.delayed ? "D" + label(flight["delay_min"], "--", 3) : "A" + std::to_string((flight["alt"] | 0) / 1000) + "K";
-  view.status = label(flight["status"], "SCHEDULED", 8);
-  view.footer = label(flight["status"], "EN ROUTE", 7);
+  view.delayed = flight["is_delayed"] | false;
+  auto origin = label(flight["origin_iata"], "", 3);
+  auto destination = label(flight["dest_iata"], "", 3);
+  view.origin = origin.empty() ? label(flight["origin_city"], "---", 3) : origin;
+  view.destination = destination.empty() ? label(flight["dest_city"], "---", 3) : destination;
+  view.eta = label(flight["eta_str"], "--", 12);
+  view.eta.erase(std::remove(view.eta.begin(), view.eta.end(), ' '), view.eta.end());
+  view.metrics = std::to_string((flight["alt"] | 0) / 1000) + "K FT " + label(flight["speed"], "--", 4) + "MPH";
+  view.status = label(flight["status"], "SCHEDULED", 14);
+  std::replace(view.status.begin(), view.status.end(), '-', ' ');
+  view.disrupted = view.status == "CANCELED" || view.status == "CANCELLED" || view.status == "DIVERTED";
+  view.complete = view.status == "LANDED" || view.status == "ARRIVED";
+  if (view.setup) view.badge = "";
+  else if (view.disrupted) view.badge = view.status == "DIVERTED" ? "DIV" : "CXL";
+  else if (view.delayed) view.badge = "+" + std::to_string(flight["delay_min"] | 0) + "M";
+  else if (view.live) view.badge = "LIVE";
+  else if (view.complete) view.badge = "DONE";
+  else view.badge = "";
+  view.aircraft = label(flight["aircraft_code"], "", 12);
   view.progress = flight["progress"] | 0;
   return view;
 }
 
-inline AirportPane airportPane(JsonObjectConst airport) {
+inline AirportPane airportPane(JsonObjectConst airport, uint32_t elapsedMs = 0) {
   AirportPane view;
   JsonObjectConst weather = airport["weather"].as<JsonObjectConst>();
-  view.code = label(weather["iata"], "AIRPORT", 8);
-  view.temperature = label(weather["away_abbr"], "--", 4);
-  JsonObjectConst arrival = airport["arrivals"][0].as<JsonObjectConst>();
-  JsonObjectConst departure = airport["departures"][0].as<JsonObjectConst>();
-  view.arrival = label(arrival["flight_number"], "---", 7);
+  view.code = label(weather["iata"], "---", 3);
+  view.temperature = label(weather["away_abbr"], "--", 5);
+  const auto arrivals = airport["arrivals"].as<JsonArrayConst>();
+  const auto departures = airport["departures"].as<JsonArrayConst>();
+  view.pages = std::max(1, std::min(4, static_cast<int>(std::max(arrivals.size(), departures.size()))));
+  view.page = (elapsedMs / 4000) % view.pages;
+  JsonObjectConst arrival = arrivals.size() ? arrivals[view.page % arrivals.size()].as<JsonObjectConst>() : JsonObjectConst();
+  JsonObjectConst departure = departures.size() ? departures[view.page % departures.size()].as<JsonObjectConst>() : JsonObjectConst();
+  view.arrivalPresent = !arrival.isNull();
+  view.departurePresent = !departure.isNull();
+  view.arrival = label(arrival["flight_number"], "---", 8);
   view.arrivalAirport = label(arrival["airport_code"], "---", 3);
-  view.departure = label(departure["flight_number"], "---", 7);
+  view.departure = label(departure["flight_number"], "---", 8);
   view.departureAirport = label(departure["airport_code"], "---", 3);
+  const bool outbound = (elapsedMs / 2000) % 2;
+  const auto row = outbound ? departure : arrival;
+  view.detailWarning = row["is_delayed"] | false;
+  view.detail = (outbound ? "DEP " : "ARR ") + (row.isNull() ? std::string("NONE") :
+      view.detailWarning ? "+" + std::to_string(row["delay_min"] | 0) + " MIN" : label(row["status"], "--", 10));
   return view;
 }
 

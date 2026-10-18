@@ -87,8 +87,13 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
         if row["mode"] == "weather":
             row.update(frame_count=126, frame_ms=100)
         if row["mode"] == "music":
-            row.update(frame_count=200, frame_ms=100, cover_artwork=f"{asset_root}/{identity}.mta")
-            row["game"]["cover_asset"] = {"accent_rgb": accent}
+            row.update(frame_count=200, frame_ms=100)
+            if row["game"].get("cover") == "demo:album":
+                row["cover_artwork"] = f"{asset_root}/{identity}.mta"
+                row["game"]["cover_asset"] = {"accent_rgb": accent}
+        if row["mode"] == "airports":
+            pages = max(1, min(4, max(len(row["game"].get("arrivals", [])), len(row["game"].get("departures", [])))))
+            row.update(frame_count=pages * 40, frame_ms=100)
         rows.append(row)
     return rows
 

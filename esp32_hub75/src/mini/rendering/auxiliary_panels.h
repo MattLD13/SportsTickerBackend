@@ -1,69 +1,75 @@
 #pragma once
 #include "sports_pane.h"
-#include "text_layout.h"
 #include "classic_font.h"
 
 namespace ticker_ui {
 struct FlightPane {
-  std::string id, route, eta, speed, detail, status, footer;
-  bool live = false, delayed = false;
+  std::string id, origin, destination, eta, metrics, status, badge, aircraft;
+  bool live = false, delayed = false, disrupted = false, complete = false, setup = false;
   int progress = 0;
 };
 struct AirportPane {
-  std::string code, temperature, arrival, arrivalAirport, departure, departureAirport;
+  std::string code, temperature, arrival, arrivalAirport, departure, departureAirport, detail;
+  bool arrivalPresent = false, departurePresent = false, detailWarning = false;
+  int page = 0, pages = 1;
 };
 
 template<class Canvas>
-struct PaneSurface {
-  Canvas& canvas;
-  void fillRect(int x, int y, int width, int height, uint16_t value) {
-    canvas.rect(x, y, width, height, {static_cast<uint8_t>(((value >> 11) & 31) * 255 / 31),
-        static_cast<uint8_t>(((value >> 5) & 63) * 255 / 63), static_cast<uint8_t>((value & 31) * 255 / 31)});
-  }
-};
-
-template<class Canvas>
-void auxiliaryText(Canvas& canvas, const std::string& value, int x, int y, Rgb ink, int span = -1) {
-  PaneSurface<Canvas> surface{canvas};
-  const auto visible = span < 0 ? value : value.substr(0, std::max(0, span / 4));
-  const uint16_t packed = ((ink.r & 248) << 8) | ((ink.g & 252) << 3) | (ink.b >> 3);
-  mini_text::drawPaneText(surface, visible.c_str(), visible.size(), x, y, packed, 1);
-}
-
-template<class Canvas>
-void auxiliaryHeader(Canvas& canvas, const std::string& label, Rgb ink) {
-  canvas.rect(0, 0, 64, 32, BACKGROUND);
-  canvas.rect(0, 7, 64, 1, {55, 76, 130});
-  auxiliaryText(canvas, label, 2, 1, ink, 60);
+void aviationLabel(Canvas& canvas, const std::string& value, int left, int right, int y, Rgb ink) {
+  text(canvas, value, left, y, ink, 3, 5, 1, false, left, right);
 }
 
 template<class Canvas>
 void renderFlight(Canvas& canvas, const FlightPane& view) {
-  const Rgb orange{255, 145, 45}, blue{50, 150, 255}, red{255, 80, 75}, green{50, 225, 125};
-  auxiliaryHeader(canvas, view.id, view.delayed ? red : orange);
-  auxiliaryText(canvas, "^", 54, 1, view.delayed ? red : green);
-  auxiliaryText(canvas, view.route, 2, 10, {242, 246, 255}, 27);
-  if (view.live) {
-    auxiliaryText(canvas, "E" + view.eta, 2, 18, blue, 31);
-    auxiliaryText(canvas, "S" + view.speed, 40, 18, {120, 210, 230}, 21);
-  } else auxiliaryText(canvas, view.status, 2, 18, orange, 34);
-  auxiliaryText(canvas, view.detail, 2, 24, view.delayed ? red : Rgb{220, 225, 240}, 25);
-  auxiliaryText(canvas, view.footer, 31, 24, view.delayed ? red : green, 31);
-  canvas.rect(2, 29, 60, 3, view.delayed ? Rgb{60, 10, 10} : Rgb{15, 35, 15});
-  canvas.rect(2, 29, std::max(1, std::min(100, std::max(0, view.progress)) * 60 / 100), 3, view.delayed ? red : green);
+  const Rgb blue{80, 180, 255}, green{50, 225, 125}, amber{255, 185, 65}, red{255, 80, 75};
+  const Rgb accent = view.disrupted ? red : view.delayed ? amber : view.live || view.complete ? green : amber;
+  canvas.rect(0, 0, 64, 32, BACKGROUND);
+  canvas.rect(0, 0, 64, 8, {5, 16, 28});
+  const int badgeLeft = 63 - textWidth(view.badge);
+  aviationLabel(canvas, view.setup ? "FLIGHTS" : view.id, 1, badgeLeft - 3, 1, SCORE_TEXT);
+  aviationLabel(canvas, view.badge, badgeLeft, 63, 1, accent);
+  canvas.rect(1, 8, 62, 1, {24, 43, 62});
+  if (view.setup) {
+    centered(canvas, "TRACK A FLIGHT", 0, 64, 12, SCORE_TEXT);
+    centered(canvas, "ADD IN APP", 0, 64, 23, blue);
+    return;
+  }
+  centered(canvas, view.origin, 0, 25, 10, SCORE_TEXT, 5, 9);
+  centered(canvas, view.destination, 39, 25, 10, SCORE_TEXT, 5, 9);
+  canvas.rect(28, 14, 8, 1, blue);
+  for (int row = 0; row < 3; ++row) {
+    canvas.pixel(33 + row, 12 + row, blue);
+    canvas.pixel(33 + row, 16 - row, blue);
+  }
+  centered(canvas, view.live ? "ETA " + view.eta : view.status, 0, 64, 20, view.live ? blue : accent);
+  centered(canvas, view.live ? view.metrics : view.aircraft, 0, 64, 26, MUTED_TEXT);
+  canvas.rect(0, 31, 64, 1, {24, 43, 62});
+  const int progress = std::min(100, std::max(0, view.progress));
+  if (progress) canvas.rect(0, 31, (progress * 64 + 50) / 100, 1, accent);
 }
 
 template<class Canvas>
 void renderAirport(Canvas& canvas, const AirportPane& view) {
-  const Rgb green{45, 220, 125}, red{255, 75, 75}, white{242, 246, 255}, muted{155, 175, 205};
-  auxiliaryHeader(canvas, view.code, green);
-  auxiliaryText(canvas, view.temperature, 39, 1, {255, 220, 70}, 24);
-  auxiliaryText(canvas, "IN", 2, 10, green);
-  auxiliaryText(canvas, view.arrival, 13, 10, white, 27);
-  auxiliaryText(canvas, view.arrivalAirport, 43, 10, muted, 19);
-  auxiliaryText(canvas, "OUT", 0, 19, red);
-  auxiliaryText(canvas, view.departure, 18, 19, white, 22);
-  auxiliaryText(canvas, view.departureAirport, 46, 19, muted, 17);
+  const Rgb green{50, 225, 125}, blue{80, 180, 255}, amber{255, 185, 65};
+  canvas.rect(0, 0, 64, 32, BACKGROUND);
+  canvas.rect(0, 0, 64, 9, {5, 16, 28});
+  text(canvas, view.code, 2, 1, blue, 4, 6, 1, false, 2, 33);
+  const int tempLeft = 63 - textWidth(view.temperature);
+  aviationLabel(canvas, view.temperature, tempLeft, 63, 2, amber);
+  for (int page = 0; page < view.pages; ++page)
+    canvas.pixel(27 + page * 3, 4, page == view.page ? blue : Rgb{24, 43, 62});
+  canvas.rect(0, 9, 64, 8, {5, 13, 22});
+  canvas.rect(0, 18, 64, 8, {5, 13, 22});
+  for (int side = 0; side < 2; ++side) {
+    const int y = 11 + side * 8;
+    const bool present = side ? view.departurePresent : view.arrivalPresent;
+    const Rgb ink = side ? blue : green;
+    aviationLabel(canvas, side ? "OUT" : "IN", 1, 13, y, ink);
+    aviationLabel(canvas, present ? (side ? view.departure : view.arrival) : "NONE", 15, 47, y, present ? SCORE_TEXT : MUTED_TEXT);
+    const auto& code = side ? view.departureAirport : view.arrivalAirport;
+    aviationLabel(canvas, present ? code : "---", 63 - textWidth(code), 63, y, ink);
+  }
+  centered(canvas, view.detail, 0, 64, 27, view.detailWarning ? amber : MUTED_TEXT);
 }
 
 template<class Canvas>

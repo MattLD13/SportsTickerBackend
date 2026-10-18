@@ -33,12 +33,13 @@ int main() {
   assert(view.accent.r == 220 && view.accent.g == 90 && view.accent.b == 40);
   Canvas first;
   ticker_ui::renderMusic(first, view);
-  assert(first.pixels[(31 * 64 + 34) * 3] == 220);
+  for (int x = 0; x < 32; ++x) assert(first.pixels[(31 * 64 + x) * 3] == 220);
+  for (int x = 32; x < 64; ++x) assert(first.pixels[(31 * 64 + x) * 3] == 44);
   view.scrollMs = 4000;
   Canvas scrolled;
   ticker_ui::renderMusic(scrolled, view);
   assert(first.pixels != scrolled.pixels);
-  for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
+  for (int y = 0; y < 31; ++y) for (int x = 0; x < 32; ++x) {
     const int i = (y * 64 + x) * 3;
     assert(scrolled.pixels[i] == 40 && scrolled.pixels[i + 1] == 80 && scrolled.pixels[i + 2] == 120);
   }
@@ -54,5 +55,14 @@ int main() {
   missing.ready = false;
   ticker_ui::renderMusic(missing, paused);
   assert(missing.pixels != first.pixels);
+  assert(missing.pixels[(12 * 64 + 12) * 3] == 170);
+  data["status"] = "idle";
+  data["duration"] = 0;
+  const auto idle = ticker_ui::musicPane(data.as<JsonObjectConst>(), 1800000000.0, 0);
+  assert(idle.idle && idle.title == "NO MUSIC" && idle.artist == "PLAY A SONG");
+  Canvas idleFrame;
+  ticker_ui::renderMusic(idleFrame, idle);
+  assert(idleFrame.pixels[(12 * 64 + 12) * 3] == 170);
+  for (int x = 0; x < 64; ++x) assert(idleFrame.pixels[(31 * 64 + x) * 3] == 44);
   std::cout << "Music cover clipping, scrolling, seconds, pause, completion, and unknown duration pass\n";
 }

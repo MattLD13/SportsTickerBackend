@@ -3952,6 +3952,184 @@
         "message": "JSON ERROR"
       },
       "note": "Mini diagnostic screen. The Ticker Six keeps the last valid game frame instead."
+    },
+    {
+      "name": "MD26",
+      "group": "Other modes",
+      "title": "Music idle without artwork",
+      "mode": "music",
+      "game": {
+        "id": "spotify:idle",
+        "type": "music",
+        "sport": "music",
+        "status": "idle",
+        "name": "No active Spotify playback",
+        "artist": "",
+        "is_playing": false,
+        "duration": 0,
+        "progress": 0,
+        "cover": ""
+      }
+    },
+    {
+      "name": "MD27",
+      "group": "Other modes",
+      "title": "Music while artwork is unavailable",
+      "mode": "music",
+      "game": {
+        "name": "MR. BLUE SKY",
+        "artist": "ELECTRIC LIGHT ORCHESTRA",
+        "is_playing": true,
+        "progress": 78,
+        "type": "music",
+        "sport": "music",
+        "duration": 303,
+        "fetch_ts": 1792168467.0,
+        "cover": ""
+      }
+    },
+    {
+      "name": "MD28",
+      "group": "Other modes",
+      "title": "Airport full boards with delays",
+      "mode": "airports",
+      "game": {
+        "type": "flight_airport_hud",
+        "sport": "airport",
+        "id": "airport:EWR",
+        "weather": {
+          "iata": "EWR",
+          "city": "Newark",
+          "away_abbr": "72F",
+          "status": "CLEAR"
+        },
+        "arrivals": [
+          {
+            "flight_number": "DL456",
+            "airport_code": "ATL",
+            "airport_city": "Atlanta",
+            "status": "Arriving",
+            "state": "arriving",
+            "is_delayed": false,
+            "delay_min": 0
+          },
+          {
+            "flight_number": "UAL12345",
+            "airport_code": "LAX",
+            "airport_city": "Los Angeles",
+            "status": "Delayed",
+            "state": "delayed",
+            "is_delayed": true,
+            "delay_min": 25
+          },
+          {
+            "flight_number": "AA902",
+            "airport_code": "MIA",
+            "airport_city": "Miami",
+            "status": "Landed",
+            "state": "landed",
+            "is_delayed": false,
+            "delay_min": 0
+          },
+          {
+            "flight_number": "B6123",
+            "airport_code": "BOS",
+            "airport_city": "Boston",
+            "status": "Canceled",
+            "state": "canceled",
+            "is_delayed": false,
+            "delay_min": 0
+          }
+        ],
+        "departures": [
+          {
+            "flight_number": "UA789",
+            "airport_code": "ORD",
+            "airport_city": "Chicago",
+            "status": "Boarding",
+            "state": "boarding",
+            "is_delayed": false,
+            "delay_min": 0
+          },
+          {
+            "flight_number": "BA188",
+            "airport_code": "LHR",
+            "airport_city": "London",
+            "status": "Delayed",
+            "state": "delayed",
+            "is_delayed": true,
+            "delay_min": 120
+          },
+          {
+            "flight_number": "AC321",
+            "airport_code": "YYZ",
+            "airport_city": "Toronto",
+            "status": "Departed",
+            "state": "departed",
+            "is_delayed": false,
+            "delay_min": 0
+          },
+          {
+            "flight_number": "WN999",
+            "airport_code": "DEN",
+            "airport_city": "Denver",
+            "status": "Scheduled",
+            "state": "scheduled",
+            "is_delayed": false,
+            "delay_min": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MD29",
+      "group": "Other modes",
+      "title": "Flight tracker setup",
+      "mode": "flights",
+      "game": {
+        "type": "flight_visitor",
+        "sport": "flight",
+        "id": "flight_blank",
+        "guest_name": "NO FLIGHT SELECTED",
+        "route": "TRACKER > SETUP",
+        "origin_city": "TRACKER",
+        "dest_city": "SETUP",
+        "origin_iata": "",
+        "dest_iata": "",
+        "origin_icao": "",
+        "dest_icao": "",
+        "alt": 0,
+        "altitude_ft": 0,
+        "dist": 0,
+        "distance_miles": 0,
+        "eta_str": "--",
+        "eta_timestamp": null,
+        "speed": 0,
+        "speed_mph": 0,
+        "speed_kts": 0,
+        "progress": 0,
+        "progress_pct": 0,
+        "status": "ADD FLIGHT",
+        "live_status": "Add flight",
+        "status_text": "Add flight",
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "is_delayed": false,
+        "is_live": false,
+        "airline": "",
+        "airline_name": "",
+        "airline_code": "",
+        "airline_iata": "",
+        "airline_icao": "",
+        "airline_logo": "",
+        "aircraft_type": "",
+        "aircraft_model": "",
+        "aircraft_code": "",
+        "aircraft_registration": "",
+        "registration": "",
+        "source_updated_at": null,
+        "updated_at": null
+      }
     }
   ]
 }

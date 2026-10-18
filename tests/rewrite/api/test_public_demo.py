@@ -260,7 +260,7 @@ def test_public_mini_animation_uses_complete_artwork_and_current_weather_contrac
             later = atlas.crop((0, 32 * 50, 64, 32 * 51))
             assert first.tobytes() != later.tobytes()
             if row["mode"] == "music":
-                assert first.crop((0, 0, 32, 32)).tobytes() == later.crop((0, 0, 32, 32)).tobytes()
+                assert first.crop((0, 0, 32, 31)).tobytes() == later.crop((0, 0, 32, 31)).tobytes()
                 assert len(first.crop((0, 0, 32, 32)).getcolors(1024)) > 20
     for row in rows.values():
         if row["mode"] == "weather":

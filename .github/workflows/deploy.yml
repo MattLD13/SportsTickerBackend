@@ -141,6 +141,12 @@ jobs:
           /tmp/mini-deadline-check
           g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_device_payload.cpp esp32_hub75/src/mini/protocol/device_payload.cpp -o /tmp/mini-payload-check
           /tmp/mini-payload-check
+      - name: Verify Mini flight, airport, and music layouts
+        run: |
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
+          /tmp/mini-aviation-check docs/contracts/demo-layouts.json
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
+          /tmp/mini-music-check
       - name: Read mini firmware version
         id: version
         shell: bash

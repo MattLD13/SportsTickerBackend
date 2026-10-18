@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
       else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(row["game"].as<JsonObjectConst>(), (row["elapsed_ms"] | 0) + elapsed));
       else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(row["game"].as<JsonObjectConst>(), (row["now_epoch"] | 1800000000.0) + elapsed / 1000.0, (row["scroll_ms"] | 0) + elapsed));
       else if (mode == "flights") ticker_ui::renderFlight(canvas, ticker_ui::flightPane(row["game"].as<JsonObjectConst>()));
-      else if (mode == "airports") ticker_ui::renderAirport(canvas, ticker_ui::airportPane(row["game"].as<JsonObjectConst>()));
+      else if (mode == "airports") ticker_ui::renderAirport(canvas, ticker_ui::airportPane(row["game"].as<JsonObjectConst>(), (row["elapsed_ms"] | 0) + elapsed));
       else if (mode == "message") ticker_ui::renderMessage(canvas, row["game"]["message"] | "");
       else if (mode == "clock") {
         ticker_ui::ClockPane view;

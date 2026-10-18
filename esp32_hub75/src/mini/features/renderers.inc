@@ -64,7 +64,11 @@ void drawFlight(JsonObjectConst flight) {
 
 void drawAirport(JsonObjectConst airport) {
   MiniCanvas canvas;
-  ticker_ui::renderAirport(canvas, ticker_ui::airportPane(airport));
+  static String visibleAirport;
+  static uint32_t visibleSince = 0;
+  const String identity = selectedModeItemId;
+  if (identity != visibleAirport) { visibleAirport = identity; visibleSince = millis(); }
+  ticker_ui::renderAirport(canvas, ticker_ui::airportPane(airport, millis() - visibleSince));
   presentFrame();
 }
 
