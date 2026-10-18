@@ -66,18 +66,31 @@ inline bool systemOverlay(SystemKind kind) {
 
 template<class Canvas>
 void renderSystemOverlay(Canvas& canvas, const SystemPane& view) {
-  const Rgb cyan{100, 220, 255}, amber{255, 170, 0}, red{255, 75, 75};
-  const bool failure = view.kind == SystemKind::Error || view.kind == SystemKind::UpdateFailed;
+  const Rgb cyan{100, 220, 255}, red{255, 75, 75};
+  const bool failure = view.kind == SystemKind::UpdateFailed;
   const bool offline = view.kind == SystemKind::Offline;
-  const Rgb accent = failure ? red : offline ? amber : cyan;
+  const Rgb accent = failure ? red : cyan;
+  if (offline || view.kind == SystemKind::Error) {
+    for (int y = 0; y < 10; ++y) {
+      const int inset = y == 0 || y == 9 ? 2 : y == 1 || y == 8 ? 1 : 0;
+      canvas.rect(52 + inset, y, 12 - 2 * inset, 1, {0, 0, 0});
+    }
+    for (int x = 54; x <= 60; ++x) { canvas.pixel(x, 2, {210, 215, 225}); canvas.pixel(x, 7, {210, 215, 225}); }
+    for (int y = 2; y <= 7; ++y) { canvas.pixel(54, y, {210, 215, 225}); canvas.pixel(60, y, {210, 215, 225}); }
+    canvas.rect(55, 4, 5, 1, {100, 110, 125});
+    canvas.pixel(55, 6, {255, 180, 20});
+    for (int index = 0; index < 10; ++index) {
+      const int x = 53 + index, y = 8 - (index * 8 + 4) / 9;
+      canvas.pixel(x, y, {255, 70, 70});
+      canvas.pixel(x, y + 1, {255, 70, 70});
+    }
+    return;
+  }
   canvas.rect(30, 19, 34, 13, {2, 6, 10});
   canvas.rect(30, 19, 34, 1, {25, 50, 60});
-  const std::string title = offline ? "NO LINK" : view.kind == SystemKind::Error ? "ERROR" : "UPDATE";
-  centered(canvas, title, 32, 30, 20, accent);
+  centered(canvas, "UPDATE", 32, 30, 20, accent);
   std::string detail;
-  if (offline) detail = "RETRY";
-  else if (view.kind == SystemKind::Error) detail = view.detail;
-  else if (view.kind == SystemKind::UpdateFailed) detail = "FAILED";
+  if (view.kind == SystemKind::UpdateFailed) detail = "FAILED";
   else if (view.kind == SystemKind::Installing) detail = "INSTALL";
   else if (view.kind == SystemKind::Checking) detail = "CHECK";
   else detail = view.percent < 0 ? "WAIT" : std::to_string(view.percent) + "%";

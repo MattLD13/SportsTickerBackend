@@ -57,7 +57,8 @@ int main(int argc, char** argv) {
     const auto original = overlay.pixels;
     ticker_ui::renderSystemOverlay(overlay, ticker_ui::systemPane(kind, "HTTP 503", 50, 100, 1700));
     for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
-      if (x >= 30 && y >= 19) continue;
+      const bool connection = kind == SystemKind::Offline || kind == SystemKind::Error;
+      if (connection ? x >= 52 && y < 10 : x >= 30 && y >= 19) continue;
       const int offset = (y * 64 + x) * 3;
       for (int channel = 0; channel < 3; ++channel) assert(overlay.pixels[offset + channel] == original[offset + channel]);
     }
