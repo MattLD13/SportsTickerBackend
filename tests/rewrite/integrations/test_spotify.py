@@ -354,7 +354,7 @@ def test_production_spotify_refresh_interval_limits_api_polling() -> None:
     """Wake the music source often enough to support its adaptive poll cadence."""
     from sports_ticker.production import _INTERVALS
 
-    assert _INTERVALS["music"] == 5.0
+    assert _INTERVALS["music"] == 0.6
 
 
 def test_spotify_api_cooldown_honors_retry_after_and_resumes_at_expiry(tmp_path) -> None:
@@ -410,10 +410,10 @@ def test_spotify_adaptive_polling_and_access_token_cache(tmp_path) -> None:
 
     try:
         assert service.playback("ticker-1")["status"] == "playing"
-        now[0] += 4.0
+        now[0] = 2000.5
         assert service.playback("ticker-1")["status"] == "playing"
         assert http.playback_calls == 1
-        now[0] += 1.0
+        now[0] = 2000.6
         http.queue_response = {"queue": []}
         http.playback_response = {"is_playing": False, "item": _sample_track(
             "t1", "Track One", "Artist One", "Album One", "https://img.spotify.com/t1.jpg"
@@ -423,7 +423,7 @@ def test_spotify_adaptive_polling_and_access_token_cache(tmp_path) -> None:
         assert http.queue_calls == 1
         assert http.refresh_calls == 1
 
-        now[0] += 14.0
+        now[0] += 4.0
         assert service.playback("ticker-1")["status"] == "paused"
         assert http.playback_calls == 2
         now[0] += 1.0
@@ -502,11 +502,43 @@ def test_spotify_unauthorized_cached_access_token_is_refreshed_on_next_poll(tmp_
 
         http.playback_error = None
         now[0] += 14.0
-        service.playback("ticker-1")
+        with pytest.raises(SpotifyIntegrationError):
+            service.playback("ticker-1")
         assert http.refresh_calls == 1
         now[0] += 1.0
         service.playback("ticker-1")
         assert http.refresh_calls == 2
+    finally:
+        repository.close()
+
+
+@pytest.mark.parametrize("previous_success", (False, True))
+def test_spotify_transient_error_waits_for_retry_with_or_without_cached_playback(tmp_path, previous_success) -> None:
+    """Retain failed health and skip upstream calls until the transient retry deadline."""
+    now = [8000.0]
+    http = FakeSpotifyHttp()
+    service, repository = _setup_service(tmp_path, http, clock=lambda: now[0])
+    http.playback_response = {
+        "is_playing": True, "progress_ms": 30000,
+        "item": _sample_track("t1", "Track One", "Artist One", "Album One", "https://img.spotify.com/t1.jpg"),
+    }
+    try:
+        if previous_success:
+            service.playback("ticker-1")
+            now[0] += 1.0
+        http.playback_error = SpotifyIntegrationError("Spotify returned HTTP 503", status_code=503)
+        with pytest.raises(SpotifyIntegrationError):
+            service.playback("ticker-1")
+        calls = http.playback_calls
+        retry_at = now[0] + 15.0
+        http.playback_error = None
+        now[0] = retry_at - 0.1
+        with pytest.raises(SpotifyIntegrationError):
+            service.playback("ticker-1")
+        assert http.playback_calls == calls
+        now[0] = retry_at
+        assert service.playback("ticker-1")["name"] == "Track One"
+        assert http.playback_calls == calls + 1
     finally:
         repository.close()
 

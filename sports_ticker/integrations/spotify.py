@@ -26,8 +26,8 @@ SPOTIFY_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_URL = "https://api.spotify.com/v1"
 SPOTIFY_SCOPES = ("user-read-playback-state", "user-read-currently-playing")
-SPOTIFY_PLAYING_REFRESH_SECONDS = 5.0
-SPOTIFY_PAUSED_REFRESH_SECONDS = 15.0
+SPOTIFY_PLAYING_REFRESH_SECONDS = 0.6
+SPOTIFY_PAUSED_REFRESH_SECONDS = 5.0
 SPOTIFY_IDLE_REFRESH_SECONDS = 30.0
 SPOTIFY_ERROR_REFRESH_SECONDS = 15.0
 SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS = 30.0
@@ -260,6 +260,7 @@ class SpotifyIntegrationService:
         self._api_cooldown_until = 0.0
         self._rate_limit_backoff_seconds = SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS
         self._next_playback_poll_at: dict[str, float] = {}
+        self._playback_failures: dict[str, SpotifyIntegrationError] = {}
 
     @property
     def callback_uri(self) -> str:
@@ -448,6 +449,9 @@ class SpotifyIntegrationService:
         now = float(self._clock())
         with self._playback_lock:
             if now < self._next_playback_poll_at.get(window_key, 0.0):
+                failure = self._playback_failures.get(window_key)
+                if failure is not None:
+                    raise failure
                 window = self._playback_windows.get(window_key)
                 if window is not None and window.last_record is not None:
                     return dict(window.last_record)
@@ -480,12 +484,16 @@ class SpotifyIntegrationService:
             record["priority"] = connection.priority
             cadence = _playback_refresh_seconds(record)
             with self._playback_lock:
+                self._playback_failures.pop(window_key, None)
                 self._next_playback_poll_at[window_key] = float(self._clock()) + cadence
             return record
         except SpotifyIntegrationError as error:
             self._remember_api_cooldown(error)
             if error.status_code != 429:
                 with self._playback_lock:
+                    self._playback_failures[window_key] = SpotifyIntegrationError(
+                        str(error), status_code=error.status_code, retry_after=error.retry_after
+                    )
                     self._next_playback_poll_at[window_key] = (
                         float(self._clock()) + SPOTIFY_ERROR_REFRESH_SECONDS
                     )
@@ -549,6 +557,7 @@ class SpotifyIntegrationService:
         with self._playback_lock:
             self._playback_windows.pop(account_key, None)
             self._next_playback_poll_at.pop(account_key, None)
+            self._playback_failures.pop(account_key, None)
         with self._access_token_lock:
             self._access_tokens.pop(account_key, None)
 

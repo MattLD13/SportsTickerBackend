@@ -39,7 +39,7 @@ Live weather input comes from `HybridWeatherProvider` and the V2 content project
 The preview tool renders 337 Mini frames through the production C++ renderer on the physical Pi.
 It also renders a real 384x32 Ticker Six weather reference.
 The native check verifies artwork pixels, animation changes, day and night, header spacing, statistics, missing values, and frame bounds.
-The complete Python suite passes 756 tests. The critical suite passes 412 tests.
+The complete Python suite passes 758 tests. The critical suite passes 412 tests.
 
 Firmware `mini-1.3.29` uses 77,268 static RAM bytes and 1,455,777 application flash bytes.
 The firmware occupies 69.4 percent of its 2 MiB application partition.

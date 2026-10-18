@@ -15,11 +15,11 @@ Commit `49251b1b` replaced that schedule with a fixed 0.6-second interval.
 ## Owners and replaced path
 
 `SpotifyIntegrationService` owns account playback cadence, shared reads, access tokens, queue windows, and rate-limit cooldowns.
-The production scheduler wakes the music provider every five seconds.
+The production scheduler wakes the music provider every 0.6 seconds.
 The service replaces the fixed upstream polling and repeated access-token refresh path.
 
-- Playing accounts poll every five seconds.
-- Paused accounts poll every 15 seconds.
+- Playing accounts poll every 0.6 seconds.
+- Paused accounts poll every five seconds.
 - Idle accounts poll every 30 seconds.
 - Transient errors use a 15-second retry interval.
 - Each group and Spotify account shares one poll across its tickers.
@@ -32,6 +32,7 @@ The HTTP adapter exposes status and `Retry-After` as structured error values.
 HTTP 429 starts a shared application cooldown and preserves the existing stale-result path.
 Without `Retry-After`, the service increases delays from 30 seconds to a maximum of 15 minutes.
 The service checks the cooldown again after acquiring the account lock.
+Transient failures retain their error state until their retry deadline, including failures before the first successful playback read.
 Music stale results use ticker identity and exact settings, preventing reuse across different owners.
 
 ## Validation
@@ -39,7 +40,7 @@ Music stale results use ticker identity and exact settings, preventing reuse acr
 Injected-clock tests verify playback states, token expiry, reauthorization, rejected tokens, retry deadlines, queue recovery, and shared account reads.
 A concurrent test proves two tickers make one playback request and one queue request.
 A provider test verifies that a failing ticker never receives another ticker's cached music.
-The focused integration and provider checks pass 19 tests.
+The focused integration and provider checks pass 21 tests.
 
 Upstream quota recovery remains controlled by Spotify. A backend restart does not clear that limit.
 

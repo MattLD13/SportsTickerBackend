@@ -57,7 +57,7 @@ _INTERVALS: Final = {
     "racing": 15.0,
     "stock": 30.0,
     "flights": 30.0,
-    "music": 5.0,
+    "music": 0.6,
     "clock": 3600.0,
     "news": 30.0,
 }
