@@ -5,6 +5,7 @@
 #include <iostream>
 #include <panels.h>
 #include <mini_sprite.h>
+#include <mini_artwork.h>
 
 struct Sprite {
   bool ready = false;
@@ -23,7 +24,21 @@ struct Sprite {
 struct Canvas {
   std::array<uint8_t, 64 * 32 * 3> pixels{};
   Sprite away, home;
-  Canvas(const std::string& a, const std::string& h) : away(a), home(h) {}
+  std::array<uint8_t, mini_artwork::Bytes> cover{};
+  bool coverReady = false;
+  Canvas(const std::string& a, const std::string& h, const std::string& artwork = "") : away(a), home(h) {
+    std::ifstream input(artwork, std::ios::binary);
+    coverReady = static_cast<bool>(input.read(reinterpret_cast<char*>(cover.data()), cover.size())) && memcmp(cover.data(), "MTA1", 4) == 0;
+  }
+  bool artwork() {
+    if (!coverReady) return false;
+    for (size_t y = 0; y < 32; ++y) for (size_t x = 0; x < 32; ++x) {
+      const uint16_t value = mini_sprite::little16(cover.data() + 16 + (y * 32 + x) * 2);
+      pixel(x, y, {static_cast<uint8_t>(((value >> 11) & 31) * 255 / 31),
+                   static_cast<uint8_t>(((value >> 5) & 63) * 255 / 63), static_cast<uint8_t>((value & 31) * 255 / 31)});
+    }
+    return true;
+  }
   void pixel(int x, int y, ticker_ui::Rgb ink) {
     if (x < 0 || x >= 64 || y < 0 || y >= 32) return;
     const int offset = (y * 64 + x) * 3;
@@ -60,10 +75,11 @@ int main(int argc, char** argv) {
   std::filesystem::create_directories(argv[2]);
   int count = 0;
   for (JsonObjectConst row : document.as<JsonArrayConst>()) {
-    Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "");
+    Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "", row["cover_artwork"] | "");
     const std::string mode = row["mode"] | "sports";
     if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(row["game"]["wifi_setup"] | false, row["game"]["wifi_pin"] | "", row["game"]["app_code"] | ""));
     else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
+    else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(row["game"].as<JsonObjectConst>(), row["now_epoch"] | 1800000000.0, row["scroll_ms"] | 0));
     else if (mode == "clock") {
       ticker_ui::ClockPane view;
       view.ready = true; view.date = row["game"]["date"] | ""; view.time = row["game"]["time"] | ""; view.seconds = row["game"]["seconds"] | 0;

@@ -23,6 +23,7 @@ from .mini_sprite import SpritePolicy, WIRE_BYTES, encode_sprite, validate_sprit
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _HOSTS = frozenset({
+    "i.scdn.co",
     "a.espncdn.com", "raw.githubusercontent.com", "images.fotmob.com",
     "assets.nhle.com", "upload.wikimedia.org", "cdn.nba.com",
 })

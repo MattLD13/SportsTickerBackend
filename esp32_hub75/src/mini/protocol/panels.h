@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include "../rendering/sports_pane.h"
 #include "../rendering/utility_panels.h"
+#include "../rendering/music_pane.h"
 
 namespace ticker_ui {
 inline std::string label(JsonVariantConst value, const char* empty = "", size_t limit = 64) {
@@ -122,6 +123,27 @@ inline SportsPane sportsPane(JsonObjectConst game) {
   }
   return view;
 }
+inline MusicPane musicPane(JsonObjectConst music, double now, uint32_t scrollMs) {
+  MusicPane view;
+  view.title = label(music["name"], "SPOTIFY", 160);
+  view.artist = label(music["artist"], "", 120);
+  view.playing = music["is_playing"] | false;
+  view.scrollMs = scrollMs;
+  const double duration = music["duration"] | 0.0;
+  double progress = music["progress"] | 0.0;
+  const double fetched = music["fetch_ts"] | 0.0;
+  if (view.playing && now > 1700000000 && fetched > 1700000000) progress += std::max(0.0, now - fetched);
+  if (std::isfinite(duration) && std::isfinite(progress) && duration > 0) {
+    progress = std::max(0.0, std::min(duration, progress));
+    const unsigned remaining = static_cast<unsigned>(std::ceil(std::min(359999.0, duration - progress)));
+    char clock[16];
+    std::snprintf(clock, sizeof(clock), "-%u:%02u", remaining / 60, remaining % 60);
+    view.remaining = clock;
+    view.fraction = static_cast<float>(progress / duration);
+  } else view.remaining = "--:--";
+  return view;
+}
+
 inline StockPane stockPane(JsonObjectConst stock) {
   StockPane view;
   view.symbol = label(stock["symbol"].isNull() ? stock["home_abbr"] : stock["symbol"], "STOCK", 10);

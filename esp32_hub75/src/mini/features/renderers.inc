@@ -26,7 +26,8 @@ bool firstShownModeItem(const char* family, JsonObjectConst& data) {
     if (!shownItem(item)) {
       continue;
     }
-    beginFrame(family, item["id"] | "", 0, 1);
+    selectedModeItemId = item["id"] | "";
+    beginFrame(family, selectedModeItemId.c_str(), 0, 1);
     data = item["data"].as<JsonObjectConst>();
     return !data.isNull();
   }
@@ -126,20 +127,18 @@ void drawWeather(JsonObjectConst weather) {
 }
 
 void drawMusic(JsonObjectConst music) {
-  const uint16_t magenta = color(230, 65, 195);
-  const uint16_t green = color(40, 220, 120);
-  drawModeHeader("MUSIC", magenta);
-  matrix->fillCircle(10, 17, 8, color(24, 28, 42));
-  matrix->drawCircle(10, 17, 8, magenta);
-  matrix->drawCircle(10, 17, 5, color(55, 64, 88));
-  matrix->fillCircle(10, 17, 2, green);
-  mini_text::drawPixelTextFit(*matrix, shortValue(music["name"], music["away_abbr"].isNull() ? "UNKNOWN" : music["away_abbr"].as<String>().c_str(), 10), 22, 10, color(245, 245, 255), 1, 40);
-  mini_text::drawPixelTextFit(*matrix, shortValue(music["artist"], music["home_abbr"].isNull() ? "ARTIST" : music["home_abbr"].as<String>().c_str(), 10), 22, 18, color(165, 180, 205), 1, 40);
-  const bool playing = music["is_playing"] | false;
-  mini_text::drawPixelText(*matrix, playing ? "P" : "S", 2, 27, green, 1);
-  const int progress = min(64, max(0, static_cast<int>(music["progress"] | 0)));
-  matrix->fillRect(10, 30, 54, 2, color(28, 42, 60));
-  matrix->fillRect(10, 30, progress * 54 / 100, 2, green);
+  class MusicCanvas : public MiniCanvas {
+   public:
+    explicit MusicCanvas(JsonObjectConst value) : asset(value) {}
+    bool artwork() { return musicArtwork.draw(asset, *matrix); }
+   private:
+    JsonObjectConst asset;
+  } canvas(music["cover_asset"].as<JsonObjectConst>());
+  static String visibleTrack;
+  static uint32_t visibleSince = 0;
+  const String identity = selectedModeItemId;
+  if (identity != visibleTrack) { visibleTrack = identity; visibleSince = millis(); }
+  ticker_ui::renderMusic(canvas, ticker_ui::musicPane(music, static_cast<double>(time(nullptr)), millis() - visibleSince));
   presentFrame();
 }
 

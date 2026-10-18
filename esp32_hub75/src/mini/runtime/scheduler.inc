@@ -146,6 +146,7 @@ void miniSetup() {
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   networkGate.begin();
   spriteAssets.begin();
+  Serial.printf("Music artwork RAM %s\n", musicArtwork.begin() ? "ready" : "unavailable");
   Serial.printf("Mini firmware: %s sprite_protocol=1\n", MINI_FIRMWARE_VERSION);
   loadWifiCredentials();
   firmwareUpdater.initialize();
@@ -389,6 +390,10 @@ void miniTick() {
   }
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
+  }
+  if (displayMode == "music" && !pairingMode && message.length() == 0 && now - lastMusicFrameAt >= 100) {
+    lastMusicFrameAt = now;
+    renderCurrent();
   }
   if (workerFinished) {
     if (logoPlanDisplayPending) {

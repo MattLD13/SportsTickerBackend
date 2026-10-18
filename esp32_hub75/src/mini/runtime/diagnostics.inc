@@ -30,6 +30,7 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   out["wifi_rssi"] = WiFi.RSSI();
   JsonObject network = out["network"].to<JsonObject>();
   network["device_credentials_ready"] = deviceCredentials.ready();
+  network["artwork_downloads"] = musicArtwork.downloads();
   network["wifi_connected"] = WiFi.status() == WL_CONNECTED;
   network["ticker_id"] = tickerId;
   network["registration_status"] = lastRegistrationStatus;

@@ -42,6 +42,7 @@ class BackendApplication:
         clock: Callable[[], float] = time.time,
         pairing_code_ttl_seconds: float = 600.0,
         mini_sprites: object | None = None,
+        mini_artwork: object | None = None,
     ) -> None:
         """Capture infrastructure through dependency injection."""
 
@@ -52,6 +53,7 @@ class BackendApplication:
         self.spotify_service = spotify_service
         self.catalog = catalog
         self.mini_sprites = mini_sprites
+        self.mini_artwork = mini_artwork
         self.weather_location_resolver = weather_location_resolver
         self._clock = clock
         if pairing_code_ttl_seconds <= 0:
@@ -518,6 +520,10 @@ class BackendApplication:
                 game = item["data"]
                 for side in ("away", "home"):
                     game[f"{side}_logo_asset"] = self.mini_sprites.reference(*mini_logo_sources(game, side))
+        if self.mini_artwork is not None and ticker.profile.product_family == "mini":
+            for item in data["content"].get("music", ()):
+                music = item["data"]
+                music["cover_asset"] = self.mini_artwork.reference(str(music.get("cover") or ""))
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),
@@ -723,7 +729,7 @@ class BackendApplication:
             self._closed = True
 
         failures: list[Exception] = []
-        for component in (self.runtime, self.scheduler, self.mini_sprites):
+        for component in (self.runtime, self.scheduler, self.mini_sprites, self.mini_artwork):
             if component is None:
                 continue
             stop = getattr(component, "stop", None)

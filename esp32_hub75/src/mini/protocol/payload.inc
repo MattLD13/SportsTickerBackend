@@ -61,6 +61,7 @@ bool updateFromPayload(const ResponseBody& body) {
     logoWorkingSetSignature = newRotationSignature;
     prepareSportsLogoWorkingSet(pageIndex);
   }
+  prepareMusicArtwork();
   message = "";
   renderCurrent();
   firmwareUpdater.observe(payload.document()["meta"]["update"], registered, pairingMode, tickerId);

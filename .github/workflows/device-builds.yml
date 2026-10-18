@@ -45,6 +45,10 @@ jobs:
         run: |
           g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/rendering tests/native/mini_text_layout.cpp -o /tmp/mini-text-check
           /tmp/mini-text-check
+      - name: Check Mini music layout and playback timing
+        run: |
+          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
+          /tmp/mini-music-check
       - name: Check firmware transfer and boot receipts
         run: |
           g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check

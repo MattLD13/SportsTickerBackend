@@ -149,10 +149,11 @@ def remote_render(host: str, key: Path, output: Path, native_root: str) -> None:
     subprocess.run(scp + [str(p) for p in headers] + [f"{host}:{native_root}/src/mini/rendering/"], check=True)
     subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/protocol/panels.h"), f"{host}:{native_root}/src/mini/protocol/"], check=True)
     subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_sprite.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
+    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_artwork.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
     subprocess.run(scp + [str(ROOT / "tools/render_mini_ui.cpp"), f"{host}:{native_root}/src/"], check=True)
     library = ROOT / "esp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src"
     subprocess.run(scp + ["-r", str(library / "ArduinoJson"), str(library / "ArduinoJson.h"), str(library / "ArduinoJson.hpp"), f"{host}:{native_root}/arduino/"], check=True)
-    sprites = list((output / "assets").glob("*.mts"))
+    sprites = list((output / "assets").glob("*.mts")) + list((output / "assets").glob("*.mta"))
     if sprites: subprocess.run(scp + [str(p) for p in sprites] + [f"{host}:{native_root}/assets/"], check=True)
     subprocess.run(scp + [str(output / "input.json"), f"{host}:{native_root}/input.json"], check=True)
     subprocess.run(ssh + [f"nice -n 19 taskset -c 0 g++ -std=c++17 -O1 -I{native_root}/src/mini/protocol -I{native_root}/src/mini/assets -I{native_root}/arduino {native_root}/src/render_mini_ui.cpp -o {native_root}/render-mini && nice -n 19 taskset -c 0 {native_root}/render-mini {native_root}/input.json {native_root}/frames"], check=True)

@@ -36,6 +36,7 @@
 
 #include "../protocol/device_payload.h"
 #include "../assets/sprite_assets.h"
+#include "../assets/artwork_assets.h"
 #include "../platform/device_credentials.h"
 
 DevicePayload payload;
@@ -60,6 +61,7 @@ String pairingCode;
 bool pairingMode = false;
 bool sportsMode = true;
 String displayMode = "sports";
+String selectedModeItemId;
 bool registered = false;
 int lastDataStatus = 0;
 int lastRegistrationStatus = 0;
@@ -136,6 +138,8 @@ DeviceCredentials deviceCredentials;
 NetworkGate networkGate;
 NetworkWorker networkWorker(networkGate, deviceCredentials.token());
 SpriteAssets spriteAssets(networkWorker, networkGate, BACKEND_URL);
+ArtworkAssets musicArtwork(networkWorker, BACKEND_URL);
+uint32_t lastMusicFrameAt = 0;
 WifiStation wifiStation(networkGate);
 FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, deviceCredentials.token(), {
   MINI_FIRMWARE_VERSION, MINI_FIRMWARE_TARGET, MINI_FIRMWARE_HARDWARE,

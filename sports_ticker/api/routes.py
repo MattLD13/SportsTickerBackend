@@ -84,6 +84,21 @@ def register_routes(
         response.set_etag(checksum)
         return response.make_conditional(request)
 
+    @app.get("/api/v2/assets/mini-artwork/<asset_id>.mta")
+    def mini_album_artwork(asset_id: str):
+        """Serve prepared cover bytes from the bounded memory cache."""
+        service = application.mini_artwork
+        artwork = None if service is None else service.read(asset_id)
+        if artwork is None:
+            raise ApiError("artwork is unavailable", 404, "not_found")
+        body, checksum = artwork
+        response = Response(body, mimetype="application/vnd.sportsticker.rgb565")
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        response.headers["X-Content-SHA256"] = checksum
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.set_etag(checksum)
+        return response.make_conditional(request)
+
     @app.get("/firmware/<path:filename>")
     def firmware_binary(filename: str):
         """Serve only the currently configured mini firmware release binary."""

@@ -92,6 +92,7 @@ void logoWorkerTask(void* parameter) {
   (void)parameter;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    while (musicArtwork.pending()) musicArtwork.loadPending();
     for (;;) {
       String keys[LOGO_WORK_QUEUE_SLOTS];
       xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
@@ -126,6 +127,18 @@ void logoWorkerTask(void* parameter) {
       xSemaphoreGive(logoWorkMutex);
     }
   }
+}
+
+void prepareMusicArtwork() {
+  JsonObjectConst asset;
+  if (displayMode == "music" && !pairingMode) {
+    for (JsonObjectConst item : payload.document()["content"]["music"].as<JsonArrayConst>()) {
+      if (!shownItem(item)) continue;
+      asset = item["data"]["cover_asset"].as<JsonObjectConst>();
+      break;
+    }
+  }
+  if (musicArtwork.request(asset) && logoWorkerHandle) xTaskNotifyGive(logoWorkerHandle);
 }
 
 void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
