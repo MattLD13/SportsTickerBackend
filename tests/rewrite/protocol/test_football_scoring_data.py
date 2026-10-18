@@ -40,6 +40,7 @@ def test_captured_fcs_singular_yards_and_kickoff_return_use_the_scoring_player()
     alerts = tracker.recent()
     assert [alert["player"] for alert in alerts] == [name for name, yards in expected]
     assert alerts[2]["kind"] == "kick_return_td" and alerts[2]["data"] == "92YD"
+    assert alerts[2]["down_distance"] == "" and alerts[2]["is_red_zone"] is None
 
 
 @pytest.mark.parametrize("league,expected", [

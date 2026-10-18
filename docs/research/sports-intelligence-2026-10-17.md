@@ -77,8 +77,8 @@ These checks use captured provider data and controlled replays. They do not inje
 
 ## Live FCS check
 
-The FCS group `81` feed returned 25 games, including 12 live games, during the check.
-All 12 live summaries supplied 73 scoring plays for automated replay.
+A captured FCS group `81` response contains 25 games, including 12 marked live.
+Those 12 summaries supply 73 scoring plays for automated replay.
 The check found singular `1 yd` name parsing and kickoff-return clause parsing errors.
 The parser now reads the scoring player before the generic NFL yardage form.
 It selects the returner after the kickoff clause and keeps return yardage instead of kickoff distance.
@@ -86,3 +86,8 @@ It selects the returner after the kickoff clause and keeps return yardage instea
 Captured game `401868134` verifies seven plays, including Tanner Schmidt's one-yard reception and Miequle Brock's 92-yard kickoff return.
 The final scan finds no missing scorer names or yardage fields across those 73 plays.
 One cross-division game appears in both feeds. Existing event-ID deduplication keeps one record.
+Kickoff-return alerts omit placeholder down and red-zone fields because a kickoff has no scrimmage down.
+
+Fresh ESPN requests from the Pi match the production API at 11:55 p.m. Eastern on October 17.
+They show no FCS games still live. The production snapshot is current and healthy.
+The earlier captured response lags those fresh reads. It remains useful regression input.

@@ -829,8 +829,8 @@ def _extract_alert_facts(
                     run_type = "RUSH" if "RUSH" in event_type else ""
                     parts = [run_type, f"{yards}YD" if yards is not None else ""]
                 facts["data"] = " ".join(part for part in parts if part)
-            facts["down_distance"] = _football_down_distance(play)
-            facts["is_red_zone"] = _football_red_zone(play)
+            facts["down_distance"] = "" if alert_kind == "kick_return_td" else _football_down_distance(play)
+            facts["is_red_zone"] = None if alert_kind == "kick_return_td" else _football_red_zone(play)
         elif family == "basketball":
             points = _number(play.get("score_value"))
             play_text = event_type.lower()
