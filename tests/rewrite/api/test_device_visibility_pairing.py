@@ -1,5 +1,6 @@
 """Check inactive fleet rows and current app pairing codes through V2 routes."""
 from datetime import datetime, timezone
+from copy import deepcopy
 
 import pytest
 
@@ -7,6 +8,7 @@ from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import TickerRecord
 from sports_ticker.projections import project_data_v2
+from sports_ticker.projections.device_data import project_device_data
 
 pytestmark = pytest.mark.critical
 
@@ -73,3 +75,63 @@ def test_v2_owns_baseball_inning_facts_for_both_renderers(state, status, expecte
     snapshot = TickerSnapshot("mini", 1, datetime.now(timezone.utc), (item,), (), (), DisplaySettings())
     output = project_data_v2(snapshot, {"healthy":True}, {})
     assert output["content"]["sports"][0]["data"]["baseball_inning"] == expected
+
+
+@pytest.mark.parametrize("state,status,outs,expected_status,phase,half", [
+    ("in", "Top 5th", 3, "Mid 5th", "break", "break"),
+    ("in", "Top of 5th", 3, "Mid 5th", "break", "break"),
+    ("in", "Bottom 5th", 3, "End 5th", "break", "break"),
+    ("in", "Bot 12th", 3, "End 12th", "break", "break"),
+    ("crit", "Top 17th", 3, "Mid 17th", "break", "break"),
+    ("in", "Top 9th", 3, "Mid 9th", "break", "break"),
+    ("in", "Bottom 9th", 3, "End 9th", "break", "break"),
+    ("in", "Mid 5th", 2, "Mid 5th", "break", "break"),
+    ("in", "End 12th", 3, "End 12th", "break", "break"),
+    ("in", "Bottom 5th", 0, "Bottom 5th", "playing", "bottom"),
+    ("in", "Top 5th", 2, "Top 5th", "playing", "top"),
+    ("in", "Rain Delay", 3, "Rain Delay", "paused", "none"),
+    ("in", "Suspended", 3, "Suspended", "paused", "none"),
+    ("post", "FINAL", 3, "FINAL", "inactive", "none"),
+    ("post", "FINAL/12", 3, "FINAL/12", "inactive", "none"),
+    ("pre", "7:00 PM", 3, "7:00 PM", "inactive", "none"),
+])
+def test_baseball_transition_reaches_both_devices_without_changing_source(
+    state, status, outs, expected_status, phase, half,
+):
+    data = {
+        "sport": "mlb", "state": state, "status": status,
+        "home_abbr": "BOS", "away_abbr": "NYY", "home_score": "4", "away_score": "3",
+        "situation": {
+            "outs": outs, "balls": 3, "strikes": 2,
+            "onFirst": True, "onSecond": True, "onThird": True,
+            "activeTeam": "OLD", "possession": "OLD", "batter_name": "OLD BATTER",
+            "pitcher_name": "OLD PITCHER", "last_pitch_speed": 97, "home_challenges": 2,
+        },
+    }
+    original = deepcopy(data)
+    item = ContentItem("game", "sports", "scoreboard", True, data)
+    snapshot = TickerSnapshot("ticker", 1, datetime.now(timezone.utc), (item,), (), (), DisplaySettings())
+    output = project_data_v2(snapshot, {"healthy": True}, {})
+    for mini in (False, True):
+        projected = project_device_data(output, mini=mini)["content"]["sports"][0]["data"]
+        assert projected["state"] == state
+        assert projected["status"] == expected_status
+        assert projected["baseball_inning"]["phase"] == phase
+        assert projected["baseball_inning"]["half"] == half
+        assert projected["home_score"] == "4" and projected["away_score"] == "3"
+        situation = projected["situation"]
+        assert "possession" not in situation
+        if phase == "playing":
+            assert situation["activeTeam"] == ("NYY" if half == "top" else "BOS")
+            assert situation["outs"] == outs
+            assert situation["onFirst"] and situation["onSecond"] and situation["onThird"]
+        else:
+            assert "activeTeam" not in situation and "possession" not in situation
+            assert "batter_name" not in situation and "pitcher_name" not in situation
+            assert "last_pitch_speed" not in situation
+            if phase == "break":
+                assert [situation[key] for key in ("balls", "strikes", "outs")] == [0, 0, 0]
+                assert not any(situation[key] for key in ("onFirst", "onSecond", "onThird"))
+        if not mini:
+            assert situation["home_challenges"] == 2
+    assert data == original

@@ -812,6 +812,44 @@ def baseball_inning_display(data: Mapping[str, Any]) -> dict[str, Any]:
     return {"number": int(match[2]), "half": half, "phase": "break" if half == "break" else "playing"}
 
 
+def project_baseball_display(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve inning transitions after provider detail enrichment completes."""
+    result = dict(data)
+    situation = dict(_mapping(data.get("situation")))
+    situation.pop("possession", None)
+    inning = baseball_inning_display(result)
+    if inning["phase"] == "playing" and _integer(situation.get("outs")) == 3:
+        marker = "Mid" if inning["half"] == "top" else "End"
+        result["status"] = re.sub(
+            r"^(TOP|BOTTOM|BOT)(?:\s+OF)?\s*",
+            marker + " ",
+            str(result.get("status") or "").strip(),
+            flags=re.IGNORECASE,
+        )
+        inning = baseball_inning_display(result)
+    result["baseball_inning"] = inning
+    if inning["phase"] == "playing":
+        active = str(result.get("away_abbr" if inning["half"] == "top" else "home_abbr") or "")
+        if active:
+            situation["activeTeam"] = active
+        else:
+            situation.pop("activeTeam", None)
+    else:
+        for key in _BASEBALL_AT_BAT_KEYS:
+            situation.pop(key, None)
+        if inning["phase"] == "break":
+            situation.update(balls=0, strikes=0, outs=0, onFirst=False, onSecond=False, onThird=False)
+    result["situation"] = situation
+    return result
+
+
+_BASEBALL_AT_BAT_KEYS = frozenset({
+    "activeTeam", "possession", "balls", "strikes", "outs", "onFirst", "onSecond", "onThird",
+    "batter_name", "batter_h", "batter_ab", "batter_avg", "pitcher_name", "pitcher_pitches", "pitcher_era",
+    "last_pitch_speed", "last_pitch_type", "last_pitch_type_abbr", "last_pitch_type_full",
+})
+
+
 def sport_family(sport: object) -> str:
     """Return the broad sport category for one league identifier."""
     value = str(sport or "").strip().lower()

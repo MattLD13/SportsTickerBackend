@@ -114,10 +114,11 @@ class SportsMixin:
         a_score  = str(game.get('away_score', ''))
         home_ab  = str(game.get('home_abbr', '')).upper()
         away_ab  = str(game.get('away_abbr', '')).upper()
-        poss_ab  = str(sit.get('possession', '')).upper()
+        active_ab = str(sit.get('activeTeam', '')).upper()
 
         # ── FOOTBALL: full field matching HTML footballField() ───────────────
         if is_nfl:
+            poss_ab = str(sit.get('possession', '')).upper()
             def _parse_hex_color(value):
                 try:
                     c = str(value or '').strip().lstrip('#')
@@ -557,6 +558,14 @@ class SportsMixin:
                                     self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
             a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
+            if inning.get('phase') in {'paused', 'inactive'}:
+                label = str(game.get('status') or '')
+                x0, y0, x1, y1 = d.textbbox((W // 2, H // 2), label, font=self.tiny_small, anchor='mm')
+                d.rectangle((x0 - 3, y0 - 2, x1 + 3, y1 + 2), fill=(0, 0, 0, 235))
+                self.draw_outlined_text(d, W // 2, H // 2, label,
+                                        self.tiny_small, (255, 240, 150), (0, 0, 0, 220))
+                return img
+
             # ── Step 5: inning text + BSO (drawn AFTER scrim so they're on top) ──
             # Pull these closer to the center diamond so side lanes can hold
             # batter/pitcher detail blocks.
@@ -620,6 +629,8 @@ class SportsMixin:
                 d.text((x, cy), suf_part, font=f_sup, fill=(190, 190, 190), anchor='lm')
 
             draw_inning_indicator(inn_cx, H // 2, is_top_inn, is_bot_inn, inn_ordinal)
+            if inning.get('phase') == 'break':
+                return img
             y_start = 4
             for (lbl, val, col) in bso_rows:
                 draw_tiny_text(d, bso_cx - 8, y_start, lbl, (180, 180, 180))
@@ -709,7 +720,7 @@ class SportsMixin:
             batter_avg   = sit.get('batter_avg', '')
             batter_h     = sit.get('batter_h', '')
             batter_ab    = sit.get('batter_ab', '')
-            pit_pitches  = sit.get('pitcher_pitches', 0)
+            pit_pitches  = sit.get('pitcher_pitches', '')
             pitcher_era  = sit.get('pitcher_era')
             last_spd     = sit.get('last_pitch_speed', 0)
             last_abbr    = sit.get('last_pitch_type_abbr', '') or sit.get('last_pitch_type', '')
@@ -753,8 +764,8 @@ class SportsMixin:
                 pitch_info_line = f"ERA:{era_txt}"
 
             # Use the explicit batting ownership from the backend.
-            home_batting = bool(home_ab and poss_ab and poss_ab == home_ab)
-            away_batting = bool(away_ab and poss_ab and poss_ab == away_ab)
+            home_batting = bool(home_ab and active_ab and active_ab == home_ab)
+            away_batting = bool(away_ab and active_ab and active_ab == away_ab)
 
             info_lane_spread = 92
             info_left_cx  = W // 2 - info_lane_spread

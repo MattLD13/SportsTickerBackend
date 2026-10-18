@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from sports_ticker.providers.nhl_live import _game_events
-from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation
+from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
@@ -477,6 +477,47 @@ def test_full_baseball_preserves_zero_stats_and_pitcher_era(sports: SportsRender
     assert "0/0" in calls
     assert "P:0" in calls
     assert "ERA:4.96" in calls
+
+
+@pytest.mark.parametrize("state,status,outs,batting_left", [
+    ("in", "Top 5th", 2, True),
+    ("in", "Bottom 5th", 2, False),
+    ("in", "Top 5th", 3, None),
+    ("in", "Bot 12th", 3, None),
+    ("in", "Rain Delay", 3, None),
+    ("post", "FINAL", 3, None),
+])
+def test_full_baseball_uses_projected_phase_and_batting_owner(
+    sports: SportsRenderer, state, status, outs, batting_left,
+) -> None:
+    calls = []
+    original = sports._full.draw_outlined_text
+
+    def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
+        calls.append((str(text), x))
+        return original(draw, x, y, text, font, fill, outline, anchor)
+
+    sports._full.draw_outlined_text = capture
+    game = project_baseball_display({
+        "sport": "mlb", "state": state, "status": status,
+        "away_abbr": "NYY", "home_abbr": "BOS", "away_score": "3", "home_score": "4",
+        "situation": {
+            "outs": outs, "balls": 3, "strikes": 2, "onFirst": True,
+            "activeTeam": "OLD", "possession": "OLD",
+            "batter_name": "Coby Mayo", "pitcher_name": "Grant Wolfram",
+        },
+    })
+    frame = sports.render_full(game)
+    assert frame.size == (384, 32)
+    texts = {text for text, _x in calls}
+    assert "P:0" not in texts
+    if batting_left is None:
+        assert not {"MAYO", "WOLFRAM"} & texts
+        if game["baseball_inning"]["phase"] != "break":
+            assert game["status"] in texts
+    else:
+        assert ("MAYO", 100 if batting_left else 284) in calls
+        assert ("WOLFRAM", 284 if batting_left else 100) in calls
 
 
 def test_full_baseball_draws_abs_challenge_markers_from_situation(sports: SportsRenderer) -> None:
