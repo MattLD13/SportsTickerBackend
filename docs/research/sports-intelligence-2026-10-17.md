@@ -64,7 +64,7 @@ It retains scoring records, matching drive fields, and boxscore identities.
 
 ## Validation
 
-- The full Python suite passes 741 tests. The critical suite passes 408 tests.
+- The full Python suite passes 742 tests. The critical suite passes 409 tests.
 - Captured scoring ledgers pass through the tracker, snapshot projection, and Pi response decoder.
 - Lifecycle cases cover all configured sport families and both device projections.
 - The physical Pi runs the native Mini renderer for 11 controlled sports cases.
@@ -74,3 +74,15 @@ It retains scoring records, matching drive fields, and boxscore identities.
 
 Evidence is in `previews/sports-intelligence/`.
 These checks use captured provider data and controlled replays. They do not inject fake games into either running ticker.
+
+## Live FCS check
+
+The FCS group `81` feed returned 25 games, including 12 live games, during the check.
+All 12 live summaries supplied 73 scoring plays for automated replay.
+The check found singular `1 yd` name parsing and kickoff-return clause parsing errors.
+The parser now reads the scoring player before the generic NFL yardage form.
+It selects the returner after the kickoff clause and keeps return yardage instead of kickoff distance.
+
+Captured game `401868134` verifies seven plays, including Tanner Schmidt's one-yard reception and Miequle Brock's 92-yard kickoff return.
+The final scan finds no missing scorer names or yardage fields across those 73 plays.
+One cross-division game appears in both feeds. Existing event-ID deduplication keeps one record.

@@ -1,0 +1,681 @@
+{
+  "league": "ncf_fcs",
+  "source": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401868134",
+  "payload": {
+    "header": {
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "team": {
+                "id": "2627",
+                "abbreviation": "TAR"
+              }
+            },
+            {
+              "homeAway": "away",
+              "team": {
+                "id": "2110",
+                "abbreviation": "CARK"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "scoringPlays": [
+      {
+        "id": "401868134113",
+        "type": {
+          "id": "67",
+          "text": "Passing Touchdown",
+          "abbreviation": "TD"
+        },
+        "text": "K. Anderson pass to T. Schmidt for 22 yds, for a TD (A. De La Poza KICK)",
+        "homeScore": 7,
+        "awayScore": 0,
+        "period": {
+          "number": 1
+        },
+        "clock": {
+          "value": 322.0,
+          "displayValue": "5:22"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2627"
+        }
+      },
+      {
+        "id": "401868134187",
+        "type": {
+          "id": "68",
+          "text": "Rushing Touchdown",
+          "abbreviation": "TD"
+        },
+        "text": "Ja. Washington run for 1 yd, for a TD (C. Jones KICK)",
+        "homeScore": 7,
+        "awayScore": 7,
+        "period": {
+          "number": 2
+        },
+        "clock": {
+          "value": 853.0,
+          "displayValue": "14:13"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2110"
+        }
+      },
+      {
+        "id": "401868134194",
+        "type": {
+          "id": "53",
+          "text": "Kickoff",
+          "abbreviation": "K"
+        },
+        "text": "F. Delk kickoff for 57 yds, M. Brock returns for 92 yds for a TD (A. De La Poza KICK)",
+        "homeScore": 14,
+        "awayScore": 7,
+        "period": {
+          "number": 2
+        },
+        "clock": {
+          "value": 840.0,
+          "displayValue": "14:00"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2627"
+        }
+      },
+      {
+        "id": "401868134226",
+        "type": {
+          "id": "5",
+          "text": "Rush",
+          "abbreviation": "RUSH"
+        },
+        "text": "Q. Tillman run for 1 yd, for a TD (C. Jones KICK)",
+        "homeScore": 14,
+        "awayScore": 14,
+        "period": {
+          "number": 2
+        },
+        "clock": {
+          "value": 685.0,
+          "displayValue": "11:25"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2110"
+        }
+      },
+      {
+        "id": "401868134267",
+        "type": {
+          "id": "24",
+          "text": "Pass Reception",
+          "abbreviation": "REC"
+        },
+        "text": "K. Anderson pass to Da. Joiner for 13 yds, for a TD (A. De La Poza KICK)",
+        "homeScore": 21,
+        "awayScore": 14,
+        "period": {
+          "number": 2
+        },
+        "clock": {
+          "value": 487.0,
+          "displayValue": "8:07"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2627"
+        }
+      },
+      {
+        "id": "401868134388",
+        "type": {
+          "id": "67",
+          "text": "Passing Touchdown",
+          "abbreviation": "TD"
+        },
+        "text": "K. Anderson pass to T. Schmidt for 1 yd, for a TD (A. De La Poza KICK)",
+        "homeScore": 28,
+        "awayScore": 14,
+        "period": {
+          "number": 2
+        },
+        "clock": {
+          "value": 3.0,
+          "displayValue": "0:03"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2627"
+        }
+      },
+      {
+        "id": "401868134482",
+        "type": {
+          "id": "67",
+          "text": "Passing Touchdown",
+          "abbreviation": "TD"
+        },
+        "text": "D. Omolo pass to T. Durham for 10 yds, for a TD (C. Jones KICK)",
+        "homeScore": 28,
+        "awayScore": 21,
+        "period": {
+          "number": 3
+        },
+        "clock": {
+          "value": 441.0,
+          "displayValue": "7:21"
+        },
+        "scoringType": {
+          "name": "touchdown",
+          "displayName": "Touchdown",
+          "abbreviation": "TD"
+        },
+        "team": {
+          "id": "2110"
+        }
+      }
+    ],
+    "plays": [
+      {
+        "id": "401868134113",
+        "start": {
+          "down": 1,
+          "distance": 10,
+          "yardLine": 78,
+          "yardsToEndzone": 22,
+          "downDistanceText": "1st & 10 at CARK 22",
+          "shortDownDistanceText": "1st & 10",
+          "possessionText": "CARK 22",
+          "team": {
+            "id": "2627"
+          }
+        },
+        "statYardage": 22
+      },
+      {
+        "id": "401868134187",
+        "start": {
+          "down": 2,
+          "distance": 1,
+          "yardLine": 1,
+          "yardsToEndzone": 1,
+          "downDistanceText": "2nd & Goal at TAR 1",
+          "shortDownDistanceText": "2nd & Goal",
+          "possessionText": "TAR 1",
+          "team": {
+            "id": "2110"
+          }
+        },
+        "statYardage": 1
+      },
+      {
+        "id": "401868134194",
+        "start": {
+          "down": 1,
+          "distance": 10,
+          "yardLine": 65,
+          "yardsToEndzone": 65,
+          "team": {
+            "id": "2110"
+          }
+        },
+        "statYardage": 92
+      },
+      {
+        "id": "401868134226",
+        "start": {
+          "down": 3,
+          "distance": 1,
+          "yardLine": 1,
+          "yardsToEndzone": 1,
+          "downDistanceText": "3rd & Goal at TAR 1",
+          "shortDownDistanceText": "3rd & Goal",
+          "possessionText": "TAR 1",
+          "team": {
+            "id": "2110"
+          }
+        },
+        "statYardage": 1
+      },
+      {
+        "id": "401868134267",
+        "start": {
+          "down": 1,
+          "distance": 10,
+          "yardLine": 87,
+          "yardsToEndzone": 13,
+          "downDistanceText": "1st & 10 at CARK 13",
+          "shortDownDistanceText": "1st & 10",
+          "possessionText": "CARK 13",
+          "team": {
+            "id": "2627"
+          }
+        },
+        "statYardage": 13
+      },
+      {
+        "id": "401868134388",
+        "start": {
+          "down": 2,
+          "distance": 1,
+          "yardLine": 99,
+          "yardsToEndzone": 1,
+          "downDistanceText": "2nd & Goal at CARK 1",
+          "shortDownDistanceText": "2nd & Goal",
+          "possessionText": "CARK 1",
+          "team": {
+            "id": "2627"
+          }
+        },
+        "statYardage": 1
+      },
+      {
+        "id": "401868134482",
+        "start": {
+          "down": 1,
+          "distance": 10,
+          "yardLine": 10,
+          "yardsToEndzone": 10,
+          "downDistanceText": "1st & Goal at TAR 10",
+          "shortDownDistanceText": "1st & Goal",
+          "possessionText": "TAR 10",
+          "team": {
+            "id": "2110"
+          }
+        },
+        "statYardage": 10
+      }
+    ],
+    "boxscore": {
+      "players": [
+        {
+          "team": {
+            "id": "2110",
+            "abbreviation": "CARK"
+          },
+          "statistics": [
+            {
+              "athletes": [
+                {
+                  "athlete": {
+                    "id": "5416075",
+                    "displayName": "Donovyn Omolo"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5162617",
+                    "displayName": "Sam Driggers"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5147204",
+                    "displayName": "Jalen Washington"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5439155",
+                    "displayName": "Enoch Assan"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5227852",
+                    "displayName": "Cameron Young"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5439150",
+                    "displayName": "Que Tillman"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224142",
+                    "displayName": "Arlie Lee"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5301842",
+                    "displayName": "Ty Durham"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5084657",
+                    "displayName": "Dakarai Anderson"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5085383",
+                    "displayName": "Triston Edwards"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5151092",
+                    "displayName": "Chapman McKown"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5439144",
+                    "displayName": "Tae Bulock"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224146",
+                    "displayName": "Bryson Adamoh"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5301855",
+                    "displayName": "Trevion Traylor"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224171",
+                    "displayName": "Carmilo Allen"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5229516",
+                    "displayName": "Kyle Vocque"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5301841",
+                    "displayName": "Marcus Washington"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224151",
+                    "displayName": "Ashtyn Williams"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5078060",
+                    "displayName": "Cam Hill"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5307198",
+                    "displayName": "Kaydin Thomas"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5439147",
+                    "displayName": "Jacob Sekiyoba"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5091840",
+                    "displayName": "DaMari Smith"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5301867",
+                    "displayName": "Camron Massey"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5417858",
+                    "displayName": "Gabe Bonner"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5433602",
+                    "displayName": "Sam Jackson"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5085365",
+                    "displayName": "Deorius Cobbs"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224159",
+                    "displayName": "Reid Jones"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5085385",
+                    "displayName": "Samuel Horton"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5434350",
+                    "displayName": "Sir Christian Johnson"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5304382",
+                    "displayName": "Caleb Jones"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5439156",
+                    "displayName": "Wyatt Salter"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "team": {
+            "id": "2627",
+            "abbreviation": "TAR"
+          },
+          "statistics": [
+            {
+              "athletes": [
+                {
+                  "athlete": {
+                    "id": "4899468",
+                    "displayName": "Kaden Anderson"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5226523",
+                    "displayName": "Miequle Brock"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "4912240",
+                    "displayName": "Tylan Hines"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5442169",
+                    "displayName": "Tanner Schmidt"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "4879946",
+                    "displayName": "Danny Joiner"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5302041",
+                    "displayName": "Marquis Willis"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5262666",
+                    "displayName": "Kaleb Brown"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5219513",
+                    "displayName": "Chris Robinson"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224507",
+                    "displayName": "Morsello Hooker"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "4837192",
+                    "displayName": "Avian Rice"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5295753",
+                    "displayName": "Fredd Adams"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5302045",
+                    "displayName": "Jadan Aubert"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5302049",
+                    "displayName": "Stephen Woods Jr."
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "4892432",
+                    "displayName": "Omar Emmons"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5418379",
+                    "displayName": "Gerard Culotta"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5084456",
+                    "displayName": "Xavier Potts"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5442170",
+                    "displayName": "Seven Cloud"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5302069",
+                    "displayName": "Roddrick Roberts"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5303673",
+                    "displayName": "Lance Carson"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5084729",
+                    "displayName": "B.J. Fleming"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5224513",
+                    "displayName": "Koby Dickens"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5087357",
+                    "displayName": "DeAndre Buchannon"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5442190",
+                    "displayName": "Alejandro De La Poza"
+                  }
+                },
+                {
+                  "athlete": {
+                    "id": "5093789",
+                    "displayName": "Charlie Mullen"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -23,6 +23,25 @@ def captured(league):
     return game, _event_scoring_details(record["payload"], game)["scoring_plays"]
 
 
+def test_captured_fcs_singular_yards_and_kickoff_return_use_the_scoring_player():
+    record = json.loads(CAPTURE.with_name("fcs_scoring_capture.json").read_text(encoding="utf-8"))
+    teams = {row["homeAway"]: row["team"]["abbreviation"] for row in record["payload"]["header"]["competitions"][0]["competitors"]}
+    game = {"id": "live-fcs", "kind": "scoreboard", "sport": "ncf_fcs", "state": "in", "status": "Q3 7:14",
+            "home_abbr": teams["home"], "away_abbr": teams["away"], "home_score": 0, "away_score": 0}
+    plays = _event_scoring_details(record["payload"], game)["scoring_plays"]
+    expected = [("Tanner Schmidt", 22), ("Jalen Washington", 1), ("Miequle Brock", 92),
+                ("Que Tillman", 1), ("Danny Joiner", 13), ("Tanner Schmidt", 1), ("Ty Durham", 10)]
+    assert [(play["scorer_full"], play["yards"]) for play in plays] == expected
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([game])
+    for play in plays:
+        tracker.ingest([{**game, "home_score": play["home_score"], "away_score": play["away_score"],
+                         "situation": {"scoring_plays": plays}}])
+    alerts = tracker.recent()
+    assert [alert["player"] for alert in alerts] == [name for name, yards in expected]
+    assert alerts[2]["kind"] == "kick_return_td" and alerts[2]["data"] == "92YD"
+
+
 @pytest.mark.parametrize("league,expected", [
     ("nfl", [
         ("FIELD GOAL", "Jason Myers", "55YD FIELD GOAL", "Q1 6:31", "4&5", False),

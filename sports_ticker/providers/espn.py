@@ -3724,27 +3724,24 @@ def _event_text_player_full(text: str, *, sport: str = "") -> str:
     """Read a full primary scorer name from common ESPN play descriptions."""
 
     prefix = text.split("(", 1)[0].strip()
-    match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
     if sport in {"nfl", "ncf_fbs", "ncf_fcs"}:
         for pattern in (
+            r"(?:^|,\s*)([^,]+?)\s+returns?(?:\s+for)?\s+\d+\s+yds?\b",
             r"\bpass(?:es)?(?: complete)? to\s+(.+?)\s+for\s+-?\d+\s+yds?\b",
             r"\bpass(?:es)? to\s+(.+?)\s+for\s+(?:two|2)[- ]point conversion\b",
-            r"^(.+?)\s+(?:run|runs|rush|rushed|returns?)(?:\s+for)?\s+-?\d+\s+yds?\b",
+            r"^(.+?)\s+(?:run|runs|rush|rushed)(?:\s+for)?\s+-?\d+\s+yds?\b",
             r"^(.+?)\s+(?:run|rush)(?:\s+for)?\s+(?:two|2)[- ]point conversion\b",
-            r"^(.+?)\s+(?:field goal|extra point|kick)\b",
         ):
             match = re.search(pattern, prefix, re.IGNORECASE)
             if match:
                 return match[1].strip()
-    match = re.search(
-        r"(?:,|^)\s*([^,]+?)\s+returns?\s+for\s+\d+\s+yds?\s+for\s+a\s+TD",
-        text,
-        re.IGNORECASE,
-    )
+    match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    if sport in {"nfl", "ncf_fbs", "ncf_fcs"}:
+        match = re.match(r"^(.+?)\s+(?:field goal|extra point|kick)\b", prefix, re.IGNORECASE)
+        if match:
+            return match[1].strip()
     if sport in {"mlb", "baseball"}:
         match = re.match(
             r"(.+?)\s+(?:singled|doubled|tripled|homers?|homered|walked|walks?|"

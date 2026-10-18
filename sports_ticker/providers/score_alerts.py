@@ -73,7 +73,9 @@ def _describe(
             return "interception_td", "INTERCEPTION TD"
         if "fumble return touchdown" in play_text or "fumble recovery" in play_text:
             return "fumble_td", "FUMBLE TD"
-        if "kickoff return touchdown" in play_text:
+        if "kickoff return touchdown" in play_text or (
+            "kickoff" in play_text and "touchdown" in play_text and re.search(r"\breturns?\b", play_text)
+        ):
             return "kick_return_td", "KICK RETURN TD"
         if "punt return touchdown" in play_text or (
             "punt" in play_text and "touchdown" in play_text
