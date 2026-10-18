@@ -37,6 +37,7 @@ class MusicProvider(_FeatureProvider):
             settings,
             lambda payload: _content_payload(payload, self.family, _music_kind),
             lambda: scoped_fetch(str(ticker_id).strip(), settings),
+            cache_scope=str(ticker_id).strip(),
         )
 
 

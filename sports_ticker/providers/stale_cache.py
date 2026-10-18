@@ -10,30 +10,30 @@ from .contracts import ProviderResult
 
 
 class SettingsResultCache:
-    """Keep the latest healthy result for every effective settings value."""
+    """Keep the latest healthy result for each settings value and owner scope."""
 
     def __init__(self) -> None:
-        self._entries: list[tuple[DisplaySettings, ProviderResult]] = []
+        self._entries: list[tuple[str, DisplaySettings, ProviderResult]] = []
         self._lock = threading.RLock()
 
-    def get(self, settings: DisplaySettings) -> ProviderResult | None:
-        """Return the result produced with these exact immutable settings."""
+    def get(self, settings: DisplaySettings, *, scope: str = "") -> ProviderResult | None:
+        """Return the result produced for this owner and exact settings."""
 
         with self._lock:
-            for cached_settings, result in self._entries:
-                if cached_settings == settings:
+            for cached_scope, cached_settings, result in self._entries:
+                if cached_scope == scope and cached_settings == settings:
                     return result
         return None
 
-    def set(self, settings: DisplaySettings, result: ProviderResult) -> None:
-        """Replace the result produced with these exact immutable settings."""
+    def set(self, settings: DisplaySettings, result: ProviderResult, *, scope: str = "") -> None:
+        """Replace the result produced for this owner and exact settings."""
 
         with self._lock:
-            for index, (cached_settings, _) in enumerate(self._entries):
-                if cached_settings == settings:
-                    self._entries[index] = (settings, result)
+            for index, (cached_scope, cached_settings, _) in enumerate(self._entries):
+                if cached_scope == scope and cached_settings == settings:
+                    self._entries[index] = (scope, settings, result)
                     return
-            self._entries.append((settings, result))
+            self._entries.append((scope, settings, result))
 
 
 __all__ = ["SettingsResultCache"]

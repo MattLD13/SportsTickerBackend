@@ -64,6 +64,8 @@ class _FeatureProvider:
         settings: DisplaySettings,
         prepare: Callable[[FeaturePayload], Mapping[str, Any]],
         fetch: Callable[[], FeaturePayload] | None = None,
+        *,
+        cache_scope: str = "",
     ) -> ProviderResult:
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
@@ -76,14 +78,14 @@ class _FeatureProvider:
                 provider=self.provider_name,
             )
             if result.health.healthy:
-                self._stale_cache.set(settings, result)
+                self._stale_cache.set(settings, result, scope=cache_scope)
                 return result
-            return self._stale_result(settings, result.health.error or "source unhealthy")
+            return self._stale_result(settings, result.health.error or "source unhealthy", cache_scope=cache_scope)
         except Exception as error:
-            return self._stale_result(settings, str(error) or type(error).__name__)
+            return self._stale_result(settings, str(error) or type(error).__name__, cache_scope=cache_scope)
 
-    def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
-        result = self._stale_cache.get(settings)
+    def _stale_result(self, settings: DisplaySettings, error: str, *, cache_scope: str = "") -> ProviderResult:
+        result = self._stale_cache.get(settings, scope=cache_scope)
         if result is None:
             return ProviderResult(
                 health=ProviderHealth(

@@ -79,6 +79,7 @@ int main(int argc, char** argv) {
     const std::string mode = row["mode"] | "sports";
     if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(row["game"]["wifi_setup"] | false, row["game"]["wifi_pin"] | "", row["game"]["app_code"] | ""));
     else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(row["game"].as<JsonObjectConst>()));
+    else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(row["game"].as<JsonObjectConst>(), row["elapsed_ms"] | 0));
     else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(row["game"].as<JsonObjectConst>(), row["now_epoch"] | 1800000000.0, row["scroll_ms"] | 0));
     else if (mode == "clock") {
       ticker_ui::ClockPane view;

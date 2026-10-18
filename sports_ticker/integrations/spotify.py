@@ -26,10 +26,27 @@ SPOTIFY_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_URL = "https://api.spotify.com/v1"
 SPOTIFY_SCOPES = ("user-read-playback-state", "user-read-currently-playing")
+SPOTIFY_PLAYING_REFRESH_SECONDS = 5.0
+SPOTIFY_PAUSED_REFRESH_SECONDS = 15.0
+SPOTIFY_IDLE_REFRESH_SECONDS = 30.0
+SPOTIFY_ERROR_REFRESH_SECONDS = 15.0
+SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS = 30.0
+SPOTIFY_RATE_LIMIT_MAX_BACKOFF_SECONDS = 900.0
 
 
 class SpotifyIntegrationError(RuntimeError):
     """Report a safe Spotify integration failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +80,7 @@ class _PlaybackWindow:
     previous_track: _SpotifyTrack | None
     next_tracks: tuple[_SpotifyTrack, ...]
     last_record: Mapping[str, Any] | None = None
+    queue_refresh_pending: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,13 +209,23 @@ class UrllibSpotifyHttpClient:
             except Exception:
                 detail = ""
             suffix = f": {detail}" if detail else ""
-            raise SpotifyIntegrationError(f"Spotify returned HTTP {error.code}{suffix}") from error
+            retry_after = _retry_after_seconds(error.headers) if error.code == 429 else None
+            raise SpotifyIntegrationError(
+                f"Spotify returned HTTP {error.code}{suffix}",
+                status_code=error.code,
+                retry_after=retry_after,
+            ) from error
         except (URLError, TimeoutError, OSError) as error:
             raise SpotifyIntegrationError("Spotify request failed") from error
         if status == 204:
             raise SpotifyIntegrationError("HTTP 204")
         if not 200 <= int(status) < 300:
-            raise SpotifyIntegrationError(f"Spotify returned HTTP {status}")
+            retry_after = _retry_after_seconds(getattr(response, "headers", None)) if status == 429 else None
+            raise SpotifyIntegrationError(
+                f"Spotify returned HTTP {status}",
+                status_code=int(status),
+                retry_after=retry_after,
+            )
         try:
             value = json.loads(body)
         except (TypeError, json.JSONDecodeError) as error:
@@ -225,6 +253,13 @@ class SpotifyIntegrationService:
         self._cipher = Fernet(config.encryption_key.encode("ascii"))
         self._playback_windows: dict[str, _PlaybackWindow] = {}
         self._playback_lock = Lock()
+        self._account_poll_locks: dict[str, Lock] = {}
+        self._account_poll_locks_lock = Lock()
+        self._access_tokens: dict[str, tuple[str, float]] = {}
+        self._access_token_lock = Lock()
+        self._api_cooldown_until = 0.0
+        self._rate_limit_backoff_seconds = SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS
+        self._next_playback_poll_at: dict[str, float] = {}
 
     @property
     def callback_uri(self) -> str:
@@ -299,18 +334,21 @@ class SpotifyIntegrationService:
             raise SpotifyIntegrationError("Spotify authorization failed") from error
         now = float(self._clock())
         group_id = self._group_id(attempt.ticker_id)
-        self._repository.save_group_spotify_connection(
-            group_id,
-            SpotifyConnection(
-                ticker_id=group_id,
-                spotify_account_id=account_id,
-                display_name=display_name,
-                scopes=scopes,
-                refresh_token_ciphertext=self._encrypt(refresh_token),
-                connected_at=now,
-                updated_at=now,
+        account_key = f"{group_id}:{account_id}"
+        with self._account_poll_lock(account_key):
+            self._repository.save_group_spotify_connection(
+                group_id,
+                SpotifyConnection(
+                    ticker_id=group_id,
+                    spotify_account_id=account_id,
+                    display_name=display_name,
+                    scopes=scopes,
+                    refresh_token_ciphertext=self._encrypt(refresh_token),
+                    connected_at=now,
+                    updated_at=now,
+                )
             )
-        )
+            self._clear_account_cache(account_key)
         return {"attempt_id": attempt.attempt_id, "ticker_id": attempt.ticker_id, "status": "connected"}
 
     def status(self, ticker_id: str) -> dict[str, object]:
@@ -337,15 +375,28 @@ class SpotifyIntegrationService:
 
         identifier = _ticker_id(ticker_id)
         group_id = self._group_id(identifier)
-        deleted = self._repository.delete_group_spotify_connection(group_id, spotify_account_id)
         if spotify_account_id:
-            with self._playback_lock:
-                self._playback_windows.pop(f"{group_id}:{spotify_account_id}", None)
-        else:
-            with self._playback_lock:
-                for key in tuple(self._playback_windows):
-                    if key.startswith(f"{group_id}:"):
-                        self._playback_windows.pop(key, None)
+            key = f"{group_id}:{spotify_account_id}"
+            with self._account_poll_lock(key):
+                deleted = self._repository.delete_group_spotify_connection(group_id, spotify_account_id)
+                self._clear_account_cache(key)
+            return deleted
+
+        connections = self._repository.list_group_spotify_connections(group_id, fallback_ticker_id=identifier)
+        deleted = self._repository.delete_group_spotify_connection(group_id)
+        for connection in connections:
+            key = _playback_window_key(connection)
+            with self._account_poll_lock(key):
+                self._clear_account_cache(key)
+        with self._playback_lock:
+            for key in tuple(self._playback_windows):
+                if key.startswith(f"{group_id}:"):
+                    self._playback_windows.pop(key, None)
+                    self._next_playback_poll_at.pop(key, None)
+        with self._access_token_lock:
+            for key in tuple(self._access_tokens):
+                if key.startswith(f"{group_id}:"):
+                    self._access_tokens.pop(key, None)
         return deleted
 
     def set_priority(self, ticker_id: str, spotify_account_id: str | None) -> dict[str, object]:
@@ -357,6 +408,7 @@ class SpotifyIntegrationService:
     def playback(self, ticker_id: str) -> Mapping[str, Any]:
         """Return the preferred account, or the first account now playing."""
 
+        self._raise_if_api_cooling_down()
         identifier = _ticker_id(ticker_id)
         group_id = self._group_id(identifier)
         connections = self._repository.list_group_spotify_connections(group_id, fallback_ticker_id=identifier)
@@ -381,14 +433,29 @@ class SpotifyIntegrationService:
 
         if connection.status != "connected":
             return _connection_record("reauthorization_required", connection)
+        window_key = _playback_window_key(connection)
+        with self._account_poll_lock(window_key):
+            return self._read_playback_for_connection(connection, window_key)
+
+    def _read_playback_for_connection(
+        self,
+        connection: SpotifyConnection,
+        window_key: str,
+    ) -> Mapping[str, Any]:
+        """Fetch playback while the account's single-flight lock is held."""
+
+        self._raise_if_api_cooling_down()
+        now = float(self._clock())
+        with self._playback_lock:
+            if now < self._next_playback_poll_at.get(window_key, 0.0):
+                window = self._playback_windows.get(window_key)
+                if window is not None and window.last_record is not None:
+                    return dict(window.last_record)
         try:
             group_id = connection.ticker_id if connection.ticker_id.startswith("cg_") else self._group_id(connection.ticker_id)
             refresh_token = self._decrypt(connection.refresh_token_ciphertext)
-            tokens = self._http.refresh_access_token(refresh_token, self._config)
-            access_token = _required_text(tokens, "access_token")
-            next_refresh = str(tokens.get("refresh_token") or refresh_token).strip()
+            access_token, next_refresh = self._access_token(group_id, connection, refresh_token)
             if next_refresh != refresh_token:
-                now = float(self._clock())
                 self._repository.save_group_spotify_connection(
                     group_id,
                     SpotifyConnection(
@@ -400,18 +467,31 @@ class SpotifyIntegrationService:
                         status="connected",
                         priority=connection.priority,
                         connected_at=connection.connected_at,
-                        updated_at=now,
+                        updated_at=float(self._clock()),
                     )
                 )
             playback = self._http.get_playback(access_token)
+            with self._playback_lock:
+                self._rate_limit_backoff_seconds = SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS
             record = self._windowed_playback(connection, playback, access_token)
             record["fetch_ts"] = float(self._clock())
             record["spotify_account_id"] = connection.spotify_account_id
             record["connection_name"] = connection.display_name
             record["priority"] = connection.priority
+            cadence = _playback_refresh_seconds(record)
+            with self._playback_lock:
+                self._next_playback_poll_at[window_key] = float(self._clock()) + cadence
             return record
         except SpotifyIntegrationError as error:
-            if "invalid_grant" in str(error).lower() or "unauthorized" in str(error).lower():
+            self._remember_api_cooldown(error)
+            if error.status_code != 429:
+                with self._playback_lock:
+                    self._next_playback_poll_at[window_key] = (
+                        float(self._clock()) + SPOTIFY_ERROR_REFRESH_SECONDS
+                    )
+            if error.status_code == 401:
+                self._evict_access_token(window_key)
+            if "invalid_grant" in str(error).lower():
                 self._mark_reauthorization(connection)
                 return _connection_record("reauthorization_required", connection)
             raise
@@ -419,9 +499,85 @@ class SpotifyIntegrationService:
             self._mark_reauthorization(connection)
             raise SpotifyIntegrationError("Spotify stored authorization is invalid") from error
 
+    def _access_token(
+        self,
+        group_id: str,
+        connection: SpotifyConnection,
+        refresh_token: str,
+    ) -> tuple[str, str]:
+        """Reuse one account access token until Spotify's expiry approaches."""
+
+        key = f"{group_id}:{connection.spotify_account_id}"
+        now = float(self._clock())
+        with self._access_token_lock:
+            cached = self._access_tokens.get(key)
+            if cached is not None and now < cached[1]:
+                return cached[0], refresh_token
+
+            tokens = self._http.refresh_access_token(refresh_token, self._config)
+            access_token = _required_text(tokens, "access_token")
+            next_refresh = str(tokens.get("refresh_token") or refresh_token).strip()
+            try:
+                lifetime = float(tokens.get("expires_in", 3600))
+            except (TypeError, ValueError):
+                lifetime = 3600.0
+            lifetime = max(0.0, lifetime - 60.0)
+            if lifetime > 0:
+                self._access_tokens[key] = (access_token, now + lifetime)
+            return access_token, next_refresh
+
+    def _raise_if_api_cooling_down(self) -> None:
+        now = float(self._clock())
+        with self._playback_lock:
+            remaining = self._api_cooldown_until - now
+        if remaining > 0:
+            raise SpotifyIntegrationError(
+                "Spotify Web API rate limit cooldown is active",
+                status_code=429,
+                retry_after=remaining,
+            )
+
+    def _account_poll_lock(self, account_key: str) -> Lock:
+        """Return one stable single-flight lock for a shared account."""
+
+        with self._account_poll_locks_lock:
+            return self._account_poll_locks.setdefault(account_key, Lock())
+
+    def _clear_account_cache(self, account_key: str) -> None:
+        """Remove one account's access token, playback window, and cadence."""
+
+        with self._playback_lock:
+            self._playback_windows.pop(account_key, None)
+            self._next_playback_poll_at.pop(account_key, None)
+        with self._access_token_lock:
+            self._access_tokens.pop(account_key, None)
+
+    def _evict_access_token(self, account_key: str) -> None:
+        """Remove one early-rejected access token and retain other account state."""
+
+        with self._access_token_lock:
+            self._access_tokens.pop(account_key, None)
+
+    def _remember_api_cooldown(self, error: SpotifyIntegrationError) -> None:
+        if error.status_code != 429:
+            return
+        with self._playback_lock:
+            if error.retry_after is None:
+                retry_after = self._rate_limit_backoff_seconds
+                self._rate_limit_backoff_seconds = min(
+                    retry_after * 2.0,
+                    SPOTIFY_RATE_LIMIT_MAX_BACKOFF_SECONDS,
+                )
+            else:
+                retry_after = max(0.0, float(error.retry_after))
+                self._rate_limit_backoff_seconds = SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS
+            until = float(self._clock()) + retry_after
+            self._api_cooldown_until = max(self._api_cooldown_until, until)
+
     def _mark_reauthorization(self, connection: SpotifyConnection) -> None:
         now = float(self._clock())
         group_id = self._group_id(connection.ticker_id)
+        self._clear_account_cache(f"{group_id}:{connection.spotify_account_id}")
         self._repository.save_group_spotify_connection(
             group_id,
             SpotifyConnection(
@@ -455,23 +611,44 @@ class SpotifyIntegrationService:
         if current_track is None:
             if cached is not None and cached.last_record is not None:
                 record = dict(cached.last_record)
+                if cached.current_track is None:
+                    return record
                 record["is_playing"] = False
                 record["status"] = "paused"
+                with self._playback_lock:
+                    self._playback_windows[key] = _PlaybackWindow(
+                        current_track=cached.current_track,
+                        previous_track=cached.previous_track,
+                        next_tracks=cached.next_tracks,
+                        last_record=record,
+                        queue_refresh_pending=cached.queue_refresh_pending,
+                    )
                 return record
-            return _idle_record()
+            record = _idle_record()
+            with self._playback_lock:
+                self._playback_windows[key] = _PlaybackWindow(None, None, (), record)
+            return record
 
         need_queue = (
             cached is None
             or cached.current_track is None
             or cached.current_track.id != current_track.id
-            or not cached.next_tracks
+            or cached.queue_refresh_pending
         )
         queue_tracks: tuple[_SpotifyTrack, ...] = ()
+        queue_refresh_pending = False
         if need_queue:
             try:
                 queue_data = self._http.get_queue(access_token)
                 queue_tracks = _extract_queue_tracks(queue_data)
+            except SpotifyIntegrationError as error:
+                self._remember_api_cooldown(error)
+                if error.status_code == 401:
+                    self._evict_access_token(key)
+                queue_refresh_pending = True
+                queue_tracks = ()
             except Exception:
+                queue_refresh_pending = True
                 queue_tracks = ()
         elif cached is not None:
             queue_tracks = cached.next_tracks
@@ -500,6 +677,7 @@ class SpotifyIntegrationService:
                 previous_track=prev_track,
                 next_tracks=final_queue,
                 last_record=record,
+                queue_refresh_pending=queue_refresh_pending,
             )
             self._playback_windows[key] = window
 
@@ -733,7 +911,10 @@ def _connection_status_value(connection: SpotifyConnection) -> dict[str, object]
 def _playback_window_key(connection: SpotifyConnection) -> str:
     """Return an artwork window key isolated by ticker and Spotify account."""
 
-    return f"{connection.ticker_id}:{connection.spotify_account_id}"
+    scope = connection.ticker_id
+    if not scope.startswith(("cg_", "ticker:")):
+        scope = f"ticker:{scope}"
+    return f"{scope}:{connection.spotify_account_id}"
 
 
 def _required_text(value: Mapping[str, Any], key: str, *, fallback: str | None = None) -> str:
@@ -798,12 +979,39 @@ def _image_url(images: object) -> str:
     return valid[0]["url"]
 
 
+def _retry_after_seconds(headers: object) -> float | None:
+    """Read Spotify's Retry-After value in seconds when one is present."""
+
+    get = getattr(headers, "get", None)
+    if not callable(get):
+        return None
+    raw = get("Retry-After") or get("retry-after")
+    try:
+        retry_after = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return retry_after if retry_after >= 0.0 and retry_after < float("inf") else None
+
+
+def _playback_refresh_seconds(record: Mapping[str, Any]) -> float:
+    """Choose the V2 source polling cadence from the last playback state."""
+
+    if bool(record.get("is_playing")):
+        return SPOTIFY_PLAYING_REFRESH_SECONDS
+    if str(record.get("status") or "").strip().lower() == "idle":
+        return SPOTIFY_IDLE_REFRESH_SECONDS
+    return SPOTIFY_PAUSED_REFRESH_SECONDS
+
+
 __all__ = [
     "SpotifyConfig",
     "SpotifyHttpPort",
     "SpotifyIntegrationError",
     "SpotifyIntegrationService",
     "SpotifyMusicSource",
+    "SPOTIFY_IDLE_REFRESH_SECONDS",
+    "SPOTIFY_PAUSED_REFRESH_SECONDS",
+    "SPOTIFY_PLAYING_REFRESH_SECONDS",
     "SPOTIFY_SCOPES",
     "UrllibSpotifyHttpClient",
 ]

@@ -139,7 +139,7 @@ NetworkGate networkGate;
 NetworkWorker networkWorker(networkGate, deviceCredentials.token());
 SpriteAssets spriteAssets(networkWorker, networkGate, BACKEND_URL);
 ArtworkAssets musicArtwork(networkWorker, BACKEND_URL);
-uint32_t lastMusicFrameAt = 0;
+uint32_t lastAnimatedFrameAt = 0;
 WifiStation wifiStation(networkGate);
 FirmwareUpdater firmwareUpdater(preferences, networkGate, networkWorker, BACKEND_URL, deviceCredentials.token(), {
   MINI_FIRMWARE_VERSION, MINI_FIRMWARE_TARGET, MINI_FIRMWARE_HARDWARE,

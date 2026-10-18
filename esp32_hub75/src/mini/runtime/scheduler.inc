@@ -391,8 +391,8 @@ void miniTick() {
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
-  if (displayMode == "music" && !pairingMode && message.length() == 0 && now - lastMusicFrameAt >= 100) {
-    lastMusicFrameAt = now;
+  if ((displayMode == "music" || displayMode == "weather") && !pairingMode && message.length() == 0 && now - lastAnimatedFrameAt >= 100) {
+    lastAnimatedFrameAt = now;
     renderCurrent();
   }
   if (workerFinished) {

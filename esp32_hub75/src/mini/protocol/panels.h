@@ -5,6 +5,7 @@
 #include "../rendering/sports_pane.h"
 #include "../rendering/utility_panels.h"
 #include "../rendering/music_pane.h"
+#include "../rendering/weather_pane.h"
 
 namespace ticker_ui {
 inline std::string label(JsonVariantConst value, const char* empty = "", size_t limit = 64) {
@@ -147,6 +148,36 @@ inline MusicPane musicPane(JsonObjectConst music, double now, uint32_t scrollMs)
     view.remaining = clock;
     view.fraction = static_cast<float>(progress / duration);
   } else view.remaining = "--:--";
+  return view;
+}
+
+inline std::string weatherNumber(JsonVariantConst value) {
+  if (value.isNull() || (!value.is<int>() && !value.is<double>())) return "--";
+  const double number = value.as<double>();
+  if (!std::isfinite(number) || std::abs(number) > 9999) return "--";
+  return std::to_string(static_cast<int>(std::round(number)));
+}
+
+inline WeatherPane weatherPane(JsonObjectConst weather, uint32_t elapsedMs) {
+  WeatherPane view;
+  view.city = label(weather["city"], "WEATHER", 120);
+  view.temperature = weatherNumber(weather["temperature"]);
+  view.temperatureReady = view.temperature != "--";
+  view.temperatureF = view.temperatureReady ? static_cast<int>(std::round(weather["temperature"].as<double>())) : 0;
+  view.feels = weatherNumber(weather["feels"]);
+  view.wind = weatherNumber(weather["wind"]);
+  view.humidity = weatherNumber(weather["humidity"]);
+  view.aqi = weatherNumber(weather["aqi"]);
+  view.elapsedMs = elapsedMs;
+  view.night = !weather["is_day"].isNull() && weather["is_day"].as<int>() == 0;
+  const std::string icon = weather["icon"] | "";
+  if (icon == "sun") { view.sky = WeatherSky::Clear; view.condition = view.night ? "CLEAR" : "SUNNY"; }
+  else if (icon == "cloud") { view.sky = WeatherSky::Cloud; view.condition = "CLOUDY"; }
+  else if (icon == "rain") { view.sky = WeatherSky::Rain; view.condition = "RAIN"; }
+  else if (icon == "snow") { view.sky = WeatherSky::Snow; view.condition = "SNOW"; }
+  else if (icon == "fog") { view.sky = WeatherSky::Fog; view.condition = "FOG"; }
+  else if (icon == "storm") { view.sky = WeatherSky::Storm; view.condition = "STORM"; }
+  else view.condition = "--";
   return view;
 }
 
