@@ -23,7 +23,6 @@ class SportsDisplayProjector:
     """Own sport status, facts, and short-lived live state for one provider."""
 
     _football: dict[str, dict[str, Any]] = field(default_factory=dict)
-    _possession: dict[str, str] = field(default_factory=dict)
 
     def project(
         self,
@@ -63,7 +62,9 @@ class SportsDisplayProjector:
                 "",
             ) if shootout and completed else ""
         situation = self._stable_situation(
-            item.id, league, state, str(data["status"]), situation
+            item.id, league, state, str(data["status"]), situation,
+            scope=(str(_mapping(event.get("status")).get("period") or ""),
+                   str(data.get("home_score") or "0"), str(data.get("away_score") or "0")),
         )
         data["situation"] = assign_active_team(
             league,
@@ -92,34 +93,26 @@ class SportsDisplayProjector:
         state: str,
         status: str,
         situation: dict[str, Any],
+        *,
+        scope: tuple[str, str, str],
     ) -> dict[str, Any]:
-        """Keep possession and football down data through ESPN's empty polls."""
-
-        live = state in {"in", "half", "crit"}
-        if not live:
-            self._possession.pop(identifier, None)
-            self._football.pop(identifier, None)
-            return situation
-        halftime = "half" in status.lower()
-        possession = str(situation.get("possession") or "")
-        if possession:
-            self._possession[identifier] = possession
-        elif live and not halftime:
-            situation["possession"] = self._possession.get(identifier, "")
-        else:
-            self._possession.pop(identifier, None)
-
+        """Keep missing down facts only within the same football possession and score."""
         if league not in _FOOTBALL:
             return situation
-        if not live or halftime:
+        if sports_game_phase({"sport": league, "state": state, "status": status}) != "playing":
             self._football.pop(identifier, None)
             return situation
-        if situation.get("downDist"):
-            self._football[identifier] = dict(situation)
-        elif identifier in self._football:
-            cached = dict(self._football[identifier])
-            cached["possession"] = situation.get("possession") or cached.get("possession", "")
-            return cached
+        cached = self._football.get(identifier, {})
+        if cached.get("scope") != scope:
+            cached = {}
+        possession = str(situation.get("possession") or cached.get("possession") or "")
+        if not situation.get("downDist") and possession == cached.get("possession"):
+            situation.update(cached.get("down", {}))
+        situation["possession"] = possession
+        self._football[identifier] = {
+            "scope": scope, "possession": possession,
+            "down": {key: value for key, value in situation.items() if key in _FOOTBALL_DOWN_KEYS},
+        }
         return situation
 
 
@@ -162,22 +155,28 @@ def _status(
         clock = str(_mapping(competition.get("situation")).get("clock") or "").strip()
     upper = detail.upper()
 
-    if state == "pre":
-        return str(data.get("status") or detail or "TBD")
     if "POSTPON" in upper or "CANCEL" in upper or "SUSPEND" in upper or "DELAY" in upper:
         return detail.split(",", 1)[0].title()
+    if "FINAL" in upper or state in {"post", "final"}:
+        return _final_status(league, upper, period)
+    if state == "pre":
+        return str(data.get("status") or detail or "TBD")
     if league == "nhl" and state in {"in", "half", "crit"} and _nhl_has_shootout_marker(
         event, competition
     ):
         return "S/O"
-    if league == "nhl" and upper.startswith("END OF"):
+    if league.startswith("soccer") and re.search(r"\b(?:PENALTIES|SHOOTOUT)\b|^PENS?\.?$", upper):
+        return "PEN"
+    if league == "nhl" and (upper.startswith("END OF") or "INTERMISSION" in upper):
         return _period_status("P", period, "END", overtime_base=3)
     if state == "half" or "HALFTIME" in upper or upper in {"HT", "HALF"}:
         return "Half" if league.startswith("soccer") else "Halftime"
-    if "FINAL" in upper or state in {"post", "final"}:
-        return _final_status(league, upper, period)
     if league in _COLLEGE_FOOTBALL and period > 4:
         return _period_status("Q", period, "", overtime_base=4)
+    if league in _FOOTBALL | _BASKETBALL and upper.startswith("END OF"):
+        if league == "march_madness" and period in {1, 2}:
+            return f"H{period} END"
+        return _period_status("Q", period, "END", overtime_base=2 if league == "march_madness" else 4)
     if league in _FOOTBALL and period > 0 and _is_zero_clock(clock):
         return _period_status("Q", period, "END", overtime_base=4)
     if league == "nhl" and period > 0 and _is_zero_clock(clock):
@@ -334,6 +333,11 @@ _LIVE_PLAY_KEYS = frozenset(
     }
 )
 
+_FOOTBALL_DOWN_KEYS = frozenset({
+    "downDist", "downDistFull", "down", "ballOn", "yardLine", "yardsToGo", "yardsToGoal",
+    "isGoalToGo", "goalToGo", "isRedZone",
+})
+
 
 def _baseball_batting_team(status: str, home_abbr: str, away_abbr: str) -> str:
     """Resolve batting ownership from the provider-normalized inning status."""
@@ -440,6 +444,11 @@ def _football_situation(
 def _final_status(league: str, detail: str, period: int) -> str:
     """Keep final overtime and shootout labels visible on compact cards."""
 
+    if league.startswith("soccer"):
+        if re.search(r"\b(?:PENS?|PENALTIES|SHOOTOUT)\b", detail):
+            return "FINAL PEN"
+        if period >= 3 or re.search(r"\bAET\b|EXTRA TIME", detail):
+            return "FINAL AET"
     if league == "nhl":
         if re.search(r"\bS/?O\b|SHOOTOUT", detail):
             return "FINAL S/O"
@@ -850,6 +859,60 @@ _BASEBALL_AT_BAT_KEYS = frozenset({
 })
 
 
+def sports_game_phase(data: Mapping[str, Any]) -> str:
+    """Resolve display lifecycle without advancing a provider's game clock."""
+    state = str(data.get("state") or "").lower()
+    status = str(data.get("status") or "").strip().upper()
+    if any(word in status for word in ("CANCEL", "POSTPON", "SUSPEND", "DELAY", "ABANDON")):
+        return "paused"
+    if state in {"post", "final"} or status.startswith(("FINAL", "FT")):
+        return "final"
+    if state == "pre":
+        return "scheduled"
+    if state == "half" or status in {"HALF", "HALFTIME", "HT"}:
+        return "halftime"
+    if sport_family(data.get("sport")) == "baseball":
+        return baseball_inning_display(data)["phase"]
+    situation = _mapping(data.get("situation"))
+    manpower = _mapping(situation.get("manpower"))
+    if status in {"S/O", "SO", "PEN", "PEN.", "PENALTIES", "SHOOTOUT"} or (
+        manpower.get("phase") == "shootout" or _mapping(situation.get("shootout")).get("state") in {"active", "complete"}
+    ):
+        return "shootout"
+    if "INTERMISSION" in status or manpower.get("phase") == "intermission":
+        return "period_break"
+    if re.fullmatch(r"(?:Q\d+|P\d+|H\d+|OT\d*) END", status):
+        return "period_break"
+    return "playing" if state in {"in", "crit"} else "unavailable"
+
+
+def project_sports_display(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove stale live facts after every provider enrichment path."""
+    family = sport_family(data.get("sport"))
+    result = project_baseball_display(data) if family == "baseball" else dict(data)
+    phase = sports_game_phase(result)
+    result["game_phase"] = phase
+    situation = dict(_mapping(result.get("situation")))
+    if phase != "playing":
+        for key in _FOOTBALL_DOWN_KEYS | {"activeTeam", "possession"}:
+            situation.pop(key, None)
+        if family == "hockey":
+            situation.update(nhl_manpower_situation(
+                {"phase": "intermission" if phase == "period_break" else "shootout" if phase == "shootout" else "inactive"},
+                home_abbr=str(result.get("home_abbr") or ""), away_abbr=str(result.get("away_abbr") or ""),
+            ))
+    if family in {"hockey", "soccer"} and phase != "shootout" and not (
+        phase == "final" and (re.search(r"\b(?:S/O|SO|PEN)\b", str(result.get("status") or "").upper())
+                              or _mapping(situation.get("shootout")).get("state") == "complete")
+    ):
+        situation.pop("shootout", None)
+    if family == "hockey" and phase == "period_break" and not str(result.get("status") or "").endswith("END"):
+        label = re.match(r"^(P\d+|OT\d*)\b", str(result.get("status") or ""))
+        result["status"] = f"{label[1]} END" if label else "Intermission"
+    result["situation"] = situation
+    return result
+
+
 def sport_family(sport: object) -> str:
     """Return the broad sport category for one league identifier."""
     value = str(sport or "").strip().lower()
@@ -1087,7 +1150,7 @@ __all__ = [
 ]
 
 
-def _football_name_matches(token: str, name: str) -> bool:
+def football_name_matches(token: str, name: str) -> bool:
     """Match a full name or ESPN initials without losing the surname."""
 
     def without_suffix(value):
@@ -1224,7 +1287,7 @@ def normalize_football_turnover_play(
     preferred_team = named_team or (role_teams.get("defense") if kind == "interception" else "") or end_team or (play_team if is_scoring else "")
     matches = {
         candidate for candidate in (*candidates, *catalog_candidates)
-        if named_player and _football_name_matches(named_player, candidate[0])
+        if named_player and football_name_matches(named_player, candidate[0])
         and (not preferred_team or not candidate[1] or candidate[1] == preferred_team)
     }
     identities = {(candidate[0], candidate[1]) for candidate in matches}

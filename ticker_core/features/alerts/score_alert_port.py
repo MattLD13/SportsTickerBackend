@@ -14,29 +14,15 @@ import math
 import random
 import re
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
+from ticker_core.rendering.fonts import load_monospace_font
 from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 
 PANEL_W = 384
 PANEL_H = 32
 
-
-def load_monospace_font(size, bold=False):
-    """Load the deployed monospace alert face."""
-    import os
-
-    names = ["DejaVuSansMono-Bold.ttf", "UbuntuMono-Bold.ttf", "consolab.ttf", "courbd.ttf", "DejaVuSansMono.ttf"] if bold else ["DejaVuSansMono.ttf", "UbuntuMono-Regular.ttf", "consola.ttf", "cour.ttf"]
-    for name in names:
-        for path in (name, os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Fonts", name)):
-            try:
-                font = ImageFont.truetype(path, size)
-                if "Aileron" not in font.getname()[0]:
-                    return font
-            except OSError:
-                continue
-    return ImageFont.load_default()
 
 # Phase lengths in seconds. The runtime owns the full eight-second residence.
 WIPE_IN = 0.40
@@ -313,10 +299,11 @@ class ScoreAlertMixin:
 
     def _draw_alert_down_distance(self, draw, value, right, is_red_zone):
         """Show one red-zone-colored down value beside the clock."""
-        match = re.fullmatch(r"\s*(\d+)\s*&\s*(\d+)\s*", value)
+        match = re.fullmatch(r"\s*(\d+)\s*&\s*(\d+|GOAL)\s*", value, re.IGNORECASE)
         if not match:
             return
-        down_distance = f"{match.group(1)}&{match.group(2)}"
+        distance = "G" if match.group(2).upper() == "GOAL" else match.group(2)
+        down_distance = f"{match.group(1)}&{distance}"
         text_width = len(down_distance) * 5
         box_width = text_width + 6
         x = right - box_width

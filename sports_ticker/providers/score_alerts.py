@@ -26,6 +26,7 @@ _BIG_KINDS = frozenset(
         "fumble_td",
         "kick_return_td",
         "punt_return_td",
+        "blocked_fg_td",
         "interception",
         "fumble",
         "shorthanded",
@@ -60,9 +61,14 @@ def _describe(
             for key in ("type", "event_type", "scoring_type", "text")
         ).lower() if scoring_play else ""
         successful_two_point = (
-            "two-point conversion" in play_text
-            and "failed" not in play_text
+            (re.search(r"\b(?:two|2)[- ]point conversion\b", play_text) is not None
+             or bool(scoring_play and scoring_play.get("conversion_type") == "two_point"))
+            and re.search(r"\b(?:failed|no good|unsuccessful)\b", play_text) is None
         )
+        if scoring_play and scoring_play.get("conversion_type") == "extra_point" and delta == 1:
+            return "extra_point", "EXTRA POINT"
+        if scoring_play and scoring_play.get("conversion_type") == "two_point" and delta == 2:
+            return "two_point", "2-POINT CONV"
         if "interception" in play_text and "touchdown" in play_text:
             return "interception_td", "INTERCEPTION TD"
         if "fumble return touchdown" in play_text or "fumble recovery" in play_text:
@@ -75,9 +81,9 @@ def _describe(
             return "punt_return_td", "PUNT RETURN TD"
         if "blocked field goal" in play_text and "touchdown" in play_text:
             return "blocked_fg_td", "BLOCKED FG TD"
-        if "passing touchdown" in play_text:
+        if "passing touchdown" in play_text or ("touchdown" in play_text and "pass" in play_text.split("(", 1)[0]):
             return "passing_td", "PASS TD +2PT" if successful_two_point else "PASS TD"
-        if "rushing touchdown" in play_text:
+        if "rushing touchdown" in play_text or ("touchdown" in play_text and re.search(r"\b(?:run|rush)\b", play_text)):
             return "rushing_td", "RUSH TD +2PT" if successful_two_point else "RUSH TD"
         if successful_two_point and delta == 2:
             return "two_point", "2-POINT CONV"
@@ -85,15 +91,15 @@ def _describe(
             return "field_goal", "FIELD GOAL"
         if "safety" in play_text:
             return "safety", "SAFETY"
-        if "extra point" in play_text or "pat" in play_text:
+        if "extra point" in play_text or re.search(r"\bpat\b", play_text):
             return "extra_point", "EXTRA POINT"
-        if delta >= 6:
+        if delta in {6, 7, 8}:
             return "touchdown", "TOUCHDOWN"
         if delta == 3:
             return "field_goal", "FIELD GOAL"
-        if delta == 2:
-            return "safety", "SAFETY"
-        return "extra_point", "EXTRA POINT"
+        if delta == 1:
+            return "extra_point", "EXTRA POINT"
+        return "score", f"+{delta} POINTS"
     if family == "baseball":
         play_text = " ".join(
             str(scoring_play.get(key) or "")
@@ -249,7 +255,8 @@ def _compact_metric(value: object) -> str:
 
 
 def _latest_scoring_play(
-    game: Mapping[str, Any], situation: Mapping[str, Any], side: str
+    game: Mapping[str, Any], situation: Mapping[str, Any], side: str,
+    *, previous_score: int | None = None,
 ) -> Mapping[str, Any] | None:
     """Return the latest normalized scoring play for one team."""
 
@@ -264,6 +271,8 @@ def _latest_scoring_play(
     ]
     if sport_family(game.get("sport")) == "hockey":
         return _hockey_scoring_play_for_score(game, matching, side)
+    if sport_family(game.get("sport")) == "football":
+        return _football_scoring_play_for_score(game, matching, side, previous_score)
     if matching:
         return matching[-1]
     if sport_family(game.get("sport")) == "soccer":
@@ -282,6 +291,28 @@ def _latest_scoring_play(
                     "assist": event.get("assist") or "",
                 }
     return None
+
+
+def _football_scoring_play_for_score(
+    game: Mapping[str, Any], plays: Sequence[Mapping[str, Any]], side: str, previous_score: int | None,
+) -> Mapping[str, Any] | None:
+    """Bind football detail to the scoring team's observed score increase."""
+    target = _number(game.get(f"{side}_score"))
+    if target is None:
+        return None
+    candidates = [play for play in plays if _number(play.get(f"{side}_score")) == target]
+    if previous_score is not None:
+        interval = [play for play in plays if previous_score < (_number(play.get(f"{side}_score")) or 0) <= target]
+        if target - previous_score >= 6:
+            touchdowns = [play for play in interval if "touchdown" in str(play.get("type") or "").lower()]
+            if touchdowns:
+                return touchdowns[-1]
+        if not candidates and target - previous_score == 6:
+            candidates = [play for play in plays if
+                _number(play.get(f"{side}_score")) in {target + 1, target + 2}
+                and "touchdown" in str(play.get("type") or "").lower()
+                and play.get("conversion_type")]
+    return candidates[-1] if candidates else None
 
 
 def _hockey_scoring_play_for_score(
@@ -417,15 +448,20 @@ class ScoreAlertTracker:
                 )
                 if family == "hockey" and situation.get("shootout_state") == "active":
                     continue
-                if state not in _LIVE_STATES and not shootout_completed:
+                if family == "hockey":
+                    self._hydrate_hockey_alerts(game)
+                elif family == "football":
+                    self._hydrate_football_alerts(game)
+                final_score = state in {"post", "final"} and previous[3] in _LIVE_STATES and (
+                    home > previous[0] or away > previous[1]
+                ) and not (family == "hockey" and previous[2] == "S/O")
+                if state not in _LIVE_STATES and not shootout_completed and not final_score:
                     seen_football_events.update(
                         _football_event_identity(play)
                         for play in football_events
                         if _football_event_identity(play)
                     )
                     continue
-                if family == "hockey":
-                    self._hydrate_hockey_alerts(game)
 
                 def append_alert(
                     side: str,
@@ -438,9 +474,12 @@ class ScoreAlertTracker:
                     scoring_play_id: str = "",
                 ) -> None:
                     other = "away" if side == "home" else "home"
+                    identifier = event_id or f"{game_id}:{home}-{away}:{side}"
+                    if any(alert.get("id") == identifier for alert in self._alerts):
+                        return
                     self._alerts.append(
                         {
-                            "id": event_id or f"{game_id}:{home}-{away}:{side}",
+                            "id": identifier,
                             "game_id": game_id,
                             "event_id": event_id,
                             "sport": sport,
@@ -462,7 +501,7 @@ class ScoreAlertTracker:
                             "away_abbr": str(game.get("away_abbr") or "").upper(),
                             "home_score": home,
                             "away_score": away,
-                            "status": status,
+                            "status": facts.get("status", status),
                             "home_conference_id": game.get("home_conference_id", ""),
                             "away_conference_id": game.get("away_conference_id", ""),
                             **({"scoring_play_id": scoring_play_id} if scoring_play_id else {}),
@@ -508,9 +547,11 @@ class ScoreAlertTracker:
                     delta = new_score - old_score
                     if delta <= 0:
                         continue
-                    scoring_play = _latest_scoring_play(game, situation, side)
+                    scoring_play = _latest_scoring_play(game, situation, side, previous_score=old_score)
                     kind, headline = _describe(sport, delta, scoring_play)
-                    facts = _extract_alert_facts(sport, game, side, alert_kind=kind)
+                    facts = _extract_alert_facts(sport, game, side, alert_kind=kind, event=scoring_play)
+                    if family == "football" and scoring_play:
+                        facts["status"] = _football_scoring_status(scoring_play, status, sport)
                     append_alert(
                         side,
                         kind,
@@ -519,7 +560,7 @@ class ScoreAlertTracker:
                         delta,
                         scoring_play_id=(
                             str(scoring_play.get("play_id") or "")
-                            if family == "hockey" and scoring_play
+                            if family in {"hockey", "football"} and scoring_play
                             else ""
                         ),
                     )
@@ -533,6 +574,24 @@ class ScoreAlertTracker:
                 if key in current_ids
             }
             self._alerts = self._alerts[-_MAX_ALERTS:]
+
+    def _hydrate_football_alerts(self, game: Mapping[str, Any]) -> None:
+        """Fill delayed football detail without replaying or retiming the alert."""
+        situation = game.get("situation") or {}
+        for alert in self._alerts:
+            if alert.get("game_id") != game.get("id") or int(alert.get("points") or 0) <= 0:
+                continue
+            side = alert["side"]
+            scored_game = {**game, "home_score": alert["home_score"], "away_score": alert["away_score"]}
+            old_score = int(alert[f"{side}_score"]) - int(alert["points"])
+            play = _latest_scoring_play(scored_game, situation, side, previous_score=old_score)
+            if play is None:
+                continue
+            kind, headline = _describe(game.get("sport"), int(alert["points"]), play)
+            facts = _extract_alert_facts(game.get("sport"), scored_game, side, alert_kind=kind, event=play)
+            alert.update(facts, kind=kind, headline=headline, big=kind in _BIG_KINDS,
+                         status=_football_scoring_status(play, str(alert.get("status") or ""), str(game.get("sport") or "")),
+                         scoring_play_id=str(play.get("play_id") or ""))
 
     def _hydrate_hockey_alerts(self, game: Mapping[str, Any]) -> None:
         """Match delayed ESPN goal details to each alert's score and refresh assists."""
@@ -663,7 +722,7 @@ def _extract_alert_facts(
 
     explicit = str(situation.get("detail") or game.get("detail") or "").strip()
 
-    if family == "football":
+    if family == "football" and alert_kind in {"interception", "fumble", "interception_td", "fumble_td"}:
         turnover = event or _latest_turnover_play(
             game,
             situation,
@@ -680,8 +739,8 @@ def _extract_alert_facts(
             if yards is not None:
                 data.append(f"{yards}YD RET")
             facts["data"] = " ".join(data)
-            facts["down_distance"] = _football_down_distance(situation, turnover)
-            facts["is_red_zone"] = _football_red_zone(situation, turnover)
+            facts["down_distance"] = _football_down_distance(turnover)
+            facts["is_red_zone"] = _football_red_zone(turnover)
             return facts
 
     if family == "baseball":
@@ -739,7 +798,7 @@ def _extract_alert_facts(
                 facts["primary_assist"] = assist
                 return facts
 
-    play = _latest_scoring_play(game, situation, side)
+    play = event or _latest_scoring_play(game, situation, side)
     if play is not None:
         facts["player"] = _play_player(play)
         assists = _play_assists(play)
@@ -748,6 +807,11 @@ def _extract_alert_facts(
         event_type = " ".join(str(play.get(key) or "") for key in ("type", "event_type", "scoring_type", "text")).upper()
 
         if family == "football":
+            if alert_kind in {"extra_point", "two_point"}:
+                if play.get("conversion_type") == alert_kind:
+                    facts["player"] = str(play.get("conversion_player_full") or "")
+                facts["data"] = "EXTRA POINT" if alert_kind == "extra_point" else "2-POINT CONV"
+                return facts
             yards = _number(play.get("return_yards") if play.get("football_kind") in {"interception", "fumble"} else play.get("yards"))
             if "INTERCEPTION" in event_type:
                 facts["data"] = f"INTERCEPTION {yards}YD RET" if yards is not None else "INTERCEPTION RETURN"
@@ -763,8 +827,8 @@ def _extract_alert_facts(
                     run_type = "RUSH" if "RUSH" in event_type else ""
                     parts = [run_type, f"{yards}YD" if yards is not None else ""]
                 facts["data"] = " ".join(part for part in parts if part)
-            facts["down_distance"] = _football_down_distance(situation, play)
-            facts["is_red_zone"] = _football_red_zone(situation, play)
+            facts["down_distance"] = _football_down_distance(play)
+            facts["is_red_zone"] = _football_red_zone(play)
         elif family == "basketball":
             points = _number(play.get("score_value"))
             play_text = event_type.lower()
@@ -780,8 +844,24 @@ def _extract_alert_facts(
             if facts["data"] or not explicit:
                 return facts
 
+    if family == "football":
+        return facts
     facts["data"] = explicit or str(situation.get("last_play") or game.get("last_play") or "").strip()
     return facts
+
+
+def _football_scoring_status(play: Mapping[str, Any], current: str, league: str) -> str:
+    """Keep the scoring clock separate from the next drive's game clock."""
+    period = str(play.get("period") or "")
+    clock = str(play.get("clock") or "").rstrip("'")
+    match = re.fullmatch(r"Q?(\d+)(?:st|nd|rd|th)?", period, re.IGNORECASE)
+    if not match or not clock:
+        return current
+    number = int(match[1])
+    label = f"Q{number}" if number <= 4 else "OT" + (str(number - 4) if number > 5 else "")
+    if league in {"ncf_fbs", "ncf_fcs"} and number > 4:
+        return label
+    return f"{label} {clock}"
 
 
 def _play_player(play: Mapping[str, Any]) -> str:
@@ -804,45 +884,26 @@ def _play_assists(play: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(str(value).strip() for value in values if str(value).strip())
 
 
-def _football_down_distance(
-    situation: Mapping[str, Any], play: Mapping[str, Any]
-) -> str:
+def _football_down_distance(play: Mapping[str, Any]) -> str:
     """Format the play's down and distance as a compact value such as 4&7."""
 
+    goal = re.fullmatch(r"(\d+)(?:ST|ND|RD|TH)?\s*&\s*GOAL", str(play.get("downDist") or "").upper())
+    if goal:
+        return f"{goal[1]}&GOAL"
     down = _number(play.get("down"))
     distance = play.get("distance")
     if down is not None and distance not in (None, ""):
         distance_number = _number(distance)
         return f"{down}&{distance_number}" if distance_number is not None else f"{down}&{str(distance).strip().upper()}"
 
-    for raw in (play.get("downDist"), situation.get("downDist"), situation.get("downDistFull")):
-        text = str(raw or "").strip().upper().replace(" AND ", " & ")
-        match = re.fullmatch(r"(\d+)(?:ST|ND|RD|TH)?\s*&\s*(\d+|GOAL)", text)
-        if match:
-            return f"{match.group(1)}&{match.group(2)}"
-
-    if down is None:
-        down = _number(situation.get("down"))
-    if distance in (None, ""):
-        distance = situation.get("yardsToGo")
-    if down is not None and distance not in (None, ""):
-        distance_number = _number(distance)
-        if distance_number is not None:
-            return f"{down}&{distance_number}"
-        if str(distance).strip().upper() == "GOAL":
-            return f"{down}&GOAL"
-    return ""
+    text = str(play.get("downDist") or "").strip().upper().replace(" AND ", " & ")
+    match = re.fullmatch(r"(\d+)(?:ST|ND|RD|TH)?\s*&\s*(\d+|GOAL)", text)
+    return f"{match.group(1)}&{match.group(2)}" if match else ""
 
 
-def _football_red_zone(
-    situation: Mapping[str, Any], play: Mapping[str, Any]
-) -> bool | None:
-    """Keep the play's red-zone flag, then use the current projected flag."""
-
+def _football_red_zone(play: Mapping[str, Any]) -> bool | None:
+    """Use the scoring play's field position without reading the next drive."""
     value = play.get("is_red_zone")
-    if value is not None:
-        return bool(value)
-    value = situation.get("isRedZone")
     return bool(value) if value is not None else None
 
 

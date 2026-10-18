@@ -1,6 +1,7 @@
 """Verify score-alert facts, down colors, and baseball inning markers."""
 
 from PIL import Image
+import pytest
 
 from ticker_core.features.alerts.score_alert_port import (
     PreparedScoreAlertRenderer,
@@ -9,6 +10,31 @@ from ticker_core.features.alerts.score_alert_port import (
 )
 from ticker_core.features.alerts.news_banner_port import PreparedNewsBannerRenderer
 from ticker_core.rendering import load_default_font_set
+
+
+@pytest.mark.critical
+@pytest.mark.parametrize("value,label", [("1&GOAL", "1&G"), ("4&GOAL", "4&G"), ("4&15", "4&15")])
+def test_football_goal_distance_chip_fits_beside_the_scoring_clock(monkeypatch, value, label):
+    from ticker_core.features.alerts import score_alert_port
+    calls = []
+    original = score_alert_port.draw_tiny_text
+
+    def capture(draw, x, y, text, color):
+        calls.append((x, y, str(text)))
+        return original(draw, x, y, text, color)
+
+    monkeypatch.setattr(score_alert_port, "draw_tiny_text", capture)
+    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    frame = renderer.draw_score_alert({"sport": "nfl", "headline": "RUSH TD", "status": "Q4 12:52",
+        "team_abbr": "HOM", "away_abbr": "AWY", "home_abbr": "HOM", "home_score": 7, "away_score": 0,
+        "down_distance": value, "is_red_zone": True}, 4.0)
+    assert frame.size == (384, 32)
+    from ticker_core.rendering.fonts import load_monospace_font
+    assert score_alert_port.load_monospace_font is load_monospace_font
+    chip = next((x, y, text) for x, y, text in calls if text == label)
+    clock = next((x, y, text) for x, y, text in calls if "12:52" in text)
+    assert clock[0] + len(clock[2]) * 5 < chip[0]
+    assert chip[0] + len(label) * 5 < 384
 
 
 def test_news_banner_cache_reuses_pixels_and_keeps_animation_output() -> None:

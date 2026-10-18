@@ -33,6 +33,7 @@ from .sports_display import (
     baseball_player_stats,
     display_situation,
     football_red_zone_for_play,
+    football_name_matches,
     normalize_football_turnover_play,
     normalize_rank,
     soccer_event,
@@ -2267,12 +2268,18 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
     league = str(item.get("sport") or "").strip().lower()
     raw_scoring = _sequence(summary.get("scoringPlays"))
     records = raw_scoring or _event_plays(summary)
+    football = league in {"nfl", "ncf_fbs", "ncf_fcs"}
+    drive_plays = {
+        str(play.get("id") or ""): play for play in _event_drive_plays(summary)
+    } if football else {}
     scoring_plays: list[dict[str, Any]] = []
     for raw_play in records:
         play = _mapping(raw_play)
+        if football:
+            play = {**drive_plays.get(str(play.get("id") or ""), {}), **play}
         text = str(
-            play.get("shortText")
-            or play.get("text")
+            play.get("text")
+            or play.get("shortText")
             or play.get("description")
             or ""
         ).strip()
@@ -2285,6 +2292,11 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             or re.search(r"\b(score|goal|touchdown|field goal|home run|homer|three.?pointer|free throw)\b", text, re.IGNORECASE)
         )
         if not is_scoring:
+            continue
+        if football and (
+            re.search(r"\b(?:no play|overturned|reversed)\b", text, re.IGNORECASE)
+            or re.search(r"\b(?:no good|missed|failed)\b", text.split("(", 1)[0], re.IGNORECASE)
+        ):
             continue
         team = _event_team_abbr(play, competition, home_abbr, away_abbr)
         football_play = None
@@ -2342,10 +2354,35 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             "event_type": event_type,
             "text": text[:180],
         }
+        identifier = str(play.get("id") or play.get("sequenceNumber") or "").strip()
+        if identifier:
+            normalized["play_id"] = identifier
+        for source_key, target_key in (
+            ("homeScore", "home_score"), ("awayScore", "away_score"),
+            ("home_score", "home_score"), ("away_score", "away_score"),
+        ):
+            if play.get(source_key) is not None:
+                normalized[target_key] = play[source_key]
         if athlete_full:
             normalized["scorer_full"] = athlete_full
         if league in {"nfl", "ncf_fbs", "ncf_fcs"}:
-            normalized["passer_full"] = _event_passer_full(text)
+            normalized["passer_full"] = _event_football_full_name(_event_passer_full(text), summary, team)
+            conversion = re.search(r"\(([^()]+)\)", text)
+            if conversion:
+                conversion_text = conversion[1].strip()
+                if re.search(r"\b(?:kick|extra point)\b", conversion_text, re.IGNORECASE) and not re.search(
+                    r"\b(?:no good|missed|failed|blocked)\b", conversion_text, re.IGNORECASE
+                ):
+                    kicker = re.split(r"\s+(?:kick|extra point)\b", conversion_text, flags=re.IGNORECASE)[0]
+                    normalized["conversion_type"] = "extra_point"
+                    normalized["conversion_player_full"] = _event_football_full_name(kicker, summary, team)
+                elif re.search(r"two[- ]point conversion", conversion_text, re.IGNORECASE) and not re.search(
+                    r"\b(?:failed|no good)\b", conversion_text, re.IGNORECASE
+                ):
+                    normalized["conversion_type"] = "two_point"
+                    normalized["conversion_player_full"] = _event_football_full_name(
+                        _event_text_player_full(conversion_text, sport="nfl"), summary, team
+                    )
         raw_score_value = play.get("scoreValue", play.get("score_value"))
         if raw_score_value not in (None, ""):
             normalized["score_value"] = raw_score_value
@@ -2372,18 +2409,6 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             if assists:
                 normalized["assists_full"] = assists
                 normalized["assists"] = tuple(_compact_event_name(name) for name in assists)
-            play_id = str(play.get("id") or play.get("sequenceNumber") or "").strip()
-            if play_id:
-                normalized["play_id"] = play_id
-            for source_key, target_key in (
-                ("homeScore", "home_score"),
-                ("awayScore", "away_score"),
-                ("home_score", "home_score"),
-                ("away_score", "away_score"),
-            ):
-                value = play.get(source_key)
-                if value is not None:
-                    normalized[target_key] = value
             strength = _mapping(play.get("strength"))
             strength_text = str(
                 strength.get("abbreviation") or strength.get("text") or ""
@@ -2415,7 +2440,7 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
                     normalized["scorer"] = football_play["scorer"]
                     normalized["player"] = football_play["scorer"]
         clock = _event_clock(play)
-        if league == "nhl":
+        if league == "nhl" or league in {"nfl", "ncf_fbs", "ncf_fcs"}:
             clock = clock.rstrip("'")
         period = _mapping(play.get("period"))
         period_text = str(period.get("displayValue") or period.get("number") or "").strip()
@@ -2536,7 +2561,10 @@ def _normalize_football_play(
         scorer = recoverer
     if not scorer:
         scorer = _event_text_player(text)
-    full_player = _event_player_full(play, summary, sport="nfl") or _event_text_player_full(text)
+    full_player = _event_player_full(play, summary, sport="nfl") or _event_text_player_full(text, sport="nfl")
+    full_player = _event_football_full_name(full_player, summary, team)
+    if full_player and not kind:
+        scorer = _compact_event_name(full_player)
     if kind:
         identity = normalize_football_turnover_play(
             play, situation={}, competition=competition, home_abbr=home_abbr, away_abbr=away_abbr,
@@ -2552,7 +2580,7 @@ def _normalize_football_play(
     period_text = str(period.get("displayValue") or period.get("number") or "").strip()
     if period_text.isdigit():
         period_text = f"Q{period_text}"
-    clock = _event_clock(play)
+    clock = _event_clock(play).rstrip("'")
     start_state = _mapping(play.get("start"))
     result: dict[str, Any] = {
         "event_id": event_id,
@@ -2583,6 +2611,8 @@ def _normalize_football_play(
         value = start_state.get(source_key)
         if value not in (None, ""):
             result[target_key] = value
+    if start_state.get("shortDownDistanceText"):
+        result["downDist"] = str(start_state["shortDownDistanceText"])
     stat_yardage = play.get("statYardage")
     if stat_yardage not in (None, ""):
         try:
@@ -2835,7 +2865,7 @@ def _compact_event_name(value: object) -> str:
 def _event_yards(text: str) -> int | None:
     """Read a scoring-play yard count from ESPN text."""
 
-    match = re.search(r"\b(\d+)\s+Yd\b", text, re.IGNORECASE)
+    match = re.search(r"(?<!\w)(-?\d+)\s+yds?\b", text.split("(", 1)[0], re.IGNORECASE)
     return int(match.group(1)) if match else None
 
 
@@ -3677,6 +3707,19 @@ def _event_role_priority(participant: Mapping[str, Any], sport: str) -> int:
     return 1
 
 
+def _event_football_full_name(token: str, summary: Mapping[str, Any], team: str) -> str:
+    """Resolve one unambiguous football name from the same summary and team."""
+    matches = set()
+    for record in _event_boxscore_players(summary):
+        if str(_mapping(record.get("team")).get("abbreviation") or "").upper() != team.upper():
+            continue
+        athlete = _mapping(record.get("athlete"))
+        name = str(athlete.get("displayName") or athlete.get("fullName") or "").strip()
+        if name and (football_name_matches(token, name) or token.casefold() == str(athlete.get("shortName") or "").casefold()):
+            matches.add(name)
+    return next(iter(matches)) if len(matches) == 1 else token
+
+
 def _event_text_player_full(text: str, *, sport: str = "") -> str:
     """Read a full primary scorer name from common ESPN play descriptions."""
 
@@ -3684,6 +3727,17 @@ def _event_text_player_full(text: str, *, sport: str = "") -> str:
     match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    if sport in {"nfl", "ncf_fbs", "ncf_fcs"}:
+        for pattern in (
+            r"\bpass(?:es)?(?: complete)? to\s+(.+?)\s+for\s+-?\d+\s+yds?\b",
+            r"\bpass(?:es)? to\s+(.+?)\s+for\s+(?:two|2)[- ]point conversion\b",
+            r"^(.+?)\s+(?:run|runs|rush|rushed|returns?)(?:\s+for)?\s+-?\d+\s+yds?\b",
+            r"^(.+?)\s+(?:run|rush)(?:\s+for)?\s+(?:two|2)[- ]point conversion\b",
+            r"^(.+?)\s+(?:field goal|extra point|kick)\b",
+        ):
+            match = re.search(pattern, prefix, re.IGNORECASE)
+            if match:
+                return match[1].strip()
     match = re.search(
         r"(?:,|^)\s*([^,]+?)\s+returns?\s+for\s+\d+\s+yds?\s+for\s+a\s+TD",
         text,
@@ -3728,8 +3782,12 @@ def _event_text_player_full(text: str, *, sport: str = "") -> str:
 def _event_passer_full(text: str) -> str:
     """Read a quarterback's full name from one ESPN passing-play description."""
 
+    text = text.split("(", 1)[0].strip()
     match = re.search(r"\bpass from\s+([^()]+)", text, re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    match = re.match(r"(.+?)\s+pass(?:es)?\s+(?:to|complete|incomplete)\b", text, re.IGNORECASE)
+    if match:
+        return match[1].strip()
     match = re.search(r"\b([A-Z][A-Za-z.'-]*)\s+pass\b", text, re.IGNORECASE)
     return match.group(1).strip() if match else ""

@@ -163,7 +163,7 @@ def test_football_score_alert_uses_the_scoring_play() -> None:
         "situation": {"scoring_plays": [{
             "team": "NYG", "scorer": "WILLIAMS", "type": "Touchdown",
             "event_type": "Rushing Touchdown", "text": "Williams 1 Yd Rush",
-            "yards": 1,
+            "yards": 1, "home_score": 7, "away_score": 0,
         }]},
     }])
 
@@ -233,6 +233,7 @@ def test_football_pick_six_detail_uses_returner_and_quarterback() -> None:
         "situation": {"scoring_plays": [{
             "team": "NYG", "scorer": "THOMAS", "type": "Touchdown",
             "event_type": "Interception Return Touchdown", "football_kind": "interception",
+            "home_score": 6, "away_score": 0,
             "scorer": "THOMAS", "interceptor": "THOMAS", "passer": "PRESCOTT", "return_yards": 12,
         }]},
     }])

@@ -621,6 +621,8 @@ def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> s
         return "Final"
     if state == "half":
         return "Half"
+    if reason_short in {"PEN", "PEN.", "PENS", "PENALTIES"}:
+        return "PEN"
     live = _mapping(status.get("liveTime"))
     period = _fotmob_period(status)
     for value in (live.get("long"), live.get("short")):

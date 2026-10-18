@@ -1,0 +1,1259 @@
+{
+  "captured_at": "2026-10-18T00:59:47.324937+00:00",
+  "records": [
+    {
+      "league": "nfl",
+      "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872995",
+      "payload": {
+        "header": {
+          "competitions": [
+            {
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "team": {
+                    "id": "7",
+                    "abbreviation": "DEN"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "team": {
+                    "id": "26",
+                    "abbreviation": "SEA"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "scoringPlays": [
+          {
+            "id": "401872995528",
+            "type": {
+              "id": "59",
+              "text": "Field Goal Good",
+              "abbreviation": "FG"
+            },
+            "text": "Jason Myers 55 Yd Field Goal ",
+            "homeScore": 0,
+            "awayScore": 3,
+            "period": {
+              "number": 1
+            },
+            "clock": {
+              "value": 391.0,
+              "displayValue": "6:31"
+            },
+            "scoringType": {
+              "name": "field-goal",
+              "displayName": "Field Goal",
+              "abbreviation": "FG"
+            },
+            "team": {
+              "id": "26"
+            }
+          },
+          {
+            "id": "401872995990",
+            "type": {
+              "id": "68",
+              "text": "Rushing Touchdown",
+              "abbreviation": "TD"
+            },
+            "text": "J.K. Dobbins 4 Yd Rush (Wil Lutz Kick)",
+            "homeScore": 7,
+            "awayScore": 3,
+            "period": {
+              "number": 2
+            },
+            "clock": {
+              "value": 772.0,
+              "displayValue": "12:52"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "7"
+            }
+          },
+          {
+            "id": "4018729951469",
+            "type": {
+              "id": "68",
+              "text": "Rushing Touchdown",
+              "abbreviation": "TD"
+            },
+            "text": "RJ Harvey 1 Yd Rush (Wil Lutz Kick)",
+            "homeScore": 14,
+            "awayScore": 3,
+            "period": {
+              "number": 2
+            },
+            "clock": {
+              "value": 315.0,
+              "displayValue": "5:15"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "7"
+            }
+          },
+          {
+            "id": "4018729953797",
+            "type": {
+              "id": "68",
+              "text": "Rushing Touchdown",
+              "abbreviation": "TD"
+            },
+            "text": "George Holani 1 Yd Rush (Sam Darnold Pass to Rashid Shaheed for Two-Point Conversion)",
+            "homeScore": 14,
+            "awayScore": 11,
+            "period": {
+              "number": 4
+            },
+            "clock": {
+              "value": 341.0,
+              "displayValue": "5:41"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "26"
+            }
+          },
+          {
+            "id": "4018729954412",
+            "type": {
+              "id": "59",
+              "text": "Field Goal Good",
+              "abbreviation": "FG"
+            },
+            "text": "Jason Myers 34 Yd Field Goal",
+            "homeScore": 14,
+            "awayScore": 14,
+            "period": {
+              "number": 4
+            },
+            "clock": {
+              "value": 3.0,
+              "displayValue": "0:03"
+            },
+            "scoringType": {
+              "name": "field-goal",
+              "displayName": "Field Goal",
+              "abbreviation": "FG"
+            },
+            "team": {
+              "id": "26"
+            }
+          },
+          {
+            "id": "4018729954788",
+            "type": {
+              "id": "59",
+              "text": "Field Goal Good",
+              "abbreviation": "FG"
+            },
+            "text": "Wil Lutz 53 Yd Field Goal ",
+            "homeScore": 17,
+            "awayScore": 14,
+            "period": {
+              "number": 5
+            },
+            "clock": {
+              "value": 293.0,
+              "displayValue": "4:53"
+            },
+            "scoringType": {
+              "name": "field-goal",
+              "displayName": "Field Goal",
+              "abbreviation": "FG"
+            },
+            "team": {
+              "id": "7"
+            }
+          }
+        ],
+        "plays": [
+          {
+            "id": "401872995528",
+            "start": {
+              "down": 4,
+              "distance": 5,
+              "yardLine": 37,
+              "yardsToEndzone": 37,
+              "downDistanceText": "4th & 5 at DEN 37",
+              "shortDownDistanceText": "4th & 5",
+              "possessionText": "DEN 37",
+              "team": {
+                "id": "26"
+              }
+            },
+            "statYardage": 55
+          },
+          {
+            "id": "401872995990",
+            "start": {
+              "down": 2,
+              "distance": 4,
+              "yardLine": 96,
+              "yardsToEndzone": 4,
+              "downDistanceText": "2nd & Goal at SEA 4",
+              "shortDownDistanceText": "2nd & Goal",
+              "possessionText": "SEA 4",
+              "team": {
+                "id": "7"
+              }
+            },
+            "statYardage": 4
+          },
+          {
+            "id": "4018729951469",
+            "start": {
+              "down": 1,
+              "distance": 1,
+              "yardLine": 99,
+              "yardsToEndzone": 1,
+              "downDistanceText": "1st & Goal at SEA 1",
+              "shortDownDistanceText": "1st & Goal",
+              "possessionText": "SEA 1",
+              "team": {
+                "id": "7"
+              }
+            },
+            "statYardage": 1
+          },
+          {
+            "id": "4018729953797",
+            "start": {
+              "down": 1,
+              "distance": 1,
+              "yardLine": 1,
+              "yardsToEndzone": 1,
+              "downDistanceText": "1st & Goal at DEN 1",
+              "shortDownDistanceText": "1st & Goal",
+              "possessionText": "DEN 1",
+              "team": {
+                "id": "26"
+              }
+            },
+            "statYardage": 1
+          },
+          {
+            "id": "4018729954412",
+            "start": {
+              "down": 3,
+              "distance": 3,
+              "yardLine": 16,
+              "yardsToEndzone": 16,
+              "downDistanceText": "3rd & 3 at DEN 16",
+              "shortDownDistanceText": "3rd & 3",
+              "possessionText": "DEN 16",
+              "team": {
+                "id": "26"
+              }
+            },
+            "statYardage": 34
+          },
+          {
+            "id": "4018729954788",
+            "start": {
+              "down": 4,
+              "distance": 2,
+              "yardLine": 65,
+              "yardsToEndzone": 35,
+              "downDistanceText": "4th & 2 at SEA 35",
+              "shortDownDistanceText": "4th & 2",
+              "possessionText": "SEA 35",
+              "team": {
+                "id": "7"
+              }
+            },
+            "statYardage": 53
+          }
+        ],
+        "boxscore": {
+          "players": [
+            {
+              "team": {
+                "id": "26",
+                "abbreviation": "SEA"
+              },
+              "statistics": [
+                {
+                  "athletes": [
+                    {
+                      "athlete": {
+                        "id": "3912547",
+                        "displayName": "Sam Darnold"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4887558",
+                        "displayName": "Emanuel Wilson"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4429835",
+                        "displayName": "George Holani"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4035693",
+                        "displayName": "Velus Jones Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4032473",
+                        "displayName": "Rashid Shaheed"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4430878",
+                        "displayName": "Jaxon Smith-Njigba"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "2977187",
+                        "displayName": "Cooper Kupp"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4576297",
+                        "displayName": "AJ Barner"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4597703",
+                        "displayName": "Tory Horton"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "2975863",
+                        "displayName": "Eric Saubert"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4362851",
+                        "displayName": "Ernest Jones IV"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4686540",
+                        "displayName": "Tyrice Knight"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4869523",
+                        "displayName": "Nick Emmanwori"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "2971622",
+                        "displayName": "Leonard Williams"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4247808",
+                        "displayName": "Ty Okada"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4575431",
+                        "displayName": "Devon Witherspoon"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4372020",
+                        "displayName": "Josh Jobe"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4046675",
+                        "displayName": "Julian Love"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4570040",
+                        "displayName": "Byron Murphy II"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4567226",
+                        "displayName": "Derick Hall"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "16802",
+                        "displayName": "DeMarcus Lawrence"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3929636",
+                        "displayName": "Irv Charles"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4040966",
+                        "displayName": "Trevon Diggs"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4567222",
+                        "displayName": "Nehemiah Pritchett"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4243176",
+                        "displayName": "Brady Russell"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4572055",
+                        "displayName": "Mike Morris"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4605491",
+                        "displayName": "Connor O'Toole"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4689804",
+                        "displayName": "Jimmy Ciarlo"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3120358",
+                        "displayName": "Uchenna Nwosu"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "2473037",
+                        "displayName": "Jason Myers"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3929851",
+                        "displayName": "Michael Dickson"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "team": {
+                "id": "7",
+                "abbreviation": "DEN"
+              },
+              "statistics": [
+                {
+                  "athletes": [
+                    {
+                      "athlete": {
+                        "id": "4426338",
+                        "displayName": "Bo Nix"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4241985",
+                        "displayName": "J.K. Dobbins"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4568490",
+                        "displayName": "RJ Harvey"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4362748",
+                        "displayName": "Tyler Badie"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4372016",
+                        "displayName": "Jaylen Waddle"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3128429",
+                        "displayName": "Courtland Sutton"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3051876",
+                        "displayName": "Evan Engram"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4686472",
+                        "displayName": "Marvin Mims Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4431280",
+                        "displayName": "Troy Franklin"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4039018",
+                        "displayName": "Luke Wattenberg"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3919548",
+                        "displayName": "Justin Strnad"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "2612151",
+                        "displayName": "Alex Singleton"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4039059",
+                        "displayName": "Brandon Jones"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4430925",
+                        "displayName": "Jahdae Barron"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4429193",
+                        "displayName": "Kris Abrams-Draine"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4039007",
+                        "displayName": "Taylor Rapp"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4567462",
+                        "displayName": "Ja'Quan McMillian"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4037559",
+                        "displayName": "Devon Key"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3915282",
+                        "displayName": "Zach Allen"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4360259",
+                        "displayName": "Nik Bonitto"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4692048",
+                        "displayName": "Que Robinson"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4687592",
+                        "displayName": "Jonah Elliss"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3894915",
+                        "displayName": "D.J. Jones"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4428503",
+                        "displayName": "JL Skinner"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "3929914",
+                        "displayName": "Adam Prentice"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4066109",
+                        "displayName": "Eyioma Uwazurike"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4382401",
+                        "displayName": "Riley Moss"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4589212",
+                        "displayName": "Jeremy Crawshaw"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4039064",
+                        "displayName": "Malcolm Roach"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4603189",
+                        "displayName": "Sai'vion Jones"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5216101",
+                        "displayName": "Dondrea Tillman"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4565769",
+                        "displayName": "Sean Fresch"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "2985659",
+                        "displayName": "Wil Lutz"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "league": "ncf_fbs",
+      "source": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=401858263",
+      "payload": {
+        "header": {
+          "competitions": [
+            {
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "team": {
+                    "id": "2390",
+                    "abbreviation": "MIA"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "team": {
+                    "id": "52",
+                    "abbreviation": "FSU"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "scoringPlays": [
+          {
+            "id": "40185826382",
+            "type": {
+              "id": "68",
+              "text": "Rushing Touchdown",
+              "abbreviation": "TD"
+            },
+            "text": "M. Fletcher Jr. run for 7 yds, for a TD (J. Weinberg KICK)",
+            "homeScore": 7,
+            "awayScore": 0,
+            "period": {
+              "number": 1
+            },
+            "clock": {
+              "value": 452.0,
+              "displayValue": "7:32"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "2390"
+            }
+          },
+          {
+            "id": "401858263196",
+            "type": {
+              "id": "67",
+              "text": "Passing Touchdown",
+              "abbreviation": "TD"
+            },
+            "text": "A. Daniels pass to D. Riles for 23 yds, for a TD (G. Panikowski KICK)",
+            "homeScore": 7,
+            "awayScore": 7,
+            "period": {
+              "number": 2
+            },
+            "clock": {
+              "value": 832.0,
+              "displayValue": "13:52"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "52"
+            }
+          },
+          {
+            "id": "401858263262",
+            "type": {
+              "id": "24",
+              "text": "Pass Reception",
+              "abbreviation": "REC"
+            },
+            "text": "D. Mensah pass to Ma. Toney for 14 yds, for a TD (J. Weinberg KICK)",
+            "homeScore": 14,
+            "awayScore": 7,
+            "period": {
+              "number": 2
+            },
+            "clock": {
+              "value": 499.0,
+              "displayValue": "8:19"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "2390"
+            }
+          },
+          {
+            "id": "401858263356",
+            "type": {
+              "id": "68",
+              "text": "Rushing Touchdown",
+              "abbreviation": "TD"
+            },
+            "text": "A. Daniels run for 2 yds, for a TD (G. Panikowski KICK)",
+            "homeScore": 14,
+            "awayScore": 14,
+            "period": {
+              "number": 2
+            },
+            "clock": {
+              "value": 100.0,
+              "displayValue": "1:40"
+            },
+            "scoringType": {
+              "name": "touchdown",
+              "displayName": "Touchdown",
+              "abbreviation": "TD"
+            },
+            "team": {
+              "id": "52"
+            }
+          }
+        ],
+        "plays": [
+          {
+            "id": "40185826382",
+            "start": {
+              "down": 1,
+              "distance": 7,
+              "yardLine": 93,
+              "yardsToEndzone": 7,
+              "downDistanceText": "1st & Goal at FSU 7",
+              "shortDownDistanceText": "1st & Goal",
+              "possessionText": "FSU 7",
+              "team": {
+                "id": "2390"
+              }
+            },
+            "statYardage": 7
+          },
+          {
+            "id": "401858263196",
+            "start": {
+              "down": 1,
+              "distance": 10,
+              "yardLine": 23,
+              "yardsToEndzone": 23,
+              "downDistanceText": "1st & 10 at MIA 23",
+              "shortDownDistanceText": "1st & 10",
+              "possessionText": "MIA 23",
+              "team": {
+                "id": "52"
+              }
+            },
+            "statYardage": 23
+          },
+          {
+            "id": "401858263262",
+            "start": {
+              "down": 3,
+              "distance": 4,
+              "yardLine": 86,
+              "yardsToEndzone": 14,
+              "downDistanceText": "3rd & 4 at FSU 14",
+              "shortDownDistanceText": "3rd & 4",
+              "possessionText": "FSU 14",
+              "team": {
+                "id": "2390"
+              }
+            },
+            "statYardage": 14
+          },
+          {
+            "id": "401858263356",
+            "start": {
+              "down": 1,
+              "distance": 2,
+              "yardLine": 2,
+              "yardsToEndzone": 2,
+              "downDistanceText": "1st & Goal at MIA 2",
+              "shortDownDistanceText": "1st & Goal",
+              "possessionText": "MIA 2",
+              "team": {
+                "id": "52"
+              }
+            },
+            "statYardage": 2
+          }
+        ],
+        "boxscore": {
+          "players": [
+            {
+              "team": {
+                "id": "52",
+                "abbreviation": "FSU"
+              },
+              "statistics": [
+                {
+                  "athletes": [
+                    {
+                      "athlete": {
+                        "id": "4838679",
+                        "displayName": "Ashton Daniels"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5141661",
+                        "displayName": "Kevin Sperry"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5141560",
+                        "displayName": "Ousmane Kromah"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4871076",
+                        "displayName": "Quintrevion Wisner"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5222974",
+                        "displayName": "Jasen Lopez"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5160086",
+                        "displayName": "Desirrio Riles"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4870922",
+                        "displayName": "Duce Robinson"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5164350",
+                        "displayName": "Jayvan Boggs"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5164345",
+                        "displayName": "Chase Loftin"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5228122",
+                        "displayName": "Chris Jones"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5150837",
+                        "displayName": "Ashlynd Barker"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4685447",
+                        "displayName": "Daniel Lyons"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4808743",
+                        "displayName": "Omar Graham Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5085388",
+                        "displayName": "Ja'Bril Rawls"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5116973",
+                        "displayName": "Rylan Kennedy"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5147679",
+                        "displayName": "Nehemiah Chandler"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5167703",
+                        "displayName": "Mandrell Desir"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5144685",
+                        "displayName": "Ma'Khi Jones"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5075960",
+                        "displayName": "Quindarrius Jones"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5167701",
+                        "displayName": "Darryll Desir"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5372196",
+                        "displayName": "Amari Thomas"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4683154",
+                        "displayName": "Mikai Gbayor"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4899348",
+                        "displayName": "K.J. Kirkland"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5128063",
+                        "displayName": "Ricky Knight III"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5227705",
+                        "displayName": "CJ Richard Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4837247",
+                        "displayName": "Deante McCray"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5083549",
+                        "displayName": "Gabe Panikowski"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5296606",
+                        "displayName": "Daniel Hughes"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "team": {
+                "id": "2390",
+                "abbreviation": "MIA"
+              },
+              "statistics": [
+                {
+                  "athletes": [
+                    {
+                      "athlete": {
+                        "id": "5121169",
+                        "displayName": "Darian Mensah"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4870736",
+                        "displayName": "Mark Fletcher Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5079591",
+                        "displayName": "Jordan Lyle"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5159175",
+                        "displayName": "Malachi Toney"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5164365",
+                        "displayName": "Daylyn Upshaw"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4804878",
+                        "displayName": "Cooper Barkate"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5079503",
+                        "displayName": "Elija Lofton"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4430604",
+                        "displayName": "Mohamed Toure"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4682490",
+                        "displayName": "Chase Smith"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5079678",
+                        "displayName": "Justin Scott"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5259295",
+                        "displayName": "JJ Dunnigan"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5141370",
+                        "displayName": "Armondo Blount"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5127735",
+                        "displayName": "Xavier Lucas"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5196025",
+                        "displayName": "Omar Thornton"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5142262",
+                        "displayName": "Dylan Day"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "4916996",
+                        "displayName": "Ahmad Moten Sr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5079564",
+                        "displayName": "Ryan Mack"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5132631",
+                        "displayName": "Cam Pruitt"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5141569",
+                        "displayName": "Ezekiel Marcelin Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5150903",
+                        "displayName": "Zechariah Poyser"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5126999",
+                        "displayName": "Marquise Lightfoot"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5214513",
+                        "displayName": "Herbert Scroggins III"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5219069",
+                        "displayName": "Keona Davis"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5298737",
+                        "displayName": "Bryce Fitzgerald"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5079565",
+                        "displayName": "Booker Pickett Jr."
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5123219",
+                        "displayName": "Jake Weinberg"
+                      }
+                    },
+                    {
+                      "athlete": {
+                        "id": "5121892",
+                        "displayName": "Dylan Joyce"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
