@@ -1,4 +1,4 @@
-"""Verify automatic task packets and agent instruction entry points."""
+"""Verify selective task packets and model-free agent startup."""
 import hashlib
 import json
 from pathlib import Path
@@ -78,7 +78,7 @@ def test_packets_preserve_dirty_source_and_exclude_raw_prompts(session_repo, pla
     path.write_text("int score = 9;\n")
     before = git(root, "diff", "--binary")
     task = "Fix Mini hockey. Private task note: synthetic-secret-do-not-copy"
-    result = prepare(root, task, "agent-a")
+    result = prepare(root, task, "agent-a", use_planner=True)
     assert result["slices"] == ["mini-sports"]
     assert result["checkout_kind"] == "existing_checkout"
     assert git(root, "diff", "--binary") == before
@@ -95,30 +95,93 @@ def test_followups_preserve_scope_and_independent_agents_stay_separate(session_r
     planner_calls[0].extend([decision(["mini-sports"], ["mini/pane.h"]),
         decision(["mini-music"], ["music/song.py"]), decision(["music"], ["music/song.py"]),
         decision(["music"], ["music/song.py"])])
-    first = prepare(session_repo, "Fix Mini hockey", "agent-a")
+    first = prepare(session_repo, "Fix Mini hockey", "agent-a", use_planner=True)
     assert prepare(session_repo, "continue", "agent-a")["slices"] == first["slices"]
     assert prepare(session_repo, "What about shootout timing?", "agent-a")["slices"] == first["slices"]
     broadened = prepare(session_repo, "Also fix music", "agent-a", replan=True)
     assert broadened["slices"] == ["mini-music", "mini-sports"]
-    second = prepare(session_repo, "Fix music", "agent-b")
+    second = prepare(session_repo, "Fix music", "agent-b", use_planner=True)
     assert second["slices"] == ["music"]
     assert second["packet"] != first["packet"]
-    reset = prepare(session_repo, "Fix music", "agent-a", new_task=True)
+    reset = prepare(session_repo, "Fix music", "agent-a", new_task=True, use_planner=True)
     assert reset["slices"] == ["music"]
 
 
-@pytest.mark.parametrize("client,event", [("codex", "UserPromptSubmit"), ("claude", "UserPromptSubmit"),
-                                         ("gemini", "BeforeAgent")])
-def test_prompt_hooks_prepare_packets_before_planning(session_repo, client, event, planner_calls):
-    planner_calls[0].append(decision(["mini-sports"], ["mini/pane.h"]))
+@pytest.mark.parametrize("client,event", [
+    ("codex", "SessionStart"), ("codex", "SubagentStart"), ("codex", "UserPromptSubmit"),
+    ("claude", "SessionStart"), ("claude", "SubagentStart"), ("claude", "UserPromptSubmit"),
+    ("gemini", "SessionStart"), ("gemini", "BeforeAgent"),
+])
+def test_hooks_never_plan_or_create_packets(session_repo, client, event, planner_calls):
     payload = {"hook_event_name": event, "cwd": str(session_repo), "session_id": "sample", "prompt": "Fix Mini hockey"}
     result = hook(payload, client)["hookSpecificOutput"]
     assert result["hookEventName"] == event
-    assert "mini-sports" in result["additionalContext"]
-    assert "task.md" in result["additionalContext"]
+    assert "ordinary targeted searches" in result["additionalContext"]
+    assert "--plan" in result["additionalContext"]
+    assert planner_calls[1] == []
+    assert not (session_repo / ".git/agent-context").exists()
     assert git(session_repo, "status", "--porcelain") == ""
-    resumed = hook({**payload, "hook_event_name": "SessionStart"}, client)
-    assert "Resume the task packet" in resumed["hookSpecificOutput"]["additionalContext"]
+
+
+@pytest.mark.parametrize("client,event", [("codex", "UserPromptSubmit"), ("claude", "SubagentStart"),
+                                         ("gemini", "BeforeAgent")])
+def test_hooks_reuse_existing_packets_without_planning(session_repo, client, event, planner_calls):
+    cached = prepare(session_repo, "Fix Mini hockey", client + ":sample", slices=["mini-sports"])
+    packet = Path(cached["packet"])
+    before = packet.with_name("state.json").read_bytes()
+    result = hook({"hook_event_name": event, "cwd": str(session_repo), "session_id": "sample",
+                   "agent_id": "worker", "prompt": "continue"}, client)["hookSpecificOutput"]
+    assert "Resume the task packet" in result["additionalContext"]
+    assert str(packet) in result["additionalContext"]
+    assert before == packet.with_name("state.json").read_bytes()
+    assert planner_calls[1] == []
+
+
+def test_child_hook_prefers_its_own_packet(session_repo, planner_calls):
+    parent = prepare(session_repo, "Fix Mini hockey", "codex:sample", slices=["mini-sports"])
+    child = prepare(session_repo, "Inspect music", "codex:sample:worker", slices=["music"])
+    context = hook({"hook_event_name": "SubagentStart", "cwd": str(session_repo),
+                    "session_id": "sample", "agent_id": "worker"}, "codex")["hookSpecificOutput"]["additionalContext"]
+    assert child["packet"] in context and parent["packet"] not in context
+    assert planner_calls[1] == []
+
+
+def test_unspecified_scope_never_calls_luna(session_repo, planner_calls):
+    with pytest.raises(WorkspaceError, match="--slice.*--plan"):
+        prepare(session_repo, "Fix Mini hockey", "agent-a")
+    assert planner_calls[1] == []
+    assert not (session_repo / ".git/agent-context").exists()
+
+
+def test_invalidated_cache_requires_explicit_model_selection(session_repo, planner_calls):
+    first = prepare(session_repo, "Fix Mini hockey", "agent-a", slices=["mini-sports"])
+    path = session_repo / ".github/agent-workspaces.json"
+    manifest = json.loads(path.read_text())
+    manifest["components"]["mini"]["owner"] = "Updated Mini owner"
+    path.write_text(json.dumps(manifest))
+    before = Path(first["packet"]).with_name("state.json").read_bytes()
+    with pytest.raises(WorkspaceError, match="--plan"):
+        prepare(session_repo, "continue", "agent-a")
+    assert Path(first["packet"]).with_name("state.json").read_bytes() == before
+    assert planner_calls[1] == []
+
+
+def test_cli_luna_is_an_explicit_choice(session_repo, planner_calls, capsys):
+    assert main(["--repo", str(session_repo), "--task", "Fix Mini hockey"]) == 1
+    assert "--plan" in capsys.readouterr().err
+    assert planner_calls[1] == []
+    planner_calls[0].append(decision(["mini-sports"], ["mini/pane.h"]))
+    assert main(["--repo", str(session_repo), "--plan", "--task", "Fix Mini hockey"]) == 0
+    assert json.loads(capsys.readouterr().out)["planner"]["kind"] == "luna"
+    assert planner_calls[1] == ["Fix Mini hockey"]
+
+
+def test_cli_explicit_slice_needs_no_model(session_repo, planner_calls, capsys):
+    assert main(["--repo", str(session_repo), "--slice", "mini-sports", "--task", "Fix Mini hockey"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["planner"]["kind"] == "explicit"
+    assert result["slices"] == ["mini-sports"]
+    assert planner_calls[1] == []
 
 
 def test_configured_session_commands_execute_from_a_nested_directory(tmp_path):
@@ -160,7 +223,7 @@ def test_cli_rejects_missing_task_without_mutating_source(session_repo, capsys):
 
 def test_scope_ids_support_expansion_reset_and_path_safety(session_repo, planner_calls):
     planner_calls[0].extend([decision(["mini-sports"], ["mini/pane.h"]), decision(["music"], ["music/song.py"])])
-    first = prepare(session_repo, "Fix Mini hockey", "agent-a")
+    first = prepare(session_repo, "Fix Mini hockey", "agent-a", use_planner=True)
     result = prepare(session_repo, "", "other-name", paths=["mini/new.h"], scope=first["scope"],
                      reason="Add a helper for the next shooter")
     state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
@@ -169,7 +232,7 @@ def test_scope_ids_support_expansion_reset_and_path_safety(session_repo, planner
     continued = prepare(session_repo, "continue", "agent-a")
     state = json.loads(Path(continued["packet"]).with_name("state.json").read_text())
     assert "mini/new.h" in state["context_files"]
-    reset = prepare(session_repo, "Fix music", "unused", scope=first["scope"], new_task=True)
+    reset = prepare(session_repo, "Fix music", "unused", scope=first["scope"], new_task=True, use_planner=True)
     assert reset["slices"] == ["music"]
     with pytest.raises(WorkspaceError, match="scope ID"):
         prepare(session_repo, "Fix Mini hockey", "test", scope="../../outside")
@@ -177,7 +240,7 @@ def test_scope_ids_support_expansion_reset_and_path_safety(session_repo, planner
 
 def test_packet_lists_no_unrelated_initial_mini_context(planner_calls):
     planner_calls[0].append(decision(["mini-sports"], ["esp32_hub75/src/mini/rendering/sports_pane.h"]))
-    result = prepare(ROOT, "Fix Mini hockey shootout rendering", "startup-minimal-check", new_task=True)
+    result = prepare(ROOT, "Fix Mini hockey shootout rendering", "startup-minimal-check", new_task=True, use_planner=True)
     state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
     assert not any(path.startswith(("TickerControlApp/", "ticker_core/features/", "sports_ticker/dashboard_v2/"))
                    for path in state["context_files"])

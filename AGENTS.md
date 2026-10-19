@@ -4,22 +4,31 @@ This repository owns Ticker Server, Ticker Six, Ticker Mini, and the iOS control
 
 ## Start each task
 
-If a startup hook supplied a task packet, read that packet before source exploration.
-Otherwise, run this command with a short description of the current task:
+Use ordinary targeted searches for small tasks with a clear code location.
+Read only the relevant symbols and the nearest scoped instructions.
+If a supplied task packet matches the task, reuse it before source exploration.
+
+For a known component, select its manifest slice without a model call:
 
 ```text
-python tools/workspaces/start.py --task "<task summary>"
+python tools/workspaces/start.py --slice <slice> --task "<task summary>"
 ```
 
-Use listed files as search entry points. Read only the symbols and sections needed for the task.
-Build files do not need initial reading. Reuse unchanged instructions already loaded in this session.
-GPT-6 Luna selects initial context. The manager enforces dependencies and file access rules.
-Continuation prompts reuse the packet. If the task adds another area, use `start.py --replan` with its scope ID.
-Search selected paths with `rg` before searching the repository.
+For broad, unfamiliar, or cross-component tasks, request GPT-6 Luna explicitly:
+
+```text
+python tools/workspaces/start.py --plan --task "<task summary>"
+```
+
+Startup hooks reuse existing context and never call a model.
+Use packet files as search entry points. Build files do not need initial reading.
+The manager enforces dependencies and file access rules. The manifest does not require Luna.
+Reuse unchanged instructions and task packets. Request another model plan only with `--replan` and the current scope ID.
+Use `rg` to search selected paths before broad repository searches.
 If a dependency crosses the selected boundary, expand the scope and record the reason.
 Read nested `AGENTS.md` files before editing their directories.
 Keep the original task scope when the user sends a continuation or correction.
-For an independent task, start a new task packet.
+For an independent task, use ordinary search or create a new explicit scope with `--new-task`.
 If repository instructions change, read the changed instructions again.
 
 ## Engineering rules

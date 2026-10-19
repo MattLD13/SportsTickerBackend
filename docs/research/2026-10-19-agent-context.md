@@ -2,6 +2,14 @@
 
 Reviewed on October 19, 2026.
 
+## Current policy
+
+The [NFL agent comparison](2026-10-19-nfl-alert-agent-comparison.md) found higher total token use with automatic Luna planning.
+Small tasks now use ordinary targeted search. Known components can use manifest slices without a model.
+Luna requires an explicit `--plan` or `--replan` request for broad, unfamiliar, or cross-component work.
+Hooks only restore existing packet references or provide lightweight guidance.
+The remaining sections record the initial design review.
+
 ## Decision
 
 Keep one short shared guide and scoped domain guides.

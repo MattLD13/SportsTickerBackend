@@ -9,15 +9,15 @@ Git owns commits, branches, staging, and history.
 Workspace selection does not control deployment selection.
 `.github/deployment-paths.json` continues to own deployment selection.
 
-## Automatic task context
+## Selective task context
 
 | Part | Responsibility |
 |---|---|
 | `AGENTS.md` | Shared repository rules. The file does not create an agent. |
 | Scoped `AGENTS.md` files | Rules for the directories involved in the task. |
 | `CLAUDE.md` and `GEMINI.md` | Small bridges to the shared guide. |
-| Startup hooks | Start context preparation before the coding agent plans. |
-| GPT-6 Luna | Recommend files, symbols, expected edits, and checks. |
+| Startup hooks | Reuse an existing packet or provide search guidance without a model call. |
+| GPT-6 Luna | Plan context only after an explicit `--plan` or `--replan` request. |
 | Workspace manager | Enforce dependency, ownership, and credential rules. |
 | Coding agent | Implement the task, validate the change, and report results. |
 
@@ -30,24 +30,39 @@ Copilot's bridge points to the same guide. Cursor uses `AGENTS.md` directly.
 | Codex | `.codex/hooks.json` uses `SessionStart`, `SubagentStart`, and `UserPromptSubmit`. |
 | Claude Code | `.claude/settings.json` uses the same events. |
 | Gemini CLI | `.gemini/settings.json` uses `SessionStart` and `BeforeAgent`. |
-| Cursor, Copilot, and other compatible agents | Repository instructions direct the agent to the startup command. |
+| Cursor, Copilot, and other compatible agents | Repository instructions describe normal search and optional context planning. |
 
-After the client trusts repository hooks, each prompt prepares context before agent planning.
-Each agent session gets separate evidence under `.git/agent-context/<scope-id>/`.
-The hook starts GPT-6 Luna through the signed-in Codex CLI.
-It performs no source edits, test execution, checkout changes, or hardware operations.
-It hashes task text instead of storing raw prompts.
+After the client trusts repository hooks, each prompt receives lightweight guidance or a reference to an existing packet.
+Hooks never start Luna, inspect prompt text, or create a task packet.
+They perform no source edits, test execution, checkout changes, or hardware operations.
 
-For an agent without active hooks, the root guide directs this command:
+Use ordinary targeted searches for small tasks with a clear code location.
+Read the relevant scoped instructions and source sections.
+These tasks do not require a startup command or model call.
+
+For a known component, select a manifest slice directly:
 
 ```powershell
-python tools/workspaces/start.py --task "Fix Mini hockey shootout rendering"
+python tools/workspaces/start.py --slice mini-sports --task "Fix Mini hockey shootout rendering"
 ```
 
+This command resolves component dependencies and checks without Luna.
+The manifest and sparse workspace tools remain available independently of model planning.
+
+For broad, unfamiliar, or cross-component tasks, request Luna explicitly:
+
+```powershell
+python tools/workspaces/start.py --plan --task "Trace shared hockey shootout data through both renderers"
+```
+
+The coding agent decides when planning is useful. Hooks do not classify tasks or invoke another agent.
 The result identifies a task packet, scope ID, context count, and build count.
-Read the packet, then its relevant source files.
-A Mini hockey task selects Mini sports. A shared hockey task selects both renderers and the app contract.
-Unknown edit ownership selects shared consumers. The agent can select explicit slices when the planning result needs correction.
+Read the packet, then only the source sections needed for the task.
+Task evidence stays under `.git/agent-context/<scope-id>/`.
+The manager hashes task text instead of storing raw prompts.
+
+Unknown edit ownership includes shared consumers.
+Luna suggestions cannot narrow a shared contract change below its affected consumers.
 
 For a dependency expansion, use the current packet's scope ID:
 
@@ -59,11 +74,11 @@ python tools/workspaces/start.py --scope <scope-id> --path tools/workspaces/new_
 For an independent task in the same client session, reset that scope:
 
 ```powershell
-python tools/workspaces/start.py --scope <scope-id> --new-task --task "Fix Mini weather"
+python tools/workspaces/start.py --scope <scope-id> --new-task --slice mini-weather --task "Fix Mini weather"
 ```
 
 Continuation prompts reuse the recorded plan without another model call.
-For a changed task boundary, request a new plan:
+For a broad task that needs another model plan, request it explicitly:
 
 ```powershell
 python tools/workspaces/start.py --scope <scope-id> --replan --task "Also inspect Mini artwork scheduling"
@@ -79,7 +94,8 @@ For isolated work pinned to GitHub, use the sparse workspace command below.
 
 Install Codex CLI and sign in with the account that can use `gpt-6-luna`.
 The planner uses that login. It does not require a separate API key.
-Every supported agent client uses this same local planner.
+Every supported agent client can request this same local planner.
+A normal prompt or session start does not invoke it.
 
 1. Luna receives the task, component descriptions, check names, and a filtered repository file index.
 2. Luna can request source excerpts through the manager.
@@ -98,9 +114,11 @@ The manager sends only requested excerpts and excludes credential paths.
 Planning has a 60-second limit and at most three model rounds.
 The task record includes model identity, elapsed time, token usage, inspections, and client diagnostic counts.
 Raw prompts, excerpts, and client event streams do not enter the task record.
-A new task, explicit replan, changed manifest, or planner version invalidates the cached selection.
-A normal continuation reuses it.
-If planning fails, the command reports failure. It does not select scope through hidden keyword rules.
+A normal continuation reuses a valid packet without another model call.
+A changed manifest or planner version invalidates the cached selection.
+If the selection is invalid, choose explicit slices or request Luna again.
+Invalidation never starts a model automatically.
+If explicit planning fails, the command reports failure. It does not select scope through hidden keyword rules.
 The existing explicit `--slice` and `--path` commands remain available for agent-directed scope changes.
 
 The runner uses [Codex structured output](https://learn.chatgpt.com/docs/non-interactive-mode) with the [GPT-6 Luna model](https://developers.openai.com/api/docs/models/gpt-6-luna).
@@ -108,6 +126,8 @@ The runner uses [Codex structured output](https://learn.chatgpt.com/docs/non-int
 The model selects useful context. Code owns required dependencies and credential exclusions.
 If an expected edit reaches a shared owner, the manager includes every declared consumer.
 Model suggestions do not override repository instructions or authorize publishing.
+
+The [NFL comparison](../research/2026-10-19-nfl-alert-agent-comparison.md) records the measured reason for selective planning.
 
 ## Client limits
 

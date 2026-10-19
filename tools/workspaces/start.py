@@ -51,7 +51,7 @@ def inventory(root: Path, manifest: dict, revision: str) -> dict[str, str]:
 def prepare(root: Path, task: str, session: str, slices: list[str] | None = None,
             paths: list[str] | None = None, new_task: bool = False,
             scope: str | None = None, reason: str | None = None, replan: bool = False,
-            planner=None) -> dict:
+            planner=None, use_planner: bool = False) -> dict:
     root = Path(git(root, "rev-parse", "--show-toplevel").strip()).resolve()
     git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
     managed = (git_dir / "agent-workspace/state.json").is_file()
@@ -82,7 +82,7 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
             selected = ["shared-sports"]
         reasons = ["The agent selected explicit task scope"]
         evidence = {"kind": "explicit", "version": VERSION}
-    else:
+    elif use_planner or replan:
         decision = (planner or plan_task)(root, task, manifest, tracked, previous["slices"] if previous else None)
         selected, reasons = decision["slices"], [decision["reason"][:600]]
         entry_points = decision["context"]
@@ -93,6 +93,8 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
             if set(decision["checks"]) & set(component.get("checks", [])):
                 forced.add(name)
         evidence = decision["evidence"]
+    else:
+        raise WorkspaceError("Select --slice or --path. Use --plan when Luna context planning is useful.")
     if reason:
         reasons.append(reason)
     if previous:
@@ -164,33 +166,28 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
             "build_files": len(plan["build_files"]), "checkout_kind": state["checkout_kind"], "planner": evidence}
 
 
-def hook(payload: dict, client: str, planner=None) -> dict:
+def hook(payload: dict, client: str) -> dict:
+    """Offer ordinary search guidance or an existing packet without model calls."""
     event = payload.get("hook_event_name", "")
-    root = Path(payload.get("cwd", str(ROOT)))
-    session = client + ":" + str(payload.get("session_id", "default"))
-    if payload.get("agent_id"):
-        session += ":" + str(payload["agent_id"])
-    if event in ("SessionStart", "SubagentStart"):
-        git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
-        parent_session = client + ":" + str(payload.get("session_id", "default"))
-        recorded = git_dir / "agent-context" / hashlib.sha256(parent_session.encode()).hexdigest()[:24] / "task.md"
-        context = ("Follow the root AGENTS.md. Before repository exploration, run "
-                   "python tools/workspaces/start.py --task-file <task-text-file>. "
-                   "Read the resulting task packet first. If a prompt hook already prepared a packet, reuse it. "
-                   "After compaction, resume the recorded task scope.")
-        if recorded.is_file():
-            context = f"Resume the task packet at {recorded}. Read only the files needed for your assigned work."
-    elif event in ("UserPromptSubmit", "BeforeAgent"):
-        result = prepare(root, str(payload.get("prompt", "")), session, planner=planner)
-        context = (f"Task scope: {', '.join(result['slices'])}. "
-                   f"Scope ID: {result['scope']}. "
-                   f"Read the task packet at {result['packet']} before source exploration. "
-                   f"Use its {result['context_files']} source entry points and read only relevant sections. "
-                   f"Its {result['build_files']} build files do not need initial reading. "
-                   "If requirements add another area, run start.py --replan with this scope ID and an updated task summary. "
-                   "Scope selection controls context. It does not prove that unselected files are unrelated.")
-    else:
+    if event not in ("SessionStart", "SubagentStart", "UserPromptSubmit", "BeforeAgent"):
         raise WorkspaceError("Unsupported agent hook event")
+    root = Path(payload.get("cwd", str(ROOT)))
+    parent_session = client + ":" + str(payload.get("session_id", "default"))
+    sessions = [parent_session]
+    if payload.get("agent_id"):
+        sessions.insert(0, parent_session + ":" + str(payload["agent_id"]))
+    git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
+    context = ("Follow the root AGENTS.md and use ordinary targeted searches for small, clearly located tasks. "
+               "For a known component, use tools/workspaces/start.py --slice <slice> --task <summary>. "
+               "For broad, unfamiliar, or cross-component work, explicitly request Luna with start.py --plan --task <summary>. "
+               "This hook makes no model call and creates no task packet.")
+    for session in sessions:
+        recorded = git_dir / "agent-context" / hashlib.sha256(session.encode()).hexdigest()[:24] / "task.md"
+        if recorded.is_file():
+            context = (f"Resume the task packet at {recorded} if it matches the current task. "
+                       "Read only the relevant sections. For an independent task, use ordinary search or create an explicit new scope. "
+                       "Luna planning requires --plan or --replan. This hook makes no model call.")
+            break
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}}
 
 
@@ -205,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--slice", action="append", default=[])
     parser.add_argument("--path", action="append", default=[])
     parser.add_argument("--new-task", action="store_true")
+    parser.add_argument("--plan", action="store_true", help="Request Luna for broad, unfamiliar, or cross-component work")
     parser.add_argument("--replan", action="store_true")
     parser.add_argument("--hook", choices=("codex", "claude", "gemini"))
     args = parser.parse_args(argv)
@@ -214,7 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             task = args.task_file.read_text(encoding="utf-8") if args.task_file else args.task
             result = prepare(args.repo, task or "", args.session or "manual:" + uuid4().hex,
-                             args.slice, args.path, args.new_task, args.scope, args.reason, args.replan)
+                             args.slice, args.path, args.new_task, args.scope, args.reason, args.replan,
+                             use_planner=args.plan)
         print(json.dumps(result))
         return 0
     except (WorkspaceError, OSError, ValueError, KeyError) as error:
