@@ -7,11 +7,12 @@ import secrets
 from collections.abc import Callable
 from pathlib import Path
 from typing import Final
-from urllib.parse import urlencode
 
 from flask import Flask
+from backend_ops.incidents import IncidentStore, release_id
 
 from sports_ticker.api.app import create_app
+from sports_ticker.providers.factory import create_provider
 from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.assets.mini_artwork import MiniArtworkService
 from sports_ticker.application import BackendApplication, BackendRuntime, RefreshScheduler, RefreshService
@@ -20,35 +21,11 @@ from sports_ticker.application.provider_demand import ProviderDemand
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.firmware import FirmwareManifest
-from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService, SpotifyMusicSource
-from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, FOTMOB_LEAGUES, TEAM_CATALOG_PATHS, league_for
-from sports_ticker.providers import (
-    EspnScoreboardProvider,
-    EspnTeamCatalog,
-    FotMobSoccerProvider,
-    FlightsProvider,
-    GolfProvider,
-    MusicProvider,
-    HybridWeatherProvider,
-    WeatherLocationResolver,
-    RacingProvider,
-    NewsProvider,
-    StockProvider,
-)
-from sports_ticker.providers.espn_fastcast import EspnFastcastSource, fastcast_topic
-from sports_ticker.providers.live_sources import (
-    ClockProvider,
-    EspnGolfSource,
-    EspnNewsSource,
-    FinnhubStockSource,
-    FlightRadarSource,
-)
-from sports_ticker.providers.news_transactions import NhlTradeTrackerSource
-from sports_ticker.providers.nhl_live import NhlLiveSituationSource
-from sports_ticker.providers.racing_live import LiveRacingSource
+from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService
+from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, FOTMOB_LEAGUES, TEAM_CATALOG_PATHS
+from sports_ticker.providers import EspnTeamCatalog, WeatherLocationResolver
 
 
-_ESPN_BASE: Final = "https://site.web.api.espn.com/apis/site/v2/sports"
 _INTERVALS: Final = {
     "espn": 5.0,
     "fotmob": 5.0,
@@ -74,10 +51,11 @@ def create_production_application(
     _provision_initial_ticker(repository)
     spotify = SpotifyIntegrationService(repository, SpotifyConfig.from_environment())
     catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS)
-    providers = _providers(spotify, catalog)
+    providers = {name: create_provider(name, spotify=spotify, catalog=catalog) for name in _INTERVALS}
     snapshots = SnapshotStore()
     refresh = RefreshService(providers.values(), snapshots)
-    scheduler = RefreshScheduler(refresh)
+    incidents = IncidentStore(Path(os.environ.get("TICKER_INCIDENT_DIR", path.parent / "backend-incidents")))
+    scheduler = RefreshScheduler(refresh, incidents=incidents)
     for name, provider in providers.items():
         scheduler.register_provider(
             name,
@@ -99,6 +77,7 @@ def create_production_application(
     runtime = BackendRuntime(
         scheduler,
         application.event_service,
+        incidents=incidents,
         poll_interval=_positive_float(os.environ.get("TICKER_REFRESH_TICK_SECONDS", "0.2")),
     )
     firmware_manifest = FirmwareManifest.from_environment()
@@ -115,6 +94,8 @@ def create_production_application(
     app.extensions["sports_ticker.snapshot_store"] = snapshots
     app.extensions["sports_ticker.scheduler"] = scheduler
     app.extensions["sports_ticker.runtime"] = runtime
+    app.extensions["sports_ticker.incidents"] = incidents
+    app.config["BACKEND_RELEASE"] = release_id()
     app.config["DASHBOARD_ASSET_CACHE"] = Path(
         os.environ.get("TICKER_DASHBOARD_ASSET_CACHE", path.parent / "rewrite_assets")
     )
@@ -145,46 +126,6 @@ def start_runtime(app: Flask) -> Callable[[], None]:
         app.extensions["sports_ticker.backend_application"].close()
 
     return stop
-
-
-def _providers(
-    spotify: SpotifyIntegrationService,
-    catalog: EspnTeamCatalog,
-) -> dict[str, object]:
-    scoreboard_urls = {
-        league: _scoreboard_url(league, path)
-        for league, path in ESPN_SCOREBOARD_PATHS.items()
-    }
-    fastcast = EspnFastcastSource(
-        {league: fastcast_topic(url) for league, url in scoreboard_urls.items()}
-    )
-    nhl_situation_source = NhlLiveSituationSource()
-    news_urls = {
-        league: f"{_ESPN_BASE}/{path}/news"
-        for league, path in TEAM_CATALOG_PATHS.items()
-    }
-    return {
-        "espn": EspnScoreboardProvider(
-            scoreboard_urls,
-            fastcast=fastcast,
-            nhl_situation_source=nhl_situation_source,
-        ),
-        "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
-        "news": NewsProvider(
-            EspnNewsSource(
-                news_urls,
-                team_color_lookup=catalog.team_colors,
-                transaction_confirmation_source=NhlTradeTrackerSource(catalog.team_name_map),
-            )
-        ),
-        "weather": HybridWeatherProvider(),
-        "golf": GolfProvider(EspnGolfSource()),
-        "racing": RacingProvider(LiveRacingSource()),
-        "stock": StockProvider(FinnhubStockSource()),
-        "flights": FlightsProvider(FlightRadarSource()),
-        "music": MusicProvider(SpotifyMusicSource(spotify)),
-        "clock": ClockProvider(),
-    }
 
 
 def _provider_fetch(provider: object):
@@ -288,14 +229,6 @@ def _provision_initial_ticker(repository: TickerRepository) -> None:
         name=os.environ.get("TICKER_INITIAL_TICKER_NAME", "Ticker"),
         pairing=PairingState(pairing_code=f"{secrets.randbelow(1_000_000):06d}"),
     )
-
-
-def _scoreboard_url(league: str, path: str) -> str:
-    """Build each ESPN scoreboard URL with its own college grouping."""
-
-    url = f"{_ESPN_BASE}/{path}/scoreboard"
-    query = dict(league_for(league).scoreboard_query)
-    return f"{url}?{urlencode(query)}" if query else url
 
 
 __all__ = ["create_production_application", "start_runtime"]

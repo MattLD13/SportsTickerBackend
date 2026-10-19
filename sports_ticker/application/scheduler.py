@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import inspect
 import time
 from inspect import Parameter, signature
 from collections.abc import Callable, Mapping
@@ -10,6 +12,8 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from typing import Any, Protocol, TypeAlias
+
+from .provider_recovery import ProviderRecovery
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers import ProviderResult, normalize_settings
@@ -161,9 +165,14 @@ class RefreshScheduler:
         *,
         monotonic: MonotonicClock = time.monotonic,
         wall_clock: WallClock = _utc_now,
+        incidents=None,
+        recovery: ProviderRecovery | None = None,
     ) -> None:
         """Capture refresh and clock ports without starting background work."""
 
+        self._incidents = incidents
+        self.recovery = recovery or ProviderRecovery()
+        self.active_provider = None
         self._refresh_service = refresh_service
         self._monotonic = monotonic
         self._wall_clock = wall_clock
@@ -248,6 +257,10 @@ class RefreshScheduler:
             {name: job.health for name, job in self._providers.items()}
         )
 
+    def recovery_health(self) -> dict:
+        """Expose circuit state using the scheduler's own monotonic clock."""
+        return self.recovery.snapshot(self._monotonic())
+
     def get_health(self, name: str) -> SchedulerHealth:
         """Return immutable health for one registered provider."""
 
@@ -330,7 +343,13 @@ class RefreshScheduler:
                 if ticker_id not in active_by_name[job.name]:
                     skipped += 1
                     continue
+                key = settings_key_for(job, ticker_id, settings)
+                if not self.recovery.permitted(job.name, ticker_id, key, current):
+                    skipped += 1
+                    continue
                 attempted += 1
+                result = None
+                self.active_provider = job.name
                 try:
                     result = _run_provider_refresh(job.refresh, ticker_id, settings)
                     ok, error = _refresh_succeeded(result)
@@ -340,14 +359,31 @@ class RefreshScheduler:
                 except Exception as error:
                     message = _error_text(error)
                     errors.append((ticker_id, message))
+                    retry_at = self.recovery.failed(job.name, ticker_id, key, current)
+                    if self._incidents is not None:
+                        diagnostic = getattr(getattr(result, "health", None), "diagnostic", None)
+                        self._incidents.record("provider_failure", component=job.name, error=error, context={
+                            "ticker_id": ticker_id, "settings_fingerprint": hashlib.sha256(repr(key).encode()).hexdigest(),
+                            "entrypoint": getattr(job.refresh, "__module__", "") + "." + getattr(job.refresh, "__qualname__", ""),
+                            "source_file": inspect.getsourcefile(job.refresh) if inspect.isfunction(job.refresh) or inspect.ismethod(job.refresh) else None,
+                            "retry_in_seconds": max(0, retry_at - current), "source_failure": dict(diagnostic) if diagnostic else None,
+                        })
                 else:
+                    recovered = self.recovery.succeeded(job.name, ticker_id, key)
+                    if recovered and self._incidents is not None:
+                        self._incidents.record("provider_recovered", component=job.name, context={"ticker_id": ticker_id})
                     if warning:
                         warnings.append((ticker_id, warning))
+                        if self._incidents is not None:
+                            self._incidents.record("provider_degraded", component=job.name, error=warning,
+                                                   context={"ticker_id": ticker_id, "entrypoint": getattr(job.refresh, "__qualname__", "")})
                     data_by_ticker[ticker_id] = _CachedProviderData(
                         settings_key=settings_key_for(job, ticker_id, settings),
                         value=_freeze(result),
                     )
                     success_count += 1
+                finally:
+                    self.active_provider = None
 
             if not attempted:
                 health = replace(job.health, next_due=wall_due)

@@ -4,6 +4,7 @@ on:
   push:
     branches: ['main']
     paths:
+      - 'backend_ops/**'
       - 'sports_ticker/**'
       - 'ticker_core/**'
       - 'docs/contracts/**'
@@ -12,6 +13,7 @@ on:
       - '.github/workflows/static-checks.yml'
   pull_request:
     paths:
+      - 'backend_ops/**'
       - 'sports_ticker/**'
       - 'ticker_core/**'
       - 'docs/contracts/**'
@@ -34,8 +36,8 @@ jobs:
       - name: Install static check tools
         run: python -m pip install 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
       - name: Compile Python sources
-        run: python -m compileall -q sports_ticker ticker_core
+        run: python -m compileall -q sports_ticker ticker_core backend_ops
       - name: Check Python correctness
-        run: python -m ruff check sports_ticker ticker_core
+        run: python -m ruff check sports_ticker ticker_core backend_ops
       - name: Check scoped Python types
         run: python -m mypy

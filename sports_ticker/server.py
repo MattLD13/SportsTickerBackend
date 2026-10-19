@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import faulthandler
+import signal
 
 from dotenv import load_dotenv
 from hypercorn.asyncio import serve
@@ -29,9 +31,14 @@ def server_config() -> Config:
 def main() -> None:
     """Load deployment settings and let ASGI lifespan own refresh work."""
 
+    faulthandler.enable()
+    stack_signal = getattr(signal, "SIGUSR2", None)
+    if stack_signal is not None:
+        faulthandler.register(stack_signal, all_threads=True)
     load_dotenv()
     config = server_config()
     app = create_asgi_application()
+    app.flask_app.config["STACK_DUMP_SIGNAL"] = "SIGUSR2" if stack_signal is not None else None
     asyncio.run(serve(app, config, mode="asgi"))
 
 

@@ -367,7 +367,10 @@ def test_server_main_loads_environment_and_serves_asgi(monkeypatch):
     """Use the production factory after loading environment settings."""
 
     calls = []
-    application = object()
+    application = asgi.BackendASGI(Flask("server-main"))
+    monkeypatch.setattr(server.faulthandler, "enable", lambda: None)
+    if hasattr(server.faulthandler, "register"):
+        monkeypatch.setattr(server.faulthandler, "register", lambda *args, **kwargs: None)
     monkeypatch.setattr(server, "load_dotenv", lambda: calls.append("environment"))
     monkeypatch.setattr(server, "create_asgi_application", lambda: calls.append("factory") or application)
 

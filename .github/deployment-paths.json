@@ -15,9 +15,12 @@
     "requirements.txt",
     "requirements-backend.txt",
     "*.json",
-    "ticker.service"
+    "ticker.service",
+    "backend_ops/**"
   ],
-  "mini": ["esp32_hub75/**"],
+  "mini": [
+    "esp32_hub75/**"
+  ],
   "controller": [
     "ticker_controller/**",
     "ticker_core/**",

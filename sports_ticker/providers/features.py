@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+import traceback
 from typing import Any, Protocol, TypeAlias
 
 from sports_ticker.domain import DisplaySettings
@@ -82,9 +83,10 @@ class _FeatureProvider:
                 return result
             return self._stale_result(settings, result.health.error or "source unhealthy", cache_scope=cache_scope)
         except Exception as error:
-            return self._stale_result(settings, str(error) or type(error).__name__, cache_scope=cache_scope)
+            return self._stale_result(settings, str(error) or type(error).__name__, cache_scope=cache_scope,
+                                      diagnostic={"exception_type": type(error).__name__, "traceback": "".join(traceback.format_exception(error))})
 
-    def _stale_result(self, settings: DisplaySettings, error: str, *, cache_scope: str = "") -> ProviderResult:
+    def _stale_result(self, settings: DisplaySettings, error: str, *, cache_scope: str = "", diagnostic=None) -> ProviderResult:
         result = self._stale_cache.get(settings, scope=cache_scope)
         if result is None:
             return ProviderResult(
@@ -92,6 +94,7 @@ class _FeatureProvider:
                     healthy=False,
                     provider=self.provider_name,
                     error=f"stale: {error}",
+                    diagnostic=diagnostic,
                 )
             )
         return ProviderResult(
@@ -103,6 +106,7 @@ class _FeatureProvider:
                 healthy=False,
                 provider=self.provider_name,
                 error=f"stale: {error}",
+                    diagnostic=diagnostic,
             ),
         )
 

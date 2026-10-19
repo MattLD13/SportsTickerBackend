@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Any, Protocol, TypeAlias, runtime_checkable
@@ -39,12 +39,15 @@ class ProviderHealth:
     healthy: bool = True
     provider: str = "provider"
     error: str | None = None
+    diagnostic: Mapping[str, Any] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Normalize provider health text."""
 
         object.__setattr__(self, "healthy", bool(self.healthy))
         object.__setattr__(self, "provider", str(self.provider).strip() or "provider")
+        if self.diagnostic is not None:
+            object.__setattr__(self, "diagnostic", _freeze(self.diagnostic))
         if self.error is not None:
             object.__setattr__(self, "error", str(self.error))
 

@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, redirect, request, send_from_directory
+from backend_ops.incidents import redact
 
 from sports_ticker.fleet.device_credentials import device_token_hash
 from sports_ticker.application.composition import BackendApplication
@@ -131,13 +132,19 @@ def register_routes(
                 for name, item in scheduler_health.items()
             }
         degraded = any(not item["healthy"] for item in providers.values())
+        runtime = app.extensions.get("sports_ticker.runtime")
+        runtime_health = runtime.status() if runtime is not None else {"enabled": False, "ready": True}
         return jsonify(
             {
                 "api_version": "v2",
-                "status": "degraded" if degraded else "ok",
+                "status": "degraded" if degraded or not runtime_health["ready"] else "ok",
+                "release": app.config.get("BACKEND_RELEASE", "development"),
+                "runtime": runtime_health,
+                "diagnostics": {"stack_signal": app.config.get("STACK_DUMP_SIGNAL")},
                 "scheduler": {
                     "enabled": scheduler_health is not None,
                     "providers": providers,
+                    "recovery": application.scheduler.recovery_health() if application.scheduler is not None else {},
                 },
             }
         )
@@ -923,7 +930,7 @@ def _scheduler_health_value(health: Any) -> dict[str, Any]:
     return {
         "healthy": not bool(last_error),
         "last_success": _json_value(last_success),
-        "last_error": _json_value(last_error),
+        "last_error": redact(_json_value(last_error)),
         "next_due": _json_value(next_due),
         "consecutive_failures": int(failures),
         "refresh_calls": int(getattr(health, "refresh_calls", 0)),

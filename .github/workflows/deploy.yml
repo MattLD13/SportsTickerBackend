@@ -70,9 +70,9 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -r requirements-backend.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
       - name: Compile Python sources
-        run: python -m compileall -q sports_ticker ticker_core
+        run: python -m compileall -q sports_ticker ticker_core backend_ops
       - name: Check Python correctness
-        run: python -m ruff check sports_ticker ticker_core
+        run: python -m ruff check sports_ticker ticker_core backend_ops
       - name: Check scoped Python types
         run: python -m mypy
       - name: Build public layouts from current Mini firmware
@@ -251,6 +251,7 @@ jobs:
         run: |
           SHA=$(git rev-parse --short=12 HEAD)
           echo "${SHA}" > VERSION
+          git rev-parse HEAD > RELEASE_SHA
           echo "Version: ${SHA}"
 
       - name: Prepare shared renderer ownership
@@ -272,7 +273,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "sports_ticker/**,ticker_core/**,requirements.txt,requirements-backend.txt,ticker.service,VERSION"
+          source:   "sports_ticker/**,ticker_core/**,requirements.txt,requirements-backend.txt,ticker.service,VERSION,RELEASE_SHA,backend_ops/**"
           target:   "/home/${{ secrets.SSH_USER }}/"
 
       - name: Write backend environment and restart backend

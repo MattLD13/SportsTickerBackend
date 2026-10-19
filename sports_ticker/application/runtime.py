@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
-from threading import Event
+from threading import Event, Lock
 from typing import Protocol, TypeAlias
 
 from .events import EventService
@@ -34,6 +34,8 @@ class BackendRuntime:
         *,
         monotonic: MonotonicClock = time.monotonic,
         wait: WaitStop | None = None,
+        incidents=None,
+        stall_seconds: float = 90.0,
     ) -> None:
         """Capture scheduler, cleanup, clock, and wait ports without starting work."""
 
@@ -49,6 +51,14 @@ class BackendRuntime:
         if wait is not None and not callable(wait) and not callable(getattr(wait, "wait", None)):
             raise TypeError("wait must be callable or provide wait(timeout)")
 
+        self._incidents = incidents
+        self._lock = Lock()
+        self._running = False
+        self._started_at = None
+        self._completed_at = None
+        self._cycles = 0
+        self._last_error = None
+        self._stall_seconds = stall_seconds
         self.scheduler = scheduler
         self.event_service = event_service
         self.poll_interval = interval
@@ -59,18 +69,52 @@ class BackendRuntime:
     def run_once(self) -> tuple[str, ...]:
         """Run one scheduler pass and remove expired durable events."""
 
+        with self._lock:
+            self._started_at = self._monotonic()
         try:
-            return self.scheduler.run_due(self._monotonic())
-        finally:
-            self.event_service.remove_expired()
+            try:
+                result = self.scheduler.run_due(self._monotonic())
+            finally:
+                self.event_service.remove_expired()
+        except Exception as error:
+            with self._lock:
+                self._last_error = type(error).__name__
+            if self._incidents is not None:
+                self._incidents.record("runtime_failure", component="refresh_runtime", error=error,
+                                       context={"active_provider": getattr(self.scheduler, "active_provider", None)})
+            raise
+        else:
+            with self._lock:
+                self._completed_at = self._monotonic()
+                self._cycles += 1
+                self._last_error = None
+            return result
 
     def run(self) -> None:
         """Run passes until the injected wait primitive reports shutdown."""
 
-        while True:
-            self.run_once()
-            if self._wait_for_next_pass():
-                return
+        with self._lock:
+            self._running = True
+        try:
+            while True:
+                self.run_once()
+                if self._wait_for_next_pass():
+                    return
+        finally:
+            with self._lock:
+                self._running = False
+
+    def status(self) -> dict:
+        """Report local loop progress independently of upstream provider availability."""
+        with self._lock:
+            now = self._monotonic()
+            age = None if self._completed_at is None else max(0, now - self._completed_at)
+            return {"enabled": True, "running": self._running,
+                    "ready": self._running and age is not None and age < self._stall_seconds,
+                    "last_completed_age_seconds": age, "cycles": self._cycles,
+                    "active_provider": getattr(self.scheduler, "active_provider", None),
+                    "cycle_age_seconds": None if self._started_at is None else max(0, now - self._started_at),
+                    "last_error_type": self._last_error}
 
     def stop(self) -> None:
         """Request shutdown when the runtime uses its default wait primitive."""
