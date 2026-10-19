@@ -95,7 +95,16 @@ It does not repeatedly deploy a quarantined revision.
 
 Run `gh workflow run backend-diagnostics.yml -f component=music` to collect music evidence.
 Use `component=all` to collect all components.
-Download the private `backend-evidence-*` workflow artifact.
+Download the encrypted `backend-evidence-*` workflow artifact.
+The artifact contains `backend-report.p7m`.
+The repository contains only the public encryption certificate.
+The private decryption key remains at `~/.ssh/ticker_backend_diagnostics.pem` on the operator PC.
+Decrypt the artifact before reading the report.
+
+```powershell
+& 'C:\Program Files\Git\usr\bin\openssl.exe' cms -decrypt -binary -inform DER -in backend-report.p7m -inkey "$env:USERPROFILE\.ssh\ticker_backend_diagnostics.pem" -out backend-report.zip
+```
+
 Read `TRIAGE.md` and `report.json` before editing source.
 The report includes component versions, changed files, service facts, tracebacks, replay IDs, and rollback decisions.
 Raw replay requests remain private on the server.

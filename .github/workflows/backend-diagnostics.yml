@@ -16,6 +16,7 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Collect private backend evidence
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -34,9 +35,11 @@ jobs:
           fi
           ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip $args"
           scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
+          openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
+          rm -f backend-report.zip
       - uses: actions/upload-artifact@v4
         with:
           name: backend-evidence-${{ inputs.component }}-${{ github.run_id }}
-          path: backend-report.zip
+          path: backend-report.p7m
           retention-days: 14
           if-no-files-found: error

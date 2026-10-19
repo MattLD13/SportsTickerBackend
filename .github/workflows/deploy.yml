@@ -328,12 +328,14 @@ jobs:
           chmod 600 "$key"
           ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip'
           scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
+          openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
+          rm -f backend-report.zip
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: backend-evidence-${{ github.sha }}
-          path: backend-report.zip
+          path: backend-report.p7m
           if-no-files-found: warn
           retention-days: 14
 
