@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','claude']; runpy.run_path(str(pathlib.Path(root)/'tools/workspaces/start.py'),run_name='__main__')\"",
-            "timeout": 10
+            "timeout": 90
           }
         ]
       }
@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','claude']; runpy.run_path(str(pathlib.Path(root)/'tools/workspaces/start.py'),run_name='__main__')\"",
-            "timeout": 10
+            "timeout": 90
           }
         ]
       }
@@ -28,7 +28,7 @@
           {
             "type": "command",
             "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','claude']; runpy.run_path(str(pathlib.Path(root)/'tools/workspaces/start.py'),run_name='__main__')\"",
-            "timeout": 10
+            "timeout": 90
           }
         ]
       }

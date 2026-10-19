@@ -34,7 +34,8 @@
         "tools/workspaces/manage.py",
         "tools/workspaces/start.py",
         "tools/workspaces/native_hockey.py",
-        "docs/development/agent-rules.md"
+        "docs/development/agent-rules.md",
+        "tools/workspaces/planner.py"
       ],
       "checks": []
     },
@@ -645,7 +646,8 @@
         "docs/development/agent-workspaces.md",
         "docs/development/agent-rules.md",
         "tests/python/operations/test_agent_workspaces.py",
-        "tests/python/operations/test_agent_startup.py"
+        "tests/python/operations/test_agent_startup.py",
+        "tests/python/operations/test_context_planner.py"
       ],
       "dependencies": [
         "instructions"
@@ -655,10 +657,12 @@
         "tools/workspaces/manage.py",
         "tests/python/operations/test_agent_startup.py",
         "tests/python/operations/test_agent_workspaces.py",
-        "docs/development/agent-workspaces.md"
+        "docs/development/agent-workspaces.md",
+        "tools/workspaces/planner.py"
       ],
       "build": [
-        "tools/workspaces/native_hockey.py"
+        "tools/workspaces/native_hockey.py",
+        "tests/python/operations/test_context_planner.py"
       ],
       "checks": [
         "agent-setup"
@@ -955,11 +959,13 @@
         "pytest",
         "-q",
         "tests/python/operations/test_agent_workspaces.py",
-        "tests/python/operations/test_agent_startup.py"
+        "tests/python/operations/test_agent_startup.py",
+        "tests/python/operations/test_context_planner.py"
       ],
       "files": [
         "tests/python/operations/test_agent_workspaces.py",
-        "tests/python/operations/test_agent_startup.py"
+        "tests/python/operations/test_agent_startup.py",
+        "tests/python/operations/test_context_planner.py"
       ]
     },
     "clock-domain": {
@@ -979,229 +985,5 @@
     "workflow": ".github/workflows/deploy.yml",
     "required_job": "Validate code and layouts",
     "full_repository_ci": true
-  },
-  "routing": {
-    "devices": {
-      "mini": [
-        "\\bmini\\b",
-        "\\besp32\\b",
-        "\\blittle ticker\\b"
-      ],
-      "six": [
-        "\\bticker ?six\\b",
-        "\\bsix\\b",
-        "\\b(?:big|main) ticker\\b",
-        "\\braspberry pi\\b",
-        "\\bpi\\b"
-      ],
-      "server": [
-        "\\bserver\\b",
-        "\\bbackend\\b"
-      ]
-    },
-    "rules": [
-      {
-        "match": [
-          "\\b(music|spotify|album|playback)\\b"
-        ],
-        "slices": [
-          "music"
-        ],
-        "reason": "Music task language"
-      },
-      {
-        "match": [
-          "\\b(weather|forecast|temperature)\\b"
-        ],
-        "slices": [
-          "weather"
-        ],
-        "reason": "Weather task language"
-      },
-      {
-        "match": [
-          "\\b(stocks?|equities|market price)\\b"
-        ],
-        "slices": [
-          "stocks"
-        ],
-        "reason": "Stocks task language"
-      },
-      {
-        "match": [
-          "\\b(flights?|aviation|aircraft)\\b"
-        ],
-        "slices": [
-          "flights"
-        ],
-        "reason": "Flights task language"
-      },
-      {
-        "match": [
-          "\\b(airports?|arrivals?|departures?)\\b"
-        ],
-        "slices": [
-          "airports"
-        ],
-        "reason": "Airports task language"
-      },
-      {
-        "match": [
-          "\\b(golf|pga|lpga)\\b"
-        ],
-        "slices": [
-          "golf"
-        ],
-        "reason": "Golf task language"
-      },
-      {
-        "match": [
-          "\\b(racing|nascar|indycar|formula ?1|f1|imsa)\\b"
-        ],
-        "slices": [
-          "racing"
-        ],
-        "reason": "Racing task language"
-      },
-      {
-        "match": [
-          "\\b(news|trade alert|transaction)\\b"
-        ],
-        "slices": [
-          "news"
-        ],
-        "reason": "News task language"
-      },
-      {
-        "match": [
-          "\\b(clock mode|clock screen)\\b"
-        ],
-        "slices": [
-          "clock"
-        ],
-        "reason": "Clock task language"
-      },
-      {
-        "match": [
-          "\\b(sports?|hockey|nhl|shootouts?|penalt(?:y|ies)|football|nfl|fbs|fcs|basketball|nba|wnba|ncaa|baseball|mlb|soccer|overtime|power play)\\b"
-        ],
-        "slices": [
-          "sports"
-        ],
-        "reason": "Sports task language"
-      },
-      {
-        "match": [
-          "\\b(AGENTS\\.md|CLAUDE\\.md|GEMINI\\.md|agent instructions|agent[- ]workspaces?|context window|workspace manager|coding agents?)\\b"
-        ],
-        "slices": [
-          "agent-workspaces"
-        ],
-        "reason": "Agent workflow or instruction change"
-      },
-      {
-        "match": [
-          "\\b(server core|pairing|registration|api route|authentication|fleet record|scheduler)\\b"
-        ],
-        "slices": [
-          "server-core"
-        ],
-        "reason": "Server core boundary"
-      },
-      {
-        "match": [
-          "\\b(shared contract|wire contract|schema|shared behavior|shared behaviour)\\b",
-          "\\bshared\\b"
-        ],
-        "slices": [
-          "shared-sports"
-        ],
-        "reason": "Shared facts require every consumer"
-      },
-      {
-        "match": [
-          "\\b(deploy(?:ment)?|rollback|recovery|github reporting|fetcher|backend_ops)\\b"
-        ],
-        "slices": [
-          "backend-operations"
-        ],
-        "reason": "Backend operation boundary"
-      },
-      {
-        "match": [
-          "\\b(ios|iphone|swift|controller app)\\b"
-        ],
-        "slices": [
-          "ios"
-        ],
-        "reason": "Controller application boundary"
-      }
-    ],
-    "uncertain": [
-      "shared-sports"
-    ],
-    "component_slices": {
-      "server-core": [
-        "server-core",
-        "shared-sports"
-      ],
-      "sports-server": [
-        "shared-sports"
-      ],
-      "shared-drawing": [
-        "shared-sports"
-      ],
-      "mini-firmware": [
-        "mini-runtime"
-      ],
-      "mini-sports-renderer": [
-        "mini-sports"
-      ],
-      "six-runtime": [
-        "six-runtime"
-      ],
-      "app-contracts": [
-        "ios"
-      ],
-      "backend-operations": [
-        "backend-operations"
-      ],
-      "agent-workspaces": [
-        "agent-workspaces"
-      ],
-      "music": [
-        "music"
-      ],
-      "weather": [
-        "weather"
-      ],
-      "stocks": [
-        "stocks"
-      ],
-      "flights": [
-        "flights"
-      ],
-      "airports": [
-        "airports"
-      ],
-      "golf": [
-        "golf"
-      ],
-      "racing": [
-        "racing"
-      ],
-      "news": [
-        "news"
-      ],
-      "clock": [
-        "clock"
-      ],
-      "mini-runtime": [
-        "mini-runtime"
-      ],
-      "six-sports-renderer": [
-        "six-sports"
-      ]
-    }
   }
 }

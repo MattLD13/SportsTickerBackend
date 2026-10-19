@@ -11,6 +11,16 @@ Workspace selection does not control deployment selection.
 
 ## Automatic task context
 
+| Part | Responsibility |
+|---|---|
+| `AGENTS.md` | Shared repository rules. The file does not create an agent. |
+| Scoped `AGENTS.md` files | Rules for the directories involved in the task. |
+| `CLAUDE.md` and `GEMINI.md` | Small bridges to the shared guide. |
+| Startup hooks | Start context preparation before the coding agent plans. |
+| GPT-6 Luna | Recommend files, symbols, expected edits, and checks. |
+| Workspace manager | Enforce dependency, ownership, and credential rules. |
+| Coding agent | Implement the task, validate the change, and report results. |
+
 `AGENTS.md` owns shared agent instructions.
 `CLAUDE.md` and `GEMINI.md` import that one guide.
 Copilot's bridge points to the same guide. Cursor uses `AGENTS.md` directly.
@@ -24,7 +34,8 @@ Copilot's bridge points to the same guide. Cursor uses `AGENTS.md` directly.
 
 After the client trusts repository hooks, each prompt prepares context before agent planning.
 Each agent session gets separate evidence under `.git/agent-context/<scope-id>/`.
-The hook performs no network requests, source edits, test execution, checkout changes, or hardware operations.
+The hook starts GPT-6 Luna through the signed-in Codex CLI.
+It performs no source edits, test execution, checkout changes, or hardware operations.
 It hashes task text instead of storing raw prompts.
 
 For an agent without active hooks, the root guide directs this command:
@@ -36,7 +47,7 @@ python tools/workspaces/start.py --task "Fix Mini hockey shootout rendering"
 The result identifies a task packet, scope ID, context count, and build count.
 Read the packet, then its relevant source files.
 A Mini hockey task selects Mini sports. A shared hockey task selects both renderers and the app contract.
-Unknown ownership selects shared consumers. The agent can select explicit slices when the routing result needs correction.
+Unknown edit ownership selects shared consumers. The agent can select explicit slices when the planning result needs correction.
 
 For a dependency expansion, use the current packet's scope ID:
 
@@ -51,11 +62,52 @@ For an independent task in the same client session, reset that scope:
 python tools/workspaces/start.py --scope <scope-id> --new-task --task "Fix Mini weather"
 ```
 
-Continuation prompts preserve the recorded scope. New dependencies expand it.
+Continuation prompts reuse the recorded plan without another model call.
+For a changed task boundary, request a new plan:
+
+```powershell
+python tools/workspaces/start.py --scope <scope-id> --replan --task "Also inspect Mini artwork scheduling"
+```
+
+New plans preserve the original task scope and add discovered dependencies.
 Resuming or compacting a session restores the packet reference.
 The startup tool uses the current checkout, including existing local edits.
 Its recorded SHA identifies that checkout. It does not certify that the commit exists on GitHub.
 For isolated work pinned to GitHub, use the sparse workspace command below.
+
+## Luna planning
+
+Install Codex CLI and sign in with the account that can use `gpt-6-luna`.
+The planner uses that login. It does not require a separate API key.
+Every supported agent client uses this same local planner.
+
+1. Luna receives the task, component descriptions, check names, and a filtered repository file index.
+2. Luna can request source excerpts through the manager.
+3. The manager limits inspection to eight requests and 100 lines per excerpt.
+4. Luna returns slices, source entry points, useful symbols, expected edits, checks, and reasons.
+5. The manager validates paths, adds dependencies, and includes consumers for shared edits.
+6. The coding agent receives the resulting packet and performs implementation.
+
+The planner has no shell, browsing, delegation, or hardware tools.
+It runs outside the repository in a temporary directory.
+Its child process disables startup hooks, inherited project instructions, and memory injection.
+This prevents recursive planner startup.
+The planner does not receive the full conversation or every source file.
+The manager sends only requested excerpts and excludes credential paths.
+
+Planning has a 60-second limit and at most three model rounds.
+The task record includes model identity, elapsed time, token usage, inspections, and client diagnostic counts.
+Raw prompts, excerpts, and client event streams do not enter the task record.
+A new task, explicit replan, changed manifest, or planner version invalidates the cached selection.
+A normal continuation reuses it.
+If planning fails, the command reports failure. It does not select scope through hidden keyword rules.
+The existing explicit `--slice` and `--path` commands remain available for agent-directed scope changes.
+
+The runner uses [Codex structured output](https://learn.chatgpt.com/docs/non-interactive-mode) with the [GPT-6 Luna model](https://developers.openai.com/api/docs/models/gpt-6-luna).
+
+The model selects useful context. Code owns required dependencies and credential exclusions.
+If an expected edit reaches a shared owner, the manager includes every declared consumer.
+Model suggestions do not override repository instructions or authorize publishing.
 
 ## Client limits
 

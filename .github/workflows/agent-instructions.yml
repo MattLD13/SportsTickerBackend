@@ -16,6 +16,7 @@ name: Validate agent setup
       - .github/workflows/agent-instructions.yml
       - tools/workspaces/**
       - tests/python/operations/test_agent_*.py
+      - tests/python/operations/test_context_planner.py
   pull_request:
     paths:
       - '**/AGENTS.md'
@@ -31,6 +32,7 @@ name: Validate agent setup
       - .github/workflows/agent-instructions.yml
       - tools/workspaces/**
       - tests/python/operations/test_agent_*.py
+      - tests/python/operations/test_context_planner.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -51,4 +53,4 @@ jobs:
       - name: Install the instruction check dependency
         run: python -m pip install 'pytest>=8,<9'
       - name: Check task routing, hooks, sparse Git, and instruction budgets
-        run: python -m pytest -q tests/python/operations/test_agent_workspaces.py tests/python/operations/test_agent_startup.py
+        run: python -m pytest -q tests/python/operations/test_agent_workspaces.py tests/python/operations/test_agent_startup.py tests/python/operations/test_context_planner.py

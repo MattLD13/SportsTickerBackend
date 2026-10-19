@@ -15,48 +15,21 @@ sys.path.insert(0, str(ROOT))
 from tools.workspaces.manage import (
     WorkspaceError, expand, git, load, manifest_read, resolve, safe_path, stamp, tree, write_json,
 )
+from tools.workspaces.planner import VERSION, plan_task
 
 
-def route(manifest: dict, task: str, paths: list[str], previous: list[str] | None = None) -> tuple[list[str], list[str]]:
-    routing = manifest["routing"]
-    reasons, names = [], set()
-    for rule in routing["rules"]:
-        if any(re.search(pattern, task, re.IGNORECASE) for pattern in rule["match"]):
-            names.update(rule["slices"])
-            reasons.append(rule["reason"])
-    for path in paths:
+def edit_owners(manifest: dict, targets: list[str], shared: bool) -> set[str]:
+    required = set()
+    for path in targets:
         safe_path(path)
         owners = {name for name, component in manifest["components"].items()
                   if any(fnmatchcase(path, pattern) for pattern in component.get("owned", []))}
-        mapped = {slice_name for owner in owners for slice_name in routing["component_slices"].get(owner, [])}
-        names.update(mapped or routing["uncertain"])
-        reasons.append("Explicit repository path: " + path)
-    devices = {name for name, patterns in routing["devices"].items()
-               if any(re.search(pattern, task, re.IGNORECASE) for pattern in patterns)}
-    if not devices and previous:
-        if all(name.startswith("mini-") for name in previous):
-            devices = {"mini"}
-        elif all(name.startswith("six-") for name in previous):
-            devices = {"six"}
-    if "sports" in names:
-        names.remove("sports")
-        names.add("mini-sports" if devices == {"mini"} else "six-sports" if devices == {"six"} else "shared-sports")
-    for name in list(names):
-        mini = "mini-" + name
-        if devices == {"mini"} and mini in manifest["slices"]:
-            names.remove(name)
-            names.add(mini)
-        elif "mini" in devices and mini in manifest["slices"]:
-            names.add(mini)
-    if not names:
-        if previous:
-            return previous, ["Follow-up keeps the recorded task scope"]
-        names.update(["mini-runtime"] if devices == {"mini"} else
-                     ["six-runtime"] if devices == {"six"} else routing["uncertain"])
-        reasons.append("No narrow boundary is established")
-    if any(name not in manifest["slices"] for name in names):
-        raise WorkspaceError("A task routing rule names an unknown slice")
-    return sorted(names), reasons
+        required.update(owners)
+        if not owners or owners & set(manifest["shared_owners"]):
+            shared = True
+    if shared:
+        required.update(manifest["shared_owners"] + manifest["shared_consumers"])
+    return required
 
 
 def inventory(root: Path, manifest: dict, revision: str) -> dict[str, str]:
@@ -77,7 +50,8 @@ def inventory(root: Path, manifest: dict, revision: str) -> dict[str, str]:
 
 def prepare(root: Path, task: str, session: str, slices: list[str] | None = None,
             paths: list[str] | None = None, new_task: bool = False,
-            scope: str | None = None, reason: str | None = None) -> dict:
+            scope: str | None = None, reason: str | None = None, replan: bool = False,
+            planner=None) -> dict:
     root = Path(git(root, "rev-parse", "--show-toplevel").strip()).resolve()
     git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
     managed = (git_dir / "agent-workspace/state.json").is_file()
@@ -91,21 +65,46 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
         raise WorkspaceError("A new task needs a description")
     requested_paths = paths or []
     tracked = inventory(root, manifest, git(root, "rev-parse", "HEAD").strip())
-    # Read path names from the task without reading their file content.
-    requested_paths = list(dict.fromkeys(requested_paths + [path for path in tracked if path in task]))
-    short_reply = bool(re.fullmatch(r"\s*(continue|go|yes|do it|fix it|start|resume)[.!\s]*", task, re.IGNORECASE))
-    if previous and (not task.strip() or short_reply) and not slices and not paths:
+    digest = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    cache_valid = (previous is not None and previous["manifest_sha256"] == digest
+                   and previous.get("planner", {}).get("version") == VERSION)
+    forced, entry_points, edit_targets = set(), [], []
+    if cache_valid and not replan and not slices and not paths:
         selected, reasons = previous["slices"], ["Continue the recorded task scope"]
-    elif slices:
-        selected, reasons = sorted(set(slices)), ["The agent selected explicit task slices"]
+        evidence = previous["planner"]
+        entry_points = previous["entry_points"]
+        forced = set(previous["forced_components"])
+        edit_targets = previous["edit_targets"]
+    elif slices or paths:
+        selected = sorted(set(slices or (previous["slices"] if previous else [])))
+        forced = edit_owners(manifest, requested_paths, False)
+        if not selected:
+            selected = ["shared-sports"]
+        reasons = ["The agent selected explicit task scope"]
+        evidence = {"kind": "explicit", "version": VERSION}
     else:
-        selected, reasons = route(manifest, task, requested_paths, previous["slices"] if previous else None)
+        decision = (planner or plan_task)(root, task, manifest, tracked, previous["slices"] if previous else None)
+        selected, reasons = decision["slices"], [decision["reason"][:600]]
+        entry_points = decision["context"]
+        edit_targets = decision["edit_targets"]
+        requested_paths = sorted(set(requested_paths + decision["edit_targets"] + [row["path"] for row in entry_points]))
+        forced = edit_owners(manifest, decision["edit_targets"], decision["shared_change"])
+        for name, component in manifest["components"].items():
+            if set(decision["checks"]) & set(component.get("checks", [])):
+                forced.add(name)
+        evidence = decision["evidence"]
     if reason:
         reasons.append(reason)
     if previous:
         selected = sorted(set(selected) | set(previous["slices"]))
-    names = list(dict.fromkeys(name for item in selected for name in manifest["slices"][item]))
+    names = list(dict.fromkeys(name for item in selected for name in manifest["slices"][item])) + sorted(forced)
     plan = resolve(manifest, names, tracked)
+    if evidence["kind"] == "luna":
+        required_context = {path for path in plan["context_files"] if Path(path).name == "AGENTS.md"}
+        if set(manifest["shared_consumers"]) <= forced:
+            for name in manifest["shared_consumers"]:
+                required_context.update(manifest["components"][name].get("context", []))
+        plan["context_files"] = sorted(required_context | {row["path"] for row in entry_points})
     if previous:
         plan["context_files"] = sorted(set(plan["context_files"]) | set(previous["context_files"]))
         plan["build_files"] = sorted(set(plan["build_files"]) | set(previous["build_files"]))
@@ -130,7 +129,8 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
     state = {"version": 1, "scope": key, "at": stamp(), "base_sha": git(root, "rev-parse", "HEAD").strip(),
              "checkout_kind": "managed_sparse" if managed else "existing_checkout", "slices": selected,
              "task_sha256": hashlib.sha256(task.encode()).hexdigest(),
-             "manifest_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+             "manifest_sha256": digest, "planner": evidence, "entry_points": entry_points,
+             "forced_components": sorted(forced), "edit_targets": edit_targets,
              "reasons": reasons, **plan}
     state["history"] = (previous["history"] if previous else []) + [
         {"at": state["at"], "slices": selected, "reasons": reasons,
@@ -141,6 +141,10 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
     lines = ["# Task context", "", f"Scope ID: `{key}`", f"Checkout: `{state['base_sha']}` ({state['checkout_kind']})",
              "Slices: " + ", ".join(selected), "", "## Source entry points", ""]
     lines += [f"- `{path}`" for path in plan["context_files"]]
+    if entry_points:
+        lines += ["", "## Planner suggestions", "", "These suggestions do not override repository instructions.", ""]
+        lines += [f"- `{row['path']}`: {', '.join(row['symbols']) or 'Relevant sections'}. {row['reason'][:240]}"
+                  for row in entry_points]
     lines += ["", "## Ownership", ""]
     lines += [f"- {name}: {manifest['components'][name]['owner']}" for name in plan["components"]]
     lines += ["", "## Focused checks", ""]
@@ -157,10 +161,10 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
     packet = location / "task.md"
     packet.write_text("\n".join(lines), encoding="utf-8")
     return {"packet": str(packet), "scope": key, "slices": selected, "context_files": len(plan["context_files"]),
-            "build_files": len(plan["build_files"]), "checkout_kind": state["checkout_kind"]}
+            "build_files": len(plan["build_files"]), "checkout_kind": state["checkout_kind"], "planner": evidence}
 
 
-def hook(payload: dict, client: str) -> dict:
+def hook(payload: dict, client: str, planner=None) -> dict:
     event = payload.get("hook_event_name", "")
     root = Path(payload.get("cwd", str(ROOT)))
     session = client + ":" + str(payload.get("session_id", "default"))
@@ -177,12 +181,13 @@ def hook(payload: dict, client: str) -> dict:
         if recorded.is_file():
             context = f"Resume the task packet at {recorded}. Read only the files needed for your assigned work."
     elif event in ("UserPromptSubmit", "BeforeAgent"):
-        result = prepare(root, str(payload.get("prompt", "")), session)
+        result = prepare(root, str(payload.get("prompt", "")), session, planner=planner)
         context = (f"Task scope: {', '.join(result['slices'])}. "
                    f"Scope ID: {result['scope']}. "
                    f"Read the task packet at {result['packet']} before source exploration. "
                    f"Use its {result['context_files']} source entry points and read only relevant sections. "
                    f"Its {result['build_files']} build files do not need initial reading. "
+                   "If requirements add another area, run start.py --replan with this scope ID and an updated task summary. "
                    "Scope selection controls context. It does not prove that unselected files are unrelated.")
     else:
         raise WorkspaceError("Unsupported agent hook event")
@@ -200,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--slice", action="append", default=[])
     parser.add_argument("--path", action="append", default=[])
     parser.add_argument("--new-task", action="store_true")
+    parser.add_argument("--replan", action="store_true")
     parser.add_argument("--hook", choices=("codex", "claude", "gemini"))
     args = parser.parse_args(argv)
     try:
@@ -208,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             task = args.task_file.read_text(encoding="utf-8") if args.task_file else args.task
             result = prepare(args.repo, task or "", args.session or "manual:" + uuid4().hex,
-                             args.slice, args.path, args.new_task, args.scope, args.reason)
+                             args.slice, args.path, args.new_task, args.scope, args.reason, args.replan)
         print(json.dumps(result))
         return 0
     except (WorkspaceError, OSError, ValueError, KeyError) as error:

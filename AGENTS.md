@@ -13,6 +13,8 @@ python tools/workspaces/start.py --task "<task summary>"
 
 Use listed files as search entry points. Read only the symbols and sections needed for the task.
 Build files do not need initial reading. Reuse unchanged instructions already loaded in this session.
+GPT-6 Luna selects initial context. The manager enforces dependencies and file access rules.
+Continuation prompts reuse the packet. If the task adds another area, use `start.py --replan` with its scope ID.
 Search selected paths with `rg` before searching the repository.
 If a dependency crosses the selected boundary, expand the scope and record the reason.
 Read nested `AGENTS.md` files before editing their directories.
