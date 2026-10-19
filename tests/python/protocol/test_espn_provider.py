@@ -1291,6 +1291,14 @@ def test_espn_event_update_preserves_scoreboard_fields_and_live_state() -> None:
     assert competition["competitors"][0]["score"] == "7"
 
 
+def test_team_logo_uses_first_usable_url_when_primary_logo_is_empty() -> None:
+    from sports_ticker.providers.espn import _team
+
+    team = _team({"team": {"abbreviation": "NYG", "logo": "",
+                          "logos": [{"href": ""}, {"href": "nyg.png"}]}})
+    assert team["logo"] == "nyg.png"
+
+
 def test_espn_nhl_detail_update_keeps_scoreboard_live_status() -> None:
     fallback = _event("game-1", "2026-08-16T18:00:00Z", state="in")
     fallback["status"] = {

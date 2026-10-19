@@ -404,7 +404,10 @@ class TickerRuntime:
         if previous_mode != self._mode or (not classification.scrolling and self._strip is not None):
             self._clear_strip()
         if not stale:
-            self._queue_events(_value(response, "alerts", ()), self._alerts, self._seen_alerts, self.config.alert_dedupe_age)
+            self._queue_events(
+                _value(response, "alerts", ()), self._alerts, self._seen_alerts,
+                self.config.alert_dedupe_age, self._active_alert,
+            )
             self._queue_events(_value(response, "news", ()), self._news, self._seen_news, self.config.news_dedupe_age)
             update_version = str(_value(response, "update_version", "") or "").strip()
             if not update_version:
@@ -633,6 +636,7 @@ class TickerRuntime:
         queue: deque[_QueuedEvent],
         seen: dict[str, float],
         dedupe_age: float,
+        active: _ActiveEvent | None = None,
     ) -> None:
         if not isinstance(source, (list, tuple)):
             return
@@ -642,6 +646,13 @@ class TickerRuntime:
             if identifier and identifier not in seen:
                 seen[identifier] = now
                 queue.append(_QueuedEvent(now, data))
+            elif identifier:
+                for queued in queue:
+                    if _event(queued.data)[0] == identifier:
+                        queued.data = data
+                        break
+                if active is not None and _event(active.data)[0] == identifier:
+                    active.data = data
         cutoff = now - dedupe_age
         for identifier in tuple(seen):
             if seen[identifier] < cutoff:

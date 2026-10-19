@@ -1928,11 +1928,8 @@ def _team(
     ncaa_logo_index: Mapping[str, str] | None = None,
 ) -> Mapping[str, Any]:
     source = _mapping(competitor.get("team"))
-    logos = source.get("logos")
-    logo = source.get("logo")
-    if logo is None and isinstance(logos, Sequence) and not isinstance(logos, (str, bytes)):
-        logo = _mapping(logos[0]).get("href") if logos else None
-    if not str(logo or "").strip():
+    logo = _team_source_logo(source)
+    if not logo:
         logo = _ncaa_logo_url(source, ncaa_logo_index or {})
     return {
         "abbreviation": _text(

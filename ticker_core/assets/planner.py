@@ -86,7 +86,8 @@ def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
     for item in content if isinstance(content, Iterable) and not isinstance(content, (str, bytes, Mapping)) else ():
         data = getattr(item, "data", None)
         if data is None and isinstance(item, Mapping):
-            data = item.get("data", item)
+            nested = item.get("data")
+            data = nested if isinstance(nested, Mapping) else item
         if isinstance(data, Mapping):
             family = getattr(item, "family", None)
             kind = getattr(item, "kind", None)
@@ -107,16 +108,17 @@ def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
 def _payload_items(value: object) -> Iterable[Mapping[str, Any]]:
     """Read content and overlay items before display policy filters them."""
     yield from _content_items(value)
+    events = value.get("events", {}) if isinstance(value, Mapping) else {}
     for name in ("alerts", "news"):
         items = getattr(value, name, ())
         if isinstance(value, Mapping):
-            items = value.get(name, ())
+            items = events.get(name, ()) if isinstance(events, Mapping) and name in events else value.get(name, ())
         if not isinstance(items, (list, tuple)):
             continue
         for item in items:
             data = getattr(item, "data", None)
             if data is None and isinstance(item, Mapping):
-                data = item.get("data", item)
+                data = item.get("payload", item.get("data", item))
             if isinstance(data, Mapping):
                 yield data
 

@@ -64,6 +64,26 @@ def test_runtime_uses_v2_settings_for_scroll_and_panel_controls() -> None:
     assert frame.inverted is True
 
 
+@pytest.mark.parametrize("active", [False, True])
+def test_alert_enrichment_updates_logo_without_restarting_or_requeuing(active) -> None:
+    clock = [0.0]
+    runtime = _runtime(clock)
+    alert = {"id": "nfl-score", "headline": "RUSH TD", "player": "RUNNER", "team_logo": ""}
+    runtime.accept_response(_response(alerts=(alert,)))
+    if active:
+        assert runtime.next_frame().kind is FrameKind.SCORE_ALERT
+    clock[0] = 2.0
+    runtime.accept_response(_response(alerts=({**alert, "team_logo": "nyg.png"},)))
+    frame = runtime.next_frame()
+    assert frame.kind is FrameKind.SCORE_ALERT
+    assert frame.alert["team_logo"] == "nyg.png"
+    assert frame.alert["player"] == "RUNNER"
+    assert frame.alert_elapsed == (2.0 if active else 0.0)
+    clock[0] = 11.0
+    runtime.accept_response(_response(alerts=({**alert, "team_logo": "nyg.png"},)))
+    assert runtime.next_frame().kind is not FrameKind.SCORE_ALERT
+
+
 def test_scrolling_uses_payload_interval_and_integer_offsets() -> None:
     clock = [0.0]
     runtime = _runtime(clock)

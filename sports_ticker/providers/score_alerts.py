@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 import re
 from threading import Lock
 from time import time
@@ -349,6 +350,70 @@ def _hockey_scoring_play_for_score(
 
 
 
+@dataclass(slots=True)
+class _FootballScoreMemory:
+    """Separate provider play identity from score-only observations."""
+
+    totals: dict[str, int] = field(default_factory=dict)
+    plays: set[tuple[str, str, str]] = field(default_factory=set)
+    pending: dict[str, tuple[int, int]] = field(default_factory=dict)
+
+    def observe(self, side: str, score: int, play_id: str, kind: str) -> bool:
+        """Remember one observation and return whether its event was already known."""
+        phase = _football_score_phase(kind)
+        identity = (side, phase, play_id)
+        duplicate = identity in self.plays if play_id else score <= self.totals.get(side, -1)
+        self.totals[side] = max(score, self.totals.get(side, score))
+        if play_id:
+            self.plays.add(identity)
+        return duplicate
+
+    def observe_play(self, side: str, score: int, play: Mapping[str, Any] | None, kind: str) -> bool:
+        """Remember the touchdown and conversion identities supplied by one summary entry."""
+        play_id = str(play.get("play_id") or "") if play else ""
+        duplicate = self.observe(side, score, play_id, kind)
+        if play and play_id and _number(play.get(f"{side}_score")) == score:
+            conversion = str(play.get("conversion_type") or "")
+            if conversion in {"extra_point", "two_point"}:
+                self.observe(side, score, play_id, conversion)
+                self.observe(side, score, play_id, "touchdown")
+        return duplicate
+
+
+def _football_score_phase(kind: str) -> str:
+    """Keep conversions separate from their parent touchdown identity."""
+    return "conversion" if kind in {"extra_point", "two_point"} else "score"
+
+
+def _football_score_memory(game: Mapping[str, Any]) -> _FootballScoreMemory:
+    """Seed the baseline without announcing scores that already exist."""
+    memory = _FootballScoreMemory()
+    sit = game.get("situation")
+    situation = sit if isinstance(sit, Mapping) else {}
+    values = situation.get("scoring_plays") or game.get("scoring_plays")
+    plays = values if isinstance(values, (list, tuple)) else ()
+    for side in ("home", "away"):
+        score = _number(game.get(f"{side}_score"))
+        if score is None:
+            continue
+        memory.observe(side, score, "", "score")
+        team = str(game.get(f"{side}_abbr") or side).lower()
+        other = "away" if side == "home" else "home"
+        other_score = _number(game.get(f"{other}_score"))
+        for play in plays:
+            if not isinstance(play, Mapping) or str(play.get("team") or play.get("side") or "").lower() not in {team, side}:
+                continue
+            play_score = _number(play.get(f"{side}_score"))
+            play_other_score = _number(play.get(f"{other}_score"))
+            if play_score is None or play_score > score:
+                continue
+            if play_other_score is not None and other_score is not None and play_other_score > other_score:
+                continue
+            kind, _ = _describe(game.get("sport"), _number(play.get("score_value")) or play_score, play)
+            memory.observe_play(side, play_score, play, kind)
+    return memory
+
+
 class ScoreAlertTracker:
     """Keep score memory across scoreboard polls and release recent alerts."""
 
@@ -358,6 +423,7 @@ class ScoreAlertTracker:
         self._scores: dict[str, tuple[int, int, str, str]] = {}
         self._football_events: dict[str, set[str]] = {}
         self._football_projection_ready: dict[str, bool] = {}
+        self._football_scores: dict[str, _FootballScoreMemory] = {}
         self._alerts: list[dict[str, Any]] = []
 
     def prime(self, games: Sequence[Mapping[str, Any]]) -> None:
@@ -366,6 +432,7 @@ class ScoreAlertTracker:
         scores: dict[str, tuple[int, int, str, str]] = {}
         football_events: dict[str, set[str]] = {}
         projection_ready: dict[str, bool] = {}
+        football_scores: dict[str, _FootballScoreMemory] = {}
         for game in games:
             if str(game.get("kind") or game.get("type") or "") != "scoreboard":
                 continue
@@ -380,6 +447,8 @@ class ScoreAlertTracker:
                 str(game.get("status") or ""),
                 str(game.get("state") or "").lower(),
             )
+            if sport_family(game.get("sport")) == "football":
+                football_scores[game_id] = _football_score_memory(game)
             sit = game.get("situation")
             situation = sit if isinstance(sit, Mapping) else {}
             projection_ready[game_id] = _has_football_projection(situation, game)
@@ -392,6 +461,7 @@ class ScoreAlertTracker:
             self._scores = scores
             self._football_events = football_events
             self._football_projection_ready = projection_ready
+            self._football_scores = football_scores
 
     def ingest(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Compare one complete scoreboard observation with the prior poll."""
@@ -423,6 +493,8 @@ class ScoreAlertTracker:
                 projection_ready = _has_football_projection(situation, game)
                 seed_football_events = False
                 if previous is None:
+                    if family == "football":
+                        self._football_scores[game_id] = _football_score_memory(game)
                     seen_football_events.update(
                         _football_event_identity(play)
                         for play in football_events
@@ -453,7 +525,7 @@ class ScoreAlertTracker:
                 if family == "hockey":
                     self._hydrate_hockey_alerts(game)
                 elif family == "football":
-                    self._hydrate_football_alerts(game)
+                    self._hydrate_football_alerts(game, previous)
                 final_score = state in {"post", "final"} and previous[3] in _LIVE_STATES and (
                     home > previous[0] or away > previous[1]
                 ) and not (family == "hockey" and previous[2] == "S/O")
@@ -547,10 +619,33 @@ class ScoreAlertTracker:
                         )
                 for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
                     delta = new_score - old_score
+                    memory = self._football_scores.setdefault(game_id, _FootballScoreMemory()) if family == "football" else None
+                    if memory and side in memory.pending and memory.pending[side][1] != new_score:
+                        memory.pending.pop(side)
                     if delta <= 0:
-                        continue
+                        pending = memory.pending.get(side) if memory else None
+                        if not pending or pending[1] != new_score:
+                            continue
+                        old_score = pending[0]
+                        delta = new_score - old_score
                     scoring_play = _latest_scoring_play(game, situation, side, previous_score=old_score)
                     kind, headline = _describe(sport, delta, scoring_play)
+                    play_id = str(scoring_play.get("play_id") or "") if scoring_play else ""
+                    if new_score <= previous[0 if side == "home" else 1] and not play_id:
+                        continue
+                    score_event_id = ""
+                    if memory is not None:
+                        merged = self._merge_football_conversion(game, side, old_score, new_score, scoring_play)
+                        duplicate = memory.observe_play(side, new_score, scoring_play, kind)
+                        if merged or not duplicate:
+                            memory.pending.pop(side, None)
+                        elif not play_id:
+                            memory.pending[side] = (old_score, new_score)
+                        if merged or duplicate:
+                            continue
+                        if play_id:
+                            phase = _football_score_phase(kind)
+                            score_event_id = f"{game_id}:football:{side}:{phase}:{play_id}"
                     facts = _extract_alert_facts(sport, game, side, alert_kind=kind, event=scoring_play)
                     if family == "football" and scoring_play:
                         facts["status"] = _football_scoring_status(scoring_play, status, sport)
@@ -560,6 +655,7 @@ class ScoreAlertTracker:
                         headline,
                         facts,
                         delta,
+                        event_id=score_event_id,
                         scoring_play_id=(
                             str(scoring_play.get("play_id") or "")
                             if family in {"hockey", "football"} and scoring_play
@@ -576,24 +672,80 @@ class ScoreAlertTracker:
                 if key in current_ids
             }
             self._alerts = self._alerts[-_MAX_ALERTS:]
+            self._football_scores = {
+                key: value for key, value in self._football_scores.items() if key in current_ids
+            }
 
-    def _hydrate_football_alerts(self, game: Mapping[str, Any]) -> None:
+    def _merge_football_conversion(
+        self, game: Mapping[str, Any], side: str, previous_score: int,
+        target: int, play: Mapping[str, Any] | None,
+    ) -> bool:
+        """Update an observed touchdown when its conversion reaches the scoreboard."""
+        delta = target - previous_score
+        if delta != 1 and not (delta == 2 and play and play.get("conversion_type") == "two_point"):
+            return False
+        for alert in reversed(self._alerts):
+            if alert.get("game_id") != game.get("id") or alert.get("side") != side:
+                continue
+            if int(alert.get("points") or 0) <= 0:
+                continue
+            kind = str(alert.get("kind") or "")
+            if (alert.get(f"{side}_score") != previous_score or alert.get("points") != 6
+                    or not (kind.endswith("_td") or kind == "touchdown")):
+                return False
+            alert.update(home_score=game["home_score"], away_score=game["away_score"], points=6 + delta)
+            return True
+        return False
+
+    def _hydrate_football_alerts(
+        self, game: Mapping[str, Any], previous: tuple[int, int, str, str],
+    ) -> None:
         """Fill delayed football detail without replaying or retiming the alert."""
         situation = game.get("situation") or {}
+        play_owners = {
+            (alert.get("side"), alert["scoring_play_id"]): alert["id"]
+            for alert in self._alerts
+            if alert.get("game_id") == game.get("id") and alert.get("scoring_play_id")
+        }
         for alert in self._alerts:
             if alert.get("game_id") != game.get("id") or int(alert.get("points") or 0) <= 0:
                 continue
             side = alert["side"]
+            other = "away" if side == "home" else "home"
+            for prefix, team_side in (("team", side), ("opp", other)):
+                for field in ("logo", "color", "alt_color"):
+                    value = game.get(f"{team_side}_{field}")
+                    if value:
+                        alert[f"{prefix}_{field}"] = value
             scored_game = {**game, "home_score": alert["home_score"], "away_score": alert["away_score"]}
             old_score = int(alert[f"{side}_score"]) - int(alert["points"])
             play = _latest_scoring_play(scored_game, situation, side, previous_score=old_score)
             if play is None:
                 continue
+            play_id = str(play.get("play_id") or "")
+            known_play_id = str(alert.get("scoring_play_id") or "")
+            if known_play_id and play_id and known_play_id != play_id:
+                continue
+            if play_id and play_owners.get((side, play_id), alert["id"]) != alert["id"]:
+                continue
+            previous_score = previous[0 if side == "home" else 1]
+            current_score = _number(game.get(f"{side}_score"))
+            memory = self._football_scores.setdefault(str(game.get("id") or ""), _FootballScoreMemory())
+            pending = memory.pending.get(side)
+            rising = current_score is not None and current_score > previous_score
+            awaiting_identity = pending is not None and pending[1] == current_score
+            if (not known_play_id and (rising or awaiting_identity)
+                    and alert[f"{side}_score"] == current_score):
+                continue
             kind, headline = _describe(game.get("sport"), int(alert["points"]), play)
             facts = _extract_alert_facts(game.get("sport"), scored_game, side, alert_kind=kind, event=play)
             alert.update(facts, kind=kind, headline=headline, big=kind in _BIG_KINDS,
                          status=_football_scoring_status(play, str(alert.get("status") or ""), str(game.get("sport") or "")),
-                         scoring_play_id=str(play.get("play_id") or ""))
+                         scoring_play_id=play_id or known_play_id)
+            if play_id:
+                play_owners[(side, play_id)] = alert["id"]
+            memory.observe_play(side, int(alert[f"{side}_score"]),
+                                {**play, "play_id": play_id or known_play_id}, kind)
 
     def _hydrate_hockey_alerts(self, game: Mapping[str, Any]) -> None:
         """Match delayed ESPN goal details to each alert's score and refresh assists."""

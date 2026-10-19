@@ -317,3 +317,33 @@ def _png() -> bytes:
     output = io.BytesIO()
     image.save(output, "PNG")
     return output.getvalue()
+
+
+def test_v2_alert_only_logo_reaches_the_production_frame(tmp_path) -> None:
+    from ticker_core.features.alerts import ScoreAlertRenderer
+    from ticker_core.protocol.model import OverlayItem
+    from ticker_core.rendering import load_default_font_set
+
+    logo = "https://assets.example/alert-only.png"
+    envelope = {"event_id": "nfl:6-0:home", "kind": "rushing_td", "payload": {
+        "sport": "nfl", "headline": "RUSH TD", "team_abbr": "NYG", "team_logo": logo,
+        "home_abbr": "NYG", "away_abbr": "DAL", "home_score": 6, "away_score": 0,
+        "player": "WILLIAMS", "data": "RUSH 1YD", "team_color": "0B2265",
+    }}
+    raw = {"content": {}, "events": {"alerts": [envelope], "news": []}}
+    parsed = OverlayItem.from_payload(envelope, "events.alerts[0]")
+    raw_plan = AssetPlanner().plan(raw)
+    assert raw_plan == AssetPlanner().plan({"alerts": [parsed]})
+    assert AssetRequest(logo, "logo", (24, 24)) in raw_plan.requests
+    coordinator = AssetCoordinator(tmp_path, fetch=lambda _url: _png())
+    try:
+        for future in coordinator.prefetch_payload(raw):
+            assert future.result() is not None
+        view = LogoAssetView(coordinator)
+        assert view.get(logo, (24, 24)) is not None
+        renderer = ScoreAlertRenderer(load_default_font_set(), view)
+        frame = renderer.render(parsed.data, 2.0)
+        assert frame.size == (384, 32)
+        assert frame.tobytes() != renderer.render({**parsed.data, "team_logo": ""}, 2.0).tobytes()
+    finally:
+        coordinator.close()

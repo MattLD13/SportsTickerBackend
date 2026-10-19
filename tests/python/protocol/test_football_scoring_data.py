@@ -163,3 +163,66 @@ def test_unknown_two_point_score_does_not_invent_a_safety():
     tracker.ingest([{**game, "home_score": 2}])
     assert tracker.recent()[0]["kind"] == "score"
     assert tracker.recent()[0]["headline"] == "+2 POINTS"
+
+
+@pytest.mark.parametrize("conversion_detail", [False, True])
+def test_observed_touchdown_and_later_kick_keep_one_v2_takeover(conversion_detail):
+    from ticker_core.runtime import FrameKind, TickerRuntime
+
+    clock = [100.0]
+    game, plays = captured("nfl")
+    tracker = ScoreAlertTracker(clock=lambda: clock[0])
+    tracker.ingest([{**game, "away_score": 3}])
+    touchdown = {**game, "home_score": 6, "away_score": 3,
+                 "situation": {"scoring_plays": plays[:2]}}
+    tracker.ingest([touchdown])
+    original = tracker.recent()[0]
+    runtime = TickerRuntime(monotonic=lambda: clock[0],
+                            wall_clock=lambda: datetime(2026, 10, 17, tzinfo=timezone.utc))
+
+    def response(current):
+        snapshot = TickerSnapshot("football", int(clock[0]), datetime(2026, 10, 17, tzinfo=timezone.utc),
+                                 (ContentItem(current["id"], "sports", "scoreboard", True, current),),
+                                 tracker.recent(), (), DisplaySettings())
+        return TickerResponse.from_payload(project_data_v2(snapshot, {}, {"pairing": {"paired": True}}))
+
+    runtime.accept_response(response(touchdown))
+    assert runtime.next_frame().kind is FrameKind.SCORE_ALERT
+    clock[0] += 2
+    conversion = {**touchdown, "home_score": 7,
+                  "situation": {"scoring_plays": plays[:2]} if conversion_detail else {}}
+    tracker.ingest([conversion])
+    runtime.accept_response(response(conversion))
+    merged, = tracker.recent()
+    assert merged["id"] == original["id"] and merged["ts"] == original["ts"]
+    assert merged["points"] == 7 and merged["home_score"] == 7
+    for key in ("headline", "kind", "player", "data", "status", "scoring_play_id"):
+        assert merged[key] == original[key]
+    frame = runtime.next_frame()
+    assert frame.alert["player"] == "J.K. Dobbins" and frame.alert["home_score"] == 7
+    assert frame.alert_elapsed == 2
+    clock[0] += 7
+    assert runtime.next_frame().kind is not FrameKind.SCORE_ALERT
+
+    later = {**conversion, "home_score": 14, "situation": {"scoring_plays": plays[:3]}}
+    tracker.ingest([later])
+    runtime.accept_response(response(later))
+    assert len(tracker.recent()) == 2
+    assert runtime.next_frame().alert["player"] == "RJ Harvey"
+
+
+def test_football_missing_logos_hydrate_without_replaying_or_retiming():
+    clock = [100.0]
+    game, plays = captured("nfl")
+    tracker = ScoreAlertTracker(clock=lambda: clock[0])
+    tracker.ingest([game])
+    scored = {**game, "away_score": 3, "situation": {"scoring_plays": plays[:1]}}
+    tracker.ingest([scored])
+    original, = tracker.recent()
+    assert not original["team_logo"]
+    clock[0] += 2
+    tracker.ingest([{**scored, "away_logo": "sea.png", "home_logo": "den.png", "situation": {}}])
+    hydrated, = tracker.recent()
+    assert hydrated["id"] == original["id"] and hydrated["ts"] == original["ts"]
+    assert hydrated["team_logo"] == "sea.png" and hydrated["opp_logo"] == "den.png"
+    assert hydrated["player"] == "Jason Myers"
