@@ -2,7 +2,13 @@
 *.log
 
 # Local credentials and agent state
-.claude/
+.claude/*
+!.claude/settings.json
+.codex/*
+!.codex/hooks.json
+.gemini/*
+!.gemini/settings.json
+CLAUDE.local.md
 .oci/
 *.key
 *.pem

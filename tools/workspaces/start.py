@@ -1,0 +1,220 @@
+"""Prepare task context from repository instructions and native agent hooks."""
+from __future__ import annotations
+
+import argparse
+from fnmatch import fnmatchcase
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+from uuid import uuid4
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from tools.workspaces.manage import (
+    WorkspaceError, expand, git, load, manifest_read, resolve, safe_path, stamp, tree, write_json,
+)
+
+
+def route(manifest: dict, task: str, paths: list[str], previous: list[str] | None = None) -> tuple[list[str], list[str]]:
+    routing = manifest["routing"]
+    reasons, names = [], set()
+    for rule in routing["rules"]:
+        if any(re.search(pattern, task, re.IGNORECASE) for pattern in rule["match"]):
+            names.update(rule["slices"])
+            reasons.append(rule["reason"])
+    for path in paths:
+        safe_path(path)
+        owners = {name for name, component in manifest["components"].items()
+                  if any(fnmatchcase(path, pattern) for pattern in component.get("owned", []))}
+        mapped = {slice_name for owner in owners for slice_name in routing["component_slices"].get(owner, [])}
+        names.update(mapped or routing["uncertain"])
+        reasons.append("Explicit repository path: " + path)
+    devices = {name for name, patterns in routing["devices"].items()
+               if any(re.search(pattern, task, re.IGNORECASE) for pattern in patterns)}
+    if not devices and previous:
+        if all(name.startswith("mini-") for name in previous):
+            devices = {"mini"}
+        elif all(name.startswith("six-") for name in previous):
+            devices = {"six"}
+    if "sports" in names:
+        names.remove("sports")
+        names.add("mini-sports" if devices == {"mini"} else "six-sports" if devices == {"six"} else "shared-sports")
+    for name in list(names):
+        mini = "mini-" + name
+        if devices == {"mini"} and mini in manifest["slices"]:
+            names.remove(name)
+            names.add(mini)
+        elif "mini" in devices and mini in manifest["slices"]:
+            names.add(mini)
+    if not names:
+        if previous:
+            return previous, ["Follow-up keeps the recorded task scope"]
+        names.update(["mini-runtime"] if devices == {"mini"} else
+                     ["six-runtime"] if devices == {"six"} else routing["uncertain"])
+        reasons.append("No narrow boundary is established")
+    if any(name not in manifest["slices"] for name in names):
+        raise WorkspaceError("A task routing rule names an unknown slice")
+    return sorted(names), reasons
+
+
+def inventory(root: Path, manifest: dict, revision: str) -> dict[str, str]:
+    tracked = tree(root, revision)
+    # Include explicit new instruction and tool files during local implementation.
+    for component in manifest["components"].values():
+        for pattern in component.get("context", []) + component.get("build", []):
+            if not any(char in pattern for char in "*?[") and (root / pattern).is_file():
+                safe_path(pattern)
+                tracked[pattern] = "100644"
+    for path in list(tracked):
+        for parent in Path(path).parents:
+            instruction = (parent / "AGENTS.md").as_posix()
+            if (root / instruction).is_file():
+                tracked[instruction] = "100644"
+    return tracked
+
+
+def prepare(root: Path, task: str, session: str, slices: list[str] | None = None,
+            paths: list[str] | None = None, new_task: bool = False,
+            scope: str | None = None, reason: str | None = None) -> dict:
+    root = Path(git(root, "rev-parse", "--show-toplevel").strip()).resolve()
+    git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
+    managed = (git_dir / "agent-workspace/state.json").is_file()
+    manifest = load(root)[2] if managed else manifest_read(root / ".github/agent-workspaces.json")
+    key = scope if scope is not None else hashlib.sha256(session.encode()).hexdigest()[:24]
+    if not re.fullmatch(r"[0-9a-f]{24}", key):
+        raise WorkspaceError("Use the 24-character scope ID from the task packet")
+    location = git_dir / "agent-context" / key
+    previous = json.loads((location / "state.json").read_text()) if (location / "state.json").is_file() and not new_task else None
+    if not task.strip() and not previous:
+        raise WorkspaceError("A new task needs a description")
+    requested_paths = paths or []
+    tracked = inventory(root, manifest, git(root, "rev-parse", "HEAD").strip())
+    # Read path names from the task without reading their file content.
+    requested_paths = list(dict.fromkeys(requested_paths + [path for path in tracked if path in task]))
+    short_reply = bool(re.fullmatch(r"\s*(continue|go|yes|do it|fix it|start|resume)[.!\s]*", task, re.IGNORECASE))
+    if previous and (not task.strip() or short_reply) and not slices and not paths:
+        selected, reasons = previous["slices"], ["Continue the recorded task scope"]
+    elif slices:
+        selected, reasons = sorted(set(slices)), ["The agent selected explicit task slices"]
+    else:
+        selected, reasons = route(manifest, task, requested_paths, previous["slices"] if previous else None)
+    if reason:
+        reasons.append(reason)
+    if previous:
+        selected = sorted(set(selected) | set(previous["slices"]))
+    names = list(dict.fromkeys(name for item in selected for name in manifest["slices"][item]))
+    plan = resolve(manifest, names, tracked)
+    if previous:
+        plan["context_files"] = sorted(set(plan["context_files"]) | set(previous["context_files"]))
+        plan["build_files"] = sorted(set(plan["build_files"]) | set(previous["build_files"]))
+    plan["context_files"] = sorted(set(plan["context_files"]) | set(requested_paths))
+    plan["build_files"] = sorted(set(plan["build_files"]) | set(requested_paths))
+    for path in requested_paths:
+        for parent in Path(path).parents:
+            instruction = (parent / "AGENTS.md").as_posix()
+            if instruction in tracked:
+                plan["context_files"] = sorted(set(plan["context_files"]) | {instruction})
+                plan["build_files"] = sorted(set(plan["build_files"]) | {instruction})
+    for path in plan["build_files"]:
+        target = root / path
+        if target.is_symlink() or not target.resolve().is_relative_to(root):
+            raise WorkspaceError(f"Task input is a link: {path}")
+    if managed:
+        _, current, _ = load(root)
+        if set(plan["components"]) - set(current["components"]) or set(requested_paths) - set(current["build_files"]):
+            current = expand(root, names, requested_paths, reason or "Agent startup discovered another task dependency")
+        plan["build_files"] = current["build_files"]
+    location.mkdir(parents=True, exist_ok=True)
+    state = {"version": 1, "scope": key, "at": stamp(), "base_sha": git(root, "rev-parse", "HEAD").strip(),
+             "checkout_kind": "managed_sparse" if managed else "existing_checkout", "slices": selected,
+             "task_sha256": hashlib.sha256(task.encode()).hexdigest(),
+             "manifest_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+             "reasons": reasons, **plan}
+    state["history"] = (previous["history"] if previous else []) + [
+        {"at": state["at"], "slices": selected, "reasons": reasons,
+         "files_added": sorted(set(plan["build_files"]) - set(previous["build_files"] if previous else []))}]
+    # Keep the latest scope decisions. Source files and raw prompts stay outside this record.
+    state["history"] = state["history"][-20:]
+    write_json(location / "state.json", state)
+    lines = ["# Task context", "", f"Scope ID: `{key}`", f"Checkout: `{state['base_sha']}` ({state['checkout_kind']})",
+             "Slices: " + ", ".join(selected), "", "## Source entry points", ""]
+    lines += [f"- `{path}`" for path in plan["context_files"]]
+    lines += ["", "## Ownership", ""]
+    lines += [f"- {name}: {manifest['components'][name]['owner']}" for name in plan["components"]]
+    lines += ["", "## Focused checks", ""]
+    for name in plan["checks"]:
+        lines.append(f"- `{name}`: " + " ".join(manifest["checks"][name]["argv"]))
+    lines += ["", "## Working rules", "", "Read applicable nested AGENTS.md files before edits.",
+              "Search the selected files before broad repository exploration.",
+              "Read relevant symbols and sections. Do not preload every selected file.",
+              "If a dependency is missing, expand the recorded scope with a reason.",
+              "Build files remain available without entering initial context.",
+              "Preserve existing edits. The startup hook does not switch or copy this checkout.",
+              "Use tools/workspaces/manage.py for an isolated pinned sparse workspace.",
+              "Full repository CI must pass before publishing.", ""]
+    packet = location / "task.md"
+    packet.write_text("\n".join(lines), encoding="utf-8")
+    return {"packet": str(packet), "scope": key, "slices": selected, "context_files": len(plan["context_files"]),
+            "build_files": len(plan["build_files"]), "checkout_kind": state["checkout_kind"]}
+
+
+def hook(payload: dict, client: str) -> dict:
+    event = payload.get("hook_event_name", "")
+    root = Path(payload.get("cwd", str(ROOT)))
+    session = client + ":" + str(payload.get("session_id", "default"))
+    if payload.get("agent_id"):
+        session += ":" + str(payload["agent_id"])
+    if event in ("SessionStart", "SubagentStart"):
+        git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
+        parent_session = client + ":" + str(payload.get("session_id", "default"))
+        recorded = git_dir / "agent-context" / hashlib.sha256(parent_session.encode()).hexdigest()[:24] / "task.md"
+        context = ("Follow the root AGENTS.md. Before repository exploration, run "
+                   "python tools/workspaces/start.py --task-file <task-text-file>. "
+                   "Read the resulting task packet first. If a prompt hook already prepared a packet, reuse it. "
+                   "After compaction, resume the recorded task scope.")
+        if recorded.is_file():
+            context = f"Resume the task packet at {recorded}. Read only the files needed for your assigned work."
+    elif event in ("UserPromptSubmit", "BeforeAgent"):
+        result = prepare(root, str(payload.get("prompt", "")), session)
+        context = (f"Task scope: {', '.join(result['slices'])}. "
+                   f"Scope ID: {result['scope']}. "
+                   f"Read the task packet at {result['packet']} before source exploration. "
+                   f"Use its {result['context_files']} source entry points and read only relevant sections. "
+                   f"Its {result['build_files']} build files do not need initial reading. "
+                   "Scope selection controls context. It does not prove that unselected files are unrelated.")
+    else:
+        raise WorkspaceError("Unsupported agent hook event")
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--task-file", type=Path)
+    parser.add_argument("--task")
+    parser.add_argument("--session", default=None)
+    parser.add_argument("--scope")
+    parser.add_argument("--reason")
+    parser.add_argument("--slice", action="append", default=[])
+    parser.add_argument("--path", action="append", default=[])
+    parser.add_argument("--new-task", action="store_true")
+    parser.add_argument("--hook", choices=("codex", "claude", "gemini"))
+    args = parser.parse_args(argv)
+    try:
+        if args.hook:
+            result = hook(json.load(sys.stdin), args.hook)
+        else:
+            task = args.task_file.read_text(encoding="utf-8") if args.task_file else args.task
+            result = prepare(args.repo, task or "", args.session or "manual:" + uuid4().hex,
+                             args.slice, args.path, args.new_task, args.scope, args.reason)
+        print(json.dumps(result))
+        return 0
+    except (WorkspaceError, OSError, ValueError, KeyError) as error:
+        print("Agent context setup failed: " + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

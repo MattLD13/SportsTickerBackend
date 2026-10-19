@@ -9,7 +9,63 @@ Git owns commits, branches, staging, and history.
 Workspace selection does not control deployment selection.
 `.github/deployment-paths.json` continues to own deployment selection.
 
-## Create a task workspace
+## Automatic task context
+
+`AGENTS.md` owns shared agent instructions.
+`CLAUDE.md` and `GEMINI.md` import that one guide.
+Copilot's bridge points to the same guide. Cursor uses `AGENTS.md` directly.
+
+| Agent | Automatic entry |
+|---|---|
+| Codex | `.codex/hooks.json` uses `SessionStart`, `SubagentStart`, and `UserPromptSubmit`. |
+| Claude Code | `.claude/settings.json` uses the same events. |
+| Gemini CLI | `.gemini/settings.json` uses `SessionStart` and `BeforeAgent`. |
+| Cursor, Copilot, and other compatible agents | Repository instructions direct the agent to the startup command. |
+
+After the client trusts repository hooks, each prompt prepares context before agent planning.
+Each agent session gets separate evidence under `.git/agent-context/<scope-id>/`.
+The hook performs no network requests, source edits, test execution, checkout changes, or hardware operations.
+It hashes task text instead of storing raw prompts.
+
+For an agent without active hooks, the root guide directs this command:
+
+```powershell
+python tools/workspaces/start.py --task "Fix Mini hockey shootout rendering"
+```
+
+The result identifies a task packet, scope ID, context count, and build count.
+Read the packet, then its relevant source files.
+A Mini hockey task selects Mini sports. A shared hockey task selects both renderers and the app contract.
+Unknown ownership selects shared consumers. The agent can select explicit slices when the routing result needs correction.
+
+For a dependency expansion, use the current packet's scope ID:
+
+```powershell
+python tools/workspaces/start.py --scope <scope-id> --slice weather --task "Inspect forecast integration" --reason "The alert depends on forecast state"
+python tools/workspaces/start.py --scope <scope-id> --path tools/workspaces/new_helper.py --reason "Add the context helper"
+```
+
+For an independent task in the same client session, reset that scope:
+
+```powershell
+python tools/workspaces/start.py --scope <scope-id> --new-task --task "Fix Mini weather"
+```
+
+Continuation prompts preserve the recorded scope. New dependencies expand it.
+Resuming or compacting a session restores the packet reference.
+The startup tool uses the current checkout, including existing local edits.
+Its recorded SHA identifies that checkout. It does not certify that the commit exists on GitHub.
+For isolated work pinned to GitHub, use the sparse workspace command below.
+
+## Client limits
+
+Start a new agent session after changing hook configuration.
+Clients control repository trust and hook review. This repository does not bypass those controls.
+Instruction-only clients depend on the agent following `AGENTS.md`.
+An agent that ignores repository instructions and hooks cannot receive enforced automatic setup from this repository.
+Existing conversation history remains in context. A focused packet does not erase earlier messages.
+
+## Create an isolated task workspace
 
 Use Python 3.10 or newer and Git with protocol version 2 and sparse checkout support.
 Use a GitHub remote with blob filtering support.
@@ -49,7 +105,7 @@ Those headers also remain build files.
 
 The manifest starts with Mini sports, Six sports, shared sports, music, weather, stocks, flights, airports, golf, racing, and news slices.
 Feature slices share dependencies where the current code shares imports.
-The first validated task boundary is Mini sports.
+The first validated task boundary is Mini sports. Runtime and Mini feature slices have separate initial context.
 
 ## Expand a workspace
 

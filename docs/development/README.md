@@ -3,6 +3,7 @@
 Read [AGENTS.md](../../AGENTS.md) before changing code.
 Read nested agent guides for the directories you change.
 Preserve existing local changes and runtime data.
+Read [agent workspaces](agent-workspaces.md) for automatic task context and isolated sparse workspaces.
 
 ## Local development
 

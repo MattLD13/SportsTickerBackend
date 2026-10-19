@@ -1,104 +1,35 @@
-# Testing Guide and Procedures
+# Tests
 
-This guide defines the test tiers, command matrix, and verification rules for the test suite.
+Run the focused checks listed in the task packet.
+The Python suite lives in `tests/python/`. Native checks live in `tests/native/`.
+Fixtures live in `tests/fixtures/`.
 
-## Test Tiers
+## Commands
 
-The test suite divides into two tiers.
-
-### Tier 1: Critical Tests
-
-Critical tests validate core architecture, REST API security boundaries, V2 protocol invariants, frame generation, and runtime pacing.
-You must run critical tests before every push to `main`.
-
-Run all critical tests:
-
-```powershell
-python -m pytest -m critical
-```
-
-Critical tests cover:
-- `tests/python/api/`: REST API routes, controller token authorization, and pairing.
-- `tests/python/application/`: Frame builder, card viewport, and lifecycle state machines.
-- `tests/python/runtime/`: Frame pacing, display state, and scroll layouts.
-- `tests/python/protocol/`: V2 JSON schema validation, projection invariants, and overlay channels.
-- `tests/python/rendering/`: Content family dispatch and catalog routing.
-- `tests/python/platform/`: Memory frame sink buffer conversion and health aggregation.
-- `tests/python/fleet/`: Hardware profiles and panel capabilities.
-- `tests/python/test_modes.py`: Explicit mode definitions and sports filters.
-- `tests/python/test_bootstrap.py`: Default registry resolution.
-- `tests/python/test_rendering_core.py`: Rendering context and scene dispatch.
-
-### Tier 2: Specific Domain Tests
-
-Specific domain tests validate feature providers, external API parsers, integrations, and platform hardware drivers.
-Run specific tests during feature development for the modified domain.
-
-#### Domain Command Matrix
-
-| Domain | Files to Run |
+| Changed boundary | Focused checks |
 |---|---|
-| **Sports Scoreboards** | `python -m pytest tests/python/protocol/test_espn_provider.py tests/python/protocol/test_fotmob_provider.py tests/python/protocol/test_sports_display.py tests/python/providers/` |
-| **Golf** | `python -m pytest tests/python/protocol/test_golf_provider.py tests/python/protocol/test_golf_source.py tests/python/features/utility/` |
-| **Racing (F1, IndyCar, NASCAR)** | `python -m pytest tests/python/protocol/test_racing_live_source.py tests/python/protocol/test_racing_asset_updater.py tests/python/features/racing/` |
-| **Music (Spotify)** | `python -m pytest tests/python/integrations/test_spotify.py` |
-| **Flights & Airports** | `python -m pytest tests/python/protocol/test_flights.py` |
-| **Clock** | `python -m pytest tests/python/clock/test_clock_renderer.py` |
-| **Renderers & Utility** | `python -m pytest tests/python/features/` |
-| **Hardware & Operations (BLE, WiFi, OTA)** | `python -m pytest tests/python/operations/ tests/python/platform/` |
-| **Assets & Disk Cache** | `python -m pytest tests/python/assets/` |
+| Sports facts | `tests/python/protocol/test_sports_display.py`, `test_sports_lifecycle.py`, and relevant provider tests |
+| Mini hockey | `test_mini_hockey_contract.py`, `test_hockey_shootout_alert.py`, and `tests/native/mini_hockey_panes.cpp` |
+| Music | `tests/python/integrations/test_spotify.py`, `tests/python/protocol/test_music_stale_scope.py` |
+| Weather | `tests/python/protocol/test_weather_provider.py` |
+| Flights and airports | `tests/python/protocol/test_flights.py` |
+| Golf | `tests/python/protocol/test_golf_provider.py`, `test_golf_source.py` |
+| Racing | `tests/python/protocol/test_racing_live_source.py`, `tests/python/features/racing/` |
+| Operations | `tests/python/operations/`, `tests/python/platform/` |
+| Assets | `tests/python/assets/` |
+| Agent workflow | `tests/python/operations/test_agent_workspaces.py`, `test_agent_startup.py` |
 
----
+Run selected Python paths with `python -m pytest -q <paths>`.
+Before every push, run `python -m pytest -m critical -q`.
+Before a release or shared domain change, run `python -m pytest -q`.
+Compile touched Python files with `python -m py_compile <paths>`.
 
-## Testing Procedure
+## Evidence
 
-Follow these steps for every change.
-
-### Step 1: Compile Touched Python Files
-
-If you touch Python code, compile every touched file:
-
-```powershell
-python -m py_compile path\to\file.py
-```
-
-### Step 2: Run the Specific Domain Test
-
-Run the focused domain test suite for the modified area from the Domain Command Matrix.
-
-### Step 3: Render a Real Preview Frame
-
-If you change UI layout, text fonts, or pixel placement, render a real 384x32 PNG image:
-
-```powershell
-python tools\rendering\render_frame.py --snapshot tests\fixtures\display\v2_render_snapshot.json --mode sports --item-id mlb-live --pinned --no-prefetch --output previews\mlb.png
-```
-
-Inspect the output image to verify visual alignment.
-
-### Step 4: Run Critical Tests Before Every Push
-
-Before you commit and push to `main`, run the critical test suite:
-
-```powershell
-python -m pytest -m critical
-```
-
-If any critical test fails, fix the failure before you push.
-
-### Step 5: Run Full Test Suite
-
-Before a release or after changing shared domain models, run the complete suite:
-
-```powershell
-python -m pytest -q
-```
-
----
-
-## Rules for Adding New Tests
-
-1. Mark core invariant tests with `pytestmark = pytest.mark.critical`.
-2. Do not add mock network calls without deterministic injected clocks.
-3. Keep tests focused on real input and output boundaries.
-4. Remove stale tests when you remove code or routes.
+Use real input/output boundaries and deterministic injected clocks for provider tests.
+Mark core invariants with `pytestmark = pytest.mark.critical`.
+If display output changes, validate the production renderer at its real panel dimensions.
+Do not weaken assertions, add skips, or create dummy modules to conceal broken behavior.
+Remove stale test plumbing when its production path is removed.
+Keep temporary databases, logs, previews, and bytecode outside Git.
+Read `docs/development/testing.md` for hardware diagnostics and full recipes.

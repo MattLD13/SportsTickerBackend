@@ -1,0 +1,54 @@
+name: Validate agent setup
+'on':
+  push:
+    branches: [main]
+    paths:
+      - '**/AGENTS.md'
+      - AGENTS.md
+      - CLAUDE.md
+      - GEMINI.md
+      - .gitignore
+      - .codex/hooks.json
+      - .claude/settings.json
+      - .gemini/settings.json
+      - .github/agent-workspaces.json
+      - .github/copilot-instructions.md
+      - .github/workflows/agent-instructions.yml
+      - tools/workspaces/**
+      - tests/python/operations/test_agent_*.py
+  pull_request:
+    paths:
+      - '**/AGENTS.md'
+      - AGENTS.md
+      - CLAUDE.md
+      - GEMINI.md
+      - .gitignore
+      - .codex/hooks.json
+      - .claude/settings.json
+      - .gemini/settings.json
+      - .github/agent-workspaces.json
+      - .github/copilot-instructions.md
+      - .github/workflows/agent-instructions.yml
+      - tools/workspaces/**
+      - tests/python/operations/test_agent_*.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Agent setup / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install the instruction check dependency
+        run: python -m pip install 'pytest>=8,<9'
+      - name: Check task routing, hooks, sparse Git, and instruction budgets
+        run: python -m pytest -q tests/python/operations/test_agent_workspaces.py tests/python/operations/test_agent_startup.py

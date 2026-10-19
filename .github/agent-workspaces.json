@@ -6,8 +6,8 @@
     "shared-drawing"
   ],
   "shared_consumers": [
-    "mini-firmware",
-    "six-runtime",
+    "mini-sports-renderer",
+    "six-sports-renderer",
     "app-contracts"
   ],
   "components": {
@@ -16,16 +16,25 @@
       "owned": [],
       "dependencies": [],
       "context": [
-        "AGENTS.md",
-        "tests/AGENTS.md",
-        "docs/contracts/overview.md"
+        "AGENTS.md"
       ],
       "build": [
         ".gitignore",
         ".gitattributes",
         "pyproject.toml",
         "requirements.txt",
-        "requirements-backend.txt"
+        "requirements-backend.txt",
+        "CLAUDE.md",
+        "GEMINI.md",
+        ".github/copilot-instructions.md",
+        ".codex/hooks.json",
+        ".claude/settings.json",
+        ".gemini/settings.json",
+        ".github/agent-workspaces.json",
+        "tools/workspaces/manage.py",
+        "tools/workspaces/start.py",
+        "tools/workspaces/native_hockey.py",
+        "docs/development/agent-rules.md"
       ],
       "checks": []
     },
@@ -70,7 +79,8 @@
         "sports_ticker/domain/models.py",
         "sports_ticker/projections/data_api.py",
         "sports_ticker/projections/device_data.py",
-        "sports_ticker/projections/mini_fields.py"
+        "sports_ticker/projections/mini_fields.py",
+        "docs/contracts/overview.md"
       ],
       "build": [
         "sports_ticker/domain/*.py",
@@ -126,17 +136,9 @@
         "esp32_hub75/*"
       ],
       "dependencies": [
-        "sports-server"
+        "server-core"
       ],
-      "context": [
-        "esp32_hub75/src/mini/protocol/payload.inc",
-        "esp32_hub75/src/mini/rendering/presentation.inc",
-        "esp32_hub75/src/mini/rendering/sports_pane.h",
-        "esp32_hub75/src/mini/rendering/glyphs.h",
-        "tests/python/protocol/test_hockey_shootout_alert.py",
-        "tests/python/protocol/test_mini_hockey_contract.py",
-        "tests/native/mini_hockey_panes.cpp"
-      ],
+      "context": [],
       "build": [
         "esp32_hub75/src/mini/protocol/*",
         "esp32_hub75/src/mini/rendering/*",
@@ -144,26 +146,63 @@
         "esp32_hub75/src/mini/assets/mini_sprite.h",
         "esp32_hub75/platformio.ini",
         "esp32_hub75/partitions.csv",
-        "tests/native/mini_hockey_panes.cpp"
+        "tests/native/mini_hockey_panes.cpp",
+        "tools/mini/generate_mini_ui.py",
+        "esp32_hub75/src/mini/platform/boot_validation.cpp",
+        "esp32_hub75/src/mini/platform/connectivity.inc",
+        "esp32_hub75/src/mini/platform/deadline_client.h",
+        "esp32_hub75/src/mini/platform/device_credentials.cpp",
+        "esp32_hub75/src/mini/platform/device_credentials.h",
+        "esp32_hub75/src/mini/platform/display_metrics.h",
+        "esp32_hub75/src/mini/platform/firmware_update.cpp",
+        "esp32_hub75/src/mini/platform/firmware_update.h",
+        "esp32_hub75/src/mini/platform/firmware_validation.h",
+        "esp32_hub75/src/mini/platform/http_diagnostics.cpp",
+        "esp32_hub75/src/mini/platform/http_diagnostics.h",
+        "esp32_hub75/src/mini/platform/matrix_driver.cpp",
+        "esp32_hub75/src/mini/platform/matrix_driver.h",
+        "esp32_hub75/src/mini/platform/network_gate.cpp",
+        "esp32_hub75/src/mini/platform/network_gate.h",
+        "esp32_hub75/src/mini/platform/network_recovery.h",
+        "esp32_hub75/src/mini/platform/response_stream.h",
+        "esp32_hub75/src/mini/platform/station_retry.h",
+        "esp32_hub75/src/mini/platform/tls.h",
+        "esp32_hub75/src/mini/platform/tls_client.h",
+        "esp32_hub75/src/mini/platform/transfer_deadline.h",
+        "esp32_hub75/src/mini/platform/wifi_station.cpp",
+        "esp32_hub75/src/mini/platform/wifi_station.h",
+        "esp32_hub75/src/mini/runtime/*",
+        "esp32_hub75/src/mini/features/*",
+        "esp32_hub75/src/mini/assets/*",
+        "esp32_hub75/src/main.cpp",
+        "esp32_hub75/src/team_logos.h"
       ],
       "checks": [
-        "mini-native"
+        "mini-fields"
       ]
     },
     "six-runtime": {
       "owner": "Ticker Six runtime and 384x32 renderers",
       "owned": [
-        "ticker_core/*",
+        "ticker_core/app/*",
+        "ticker_core/runtime/*",
+        "ticker_core/drivers/*",
+        "ticker_core/platform/*",
+        "ticker_core/bootstrap.py",
+        "ticker_core/composition.py",
+        "ticker_core/__main__.py",
         "updater.py",
         "setup.sh",
         "ticker-controller.service"
       ],
       "dependencies": [
-        "sports-server"
+        "six-build"
       ],
       "context": [
-        "ticker_core/features/sports/renderer.py",
-        "ticker_core/features/sports/pinned.py"
+        "ticker_core/app/application.py",
+        "ticker_core/app/poller.py",
+        "ticker_core/platform/wifi.py",
+        "ticker_core/platform/update.py"
       ],
       "build": [
         "ticker_core/*",
@@ -172,9 +211,7 @@
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
-      "checks": [
-        "six-sports"
-      ]
+      "checks": []
     },
     "app-contracts": {
       "owner": "iOS V2 contract consumers",
@@ -413,19 +450,270 @@
       "checks": [
         "mini-ui"
       ]
+    },
+    "mini-sports-renderer": {
+      "owner": "Mini sports protocol and 64x32 panes",
+      "owned": [
+        "esp32_hub75/src/mini/rendering/sports_pane.h"
+      ],
+      "dependencies": [
+        "sports-server",
+        "mini-firmware"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/protocol/payload.inc",
+        "esp32_hub75/src/mini/rendering/presentation.inc",
+        "esp32_hub75/src/mini/rendering/sports_pane.h",
+        "esp32_hub75/src/mini/rendering/glyphs.h",
+        "tests/python/protocol/test_hockey_shootout_alert.py",
+        "tests/python/protocol/test_mini_hockey_contract.py",
+        "tests/native/mini_hockey_panes.cpp"
+      ],
+      "build": [],
+      "checks": [
+        "mini-native",
+        "mini-ui"
+      ]
+    },
+    "backend-operations": {
+      "owner": "Backend deployment, recovery, and reporting",
+      "owned": [
+        "backend_ops/*",
+        "deploy/backend/*",
+        "tools/deployment/*"
+      ],
+      "dependencies": [
+        "server-core"
+      ],
+      "context": [
+        "backend_ops/manager.py",
+        "backend_ops/components.py",
+        "backend_ops/reporting.py",
+        "docs/operations/backend-recovery.md"
+      ],
+      "build": [
+        "backend_ops/*.py",
+        "deploy/backend/*",
+        "tools/deployment/*.py",
+        "tests/python/operations/test_backend*.py",
+        "tests/python/operations/test_runtime_reporting.py"
+      ],
+      "checks": []
+    },
+    "mini-music": {
+      "owner": "Mini music presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "music"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/music_pane.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-weather": {
+      "owner": "Mini weather presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "weather"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/weather_pane.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-stocks": {
+      "owner": "Mini stocks presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "stocks"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-flights": {
+      "owner": "Mini flights presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "flights"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-airports": {
+      "owner": "Mini airports presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "airports"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-golf": {
+      "owner": "Mini golf presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "golf"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-racing": {
+      "owner": "Mini racing presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "racing"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "mini-news": {
+      "owner": "Mini news presentation",
+      "owned": [],
+      "dependencies": [
+        "mini-firmware",
+        "news"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/rendering/utility_panels.h",
+        "esp32_hub75/src/mini/rendering/presentation.inc"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "clock": {
+      "owner": "Clock presentation",
+      "owned": [
+        "ticker_core/features/clock/*"
+      ],
+      "dependencies": [
+        "six-build"
+      ],
+      "context": [
+        "ticker_core/features/clock/renderer.py"
+      ],
+      "build": [
+        "tests/python/clock/test_clock_renderer.py"
+      ],
+      "checks": [
+        "clock-domain"
+      ]
+    },
+    "agent-workspaces": {
+      "owner": "Agent instructions, task routing, sparse workspaces, and evidence",
+      "owned": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        ".github/agent-workspaces.json",
+        ".github/copilot-instructions.md",
+        ".codex/hooks.json",
+        ".claude/settings.json",
+        ".gemini/settings.json",
+        "tools/workspaces/*",
+        "docs/development/agent-workspaces.md",
+        "docs/development/agent-rules.md",
+        "tests/python/operations/test_agent_workspaces.py",
+        "tests/python/operations/test_agent_startup.py"
+      ],
+      "dependencies": [
+        "instructions"
+      ],
+      "context": [
+        "tools/workspaces/start.py",
+        "tools/workspaces/manage.py",
+        "tests/python/operations/test_agent_startup.py",
+        "tests/python/operations/test_agent_workspaces.py",
+        "docs/development/agent-workspaces.md"
+      ],
+      "build": [
+        "tools/workspaces/native_hockey.py"
+      ],
+      "checks": [
+        "agent-setup"
+      ]
+    },
+    "mini-runtime": {
+      "owner": "Mini scheduling, connectivity, and firmware lifecycle",
+      "owned": [
+        "esp32_hub75/src/mini/runtime/*",
+        "esp32_hub75/src/mini/platform/*"
+      ],
+      "dependencies": [
+        "mini-firmware"
+      ],
+      "context": [
+        "esp32_hub75/src/mini/runtime/scheduler.inc",
+        "esp32_hub75/src/mini/runtime/network.cpp",
+        "esp32_hub75/src/mini/platform/network_recovery.h"
+      ],
+      "build": [],
+      "checks": []
+    },
+    "six-sports-renderer": {
+      "owner": "Ticker Six sports presentation",
+      "owned": [
+        "ticker_core/features/sports/*"
+      ],
+      "dependencies": [
+        "sports-server",
+        "six-build"
+      ],
+      "context": [
+        "ticker_core/features/sports/renderer.py",
+        "ticker_core/features/sports/pinned.py"
+      ],
+      "build": [
+        "tests/python/features/sports/test_sports_renderers.py",
+        "tools/rendering/render_frame.py"
+      ],
+      "checks": [
+        "six-sports"
+      ]
     }
   },
   "slices": {
     "mini-sports": [
-      "mini-firmware"
+      "mini-sports-renderer"
     ],
     "six-sports": [
-      "six-runtime"
+      "six-sports-renderer"
     ],
     "shared-sports": [
       "sports-server",
-      "mini-firmware",
-      "six-runtime",
+      "mini-sports-renderer",
+      "six-sports-renderer",
       "app-contracts"
     ],
     "music": [
@@ -451,6 +739,51 @@
     ],
     "news": [
       "news"
+    ],
+    "mini-runtime": [
+      "mini-runtime"
+    ],
+    "six-runtime": [
+      "six-runtime"
+    ],
+    "server-core": [
+      "server-core"
+    ],
+    "ios": [
+      "app-contracts"
+    ],
+    "backend-operations": [
+      "backend-operations"
+    ],
+    "mini-music": [
+      "mini-music"
+    ],
+    "mini-weather": [
+      "mini-weather"
+    ],
+    "mini-stocks": [
+      "mini-stocks"
+    ],
+    "mini-flights": [
+      "mini-flights"
+    ],
+    "mini-airports": [
+      "mini-airports"
+    ],
+    "mini-golf": [
+      "mini-golf"
+    ],
+    "mini-racing": [
+      "mini-racing"
+    ],
+    "mini-news": [
+      "mini-news"
+    ],
+    "clock": [
+      "clock"
+    ],
+    "agent-workspaces": [
+      "agent-workspaces"
     ]
   },
   "checks": {
@@ -614,11 +947,261 @@
       "files": [
         "tests/python/protocol/test_news_distribution.py"
       ]
+    },
+    "agent-setup": {
+      "argv": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/python/operations/test_agent_workspaces.py",
+        "tests/python/operations/test_agent_startup.py"
+      ],
+      "files": [
+        "tests/python/operations/test_agent_workspaces.py",
+        "tests/python/operations/test_agent_startup.py"
+      ]
+    },
+    "clock-domain": {
+      "argv": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/python/clock/test_clock_renderer.py"
+      ],
+      "files": [
+        "tests/python/clock/test_clock_renderer.py"
+      ]
     }
   },
   "publishing": {
     "workflow": ".github/workflows/deploy.yml",
     "required_job": "Validate code and layouts",
     "full_repository_ci": true
+  },
+  "routing": {
+    "devices": {
+      "mini": [
+        "\\bmini\\b",
+        "\\besp32\\b",
+        "\\blittle ticker\\b"
+      ],
+      "six": [
+        "\\bticker ?six\\b",
+        "\\bsix\\b",
+        "\\b(?:big|main) ticker\\b",
+        "\\braspberry pi\\b",
+        "\\bpi\\b"
+      ],
+      "server": [
+        "\\bserver\\b",
+        "\\bbackend\\b"
+      ]
+    },
+    "rules": [
+      {
+        "match": [
+          "\\b(music|spotify|album|playback)\\b"
+        ],
+        "slices": [
+          "music"
+        ],
+        "reason": "Music task language"
+      },
+      {
+        "match": [
+          "\\b(weather|forecast|temperature)\\b"
+        ],
+        "slices": [
+          "weather"
+        ],
+        "reason": "Weather task language"
+      },
+      {
+        "match": [
+          "\\b(stocks?|equities|market price)\\b"
+        ],
+        "slices": [
+          "stocks"
+        ],
+        "reason": "Stocks task language"
+      },
+      {
+        "match": [
+          "\\b(flights?|aviation|aircraft)\\b"
+        ],
+        "slices": [
+          "flights"
+        ],
+        "reason": "Flights task language"
+      },
+      {
+        "match": [
+          "\\b(airports?|arrivals?|departures?)\\b"
+        ],
+        "slices": [
+          "airports"
+        ],
+        "reason": "Airports task language"
+      },
+      {
+        "match": [
+          "\\b(golf|pga|lpga)\\b"
+        ],
+        "slices": [
+          "golf"
+        ],
+        "reason": "Golf task language"
+      },
+      {
+        "match": [
+          "\\b(racing|nascar|indycar|formula ?1|f1|imsa)\\b"
+        ],
+        "slices": [
+          "racing"
+        ],
+        "reason": "Racing task language"
+      },
+      {
+        "match": [
+          "\\b(news|trade alert|transaction)\\b"
+        ],
+        "slices": [
+          "news"
+        ],
+        "reason": "News task language"
+      },
+      {
+        "match": [
+          "\\b(clock mode|clock screen)\\b"
+        ],
+        "slices": [
+          "clock"
+        ],
+        "reason": "Clock task language"
+      },
+      {
+        "match": [
+          "\\b(sports?|hockey|nhl|shootouts?|penalt(?:y|ies)|football|nfl|fbs|fcs|basketball|nba|wnba|ncaa|baseball|mlb|soccer|overtime|power play)\\b"
+        ],
+        "slices": [
+          "sports"
+        ],
+        "reason": "Sports task language"
+      },
+      {
+        "match": [
+          "\\b(AGENTS\\.md|CLAUDE\\.md|GEMINI\\.md|agent instructions|agent[- ]workspaces?|context window|workspace manager|coding agents?)\\b"
+        ],
+        "slices": [
+          "agent-workspaces"
+        ],
+        "reason": "Agent workflow or instruction change"
+      },
+      {
+        "match": [
+          "\\b(server core|pairing|registration|api route|authentication|fleet record|scheduler)\\b"
+        ],
+        "slices": [
+          "server-core"
+        ],
+        "reason": "Server core boundary"
+      },
+      {
+        "match": [
+          "\\b(shared contract|wire contract|schema|shared behavior|shared behaviour)\\b",
+          "\\bshared\\b"
+        ],
+        "slices": [
+          "shared-sports"
+        ],
+        "reason": "Shared facts require every consumer"
+      },
+      {
+        "match": [
+          "\\b(deploy(?:ment)?|rollback|recovery|github reporting|fetcher|backend_ops)\\b"
+        ],
+        "slices": [
+          "backend-operations"
+        ],
+        "reason": "Backend operation boundary"
+      },
+      {
+        "match": [
+          "\\b(ios|iphone|swift|controller app)\\b"
+        ],
+        "slices": [
+          "ios"
+        ],
+        "reason": "Controller application boundary"
+      }
+    ],
+    "uncertain": [
+      "shared-sports"
+    ],
+    "component_slices": {
+      "server-core": [
+        "server-core",
+        "shared-sports"
+      ],
+      "sports-server": [
+        "shared-sports"
+      ],
+      "shared-drawing": [
+        "shared-sports"
+      ],
+      "mini-firmware": [
+        "mini-runtime"
+      ],
+      "mini-sports-renderer": [
+        "mini-sports"
+      ],
+      "six-runtime": [
+        "six-runtime"
+      ],
+      "app-contracts": [
+        "ios"
+      ],
+      "backend-operations": [
+        "backend-operations"
+      ],
+      "agent-workspaces": [
+        "agent-workspaces"
+      ],
+      "music": [
+        "music"
+      ],
+      "weather": [
+        "weather"
+      ],
+      "stocks": [
+        "stocks"
+      ],
+      "flights": [
+        "flights"
+      ],
+      "airports": [
+        "airports"
+      ],
+      "golf": [
+        "golf"
+      ],
+      "racing": [
+        "racing"
+      ],
+      "news": [
+        "news"
+      ],
+      "clock": [
+        "clock"
+      ],
+      "mini-runtime": [
+        "mini-runtime"
+      ],
+      "six-sports-renderer": [
+        "six-sports"
+      ]
+    }
   }
 }

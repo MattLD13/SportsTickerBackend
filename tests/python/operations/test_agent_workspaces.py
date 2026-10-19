@@ -10,6 +10,7 @@ from tools.workspaces.manage import (
     MANIFEST, ROOT, WorkspaceError, audit, create, expand, git, load,
     input_digest, main, manifest_read, resolve, run_check, safe_path, select, tree,
 )
+from tools.workspaces.start import inventory
 
 pytestmark = pytest.mark.critical
 
@@ -164,7 +165,7 @@ def test_filter_capability_is_required_before_fetch(source, tmp_path):
 
 def test_manifest_slice_paths_checks_and_initial_context_are_real():
     manifest = manifest_read(MANIFEST)
-    tracked = tree(ROOT, "HEAD")
+    tracked = inventory(ROOT, manifest, "HEAD")
     for name in manifest["slices"]:
         plan = resolve(manifest, select(manifest, name, False), tracked)
         assert all((ROOT / path).is_file() for path in plan["build_files"])

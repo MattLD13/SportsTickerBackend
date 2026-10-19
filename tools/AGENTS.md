@@ -11,7 +11,7 @@ Read the root `AGENTS.md` before changing a tool.
 | `mini/` | Generate shared firmware data and inspect Mini hardware. |
 | `diagnostics/` | Inspect Ticker Six, provider data, streams, and hardware. |
 | `deployment/` | Select deployment scope and provision device credentials. |
-| `workspaces/` | Prepare pinned sparse agent workspaces and record task checks. |
+| `workspaces/` | Route task context, prepare pinned sparse workspaces, and record checks. |
 | `benchmarks/` | Measure rendering and transport costs. |
 | `experiments/` | Retain optional design and model experiments. |
 | `assets/` | Store source assets used by local tools. |

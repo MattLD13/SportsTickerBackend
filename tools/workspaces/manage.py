@@ -18,10 +18,11 @@ MANIFEST = ROOT / ".github/agent-workspaces.json"
 SHA = re.compile(r"[0-9a-f]{40}")
 # These exclusions also apply to later expansions.
 DENIED = (".git/*", ".env*", "*/.env*", "*.key", "*.pem", "*.ppk", "*.secret",
-          ".ssh/*", ".claude/*", ".oci/*", ".tmp/*", "ticker_data/*", "hardware/*",
+          ".ssh/*", ".claude/*", ".codex/*", ".gemini/*", ".oci/*", ".tmp/*", "ticker_data/*", "hardware/*",
           "previews/*", "caches/*", "*.log", ".spotify_token", "*credentials*.json",
           "stock_cache.json", "game_cache.json", "global_config.json", "*.sqlite*", "*.db",
           "esp32_hub75/src/mini/platform/config.h")
+PUBLIC_AGENT_CONFIGS = frozenset((".claude/settings.json", ".codex/hooks.json", ".gemini/settings.json"))
 
 
 class WorkspaceError(RuntimeError):
@@ -53,7 +54,7 @@ def safe_path(path: str) -> str:
             or any(ord(char) < 32 for char in path)
             or any(char in path for char in "*?[]!")):
         raise WorkspaceError(f"Unsafe path: {path}")
-    if any(fnmatchcase(path.lower(), pattern.lower()) for pattern in DENIED):
+    if path not in PUBLIC_AGENT_CONFIGS and any(fnmatchcase(path.lower(), pattern.lower()) for pattern in DENIED):
         raise WorkspaceError(f"Excluded private or runtime path: {path}")
     return path
 
@@ -183,7 +184,7 @@ def save(root: Path, location: Path, state: dict, manifest: dict) -> None:
     for name in state["checks"]:
         lines.append(f"- `{name}`: " + " ".join(manifest["checks"][name]["argv"]))
     lines += ["", "## Build files", "", "`state.json` records every workspace file and expansion.",
-              "Build files are available for compilation. Read initial context files first.", "",
+              "Build files are available for compilation. Search initial context paths first.", "",
               "## Rules", "", "Keep changes as ordinary Git commits.",
               "If a shared contract changes, expand every consumer before validation.",
               "Run audit before returning changes. Full repository CI must pass before publishing.",
