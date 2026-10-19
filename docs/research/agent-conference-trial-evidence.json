@@ -132,7 +132,7 @@
         "skippedTests": 0,
         "totalTestCount": 5,
         "testFailures": [],
-        "environmentDescription": "ConferenceTrial \u00c2\u00b7 Built with macOS 26.6.2"
+        "environmentDescription": "ConferenceTrial \u00b7 Built with macOS 26.6.2"
       }
     },
     "B": {
@@ -170,7 +170,7 @@
         "skippedTests": 0,
         "totalTestCount": 5,
         "testFailures": [],
-        "environmentDescription": "ConferenceTrial \u00c2\u00b7 Built with macOS 26.6.2"
+        "environmentDescription": "ConferenceTrial \u00b7 Built with macOS 26.6.2"
       }
     }
   },
@@ -279,7 +279,24 @@
     "attempt": 2,
     "sha": "45ed0198d90a5677df285998ab640a33a63b3fc1",
     "reason": "The coordinator cancellation reached the workflow wrapper after all five tests had passed. Rerun the same UI job for a clean aggregate status.",
-    "code_changes": false
+    "code_changes": false,
+    "result": "success",
+    "passed_ui_tests": 5,
+    "failed_ui_tests": 0,
+    "jobs": [
+      {
+        "name": "Conference UI acceptance",
+        "result": "success"
+      },
+      {
+        "name": "Build Release",
+        "result": "success"
+      },
+      {
+        "name": "Build Debug",
+        "result": "success"
+      }
+    ]
   },
   "shared_review_usage": {
     "input_tokens": 1522490,
@@ -337,5 +354,33 @@
     "persistence_boundary": "The fixture counts save calls without live HTTP writes. Contract tests check settings serialization."
   },
   "acceptance_sha256": "b78fb11de5a3211a235d4f6a83f5279386746543fb02d2bdee332ff81e8ed419",
-  "contract_acceptance_sha256": "294fac1873f5085046b1cf8c560585e67fef1cd10f8908e7fb10639b32663f81"
+  "contract_acceptance_sha256": "294fac1873f5085046b1cf8c560585e67fef1cd10f8908e7fb10639b32663f81",
+  "publication_checks": {
+    "source_sha": "726febb10eb57cf9face7918370ec2293af2d292",
+    "workflow_run": 39343056754,
+    "result": "success",
+    "jobs": [
+      {
+        "name": "Build Release",
+        "result": "success"
+      },
+      {
+        "name": "Build Debug",
+        "result": "success"
+      }
+    ],
+    "configurations": {
+      "Debug": {
+        "passed_tests": 24,
+        "failed_tests": 0,
+        "build": "success"
+      },
+      "Release": {
+        "passed_tests": 24,
+        "failed_tests": 0,
+        "build": "success"
+      }
+    }
+  },
+  "temporary_validation_tags_removed": 6
 }

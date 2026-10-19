@@ -149,3 +149,9 @@ Temporary validation refs contain harness plumbing and are separate from the app
 The integrated checkout passed all 1,086 Python tests, with ten skips.
 The focused server catalog checks passed both tests.
 The critical suite passed 738 tests, with ten skips and 348 deselected tests.
+
+The published app commit is `726febb10eb57cf9face7918370ec2293af2d292`.
+Its [Debug and Release workflow](https://github.com/MattLD13/SportsTickerBackend/actions/runs/39343056754) passed both builds.
+The coordinator removed all six temporary validation tags after retaining their evidence.
+The audit directory fixes source line endings to preserve acceptance and review hashes across checkouts.
+The unchanged B wrapper rerun finished successfully and again passed all five UI tests.

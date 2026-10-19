@@ -1,0 +1,4 @@
+*.swift text eol=lf
+blind-review.md text eol=lf
+*.png binary
+*.gz binary
