@@ -9,7 +9,7 @@ pytestmark = pytest.mark.critical
 
 
 def test_workflows_upload_only_encrypted_backend_evidence():
-    for name in ("deploy.yml", "backend-diagnostics.yml"):
+    for name in ("deploy.yml", "backend-diagnostics.yml", "recover-deploy-trigger.yml"):
         source = (Path(".github/workflows") / name).read_text()
         assert "openssl cms -encrypt -binary -aes-256-gcm" in source
         assert "path: backend-report.p7m" in source

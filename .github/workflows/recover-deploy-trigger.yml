@@ -1,26 +1,35 @@
-name: Recover missed deploy trigger
+name: Backend monitoring
 
 on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      verify_reporting:
+        description: Test failure and recovery reporting without changing production services
+        type: boolean
+        default: false
 
 concurrency:
   group: recover-deploy-trigger
   cancel-in-progress: false
 
 jobs:
-  dispatch-deploy:
+  monitor:
+    name: Report runtime failures and recover missed deploys
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
       actions: write
       contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Check deploy activity
+        if: inputs.verify_reporting != true
         id: deploy
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -37,7 +46,7 @@ jobs:
 
       - name: Check deployed component revision
         id: check
-        if: steps.deploy.outputs.busy == 'false'
+        if: inputs.verify_reporting != true && steps.deploy.outputs.busy == 'false'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -58,7 +67,90 @@ jobs:
           python tools/deployment/deployment_scope.py --deployed "$live_sha" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch backend recovery deploy
-        if: steps.deploy.outputs.busy == 'false' && steps.check.outputs.needed == 'true'
+        if: inputs.verify_reporting != true && steps.deploy.outputs.busy == 'false' && steps.check.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run deploy.yml --ref main -f recovery_only=true
+
+      - name: Read queued runtime reports
+        id: reports
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          VERIFY_REPORTING: ${{ inputs.verify_reporting || false }}
+        shell: bash
+        run: |
+          set -eu
+          key="$RUNNER_TEMP/runtime-report-key"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          queue_home="/home/ubuntu"
+          if [ "$VERIFY_REPORTING" = true ]; then
+            queue_home="/tmp/ticker-reporting-test-$GITHUB_RUN_ID"
+            ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.reporting seed-test --home '$queue_home' --release '$GITHUB_SHA'"
+          fi
+          echo "queue_home=$queue_home" >> "$GITHUB_OUTPUT"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.reporting export --home '$queue_home'" > "$RUNNER_TEMP/runtime-reports.json"
+          python - "$RUNNER_TEMP/runtime-reports.json" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          print('count=' + str(len(report['reports'])))
+          print('busy=' + str(report['busy']).lower())
+          PY
+
+      - name: Capture encrypted runtime evidence
+        id: evidence
+        if: steps.reports.outputs.count != '0'
+        continue-on-error: true
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        shell: bash
+        run: |
+          set -eu
+          key="$RUNNER_TEMP/runtime-report-key"
+          remote_report="/home/ubuntu/ticker_data/backend-control/runtime-$GITHUB_RUN_ID.zip"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output '$remote_report'"
+          scp -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST:$remote_report" backend-report.zip
+          openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
+          rm -f backend-report.zip
+
+      - name: Store encrypted runtime evidence
+        id: evidence_upload
+        if: steps.evidence.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-runtime-evidence-${{ github.run_id }}
+          path: backend-report.p7m
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish component runtime checks
+        if: steps.reports.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVIDENCE_READY: ${{ steps.evidence_upload.outcome == 'success' }}
+        shell: bash
+        run: |
+          args=()
+          if [ "$EVIDENCE_READY" = true ]; then
+            args+=(--evidence)
+          fi
+          python -m backend_ops.github_reports --input "$RUNNER_TEMP/runtime-reports.json" --repository "$GITHUB_REPOSITORY" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ack-output "$RUNNER_TEMP/runtime-report-ack.json" "${args[@]}"
+
+      - name: Acknowledge confirmed reports on the server
+        if: always() && steps.reports.outcome == 'success' && steps.reports.outputs.count != '0'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          QUEUE_HOME: ${{ steps.reports.outputs.queue_home }}
+        shell: bash
+        run: |
+          set -eu
+          key="$RUNNER_TEMP/runtime-report-key"
+          if [ -f "$RUNNER_TEMP/runtime-report-ack.json" ]; then
+            ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.reporting ack --home '$QUEUE_HOME'" < "$RUNNER_TEMP/runtime-report-ack.json"
+          fi
