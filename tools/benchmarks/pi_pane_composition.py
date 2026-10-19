@@ -29,7 +29,7 @@ from tools.rendering.render_frame import content_items, normalize_snapshot
 PANEL_WIDTH = 384
 PANEL_HEIGHT = 32
 DIVIDER = (45, 45, 45)
-SNAPSHOT = ROOT / "tests" / "rewrite" / "debug" / "v2_render_snapshot.json"
+SNAPSHOT = ROOT / "tests" / "fixtures" / "display" / "v2_render_snapshot.json"
 
 
 class FlattenedPanes:

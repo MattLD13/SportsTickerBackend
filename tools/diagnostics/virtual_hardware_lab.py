@@ -43,7 +43,7 @@ from sports_ticker.fleet import PairingState
 
 DEVICE_ID = "virtual-ticker-01"
 DEVICE_TOKEN = sha256(b"isolated-virtual-ticker-credential").hexdigest()
-SNAPSHOT = REPOSITORY / "tests" / "rewrite" / "debug" / "v2_render_snapshot.json"
+SNAPSHOT = REPOSITORY / "tests" / "fixtures" / "display" / "v2_render_snapshot.json"
 
 
 class LoopbackHttpSession:

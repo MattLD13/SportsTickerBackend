@@ -45,3 +45,13 @@ def test_current_layout_has_one_owner_for_tests_tools_and_backend_units():
     assert "  build-mini-firmware:" not in workflow
     assert "  deploy-backend:" not in workflow
     assert "cp deploy/backend/* deployment-staging/" in workflow
+    assert "status=success&event=push" in workflow
+    assert "base: ${{ steps.scope_base.outputs.revision }}" in workflow
+
+
+def test_entry_tools_resolve_the_current_display_fixture():
+    from tools.benchmarks.pi_pane_composition import SNAPSHOT as benchmark_fixture
+    from tools.diagnostics.virtual_hardware_lab import SNAPSHOT as lab_fixture
+    expected = Path("tests/fixtures/display/v2_render_snapshot.json").resolve()
+    assert benchmark_fixture == expected and benchmark_fixture.is_file()
+    assert lab_fixture == expected and lab_fixture.is_file()
