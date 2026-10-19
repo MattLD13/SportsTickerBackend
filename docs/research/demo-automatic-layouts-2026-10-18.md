@@ -5,7 +5,7 @@
 `docs/contracts/demo-layouts.json` owns reviewed public example inputs.
 `docs/contracts/demo-assets/` contains their approved public logo source images.
 The production Mini presenters and renderers own every displayed pixel.
-`tools/build_demo_layouts.py` prepares assets, compiles the native renderer, and packages its output.
+`tools/rendering/build_demo_layouts.py` prepares assets, compiles the native renderer, and packages its output.
 The browser reads the generated frame atlases and draws their pixels without a second layout implementation.
 Ticker Six continues through its production frame and pane renderers.
 
@@ -35,14 +35,14 @@ If you add an example with another team, include its approved public source imag
 For a local build, run:
 
 ```text
-python tools/build_demo_layouts.py
-python tools/verify_public_demo.py
+python tools/rendering/build_demo_layouts.py
+python tools/rendering/verify_public_demo.py
 ```
 
 If the PC lacks a C++ compiler, use the physical Pi:
 
 ```text
-python tools/build_demo_layouts.py --host <pi-host> --ssh-key <key-path>
+python tools/rendering/build_demo_layouts.py --host <pi-host> --ssh-key <key-path>
 ```
 
 ## Public views

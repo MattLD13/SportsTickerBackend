@@ -64,7 +64,7 @@ The Pi retains its RGBA assets and existing local outline decisions.
 Generate Python reference files from the repository root:
 
 ```powershell
-python tools/mini_sprite_vectors.py --output .tmp/mini-sprites/vectors
+python tools/mini/mini_sprite_vectors.py --output .tmp/mini-sprites/vectors
 ```
 
 On Linux, compile the native check with the firmware header directory:

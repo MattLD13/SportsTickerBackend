@@ -1,0 +1,37 @@
+name: iOS app
+'on':
+  push:
+    branches:
+    - main
+    paths:
+    - TickerControlApp/**
+    - .github/workflows/ios.yml
+  pull_request:
+    paths:
+    - TickerControlApp/**
+    - .github/workflows/ios.yml
+  workflow_dispatch: null
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - configuration: Debug
+          package_configuration: debug
+        - configuration: Release
+          package_configuration: release
+    steps:
+    - uses: actions/checkout@v4
+    - name: Report Xcode toolchain
+      run: xcodebuild -version
+    - name: Check state and contract serialization
+      run: swift test --package-path TickerControlApp --configuration ${{ matrix.package_configuration }}
+    - name: Build iOS simulator app
+      run: xcodebuild -project TickerControlApp/TickerControl.xcodeproj -target TickerControl -configuration ${{ matrix.configuration }} -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+        build
+    name: Build ${{ matrix.configuration }}

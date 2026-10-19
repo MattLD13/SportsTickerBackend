@@ -37,4 +37,4 @@ This package owns the V2 backend. Read the repository `AGENTS.md` in full before
 
 ## Verification
 
-Run `python -m pytest -q` after a V2 behavior change. If a change affects the Pi payload, render a 384x32 V2 frame with `tools/render_rewrite.py` before you commit.
+Run `python -m pytest -q` after a V2 behavior change. If a change affects the Pi payload, render a 384x32 V2 frame with `tools/rendering/render_frame.py` before you commit.

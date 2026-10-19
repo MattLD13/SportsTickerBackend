@@ -46,7 +46,7 @@ Serial telemetry separates association state, data age, presence acknowledgement
 
 `.github/deployment-paths.json` owns deployment target paths.
 Both deployment filtering and recovery comparison read that scope.
-`tools/deployment_scope.py` compares backend-changing revisions rather than unrelated Git HEAD changes.
+`tools/deployment/deployment_scope.py` compares backend-changing revisions rather than unrelated Git HEAD changes.
 The backend job owns the restart when both backend and Mini targets change.
 
 ## Validation

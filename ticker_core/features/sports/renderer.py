@@ -13,7 +13,7 @@ from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
-from .full_port import PreparedSportsFullRenderer, hockey_page_count
+from .pinned import PreparedSportsFullRenderer, hockey_page_count
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo

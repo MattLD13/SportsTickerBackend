@@ -61,9 +61,9 @@ The scheduler passes one timestamp into credential application. This removes uns
 ```powershell
 python -m pytest -q
 python -m pytest -m critical -q
-python -m ruff check sports_ticker ticker_core tools/mini_sprite_vectors.py
+python -m ruff check sports_ticker ticker_core tools/mini/mini_sprite_vectors.py
 python -m mypy
-python tools/mini_sprite_vectors.py --output .tmp/mini-sprites/vectors
+python tools/mini/mini_sprite_vectors.py --output .tmp/mini-sprites/vectors
 ```
 
 Read [Mini Sprite V1](../contracts/mini-sprite-v1.md) for native C++ commands and the wire contract.

@@ -31,8 +31,8 @@ It is test infrastructure, not a general JSON Schema implementation. No dependen
 Run the focused checks:
 
 ```powershell
-python -m py_compile tests/rewrite/protocol/test_offline_contracts.py
-python -m pytest tests/rewrite/protocol/test_offline_contracts.py -q
+python -m py_compile tests/python/protocol/test_offline_contracts.py
+python -m pytest tests/python/protocol/test_offline_contracts.py -q
 git diff --check
 ```
 

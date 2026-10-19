@@ -55,7 +55,7 @@ jobs:
           print(json.loads(path.read_text()).get('processed_revision', '') if path.exists() else Path('/home/ubuntu/RELEASE_SHA').read_text().strip())
           PY
           )
-          python tools/deployment_scope.py --deployed "$live_sha" >> "$GITHUB_OUTPUT"
+          python tools/deployment/deployment_scope.py --deployed "$live_sha" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch backend recovery deploy
         if: steps.deploy.outputs.busy == 'false' && steps.check.outputs.needed == 'true'

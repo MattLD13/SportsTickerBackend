@@ -18,7 +18,7 @@ from ticker_core.bootstrap import create_default_content_catalog
 from ticker_core.context import RenderContext
 from ticker_core.platform import AssetCoordinator
 from ticker_core.rendering import ContentScene
-from tools.render_rewrite import content_items, normalize_snapshot, panel_image
+from tools.rendering.render_frame import content_items, normalize_snapshot, panel_image
 from tools.benchmarks.pi_viewport_baseline import fonts_manifest
 
 FIXTURE = ROOT / "tests/fixtures/render_baseline"

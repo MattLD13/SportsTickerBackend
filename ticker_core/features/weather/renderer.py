@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, normal_text, tiny_text
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
-from .legacy_port import PreparedWeatherRenderer
+from .drawing import PreparedWeatherRenderer
 
 
 class WeatherRenderer:

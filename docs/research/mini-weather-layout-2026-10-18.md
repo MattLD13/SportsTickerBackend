@@ -8,7 +8,7 @@ The weather provider owns temperature, wind, humidity, AQI, condition, and day o
 The runtime supplies elapsed time and redraws animated modes at ten frames per second.
 
 Ticker Six's `PreparedWeatherRenderer.draw_weather_pixel_art` owns weather icon artwork.
-`tools/generate_mini_weather.py` samples that renderer and fits each animation into a stable 22x17 rectangle.
+`tools/mini/generate_mini_weather.py` samples that renderer and fits each animation into a stable 22x17 rectangle.
 The generator removes duplicate frames and writes immutable RGB565 arrays for Mini flash storage.
 CI checks the generated arrays against the drawing owner.
 

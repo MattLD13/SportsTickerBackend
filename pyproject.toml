@@ -2,7 +2,7 @@
 dev = ["pytest>=8,<9", "ruff>=0.14,<0.15", "mypy>=1.18,<2"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/rewrite"]
+testpaths = ["tests/python"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -13,7 +13,7 @@ markers = [
 
 [tool.ruff]
 target-version = "py310"
-extend-exclude = ["pytest-temp*", "ticker_data", "hardware", "sports_ticker/fetchers"]
+extend-exclude = ["pytest-temp*", "ticker_data", "hardware"]
 
 [tool.ruff.lint]
 select = ["E9", "F63", "F7", "F82"]

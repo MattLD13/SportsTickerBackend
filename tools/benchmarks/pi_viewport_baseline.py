@@ -27,7 +27,7 @@ from ticker_core.drivers.memory import MemoryFrameSink
 from ticker_core.platform.assets import AssetCoordinator
 from ticker_core.rendering.fonts import load_default_font_set
 from ticker_core.runtime import Content, FrameDecision, FrameKind, RuntimeConfig
-from tools.render_rewrite import content_items, normalize_snapshot
+from tools.rendering.render_frame import content_items, normalize_snapshot
 
 
 def process_metrics(pid: int) -> dict:
@@ -219,7 +219,7 @@ def run_case(args) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", type=Path, default=ROOT / "tests/rewrite/debug/v2_render_snapshot.json")
+    parser.add_argument("--snapshot", type=Path, default=ROOT / "tests/fixtures/display/v2_render_snapshot.json")
     parser.add_argument("--output", type=Path, default=ROOT / "previews/benchmarks/pi-baseline")
     parser.add_argument("--frames", type=int, default=6000)
     parser.add_argument("--paced-frames", type=int, default=300)

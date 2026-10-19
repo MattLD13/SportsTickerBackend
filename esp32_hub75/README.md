@@ -72,11 +72,11 @@ Read [Mini Sprite V1](../docs/contracts/mini-sprite-v1.md) for the binary format
 ## Shared display style
 
 The main ticker owns compact glyphs in `ticker_core/rendering/pixels.py` and shared colors in `ticker_core/rendering/style.py`.
-`tools/generate_mini_ui.py` exports these definitions into `src/mini/rendering/ui_generated.h`.
+`tools/mini/generate_mini_ui.py` exports these definitions into `src/mini/rendering/ui_generated.h`.
 If either Python owner changes, regenerate the header before building firmware:
 
 ```powershell
-python tools/generate_mini_ui.py
+python tools/mini/generate_mini_ui.py
 ```
 
 `src/mini/rendering/sports_pane.h` draws the compact sports layout. `src/mini/protocol/panels.h` reads the V2 fields.
@@ -92,7 +92,7 @@ Clock mode shows seconds and a one-pixel progress rail. Sports clocks continue t
 Render the firmware sports, stock, and clock code beside main ticker frames:
 
 ```powershell
-python tools/render_mini_ui.py --snapshot PATH_TO_V2_SNAPSHOT --output previews/mini-ui --ssh mld@ticker2.local --identity "$env:USERPROFILE/.ssh/ticker2_codex"
+python tools/rendering/render_mini_ui.py --snapshot PATH_TO_V2_SNAPSHOT --output previews/mini-ui --ssh mld@ticker2.local --identity "$env:USERPROFILE/.ssh/ticker2_codex"
 ```
 
 The tool compiles a native preview under `/tmp/mini-ui-preview`. It does not change the Pi display service or settings.
@@ -100,7 +100,7 @@ It requires the PlatformIO ArduinoJson dependency and an SSH host with `g++`.
 
 ## Logo workbench
 
-Run `python tools\mini_logo_workbench_web.py` from the repository root. Open `http://127.0.0.1:8765` in a browser.
+Run `python tools\mini\mini_logo_workbench_web.py` from the repository root. Open `http://127.0.0.1:8765` in a browser.
 
 The page loads team logos from the ticker server's V2 catalog. It lists teams across supported leagues and saves completion state in the local app folder.
 
@@ -195,7 +195,7 @@ For repeatable desktop provisioning tests, use the repository helper. Set the pa
 
 ```powershell
 $env:MINI_TICKER_WIFI_PASSWORD = "your-password"
-python tools\mini_ticker_test_pairer.py --ssid "your-ssid" --backend-url "https://ticker.example.com"
+python tools\mini\mini_ticker_test_pairer.py --ssid "your-ssid" --backend-url "https://ticker.example.com"
 ```
 
 The helper reads the setup PIN from the 115200 baud serial log, sends encrypted credentials, waits for the backend pairing code, and exchanges that code.
@@ -285,9 +285,9 @@ These values describe the last data request. They do not measure raw radio throu
 The worker advances its bounded logo window at each page change and retains the next games in RAM.
 `display.update` reports byte progress and boot validation. `display.reset_reason` records the ESP32 reset cause.
 
-Run `python tools/check_mini_tls.py --port COM11` to check repeated TLS cleanup with a real open cache file.
+Run `python tools/mini/check_mini_tls.py --port COM11` to check repeated TLS cleanup with a real open cache file.
 The check preserves the active mode and credentials.
-Run `python tools/verify_mini_logos.py --frames previews/mini-diagnostics/frames --ticker <ticker_id>` after a frame capture.
+Run `python tools/mini/verify_mini_logos.py --frames previews/mini-diagnostics/frames --ticker <ticker_id>` after a frame capture.
 That check compares the captured logo pixels with validated backend assets.
 
 ### Connection recovery diagnostics
@@ -296,7 +296,7 @@ That check compares the captured logo pixels with validated backend assets.
 Each device poll updates backend presence. The Mini no longer schedules separate heartbeat requests.
 The app's presence indicator uses backend heartbeat time. Radio association has separate telemetry.
 
-Run `python tools/check_mini_wifi.py --port COM11 --output previews/wifi-check` to check two real forty-five-second link outages.
+Run `python tools/mini/check_mini_wifi.py --port COM11 --output previews/wifi-check` to check two real forty-five-second link outages.
 The diagnostic disconnects the Mini association temporarily and restores saved-network recovery automatically.
 It verifies automatic reconnection, fresh data, fresh presence acknowledgement, and no automatic credential setup.
 The diagnostic retains stored credentials and backend pairing.

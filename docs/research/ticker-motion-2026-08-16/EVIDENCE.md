@@ -8,8 +8,8 @@ See the [experiment README](README.md) for candidate contracts, ownership, and t
 
 ## Provenance
 
-The evaluator source is `tools/ticker_camera_evaluator.py`.
-The trial source is `tools/ticker_motion_trial.py`.
+The evaluator source is `tools/diagnostics/ticker_camera_evaluator.py`.
+The trial source is `tools/diagnostics/ticker_motion_trial.py`.
 The focused runtime test is `source/rejected-spatial-dither-quality-test.py`.
 
 The real trial used `evidence/ticker-motion-trial-manifest.json`.
@@ -28,7 +28,7 @@ The evaluator discarded every two-second warmup window.
 If the raw trial video is available outside Git, run:
 
 ```text
-python tools/ticker_camera_evaluator.py \
+python tools/diagnostics/ticker_camera_evaluator.py \
   <external-raw-video>/brio-motion-720p60.mkv \
   --manifest docs/research/ticker-motion-2026-08-16/evidence/ticker-motion-trial-manifest.json \
   --calibration docs/research/ticker-motion-2026-08-16/evidence/brio-framing-calibration.json \

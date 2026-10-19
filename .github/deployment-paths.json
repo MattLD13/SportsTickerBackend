@@ -6,26 +6,21 @@
     "esp32_hub75/platformio.ini",
     "docs/contracts/demo-layouts.json",
     "docs/contracts/demo-assets/**",
-    "tools/build_demo_layouts.py",
-    "tools/render_mini_ui.cpp",
-    "tools/verify_public_demo.py",
+    "tools/rendering/build_demo_layouts.py",
+    "tools/rendering/render_mini_ui.cpp",
+    "tools/rendering/verify_public_demo.py",
     ".github/workflows/deploy.yml",
     ".github/deployment-paths.json",
-    "tools/deployment_scope.py",
+    "tools/deployment/deployment_scope.py",
     "requirements.txt",
     "requirements-backend.txt",
-    "*.json",
-    "ticker.service",
-    "ticker-fetcher@.service",
-    "ticker-backend-guard.service",
-    "ticker-backend-guard.timer",
-    "backend_ops/**"
+    "backend_ops/**",
+    "deploy/backend/**"
   ],
   "mini": [
     "esp32_hub75/**"
   ],
   "controller": [
-    "ticker_controller/**",
     "ticker_core/**",
     "updater.py",
     "ticker-controller.service",

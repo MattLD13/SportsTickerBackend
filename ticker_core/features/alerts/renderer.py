@@ -11,8 +11,8 @@ from ticker_core.features.sports.renderer import LogoSource, pixel_text
 from ticker_core.rendering import FontSet
 from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 
-from .news_banner_port import PreparedNewsBannerRenderer
-from .score_alert_port import PreparedScoreAlertRenderer
+from .news_banner import PreparedNewsBannerRenderer
+from .score_alert import PreparedScoreAlertRenderer
 
 PANEL_H = 32
 SLIDE = 0.30

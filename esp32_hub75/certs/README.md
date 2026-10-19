@@ -10,7 +10,7 @@ The SDK compressed bundle fails this check for the current backend chain.
 To refresh the store, install a reviewed Certifi version and run:
 
 ```powershell
-python tools/generate_mini_trust.py
+python tools/mini/generate_mini_trust.py
 ```
 
 Review the metadata, build the firmware, and check HTTPS on the physical Mini before release.

@@ -2,12 +2,12 @@
 
 Sports Ticker serves live content to 384x32 Raspberry Pi LED matrices. The backend and Pi controller use only API V2.
 
-Read [Architecture](ARCHITECTURE.md), [Contributing](CONTRIBUTING.md), [V2 contracts](docs/v2-contracts.md), the [revised SOW](docs/master-engineering-sow.md), and its [feasibility review](docs/sow-feasibility.md).
+Read [Architecture](docs/architecture/README.md), [Contributing](docs/development/README.md), [V2 contracts](docs/contracts/overview.md), the [revised SOW](docs/plans/engineering-sow.md), and its [feasibility review](docs/plans/feasibility.md).
 
 ## Architecture
 
 ```text
-Providers -> per-ticker scheduler -> V2 snapshot -> ticker_core runtime -> frame sink -> 384x32 panel
+Provider workers -> per-ticker scheduler -> V2 snapshot -> ticker_core runtime -> frame sink -> 384x32 panel
                  |                       |
                  |                       +-> dashboard and controller app
                  +-> SQLite ticker settings, pairing, events, and integrations
@@ -70,16 +70,16 @@ python -m pytest -q
 Render a deterministic V2 snapshot without hardware:
 
 ```powershell
-python tools\render_rewrite.py --snapshot tests\rewrite\debug\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png
+python tools\rendering\render_frame.py --snapshot tests\fixtures\display\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png
 ```
 
 Run the local V2 API, Pi WebSocket client, and matrix bench through online, disconnected, and recovered states:
 
 ```powershell
-python tools\virtual_hardware_lab.py
+python tools\diagnostics\virtual_hardware_lab.py
 ```
 
-See the [virtual hardware lab guide](docs/virtual-hardware-lab.md) for its coverage and limits.
+See the [virtual hardware lab guide](docs/development/hardware-lab.md) for its coverage and limits.
 
 Compare pane scrolling composition strategies:
 
@@ -92,7 +92,7 @@ See [benchmark notes](tools/benchmarks/README.md) for measured results and limit
 Render from a running backend:
 
 ```powershell
-python tools\render_rewrite.py --url http://127.0.0.1:5000 --ticker-id <ticker-id> --mode sports --no-prefetch --output previews\live.png
+python tools\rendering\render_frame.py --url http://127.0.0.1:5000 --ticker-id <ticker-id> --mode sports --no-prefetch --output previews\live.png
 ```
 
 If a display change alters pixels, render a 384x32 PNG before you commit it.
@@ -102,3 +102,21 @@ If a display change alters pixels, render a 384x32 PNG before you commit it.
 Each fact has one owner. Providers normalize upstream data. `SportsDisplayProjector` assigns sports state such as `activeTeam`. The API projects canonical V2 data. The Pi and app consume that contract.
 
 Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace the incorrect boundary and delete its obsolete callers, tests, fixtures, and documentation.
+
+## Repository map
+
+| Folder | Owner |
+|---|---|
+| `sports_ticker/` | Server APIs, domain data, persistence, and providers. |
+| `backend_ops/` | Provider workers, component deployment, rollback, and diagnostics. |
+| `ticker_core/` | Ticker Six runtime and rendering. |
+| `esp32_hub75/` | Ticker Mini firmware. |
+| `TickerControlApp/` | iOS controller app. |
+| `deploy/backend/` | Server and fetcher service units. |
+| `tests/` | Python tests, native firmware checks, and fixtures. |
+| `tools/` | Utilities grouped by purpose. |
+| `docs/` | Architecture, contracts, development, operations, plans, and research. |
+
+Read the [documentation index](docs/README.md) for current guides.
+The build workflow has validation and publishing checks.
+Publishing contains Ticker Server, Ticker Mini, and Ticker Six sections.

@@ -88,7 +88,7 @@ def owners(path, *, before=None, after=None):
         return set(ALL)
     if path.startswith(("sports_ticker/", "ticker_core/", "docs/contracts/demo-", "esp32_hub75/")):
         return {"core"}
-    if path in ("tools/build_demo_layouts.py", "tools/render_mini_ui.cpp", "tools/verify_public_demo.py"):
+    if path in ("tools/rendering/build_demo_layouts.py", "tools/rendering/render_mini_ui.cpp", "tools/rendering/verify_public_demo.py"):
         return {"core"}
     return set()
 

@@ -12,7 +12,7 @@ The initial UI build is `mini-1.3.2`. The published hardware release is `mini-1.
 
 - `ticker_core/rendering/pixels.py` owns compact, tiny, and hybrid glyph data.
 - `ticker_core/rendering/style.py` owns shared colors and the Mini logo size.
-- `tools/generate_mini_ui.py` exports this drawing data and backend sport families into C++.
+- `tools/mini/generate_mini_ui.py` exports this drawing data and backend sport families into C++.
 - `esp32_hub75/src/mini/protocol/panels.h` maps V2 fields into typed drawing inputs.
 - `sports_pane.h` and `utility_panels.h` own Mini geometry and draw through a supplied canvas.
 - The asset worker prepares 16x16 RAM marks from validated 18x18 sprites before rendering.
@@ -44,9 +44,9 @@ Sports clocks continue to use backend status values.
 
 ## Rendering evidence
 
-`tools/render_mini_ui.cpp` compiles the same drawing headers that the ESP32 firmware uses.
+`tools/rendering/render_mini_ui.cpp` compiles the same drawing headers that the ESP32 firmware uses.
 It loads prepared assets before drawing and writes exact 64x32 RGB frames with RGB565 color conversion.
-`tools/render_mini_ui.py` places these frames beside 384x32 main ticker frames.
+`tools/rendering/render_mini_ui.py` places these frames beside 384x32 main ticker frames.
 The preview includes one production V2 sports record and local layout examples.
 The examples cover football, baseball, triple-digit basketball, power plays, shootouts, overtime, period ends, soccer, stock, and clock.
 Stock prices in the example describe layout input.

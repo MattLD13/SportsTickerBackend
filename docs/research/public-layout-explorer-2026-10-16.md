@@ -72,7 +72,7 @@ Weather and music images show one captured animation moment.
 
 ## Rebuild
 
-Run `python tools/build_demo_layouts.py` to package sample inputs and Mini captures.
+Run `python tools/rendering/build_demo_layouts.py` to package sample inputs and Mini captures.
 The tool preserves Mini capture provenance. The server renders main frames when the browser requests them.
 Use `--manifest` and `--mini-frames` to import reviewed native renders and physical captures.
 The import requires one 64x32 PNG for each case ID.
@@ -82,7 +82,7 @@ Do not change a Mini sample input without rendering its new frame.
 
 The published JSON is a website asset.
 Generated review PNGs stay in `previews/demo-layouts` and remain outside Git.
-Update `tools/verify_public_demo.py` after an authorized public design change.
+Update `tools/rendering/verify_public_demo.py` after an authorized public design change.
 
 ## Validation
 

@@ -18,7 +18,7 @@ Readiness polling installs one completed card at each configured frame boundary.
 The fixed render time is `2026-08-13T00:00:00+00:00`.
 The script records resolved font names, sizes, and SHA-256 hashes.
 
-The source is `tests/rewrite/debug/v2_render_snapshot.json`.
+The source is `tests/fixtures/display/v2_render_snapshot.json`.
 It contains two sports records and no asset URLs.
 The 1, 10, and 60 card cases repeat those records with unique card identities.
 These capacity cases do not represent 60 distinct live games.

@@ -27,7 +27,10 @@ Before a commit, state these facts in the change notes:
 - `sports_ticker/`: V2 Flask API, provider reads, persistence, pairing, events, and Spotify integration.
 - `ticker_core/`: Pi V2 client, caches, runtime, renderers, and matrix drivers.
 - `TickerControlApp/`: iOS controller application.
-- `tools/`: local render and debug utilities.
+- `tools/`: render, Mini, diagnostics, deployment, benchmark, and experiment utilities.
+- `backend_ops/`: backend workers, immutable deployment, recovery, and diagnostic evidence.
+- `deploy/backend/`: backend service units and the recovery timer.
+- `tests/python/`: current Python tests. `tests/fixtures/` stores captured inputs.
 - `ticker_data/`: runtime state. Avoid edits except for direct debugging.
 
 ## V2 Rules
@@ -45,8 +48,8 @@ Before a commit, state these facts in the change notes:
 - Run critical pre-push tests: `python -m pytest -m critical`
 - Run all V2 tests: `python -m pytest -q`
 - See `tests/AGENTS.md` for domain test commands and testing procedures.
-- Render a V2 frame: `python tools\render_rewrite.py --snapshot tests\rewrite\debug\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png`
-- Render the offline panel: `python tools\render_offline_screen.py --out-dir previews\offline`
+- Render a V2 frame: `python tools\rendering\render_frame.py --snapshot tests\fixtures\display\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png`
+- Render the offline panel: `python tools\rendering\render_offline_screen.py --out-dir previews\offline`
 - Check fleet health: open `http://<backend>/api/v2/health`
 - Push a V2 news overlay: `curl -X POST http://<backend>/api/v2/events/news -H 'Content-Type: application/json' -H 'X-Deployment-Token: <deployment-token>' -d '{"payload":{"kind":"TRADE","sport":"nhl","from":"VAN","to":"NYR","text":"Miller for Kakko"},"target_ticker_ids":["<ticker_id>"]}'`
 

@@ -131,7 +131,7 @@ The correction keeps TLS verification and the existing SDK. It does not change c
 
 Serial `CHECKTLS` closes and destroys sixteen TLS clients while a real LittleFS file remains open.
 It then writes, reads, and verifies that file before removing it.
-`tools/check_mini_tls.py` automates this check without changing mode, pins, or Wi-Fi credentials.
+`tools/mini/check_mini_tls.py` automates this check without changing mode, pins, or Wi-Fi credentials.
 Serial `STATS` now includes update state, byte progress, and reset reason.
 The release artifact retains the exact firmware ELF for future crash analysis.
 
@@ -150,7 +150,7 @@ The capture includes 11 visible games. The earlier backend selection contains 19
 Those different selections do not form a direct cache performance comparison.
 The native checks cover rotation beyond the physical RAM capacity.
 
-`tools/verify_mini_logos.py` compares physical captures with checksum-validated backend sprite bytes.
+`tools/mini/verify_mini_logos.py` compares physical captures with checksum-validated backend sprite bytes.
 All 46 displayed logo checks pass across 5,458 sampled opaque pixels.
 The sample excludes the lower college-rank overlay.
 The physical file-ownership check also passes on `mini-1.3.14`: 80 destroyed clients and five verified file round trips.

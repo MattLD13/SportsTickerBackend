@@ -27,7 +27,7 @@ It displays `OT`, `OT2`, and later periods until the provider reports a final re
 Timed regulation periods retain their period-end labels.
 
 The [NCAA statistics manual](https://fs.ncaa.org/Docs/stats/Stats_Manuals/Football.pdf) describes college overtime periods as untimed.
-The captured ESPN input is `tests/rewrite/debug/fbs_untimed_overtime.json`.
+The captured ESPN input is `tests/fixtures/display/fbs_untimed_overtime.json`.
 
 ## Boot registration failure
 

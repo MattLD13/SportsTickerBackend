@@ -1,387 +1,404 @@
-name: Deploy
-
-on:
+name: Build and deploy
+'on':
   push:
-    branches: ["main"]
+    branches:
+    - main
+    paths:
+    - sports_ticker/**
+    - ticker_core/**
+    - backend_ops/**
+    - esp32_hub75/**
+    - tools/**
+    - tests/**
+    - deploy/backend/**
+    - docs/contracts/**
+    - requirements*.txt
+    - pyproject.toml
+    - setup.sh
+    - updater.py
+    - test.py
+    - ticker-controller.service
+    - .github/workflows/deploy.yml
+    - .github/deployment-paths.json
+  pull_request:
+    paths:
+    - sports_ticker/**
+    - ticker_core/**
+    - backend_ops/**
+    - esp32_hub75/**
+    - tools/**
+    - tests/**
+    - deploy/backend/**
+    - docs/contracts/**
+    - requirements*.txt
+    - pyproject.toml
+    - setup.sh
+    - updater.py
+    - test.py
+    - ticker-controller.service
+    - .github/workflows/deploy.yml
+    - .github/deployment-paths.json
   workflow_dispatch:
     inputs:
       ota_ticker_id:
-        description: "Request OTA for one mini ticker after deploy"
+        description: Request OTA for one mini ticker after deploy
         required: false
-        default: ""
+        default: ''
       recovery_only:
-        description: "Redeploy the backend only after a missed deploy"
+        description: Redeploy the backend only after a missed deploy
         required: false
         type: boolean
         default: false
-
+permissions:
+  contents: read
+  pull-requests: read
 concurrency:
-  group: deploy-main
+  group: ${{ github.event_name == 'pull_request' && format('checks-{0}', github.event.pull_request.number) || 'deploy-main' }}
   cancel-in-progress: false
-
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Detect which parts of the repo changed
-  # ─────────────────────────────────────────────────────────────────────────
-  changes:
+  validate:
+    name: Validate code and layouts
     runs-on: ubuntu-latest
     outputs:
-      backend:    ${{ steps.filter.outputs.backend }}
+      backend: ${{ steps.filter.outputs.backend }}
       controller: ${{ steps.filter.outputs.controller }}
-      mini:       ${{ steps.filter.outputs.mini }}
-      fresh:      ${{ steps.freshness.outputs.fresh }}
+      mini: ${{ steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true) }}
+      fresh: ${{ steps.freshness.outputs.fresh }}
+      mini_version: ${{ steps.mini_version.outputs.version }}
+      mini_publish: ${{ steps.mini_scope.outputs.mini_publish == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true) }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: .github/deployment-paths.json
-
-      - name: Verify current main
-        id: freshness
-        shell: bash
-        run: |
-          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          current_sha=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$current_sha" = "$GITHUB_SHA" ]; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "fresh=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping stale push ${GITHUB_SHA}. Current main is ${current_sha}."
-          fi
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Deploy backend to server (only when backend files changed)
-  # ─────────────────────────────────────────────────────────────────────────
-  verify-runtime:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: .github/deployment-paths.json
+    - name: Ticker Mini / Select firmware publishing scope
+      id: mini_scope
+      env:
+        BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+      run: python tools/deployment/change_scope.py --base "$BASE_REVISION" >> "$GITHUB_OUTPUT"
+    - name: Verify current main
+      id: freshness
+      shell: bash
+      run: |
+        if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+          echo "fresh=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        current_sha=$(git ls-remote origin refs/heads/main | cut -f1)
+        if [ "$current_sha" = "$GITHUB_SHA" ]; then
+          echo "fresh=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "fresh=false" >> "$GITHUB_OUTPUT"
+          echo "Skipping stale push ${GITHUB_SHA}. Current main is ${current_sha}."
+        fi
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+    - name: Install test dependencies
+      run: python -m pip install -r requirements-backend.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
+    - name: Compile Python sources
+      run: python -m compileall -q sports_ticker ticker_core backend_ops tools tests/python
+    - name: Check Python correctness
+      run: python -m ruff check sports_ticker ticker_core backend_ops tools
+    - name: Check scoped Python types
+      run: python -m mypy
+    - name: Build public layouts from current Mini firmware
+      run: python tools/rendering/build_demo_layouts.py --work-dir "${RUNNER_TEMP}/public-demo-build"
+    - name: Verify approved public demo assets
+      run: python tools/rendering/verify_public_demo.py
+    - name: Verify public demo route
+      run: python -m pytest -q tests/python/api/test_public_demo.py
+    - name: Run full test suite
+      run: python -m pytest -q
+    - name: Verify shared Mini payload fields
+      run: python tools/mini/generate_mini_fields.py --check
+    - name: Verify shared Mini drawing data
+      run: python tools/mini/generate_mini_ui.py --check
+    - name: Verify Mini sprite wire and cache
+      run: |
+        python tools/mini/mini_sprite_vectors.py --output artifacts/mini-sprite-vectors
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
+        /tmp/mini-sprite-check artifacts/mini-sprite-vectors /tmp/mini-sprite-cache
+    - name: Compare pane render paths
+      run: python tools/benchmarks/pi_pane_composition.py --frames 1000 --output artifacts/pane-composition
+    - name: Verify Mini display metrics and frame mirror
+      run: |
+        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_display_metrics.cpp -o /tmp/mini-display-check
+        /tmp/mini-display-check
+    - uses: actions/upload-artifact@v4
+      with:
+        name: public-demo-${{ github.sha }}
+        path: sports_ticker/dashboard_v2/static/layout-gallery.json
+        if-no-files-found: error
+        retention-days: 1
+    - uses: actions/upload-artifact@v4
+      with:
+        name: runtime-validation-${{ github.sha }}
+        path: artifacts/
+        if-no-files-found: error
+    - name: Install PlatformIO
+      run: pip install platformio
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Build mini firmware
+      run: pio run -d esp32_hub75 -e esp32s3
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Verify Mini response buffer and hockey protocol
+      run: |
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_hockey_panes.cpp -o /tmp/mini-hockey-check
+        /tmp/mini-hockey-check tests/fixtures/display/mini_hockey_panes.json
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_dns_answer.cpp -o /tmp/mini-dns-check
+        /tmp/mini-dns-check
+        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
+        /tmp/mini-firmware-check
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
+        /tmp/mini-logo-check
+        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_station_retry.cpp -o /tmp/mini-station-check
+        /tmp/mini-station-check
+        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_transfer_deadline.cpp -o /tmp/mini-deadline-check
+        /tmp/mini-deadline-check
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_device_payload.cpp esp32_hub75/src/mini/protocol/device_payload.cpp -o /tmp/mini-payload-check
+        /tmp/mini-payload-check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Verify Mini flight, airport, and music layouts
+      run: |
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
+        /tmp/mini-aviation-check docs/contracts/demo-layouts.json
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_system_panels.cpp -o /tmp/mini-system-check
+        /tmp/mini-system-check docs/contracts/demo-layouts.json
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
+        /tmp/mini-music-check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Read mini firmware version
+      id: mini_version
+      shell: bash
+      run: |
+        VERSION=$(sed -n 's/.*MINI_FIRMWARE_VERSION\[\].*= "\([^"]*\)";.*/\1/p' esp32_hub75/src/mini/platform/config.h)
+        test -n "$VERSION"
+        cp esp32_hub75/.pio/build/esp32s3/firmware.bin mini-firmware.bin
+        cp esp32_hub75/.pio/build/esp32s3/firmware.elf mini-firmware.elf
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mini-firmware
+        path: |
+          mini-firmware.bin
+          mini-firmware.elf
+        if-no-files-found: error
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Verify shared weather animation
+      run: python tools/mini/generate_mini_weather.py --check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Check extracted text pixels
+      run: |
+        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/rendering tests/native/mini_text_layout.cpp -o /tmp/mini-text-check
+        /tmp/mini-text-check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Check Mini artwork window and stock layout
+      run: |
+        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_artwork_window.cpp -o /tmp/mini-artwork-check
+        /tmp/mini-artwork-check
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_stock_panel.cpp -o /tmp/mini-stock-check
+        /tmp/mini-stock-check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Check Mini weather layout
+      run: |
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_weather_panel.cpp -o /tmp/mini-weather-check
+        /tmp/mini-weather-check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+  publish:
+    name: Publish changed components
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.fresh == 'true'
+    needs: validate
+    if: needs.validate.outputs.fresh == 'true' && github.event_name != 'pull_request' && (needs.validate.outputs.backend == 'true' || needs.validate.outputs.mini_publish == 'true' ||
+      needs.validate.outputs.controller == 'true' || github.event_name == 'workflow_dispatch')
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install test dependencies
-        run: python -m pip install -r requirements-backend.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
-      - name: Compile Python sources
-        run: python -m compileall -q sports_ticker ticker_core backend_ops
-      - name: Check Python correctness
-        run: python -m ruff check sports_ticker ticker_core backend_ops
-      - name: Check scoped Python types
-        run: python -m mypy
-      - name: Build public layouts from current Mini firmware
-        run: python tools/build_demo_layouts.py --work-dir "${RUNNER_TEMP}/public-demo-build"
-      - name: Verify approved public demo assets
-        run: python tools/verify_public_demo.py
-      - name: Verify public demo route
-        run: python -m pytest -q tests/rewrite/api/test_public_demo.py
-      - name: Run full test suite
-        run: python -m pytest -q
-      - name: Verify shared Mini payload fields
-        run: python tools/generate_mini_fields.py --check
-      - name: Verify shared Mini drawing data
-        run: python tools/generate_mini_ui.py --check
-      - name: Verify Mini sprite wire and cache
-        run: |
-          python tools/mini_sprite_vectors.py --output artifacts/mini-sprite-vectors
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
-          /tmp/mini-sprite-check artifacts/mini-sprite-vectors /tmp/mini-sprite-cache
-      - name: Compare pane render paths
-        run: python tools/benchmarks/pi_pane_composition.py --frames 1000 --output artifacts/pane-composition
-      - name: Verify Mini display metrics and frame mirror
-        run: |
-          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_display_metrics.cpp -o /tmp/mini-display-check
-          /tmp/mini-display-check
-      - uses: actions/upload-artifact@v4
-        with:
-          name: public-demo-${{ github.sha }}
-          path: sports_ticker/dashboard_v2/static/layout-gallery.json
-          if-no-files-found: error
-          retention-days: 1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: runtime-validation-${{ github.sha }}
-          path: artifacts/
-          if-no-files-found: error
-
-  build-mini-firmware:
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true))
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install PlatformIO
-        run: pip install platformio
-      - name: Build mini firmware
-        run: pio run -d esp32_hub75 -e esp32s3
-      - name: Verify Mini response buffer and hockey protocol
-        run: |
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_hockey_panes.cpp -o /tmp/mini-hockey-check
-          /tmp/mini-hockey-check tests/rewrite/debug/mini_hockey_panes.json
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_dns_answer.cpp -o /tmp/mini-dns-check
-          /tmp/mini-dns-check
-          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
-          /tmp/mini-firmware-check
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
-          /tmp/mini-logo-check
-          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_station_retry.cpp -o /tmp/mini-station-check
-          /tmp/mini-station-check
-          g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_transfer_deadline.cpp -o /tmp/mini-deadline-check
-          /tmp/mini-deadline-check
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_device_payload.cpp esp32_hub75/src/mini/protocol/device_payload.cpp -o /tmp/mini-payload-check
-          /tmp/mini-payload-check
-      - name: Verify Mini flight, airport, and music layouts
-        run: |
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
-          /tmp/mini-aviation-check docs/contracts/demo-layouts.json
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_system_panels.cpp -o /tmp/mini-system-check
-          /tmp/mini-system-check docs/contracts/demo-layouts.json
-          g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
-          /tmp/mini-music-check
-      - name: Read mini firmware version
-        id: version
-        shell: bash
-        run: |
-          VERSION=$(sed -n 's/.*MINI_FIRMWARE_VERSION\[\].*= "\([^"]*\)";.*/\1/p' esp32_hub75/src/mini/platform/config.h)
-          test -n "$VERSION"
-          cp esp32_hub75/.pio/build/esp32s3/firmware.bin mini-firmware.bin
-          cp esp32_hub75/.pio/build/esp32s3/firmware.elf mini-firmware.elf
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mini-firmware
-          path: |
-            mini-firmware.bin
-            mini-firmware.elf
-          if-no-files-found: error
-
-  deploy-mini-firmware:
-    runs-on: ubuntu-latest
-    needs: [changes, build-mini-firmware, verify-runtime]
-    if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)) && needs.build-mini-firmware.result == 'success' && needs.verify-runtime.result == 'success'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: mini-firmware
-          path: mini-firmware
-
-      - name: Flatten mini firmware artifact
-        run: mv mini-firmware/mini-firmware.bin mini-firmware.bin
-
-      - name: Copy mini firmware to server
-        uses: appleboy/scp-action@master
-        with:
-          host:     ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_KEY }}
-          source:   "mini-firmware.bin"
-          target:   "/home/${{ secrets.SSH_USER }}/firmware-staging/"
-
-      - name: Install firmware manifest and restart backend
-        uses: appleboy/ssh-action@master
-        with:
-          host:     ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_KEY }}
-          script: |
-            set -eu
-            cd /home/${{ secrets.SSH_USER }}/
-
-            test -f .env
-            mkdir -p firmware firmware-staging
-            test -s firmware-staging/mini-firmware.bin
-            mv -f firmware-staging/mini-firmware.bin "firmware/${{ needs.build-mini-firmware.outputs.version }}.bin"
-            FIRMWARE_PATH="firmware/${{ needs.build-mini-firmware.outputs.version }}.bin"
-            FIRMWARE_SIZE=$(stat -c%s "$FIRMWARE_PATH")
-            FIRMWARE_SHA256=$(sha256sum "$FIRMWARE_PATH" | awk '{print $1}')
-            test "$FIRMWARE_SIZE" -ge 65536
-            test "${#FIRMWARE_SHA256}" -eq 64
-
-            awk '!/^TICKER_FIRMWARE_DIR=/ && !/^TICKER_MINI_FIRMWARE_/' .env > .env.next
-            cat >> .env.next <<EOF
-            TICKER_FIRMWARE_DIR=/home/${{ secrets.SSH_USER }}/firmware
-            TICKER_MINI_FIRMWARE_VERSION=${{ needs.build-mini-firmware.outputs.version }}
-            TICKER_MINI_FIRMWARE_TARGET=esp32s3
-            TICKER_MINI_FIRMWARE_HARDWARE=esp32-s3
-            TICKER_MINI_FIRMWARE_URL=https://ticker.mattdicks.org/firmware/${{ needs.build-mini-firmware.outputs.version }}.bin
-            TICKER_MINI_FIRMWARE_SIZE=$FIRMWARE_SIZE
-            TICKER_MINI_FIRMWARE_SHA256=$FIRMWARE_SHA256
-            EOF
-            mv -f .env.next .env
-            chmod 600 .env
-
-            if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "The backend deployment will activate the firmware manifest."
-            else
-              sudo systemctl restart ticker
-              sudo systemctl status ticker --no-pager
-            fi
-
-  deploy-backend:
-    runs-on: ubuntu-latest
-    needs: [changes, verify-runtime, deploy-mini-firmware]
-    if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') && needs.verify-runtime.result == 'success' && (needs.deploy-mini-firmware.result == 'success' || needs.deploy-mini-firmware.result == 'skipped')
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install verified public layout artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: public-demo-${{ github.sha }}
-          path: sports_ticker/dashboard_v2/static/
-
-      - name: Generate VERSION file
-        run: |
-          SHA=$(git rev-parse --short=12 HEAD)
-          echo "${SHA}" > VERSION
-          git rev-parse HEAD > RELEASE_SHA
-          echo "Version: ${SHA}"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Read deployment base
-        id: base
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-        shell: bash
-        run: |
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      name: Ticker Server / Read repository
+    - uses: actions/download-artifact@v4
+      with:
+        name: mini-firmware
+        path: mini-firmware
+      if: needs.validate.outputs.mini_publish == 'true'
+      name: Ticker Mini / Download verified files
+    - name: Ticker Mini / Flatten mini firmware artifact
+      run: mv mini-firmware/mini-firmware.bin mini-firmware.bin
+      if: needs.validate.outputs.mini_publish == 'true'
+    - name: Ticker Mini / Copy mini firmware to server
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        source: mini-firmware.bin
+        target: /home/${{ secrets.SSH_USER }}/firmware-staging/
+      if: needs.validate.outputs.mini_publish == 'true'
+    - name: Ticker Mini / Install firmware manifest and restart backend
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        script: |
           set -eu
-          key="$RUNNER_TEMP/backend-key"
-          printf '%s\n' "$SSH_KEY" > "$key"
-          chmod 600 "$key"
-          base=$(ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" /usr/bin/python3 - <<'PY'
-          import json
-          from pathlib import Path
-          path = Path('/home/ubuntu/ticker_data/backend-control/state.json')
-          print(json.loads(path.read_text()).get('processed_revision', '') if path.exists() else Path('/home/ubuntu/RELEASE_SHA').read_text().strip())
-          PY
-          )
-          [[ "$base" =~ ^[0-9a-f]{40}$ ]]
-          echo "revision=$base" >> "$GITHUB_OUTPUT"
+          cd /home/${{ secrets.SSH_USER }}/
 
-      - name: Package changed backend components
-        env:
-          BASE_REVISION: ${{ steps.base.outputs.revision }}
-        run: |
-          python -m backend_ops.components --base "$BASE_REVISION" --output deployment-staging
-          cp ticker.service ticker-fetcher@.service ticker-backend-guard.service ticker-backend-guard.timer deployment-staging/
-          cp -R backend_ops deployment-staging/bootstrap-ops
-          find deployment-staging/bootstrap-ops -type d -name __pycache__ -prune -exec rm -rf '{}' +
+          test -f .env
+          mkdir -p firmware firmware-staging
+          test -s firmware-staging/mini-firmware.bin
+          mv -f firmware-staging/mini-firmware.bin "firmware/${{ needs.validate.outputs.mini_version }}.bin"
+          FIRMWARE_PATH="firmware/${{ needs.validate.outputs.mini_version }}.bin"
+          FIRMWARE_SIZE=$(stat -c%s "$FIRMWARE_PATH")
+          FIRMWARE_SHA256=$(sha256sum "$FIRMWARE_PATH" | awk '{print $1}')
+          test "$FIRMWARE_SIZE" -ge 65536
+          test "${#FIRMWARE_SHA256}" -eq 64
 
-      - name: Copy selected component releases
-        uses: appleboy/scp-action@master
-        with:
-          host:     ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_KEY }}
-          source:   "deployment-staging/**"
-          target:   "/home/${{ secrets.SSH_USER }}/backend-staging/${{ github.sha }}/"
+          awk '!/^TICKER_FIRMWARE_DIR=/ && !/^TICKER_MINI_FIRMWARE_/' .env > .env.next
+          cat >> .env.next <<EOF
+          TICKER_FIRMWARE_DIR=/home/${{ secrets.SSH_USER }}/firmware
+          TICKER_MINI_FIRMWARE_VERSION=${{ needs.validate.outputs.mini_version }}
+          TICKER_MINI_FIRMWARE_TARGET=esp32s3
+          TICKER_MINI_FIRMWARE_HARDWARE=esp32-s3
+          TICKER_MINI_FIRMWARE_URL=https://ticker.mattdicks.org/firmware/${{ needs.validate.outputs.mini_version }}.bin
+          TICKER_MINI_FIRMWARE_SIZE=$FIRMWARE_SIZE
+          TICKER_MINI_FIRMWARE_SHA256=$FIRMWARE_SHA256
+          EOF
+          mv -f .env.next .env
+          chmod 600 .env
 
-      - name: Activate components with rollback protection
-        uses: appleboy/ssh-action@master
-        with:
-          host:     ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_KEY }}
-          command_timeout: 20m
-          script: |
-            set -eu
-            cd /home/${{ secrets.SSH_USER }}/backend-staging/${{ github.sha }}/deployment-staging
-            if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
-              sudo apt-get update -qq
-              sudo apt-get install -y python3-venv
-            fi
-            mkdir -p bootstrap
-            mv bootstrap-ops bootstrap/backend_ops
-            cp /home/${{ secrets.SSH_USER }}/RELEASE_SHA bootstrap/RELEASE_SHA
-            python3 -c 'import json,pathlib; p=pathlib.Path("plan.json"); pathlib.Path("bootstrap/RELEASE_SHA").write_text(json.loads(p.read_text())["release"])'
-            PYTHONPATH="$PWD/bootstrap" python3 -m backend_ops.manager deploy --staging "$PWD"
-
-      - name: Capture backend evidence
-        if: always()
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-        run: |
-          key="$RUNNER_TEMP/backend-key"
-          printf '%s\n' "$SSH_KEY" > "$key"
-          chmod 600 "$key"
-          ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip'
-          scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
-          openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
-          rm -f backend-report.zip
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-evidence-${{ github.sha }}
-          path: backend-report.p7m
-          if-no-files-found: warn
-          retention-days: 14
-
-  request-mini-ota:
-    runs-on: ubuntu-latest
-    needs: [changes, build-mini-firmware, deploy-mini-firmware, deploy-backend, verify-runtime]
-    if: always() && needs.changes.outputs.fresh == 'true' && needs.deploy-mini-firmware.result == 'success' && needs.verify-runtime.result == 'success' && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
-    steps:
-      - name: Request mini OTA
-        env:
-          OTA_TICKER_ID: ${{ github.event.inputs.ota_ticker_id || 'esp32s3-E47FF1818C58' }}
-          OTA_VERSION: ${{ needs.build-mini-firmware.outputs.version }}
-          DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
-        run: |
-          curl --fail --retry 3 --retry-delay 2 \
-            -X POST "https://ticker.mattdicks.org/api/v2/tickers/${OTA_TICKER_ID}/updates" \
-            -H "X-Deployment-Token: ${DEPLOY_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"version\":\"${OTA_VERSION}\"}"
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Signal all Pi tickers to pull the new controller code
-  # (only when ticker_controller/** or updater.py changed)
-  # ─────────────────────────────────────────────────────────────────────────
-  signal-fleet:
-    runs-on: ubuntu-latest
-    needs: [changes, verify-runtime, deploy-backend]
-    if: always() && needs.changes.result == 'success' && needs.verify-runtime.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') && needs.changes.outputs.controller == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.recovery_only == true)
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Send update signal to the personal ticker
-        run: |
-          echo "Controller code changed — signalling ticker..."
-          VERSION=$(git rev-parse HEAD)
-          echo "New version: ${VERSION}"
-          TICKER_ID="722c59f4-fce3-4735-b072-faaa2f579a0a"
-          V2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "https://ticker.mattdicks.org/api/v2/tickers/${TICKER_ID}/updates" \
-            -H "Content-Type: application/json" \
-            -H "X-Deployment-Token: ${{ secrets.POOP_ADMIN_PASSWORD }}" \
-            -d "{\"version\":\"${VERSION}\"}")
-          if [ "$V2_STATUS" != "201" ]; then
-            echo "V2 update request failed with HTTP ${V2_STATUS}."
-            exit 1
+          if [ "${{ needs.validate.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "The backend deployment will activate the firmware manifest."
+          else
+            sudo systemctl restart ticker
+            sudo systemctl status ticker --no-pager
           fi
-          echo "Queued V2 update."
+      if: needs.validate.outputs.mini_publish == 'true'
+    - name: Ticker Server / Install verified public layout artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: public-demo-${{ github.sha }}
+        path: sports_ticker/dashboard_v2/static/
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    - name: Ticker Server / Generate VERSION file
+      run: |
+        SHA=$(git rev-parse --short=12 HEAD)
+        echo "${SHA}" > VERSION
+        git rev-parse HEAD > RELEASE_SHA
+        echo "Version: ${SHA}"
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      name: Ticker Server / Prepare Python
+    - name: Ticker Server / Read deployment base
+      id: base
+      env:
+        SSH_HOST: ${{ secrets.SSH_HOST }}
+        SSH_USER: ${{ secrets.SSH_USER }}
+        SSH_KEY: ${{ secrets.SSH_KEY }}
+      shell: bash
+      run: |
+        set -eu
+        key="$RUNNER_TEMP/backend-key"
+        printf '%s\n' "$SSH_KEY" > "$key"
+        chmod 600 "$key"
+        base=$(ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" /usr/bin/python3 - <<'PY'
+        import json
+        from pathlib import Path
+        path = Path('/home/ubuntu/ticker_data/backend-control/state.json')
+        print(json.loads(path.read_text()).get('processed_revision', '') if path.exists() else Path('/home/ubuntu/RELEASE_SHA').read_text().strip())
+        PY
+        )
+        [[ "$base" =~ ^[0-9a-f]{40}$ ]]
+        echo "revision=$base" >> "$GITHUB_OUTPUT"
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    - name: Ticker Server / Package changed backend components
+      env:
+        BASE_REVISION: ${{ steps.base.outputs.revision }}
+      run: |
+        python -m backend_ops.components --base "$BASE_REVISION" --output deployment-staging
+        cp deploy/backend/* deployment-staging/
+        cp -R backend_ops deployment-staging/bootstrap-ops
+        find deployment-staging/bootstrap-ops -type d -name __pycache__ -prune -exec rm -rf '{}' +
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    - name: Ticker Server / Copy selected component releases
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        source: deployment-staging/**
+        target: /home/${{ secrets.SSH_USER }}/backend-staging/${{ github.sha }}/
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    - name: Ticker Server / Activate components with rollback protection
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        command_timeout: 20m
+        script: |
+          set -eu
+          cd /home/${{ secrets.SSH_USER }}/backend-staging/${{ github.sha }}/deployment-staging
+          if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y python3-venv
+          fi
+          mkdir -p bootstrap
+          mv bootstrap-ops bootstrap/backend_ops
+          cp /home/${{ secrets.SSH_USER }}/RELEASE_SHA bootstrap/RELEASE_SHA
+          python3 -c 'import json,pathlib; p=pathlib.Path("plan.json"); pathlib.Path("bootstrap/RELEASE_SHA").write_text(json.loads(p.read_text())["release"])'
+          PYTHONPATH="$PWD/bootstrap" python3 -m backend_ops.manager deploy --staging "$PWD"
+      if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    - name: Ticker Server / Capture backend evidence
+      if: always() && (needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
+      env:
+        SSH_HOST: ${{ secrets.SSH_HOST }}
+        SSH_USER: ${{ secrets.SSH_USER }}
+        SSH_KEY: ${{ secrets.SSH_KEY }}
+      run: |
+        key="$RUNNER_TEMP/backend-key"
+        printf '%s\n' "$SSH_KEY" > "$key"
+        chmod 600 "$key"
+        ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip'
+        scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
+        openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
+        rm -f backend-report.zip
+    - uses: actions/upload-artifact@v4
+      if: always() && (needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
+      with:
+        name: backend-evidence-${{ github.sha }}
+        path: backend-report.p7m
+        if-no-files-found: warn
+        retention-days: 14
+      name: Ticker Server / Store encrypted evidence
+    - name: Ticker Mini / Request mini OTA
+      env:
+        OTA_TICKER_ID: ${{ github.event.inputs.ota_ticker_id || 'esp32s3-E47FF1818C58' }}
+        OTA_VERSION: ${{ needs.validate.outputs.mini_version }}
+        DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
+      run: |
+        curl --fail --retry 3 --retry-delay 2 \
+          -X POST "https://ticker.mattdicks.org/api/v2/tickers/${OTA_TICKER_ID}/updates" \
+          -H "X-Deployment-Token: ${DEPLOY_TOKEN}" \
+          -H "Content-Type: application/json" \
+          --data "{\"version\":\"${OTA_VERSION}\"}"
+      if: needs.validate.outputs.mini_publish == 'true'
+    - name: Ticker Six / Request controller update
+      if: needs.validate.outputs.controller == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.recovery_only == true)
+      env:
+        DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
+      run: |
+        VERSION=$(git rev-parse HEAD)
+        TICKER_ID="722c59f4-fce3-4735-b072-faaa2f579a0a"
+        curl --fail --retry 3 --retry-delay 2 \
+          -X POST "https://ticker.mattdicks.org/api/v2/tickers/${TICKER_ID}/updates" \
+          -H "Content-Type: application/json" \
+          -H "X-Deployment-Token: ${DEPLOY_TOKEN}" \
+          --data "{\"version\":\"${VERSION}\"}"

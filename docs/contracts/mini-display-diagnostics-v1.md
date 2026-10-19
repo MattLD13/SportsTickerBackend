@@ -62,7 +62,7 @@ They prove the software image sent to the driver. Electrical faults, wiring, fli
 ## Capture utility
 
 ```powershell
-python tools/capture_mini.py --port COM11 --duration 60 --output previews/mini-diagnostics
+python tools/mini/capture_mini.py --port COM11 --duration 60 --output previews/mini-diagnostics
 ```
 
 The utility saves statistics JSONL, completed visits CSV, a summary, and exact 64x32 PNGs.

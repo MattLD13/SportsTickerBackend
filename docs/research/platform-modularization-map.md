@@ -69,4 +69,4 @@ Validate BLE provisioning and reconnect behavior with the ESP32 hardware path.
 
 The audit host runs Windows and has no `xcodebuild` or Swift compiler.
 The physical ESP32 and HUB75 matrix pass capture and telemetry checks. No physical iPhone validation is recorded for this extraction.
-See [the revised engineering SOW](../master-engineering-sow.md) for gate requirements.
+See [the revised engineering SOW](../plans/engineering-sow.md) for gate requirements.
