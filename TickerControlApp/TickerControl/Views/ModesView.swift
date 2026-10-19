@@ -11,6 +11,7 @@ import CryptoKit
 
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
+    @State private var leagueControls = EnabledLeagueControls()
 
     // 1. LOCAL BUFFER: This is the secret.
     // The background timer cannot touch this variable.
@@ -31,12 +32,80 @@ struct ModesView: View {
         GridItem(.flexible(), spacing: 15)
     ]
 
-    var sportsOptions: [LeagueOption] {
-        vm.leagueOptions.filter { $0.type == "sport" }
+    var leagueGroups: [EnabledLeagueGroup] {
+        EnabledLeagueControls.groups(from: vm.leagueOptions)
     }
 
     var stockOptions: [LeagueOption] {
         vm.leagueOptions.filter { $0.type == "stock" }
+    }
+
+    private func leagueButton(_ option: LeagueOption, isConference: Bool = false) -> some View {
+        let isActive = vm.state.active_sports[option.id] ?? true
+        return Button {
+            EnabledLeagueControls.toggle(option, in: &vm.state.active_sports)
+            vm.saveSettings()
+        } label: {
+            Text(option.label)
+                .font(.subheadline).bold()
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.vertical, 4)
+                .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+                .foregroundColor(.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("\(isConference ? "conference" : "league")-\(option.id)")
+        .accessibilityLabel(option.label)
+        .accessibilityValue(isActive ? "Enabled" : "Disabled")
+        .accessibilityHint("Double-tap to change whether this league is enabled.")
+    }
+
+    private func conferenceGroup(_ group: EnabledLeagueGroup) -> some View {
+        let isExpanded = leagueControls.expandedParents.contains(group.id)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                leagueButton(group.league)
+                Button {
+                    leagueControls.toggleDisclosure(for: group.id)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Conferences").font(.subheadline).bold()
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption).bold()
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("conferences-\(group.id)")
+                .accessibilityLabel("\(group.league.label) conferences")
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            }
+            if isExpanded {
+                if group.conferences.isEmpty {
+                    Text("No conferences available.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                        ForEach(group.conferences) { conference in
+                            leagueButton(conference, isConference: true)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     func setCategory(_ target: String) {
@@ -402,19 +471,12 @@ struct ModesView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                                ForEach(sportsOptions) { opt in
-                                    let isActive = vm.state.active_sports[opt.id] ?? true
-                                    Button {
-                                        vm.state.active_sports[opt.id] = !isActive
-                                        vm.saveSettings()
-                                    } label: {
-                                        Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
-                                            .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
-                                            .foregroundColor(.white)
-                                    }
+                                ForEach(leagueGroups.filter { !$0.hasConferenceDisclosure }) { group in
+                                    leagueButton(group.league)
                                 }
+                            }
+                            ForEach(leagueGroups.filter { $0.hasConferenceDisclosure }) { group in
+                                conferenceGroup(group)
                             }
                         }
                     }

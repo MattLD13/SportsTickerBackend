@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "task": "College football conference dropdowns in Enabled Leagues",
+  "original_base_sha": "c8ce4fa57e343ab710ca4e981879b1ab34e2353c",
+  "safe_snapshot_sha": "00cd73cec1528ec74796c2426fedce9f1972b4a5",
+  "safe_snapshot_file_count": 717,
+  "preregistered_at": "2026-10-19T22:55:13.081588+00:00",
+  "preregistration_sha256": "b5fa6e16fdc35482c83a3658fdd5460c396649f15f4c732f11d8ae387875820f",
+  "allocation_commitment_sha256": "4de0ecd5ba6e3a893c72a53c155ee5f5d2916a560049193bf13e7f735db244ce",
+  "design": "Single task, two fresh coding agents, randomized method allocation, reviewer blinded to method and cost.",
+  "selection_rule": "Reject incorrect or regressing candidates. Prefer correctness and maintainability. For equivalent quality choose lower total input plus output tokens including every planning attempt.",
+  "stopping_rule": "One independent attempt per coding arm, no rerolls or post-result coaching. Freeze first completed candidates. Independent tests and blinded review before method/cost reveal.",
+  "limits": "One task and one agent per method cannot establish a general causal performance advantage. Agents know their method. Coordinator is unblinded.",
+  "workspace": "Identical safe full source clones. Only discovery workflow differs.",
+  "treatment_initial_context_files": 13,
+  "treatment_build_files": 168,
+  "methods": {
+    "A": {
+      "method": "selective_context",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "usage": {
+        "input_tokens": 644866,
+        "cached_input_tokens": 568704,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 10691,
+        "reasoning_output_tokens": 3782,
+        "total_tokens": 655557
+      },
+      "maximum_single_input_tokens": 69778,
+      "coding_seconds": 192.08,
+      "preparation_seconds": 0.5595046000089496,
+      "coding_plus_preparation_seconds": 192.63950460000896,
+      "planner_model_calls": 0,
+      "planner_tokens": 0,
+      "patch_sha256": "93735d862f48de0c99e0c03e618a28da8d8a2d5f1618d3cdb7db1390ca99edb6",
+      "files": [
+        "TickerControlApp/Package.swift",
+        "TickerControlApp/TickerControl/Models/EnabledLeagueControls.swift",
+        "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+        "TickerControlApp/TickerControl/Views/ModesView.swift",
+        "TickerControlApp/TickerControlTests/EnabledLeagueControlsTests.swift"
+      ],
+      "screenshot_sha256": "7c4b08e3b602c4d18b96cffc877f4d5741aa11e954bbcec2dc86e50e38ff2b24"
+    },
+    "B": {
+      "method": "ordinary_search",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "usage": {
+        "input_tokens": 1016018,
+        "cached_input_tokens": 933248,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 12756,
+        "reasoning_output_tokens": 5693,
+        "total_tokens": 1028774
+      },
+      "maximum_single_input_tokens": 82272,
+      "coding_seconds": 230.09,
+      "preparation_seconds": 0,
+      "coding_plus_preparation_seconds": 230.09,
+      "planner_model_calls": 0,
+      "planner_tokens": 0,
+      "patch_sha256": "7b68ed4bc690f36bec98018cdd283264265ae96a844aca4c311351b0b2b1ce57",
+      "files": [
+        "TickerControlApp/Package.swift",
+        "TickerControlApp/TickerControl/Models/EnabledLeaguesPresentation.swift",
+        "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+        "TickerControlApp/TickerControl/Views/EnabledLeaguesView.swift",
+        "TickerControlApp/TickerControl/Views/ModesView.swift",
+        "TickerControlApp/TickerControlTests/EnabledLeaguesTests.swift"
+      ],
+      "screenshot_sha256": "da5c46cefaa7c335c8754281efdea49c52ccb915b6149e9a6ee7a32752e8a119"
+    }
+  },
+  "quality_verdict": {
+    "at": "2026-10-19T23:35:08.688275+00:00",
+    "verdict": "B",
+    "margin": "small",
+    "review_sha256": "8dfa597a8adf2e107461766f9325f660947041f4e672dc354226ff8bc354a05a",
+    "allocation_and_usage_withheld_until_this_record": true,
+    "selected_candidate": "B",
+    "selection_basis": "The blind reviewer preferred B for clearer group backgrounds and an isolated view. Quality takes priority over tokens under the registered rule."
+  },
+  "final_selection": {
+    "at": "2026-10-19T23:37:47.331070+00:00",
+    "selected_candidate": "A",
+    "method": "selective_context",
+    "rule": "If quality is very similar, lower token use wins.",
+    "user_instruction": "If quality is very similar less tokens wins",
+    "timing": "The user changed the selection preference after the blind quality verdict and token reveal.",
+    "original_registered_selection": "B",
+    "blind_quality_verdict": "B by a small margin",
+    "basis": "Both candidates pass every locked acceptance check. Neither needs a repair. The reviewer found only a small visual-grouping and maintainability advantage for B. A uses 36.28% fewer total tokens.",
+    "candidate_patch_changed": false,
+    "acceptance_changed": false,
+    "blind_verdict_changed": false
+  },
+  "validation": {
+    "A": {
+      "candidate": "A",
+      "workflow_result": "success",
+      "workflow_url": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39340575838",
+      "jobs": [
+        {
+          "name": "Build Release",
+          "result": "success"
+        },
+        {
+          "name": "Build Debug",
+          "result": "success"
+        },
+        {
+          "name": "Conference UI acceptance",
+          "result": "success"
+        }
+      ],
+      "package_test_counts_and_failures": {
+        "debug": [
+          "26",
+          "0"
+        ],
+        "release": [
+          "26",
+          "0"
+        ]
+      },
+      "ui_tests": {
+        "result": "Passed",
+        "passedTests": 5,
+        "failedTests": 0,
+        "skippedTests": 0,
+        "totalTestCount": 5,
+        "testFailures": [],
+        "environmentDescription": "ConferenceTrial \u00c2\u00b7 Built with macOS 26.6.2"
+      }
+    },
+    "B": {
+      "candidate": "B",
+      "workflow_result": "cancelled",
+      "workflow_url": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39340581624",
+      "jobs": [
+        {
+          "name": "Conference UI acceptance",
+          "result": "cancelled"
+        },
+        {
+          "name": "Build Release",
+          "result": "success"
+        },
+        {
+          "name": "Build Debug",
+          "result": "success"
+        }
+      ],
+      "package_test_counts_and_failures": {
+        "debug": [
+          "26",
+          "0"
+        ],
+        "release": [
+          "26",
+          "0"
+        ]
+      },
+      "ui_tests": {
+        "result": "Passed",
+        "passedTests": 5,
+        "failedTests": 0,
+        "skippedTests": 0,
+        "totalTestCount": 5,
+        "testFailures": [],
+        "environmentDescription": "ConferenceTrial \u00c2\u00b7 Built with macOS 26.6.2"
+      }
+    }
+  },
+  "validation_refs": [
+    {
+      "attempt": 1,
+      "refs": {
+        "A": {
+          "sha": "fec23288cd445d2c1a86e5c01a46f377c04583b6",
+          "tag": "codex/conference-rct-1af57671-A",
+          "ref": "refs/tags/codex/conference-rct-1af57671-A",
+          "dispatch_output": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39338825570"
+        },
+        "B": {
+          "sha": "decaf6f8f2e539b4b3a18f43842b7f9acbce33d1",
+          "tag": "codex/conference-rct-1af57671-B",
+          "ref": "refs/tags/codex/conference-rct-1af57671-B",
+          "dispatch_output": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39338838578"
+        }
+      }
+    },
+    {
+      "attempt": 2,
+      "refs": {
+        "A": {
+          "sha": "842818f84a1a778ce167789db5120b6f477feb54",
+          "tag": "codex/conference-rct-1af57671-A-r2",
+          "ref": "refs/tags/codex/conference-rct-1af57671-A-r2",
+          "attempt": 2,
+          "dispatch_output": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39339240851"
+        },
+        "B": {
+          "sha": "adf5e60e01dc40155f8c6b200a9fa86c5d69b9af",
+          "tag": "codex/conference-rct-1af57671-B-r2",
+          "ref": "refs/tags/codex/conference-rct-1af57671-B-r2",
+          "attempt": 2,
+          "dispatch_output": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39339246815"
+        }
+      }
+    },
+    {
+      "attempt": 3,
+      "refs": {
+        "A": {
+          "sha": "19de64125512cc964abc020e7d91d3dca9eab535",
+          "tag": "codex/conference-rct-1af57671-A-r3",
+          "ref": "refs/tags/codex/conference-rct-1af57671-A-r3",
+          "attempt": 3,
+          "dispatch_output": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39340575838"
+        },
+        "B": {
+          "sha": "45ed0198d90a5677df285998ab640a33a63b3fc1",
+          "tag": "codex/conference-rct-1af57671-B-r3",
+          "ref": "refs/tags/codex/conference-rct-1af57671-B-r3",
+          "attempt": 3,
+          "dispatch_output": "https://github.com/MattLD13/SportsTickerBackend/actions/runs/39340581624"
+        }
+      },
+      "at": "2026-10-19T23:17:06.057601+00:00"
+    }
+  ],
+  "shared_harness_repairs": [
+    {
+      "category": "shared-harness-compile-failure",
+      "runs": {
+        "A": 39338825570,
+        "B": 39338838578
+      },
+      "error": "Fixture @Published property omitted import Combine",
+      "repair": "Add import Combine to the identical non-production fixture. Candidate patches and acceptance criteria remain frozen.",
+      "fixture_sha256_after": "e785860af0c79e44762519124bcd43b091ddc6320359b95ee785a298b0c5d824"
+    },
+    {
+      "at": "2026-10-19T23:15:25.369571+00:00",
+      "attempt": 2,
+      "cause": "The generated UI app target omitted production Swift concurrency settings. Its compile failed before any UI test ran. Production Debug and Release builds passed.",
+      "error": "TickerViewModel.swift:983:40: call to main actor-isolated instance method 'pairingServerMessage' in a synchronous nonisolated context",
+      "repair": "Copy SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor, SWIFT_APPROACHABLE_CONCURRENCY=YES, and SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY=YES from the production app target into both generated UI app targets.",
+      "candidate_changes": false,
+      "acceptance_changes": false,
+      "source": "TickerControlApp/TickerControl.xcodeproj/project.pbxproj"
+    }
+  ],
+  "diagnostic_cancellation": {
+    "at": "2026-10-19T23:32:47.318267+00:00",
+    "attempt": 3,
+    "reason": "Both UI steps ran for over ten minutes without accessible live logs. Stop both to locate the last simulator/build/XCTest milestone. Shared inherited polling is an unconfirmed idling hypothesis.",
+    "candidate_changes": false,
+    "acceptance_changes": false,
+    "results": {
+      "A": {
+        "run": 39340575838,
+        "exit": 1,
+        "message": "Cannot cancel a workflow run that is completed"
+      },
+      "B": {
+        "run": 39340581624,
+        "exit": 0,
+        "message": "\u00e2\u0153\u201c Request to cancel workflow 39340581624 submitted."
+      }
+    }
+  },
+  "wrapper_rerun": {
+    "candidate": "B",
+    "run": 39340581624,
+    "attempt": 2,
+    "sha": "45ed0198d90a5677df285998ab640a33a63b3fc1",
+    "reason": "The coordinator cancellation reached the workflow wrapper after all five tests had passed. Rerun the same UI job for a clean aggregate status.",
+    "code_changes": false
+  },
+  "shared_review_usage": {
+    "input_tokens": 1522490,
+    "cached_input_tokens": 1470208,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 6183,
+    "reasoning_output_tokens": 1740,
+    "total_tokens": 1528673
+  },
+  "shared_harness_usage": {
+    "input_tokens": 1645527,
+    "cached_input_tokens": 1576448,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 13552,
+    "reasoning_output_tokens": 3900,
+    "total_tokens": 1659079
+  },
+  "coordinator_usage_included": false,
+  "integration_checks": {
+    "python_full": {
+      "passed": 1086,
+      "skipped": 10,
+      "warnings": 13,
+      "seconds": 58.12
+    },
+    "focused_catalog": {
+      "passed": 2
+    },
+    "python_critical": {
+      "passed": 738,
+      "skipped": 10,
+      "deselected": 348,
+      "warnings": 13,
+      "seconds": 44.95
+    },
+    "selected_patch_exact_match": true
+  },
+  "behavior_owner": "EnabledLeagueControls owns local grouping and disclosure state. ModesView renders the controls. TickerViewModel.saveSettings owns persistence.",
+  "replaced_path": "The flat Enabled Leagues grid in ModesView",
+  "input_output_evidence": {
+    "catalog": "Explicit conference_parent joins, overlapping conference IDs, unfamiliar conference, stock and ordinary records, and empty conference lists",
+    "parent_cycle": {
+      "conference_before": false,
+      "parent_off_then_on": [
+        false,
+        true
+      ],
+      "conference_after": false,
+      "other_division_unchanged": true
+    },
+    "save_calls": {
+      "disclosure_open_close": 0,
+      "conference_disable_parent_off_parent_on": 3
+    },
+    "persistence_boundary": "The fixture counts save calls without live HTTP writes. Contract tests check settings serialization."
+  },
+  "acceptance_sha256": "b78fb11de5a3211a235d4f6a83f5279386746543fb02d2bdee332ff81e8ed419",
+  "contract_acceptance_sha256": "294fac1873f5085046b1cf8c560585e67fef1cd10f8908e7fb10639b32663f81"
+}

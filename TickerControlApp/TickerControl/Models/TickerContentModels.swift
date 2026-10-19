@@ -6,6 +6,7 @@ struct LeagueOption: Decodable, Identifiable, Hashable, Sendable {
     let type: String
     let enabled: Bool?
     let my_teams_enabled: Bool?
+    let conference_parent: String?
 }
 struct V2LeagueCatalog: Decodable, Sendable { let leagues: [LeagueOption] }
 struct V2TeamCatalog: Decodable, Sendable { let teams: [TeamData] }
