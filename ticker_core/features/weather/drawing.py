@@ -1,10 +1,35 @@
 import math
 from datetime import datetime
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
 PANEL_W = 384
 PANEL_H = 32
+ANIMATION_PERIOD = 12.6
+
+
+def _phase(t):
+    """Keep one microsecond clock precision after the loop wraps."""
+    return round(t % ANIMATION_PERIOD, 6) % ANIMATION_PERIOD
+
+
+def _angle(t, cycles):
+    """Return a periodic angle for one weather loop."""
+    return math.tau * cycles * _phase(t) / ANIMATION_PERIOD
+
+
+def _travel(t, speed, span, offset=0.0):
+    """Keep particle speed close to its target and close the weather loop."""
+    cycles = max(1, round(speed * ANIMATION_PERIOD / span))
+    distance = (_phase(t) * cycles / ANIMATION_PERIOD + offset / span) % 1.0 * span
+    return round(distance, 9) % span
+
+
+def _flash(t, center, width):
+    """Fade a lightning flash across both sides of its cycle boundary."""
+    period = ANIMATION_PERIOD / 2.0
+    distance = abs((t - center + period / 2.0) % period - period / 2.0)
+    return (0.5 + 0.5 * math.cos(math.pi * distance / width)) if distance < width else 0.0
 
 
 # Forecast temperature trend. `gain` scales the edge brightness, `step` draws
@@ -31,7 +56,7 @@ class PreparedWeatherRenderer:
 
     def _time(self) -> float:
         """Return the supplied animation clock."""
-        return self._now.timestamp()
+        return _phase(self._now.timestamp())
 
     def draw_moon_pixel_art(self, d, x, y):
         """Draw a large stepped grayscale pixel moon with crater detail."""
@@ -77,6 +102,7 @@ class PreparedWeatherRenderer:
     def draw_weather_pixel_art(self, d, icon_name, x, y, t=None):
         if t is None:
             t = self._time()
+        t = _phase(t)
         icon = str(icon_name).lower()
         SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
@@ -87,23 +113,15 @@ class PreparedWeatherRenderer:
 
             # Rotating outer rays: alternate rays swap between "long" and "short" lengths
             rays = 12
-            rot_speed = 0.5  # slower rotation
-            swap_speed = 1.0
-            long_pulse_speed = 3.0
-            short_pulse_speed = 3.4
             gap = 3  # gap between core and start of rays
             for i in range(rays):
                 phase = (i / float(rays)) * (2 * math.pi)
-                angle = phase + t * rot_speed
-                # determine current assignment (alternating rays swap over time)
-                is_long_now = math.sin(t * swap_speed + i * math.pi) > 0
-                # per-category pulsing within desired ranges
-                if is_long_now:
-                    # long rays pulse between 4 and 5 pixels
-                    length_f = 4.0 + 0.5 * (1.0 + math.sin(t * long_pulse_speed + i * 0.4))
-                else:
-                    # short rays pulse between 2 and 3 pixels
-                    length_f = 2.0 + 0.5 * (1.0 + math.sin(t * short_pulse_speed + i * 0.4))
+                angle = phase + _angle(t, 1)
+                # Blend ray lengths instead of switching them at a sign change.
+                blend = 0.5 + 0.5 * math.sin(_angle(t, 2) + i * math.pi)
+                long_length = 4.5 + 0.5 * math.sin(_angle(t, 6) + i * 0.4)
+                short_length = 2.5 + 0.5 * math.sin(_angle(t, 7) + i * 0.4)
+                length_f = short_length + (long_length - short_length) * blend
                 length = int(round(length_f))
                 r1 = core_r + gap
                 r2 = core_r + length
@@ -112,32 +130,35 @@ class PreparedWeatherRenderer:
                 x2 = round(cx_s + math.cos(angle) * r2)
                 y2 = round(cy_s + math.sin(angle) * r2)
                 # color slightly brighter for long rays
-                base_int = 210 if is_long_now else 170
+                base_int = 170 + 40 * blend
                 pulse_col_factor = 0.6 + 0.4 * (length_f - 2.0)
                 intensity = int(min(255, base_int * pulse_col_factor))
                 col = (intensity, int(intensity * 0.9), int(intensity * 0.35))
                 d.line([(x1, y1), (x2, y2)], fill=col, width=1)
 
-            # (removed small rotating highlight blobs per request)
         elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
             for i, fy in enumerate([y+3, y+6, y+9, y+12]):
-                off = int(math.sin(t * 0.6 + i * 1.1) * 2)
+                off = int(math.sin(_angle(t, 1) + i * 1.1) * 2)
                 d.line([(x + max(2, 2 + off), fy), (x + min(13, 13 + off), fy)], fill=(170, 175, 195))
         elif 'rain' in icon or 'drizzle' in icon or 'shower' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=CLOUD_W)
             for i, rx in enumerate([x+3, x+7, x+11, x+5, x+9]):
-                ry = y + 10 + int((t * 5 + i * 0.8) % 6)
-                d.line([(rx, ry), (rx - 1, ry + 2)], fill=RAIN_B)
+                head = y + 8 + int(_travel(t, 5, 10, i * 0.8))
+                for k in range(3):
+                    if y + 10 <= head + k < y + 18:
+                        d.point((rx - int(round(k / 2.0)), head + k), fill=RAIN_B)
         elif 'snow' in icon or 'blizzard' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=(185, 195, 210))
             for i, rx_base in enumerate([x+3, x+7, x+11, x+5, x+9]):
-                ry = y + 10 + int((t * 2 + i * 1.3) % 7)
-                rx = rx_base + int(math.sin(t * 1.5 + i * 0.9))
-                d.point((rx, ry), fill=SNOW_W)
-                d.point((rx, ry + 1), fill=SNOW_W)
+                head = y + 9 + int(_travel(t, 2, 9, i * 1.3))
+                rx = rx_base + int(math.sin(_angle(t, 3) + i * 0.9))
+                for k in range(2):
+                    if y + 10 <= head + k < y + 18:
+                        d.point((rx, head + k), fill=SNOW_W)
         elif 'storm' in icon or 'thunder' in icon or 'lightning' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=(75, 80, 100))
-            bolt_clr = (255, 220, 0) if (t % 1.4) < 0.9 else (60, 50, 0)
+            pulse = 0.5 + 0.5 * math.tanh(4 * math.sin(_angle(t, 9)))
+            bolt_clr = (int(60 + 195 * pulse), int(50 + 170 * pulse), 0)
             d.line([(x+8, y+9), (x+6, y+13)], fill=bolt_clr, width=1)
             d.line([(x+6, y+13), (x+9, y+13)], fill=bolt_clr, width=1)
             d.line([(x+9, y+13), (x+7, y+16)], fill=bolt_clr, width=1)
@@ -282,6 +303,7 @@ class PreparedWeatherRenderer:
             return (2, 2, 7)
 
         def draw_amb(icon, rx, ry, rw, rh, t, dim=1.0, density=1.0, wind=0.0, mask_moon=False):
+            t = _phase(t)
             ic = icon.lower()
             n = max(2, rw // 20)
             if 'sun' in ic and dim > 0.05:
@@ -293,19 +315,19 @@ class PreparedWeatherRenderer:
                 for j in range(n_stars):
                     sx = rx + int(_sx[j] * rw / 124)
                     sy = ry + int(_sy[j] * rh / 32)
-                    bv = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 230 * dim)
+                    cycles = round(_sp[j] * ANIMATION_PERIOD / math.tau)
+                    bv = int(max(0, math.sin(_angle(t, cycles) + _ph[j])) ** 2 * 230 * dim)
                     if bv > 15 and not (74 <= sx <= 121):
                         if mask_moon and 0 <= sx <= 23 and 5 <= sy <= 31:
                             continue
                         d.point((sx, sy), fill=(bv, bv, int(bv * 0.88)))
             if 'storm' in ic:
-                fp = t % 6.0
-                if fp < 0.07:
-                    glow = int((1.0 - fp / 0.07) * 35)
-                    d.rectangle((rx, ry, rx + rw - 1, ry + rh - 1), fill=(glow, glow // 2, glow + 12))
-                elif 3.2 < fp < 3.27:
-                    glow = int((1.0 - (fp - 3.2) / 0.07) * 22)
-                    d.rectangle((rx, ry, rx + rw - 1, ry + rh - 1), fill=(glow, glow // 2, glow + 12))
+                glow = int(35 * _flash(t, 0.0, 0.07) + 22 * _flash(t, ANIMATION_PERIOD * 4 / 15, 0.07))
+                if glow:
+                    # Fade over the existing sky instead of replacing its tint.
+                    sky = img.crop((rx, ry, rx + rw, ry + rh))
+                    light = Image.new("RGBA", (rw, rh), (glow, glow // 2, glow, 0))
+                    img.paste(ImageChops.add(sky, light), (rx, ry))
             if 'rain' in ic or 'storm' in ic:
                 # Rain was the one common condition with no ambient motion at
                 # all — a flat blue field. Short streaks falling fast enough to
@@ -327,7 +349,8 @@ class PreparedWeatherRenderer:
                 length = 2 + int(round(3 * density))
                 for j in range(max(1, int(round(avail * density)))):
                     bx0 = rx + int(_rfx[j] * rw)
-                    head = ry + int((t * _rsp[j] + _rph[j] * 7) % (rh + 4)) - 2
+                    span = rh + length - 1
+                    head = ry - length + 1 + int(_travel(t, _rsp[j], span, _rph[j] * 7))
                     for k in range(length):
                         yy = head + k
                         # Lean about the column's middle, so a strong tilt slants
@@ -343,8 +366,8 @@ class PreparedWeatherRenderer:
                 _sph = [0.0,  2.1,  1.4,  3.5,  4.8,  0.9,  2.7]
                 avail = min(n + 1, len(_sfx))
                 for j in range(max(1, int(round(avail * density)))):
-                    by = ry + int((t * _ssp[j] + _sph[j] * 4) % (rh + 2))
-                    bx = (rx + int(_sfx[j] * rw) + int(math.sin(t * 0.7 + _sph[j]) * 2)
+                    by = ry - 1 + int(_travel(t, _ssp[j], rh + 1, _sph[j] * 4))
+                    bx = (rx + int(_sfx[j] * rw) + int(math.sin(_angle(t, 1) + _sph[j]) * 2)
                           + int(round((by - ry - rh / 2.0) * wind)))
                     if rx <= bx < rx + rw and ry <= by < ry + rh:
                         d.point((bx, by), fill=(40, 60, 100))

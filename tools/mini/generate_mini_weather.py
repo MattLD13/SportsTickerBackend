@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import importlib.util
+import math
 from pathlib import Path
 import sys
 
@@ -20,7 +21,20 @@ SPEC.loader.exec_module(OWNER)
 
 TARGET = ROOT / "esp32_hub75/src/mini/rendering/weather_art_generated.h"
 ICONS = ("sun", "moon", "cloud", "rain", "snow", "fog", "storm")
-WIDTH, HEIGHT, FRAMES, STEP_MS = 22, 17, 126, 100
+WIDTH, HEIGHT, STEP_MS = 22, 17, 100
+
+
+def animation_frame_count(period_seconds: float, step_ms: int) -> int:
+    """Return whole frames for the shared weather animation period."""
+    if period_seconds <= 0 or step_ms <= 0:
+        raise ValueError("Weather period and frame step must be positive")
+    frames = round(period_seconds * 1000 / step_ms)
+    if frames < 1 or not math.isclose(frames * step_ms, period_seconds * 1000, rel_tol=0, abs_tol=1e-6):
+        raise ValueError("Weather period must align with the Mini frame step")
+    return frames
+
+
+FRAMES = animation_frame_count(OWNER.ANIMATION_PERIOD, STEP_MS)
 
 
 def header() -> str:

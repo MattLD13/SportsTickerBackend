@@ -24,6 +24,7 @@ from sports_ticker.assets.music_palette import artwork_colors
 from sports_ticker.dashboard_v2.preview import main_layout
 from sports_ticker.providers.logo_overrides import mini_logo_sources
 from tools.rendering.render_mini_ui import remote_render
+from tools.mini.generate_mini_weather import FRAMES as WEATHER_FRAMES, STEP_MS as WEATHER_FRAME_MS
 
 SOURCE = ROOT / "docs/contracts/demo-layouts.json"
 DESTINATION = ROOT / "sports_ticker/dashboard_v2/static/layout-gallery.json"
@@ -88,7 +89,7 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
             row[side + "_sprite"] = cache[url]
         row["now_epoch"] = datetime.fromisoformat(example.get("example_time", source["example_time"])).timestamp()
         if row["mode"] == "weather":
-            row.update(frame_count=126, frame_ms=100)
+            row.update(frame_count=WEATHER_FRAMES, frame_ms=WEATHER_FRAME_MS)
         if row["mode"] == "music":
             row.update(frame_count=200, frame_ms=100)
             if row["game"].get("cover") == "demo:album":

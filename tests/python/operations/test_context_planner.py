@@ -5,10 +5,11 @@ import subprocess
 
 import pytest
 
-from tools.workspaces.manage import WorkspaceError
+from tools.workspaces.manage import MANIFEST, ROOT, WorkspaceError, manifest_read, resolve
 from tools.workspaces.planner import (
     MODEL, allowed_files, codex_command, excerpt, plan_task, run_codex, validate,
 )
+from tools.workspaces.start import edit_owners, inventory
 
 pytestmark = pytest.mark.critical
 
@@ -135,3 +136,13 @@ def test_missing_cli_returns_an_actionable_error(monkeypatch):
     monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: None)
     with pytest.raises(WorkspaceError, match="Install Codex CLI"):
         run_codex({}, {}, 10)
+
+
+def test_weather_art_and_catalog_tests_have_precise_consumer_ownership():
+    manifest = manifest_read(MANIFEST)
+    owners = edit_owners(manifest, ["ticker_core/features/weather/drawing.py",
+                                    "tests/python/rendering/test_catalog.py"], False)
+    assert {"weather", "weather-art", "six-rendering"} <= owners
+    plan = resolve(manifest, sorted(owners), inventory(ROOT, manifest, "HEAD"))
+    assert "mini-firmware" in plan["components"]
+    assert not set(manifest["shared_consumers"]) & set(plan["components"])

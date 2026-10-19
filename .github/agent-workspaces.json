@@ -258,11 +258,13 @@
       "owner": "Weather provider and device presentation",
       "owned": [
         "sports_ticker/providers/weather.py",
-        "ticker_core/features/weather/*"
+        "ticker_core/features/weather/*",
+        "tests/python/features/weather/*"
       ],
       "dependencies": [
         "server-core",
-        "six-build"
+        "six-build",
+        "weather-art"
       ],
       "context": [
         "sports_ticker/providers/weather.py"
@@ -271,10 +273,12 @@
         "ticker_core/features/weather/*",
         "tests/python/protocol/test_weather_provider.py",
         "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "sports_ticker/assets/images.py",
+        "tests/python/features/weather/*"
       ],
       "checks": [
-        "weather-domain"
+        "weather-domain",
+        "weather-animation"
       ]
     },
     "stocks": {
@@ -705,6 +709,56 @@
       "checks": [
         "six-sports"
       ]
+    },
+    "six-rendering": {
+      "owner": "Ticker Six renderer contracts, catalog, preview tools, and generic renderer tests",
+      "owned": [
+        "ticker_core/rendering/catalog.py",
+        "ticker_core/rendering/fonts.py",
+        "ticker_core/rendering/geometry.py",
+        "ticker_core/rendering/model.py",
+        "ticker_core/rendering/strip.py",
+        "tests/python/rendering/*",
+        "tools/rendering/render_frame.py"
+      ],
+      "dependencies": [
+        "six-build"
+      ],
+      "context": [
+        "ticker_core/rendering/catalog.py",
+        "tests/python/rendering/test_catalog.py"
+      ],
+      "build": [
+        "tests/python/rendering/test_catalog.py",
+        "tools/rendering/render_frame.py"
+      ],
+      "checks": [
+        "six-catalog"
+      ]
+    },
+    "weather-art": {
+      "owner": "Shared Six and Mini weather icon timing and generated artwork",
+      "owned": [
+        "ticker_core/features/weather/drawing.py",
+        "tools/mini/generate_mini_weather.py",
+        "esp32_hub75/src/mini/rendering/weather_art_generated.h"
+      ],
+      "dependencies": [
+        "six-build",
+        "mini-firmware"
+      ],
+      "context": [
+        "ticker_core/features/weather/drawing.py",
+        "tools/mini/generate_mini_weather.py"
+      ],
+      "build": [
+        "tools/mini/generate_mini_weather.py",
+        "esp32_hub75/src/mini/rendering/weather_art_generated.h",
+        "tests/python/features/weather/test_weather_art_contract.py"
+      ],
+      "checks": [
+        "weather-art"
+      ]
     }
   },
   "slices": {
@@ -788,6 +842,12 @@
     ],
     "agent-workspaces": [
       "agent-workspaces"
+    ],
+    "six-rendering": [
+      "six-rendering"
+    ],
+    "weather-art": [
+      "weather-art"
     ]
   },
   "checks": {
@@ -978,6 +1038,41 @@
       ],
       "files": [
         "tests/python/clock/test_clock_renderer.py"
+      ]
+    },
+    "six-catalog": {
+      "argv": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/python/rendering/test_catalog.py"
+      ],
+      "files": [
+        "tests/python/rendering/test_catalog.py"
+      ]
+    },
+    "weather-art": {
+      "argv": [
+        "{python}",
+        "tools/mini/generate_mini_weather.py",
+        "--check"
+      ],
+      "files": [
+        "tools/mini/generate_mini_weather.py",
+        "esp32_hub75/src/mini/rendering/weather_art_generated.h"
+      ]
+    },
+    "weather-animation": {
+      "argv": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/python/features/weather"
+      ],
+      "files": [
+        "tests/python/features/weather/*"
       ]
     }
   },
