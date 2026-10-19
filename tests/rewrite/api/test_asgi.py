@@ -371,7 +371,7 @@ def test_server_main_loads_environment_and_serves_asgi(monkeypatch):
     monkeypatch.setattr(server.faulthandler, "enable", lambda: None)
     if hasattr(server.faulthandler, "register"):
         monkeypatch.setattr(server.faulthandler, "register", lambda *args, **kwargs: None)
-    monkeypatch.setattr(server, "load_dotenv", lambda: calls.append("environment"))
+    monkeypatch.setattr(server, "load_dotenv", lambda path: calls.append("environment"))
     monkeypatch.setattr(server, "create_asgi_application", lambda: calls.append("factory") or application)
 
     async def serve(app, config, *, mode):

@@ -173,6 +173,7 @@ class RefreshScheduler:
         self._incidents = incidents
         self.recovery = recovery or ProviderRecovery()
         self.active_provider = None
+        self.last_progress_at = None
         self._refresh_service = refresh_service
         self._monotonic = monotonic
         self._wall_clock = wall_clock
@@ -273,6 +274,7 @@ class RefreshScheduler:
         """Run due jobs once and return ticker IDs published in this pass."""
 
         current = self._monotonic() if now is None else float(now)
+        self.last_progress_at = self._monotonic()
         settings_by_ticker: dict[str, DisplaySettings] = {}
         settings_failures: set[str] = set()
         for ticker in self._tickers.values():
@@ -350,6 +352,7 @@ class RefreshScheduler:
                 attempted += 1
                 result = None
                 self.active_provider = job.name
+                self.last_progress_at = self._monotonic()
                 try:
                     result = _run_provider_refresh(job.refresh, ticker_id, settings)
                     ok, error = _refresh_succeeded(result)
@@ -384,6 +387,7 @@ class RefreshScheduler:
                     success_count += 1
                 finally:
                     self.active_provider = None
+                    self.last_progress_at = self._monotonic()
 
             if not attempted:
                 health = replace(job.health, next_due=wall_due)
@@ -435,6 +439,7 @@ class RefreshScheduler:
                 continue
 
             try:
+                self.last_progress_at = self._monotonic()
                 result = _run_snapshot_refresh(
                     self._refresh_service,
                     ticker_id,

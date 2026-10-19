@@ -1,0 +1,11 @@
+[Unit]
+Description=Check backend component health every 30 seconds
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=30
+AccuracySec=2
+Unit=ticker-backend-guard.service
+
+[Install]
+WantedBy=timers.target

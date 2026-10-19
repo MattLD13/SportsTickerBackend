@@ -15,6 +15,7 @@ from uuid import uuid4
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SENSITIVE_KEY = re.compile(r"token|secret|password|authorization|cookie|api.?key|credential", re.I)
 
 
 @lru_cache(maxsize=16)
@@ -26,7 +27,7 @@ def release_id(root: Path | None = None) -> str:
 
 def redact(value):
     """Remove credentials, URL queries, and known environment secrets from evidence."""
-    sensitive = re.compile(r"token|secret|password|authorization|cookie|api.?key|credential", re.I)
+    sensitive = SENSITIVE_KEY
     if isinstance(value, Mapping):
         return {str(key): "[REDACTED]" if sensitive.search(str(key)) else redact(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -64,6 +65,12 @@ def atomic_json(path: Path, value) -> None:
         output.flush()
         os.fsync(output.fileno())
     os.replace(temporary, path)
+    if hasattr(os, "O_DIRECTORY"):
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
 
 class IncidentStore:

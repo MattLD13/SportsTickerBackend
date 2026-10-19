@@ -10,6 +10,8 @@ from typing import Final
 
 from flask import Flask
 from backend_ops.incidents import IncidentStore, release_id
+from backend_ops.worker_contract import WorkerProvider
+from backend_ops.public_status import summary as deployment_summary
 
 from sports_ticker.api.app import create_app
 from sports_ticker.providers.factory import create_provider
@@ -51,7 +53,11 @@ def create_production_application(
     _provision_initial_ticker(repository)
     spotify = SpotifyIntegrationService(repository, SpotifyConfig.from_environment())
     catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS)
-    providers = {name: create_provider(name, spotify=spotify, catalog=catalog) for name in _INTERVALS}
+    worker_directory = os.environ.get("TICKER_WORKER_DIRECTORY")
+    providers = {
+        name: WorkerProvider(name, Path(worker_directory)) if worker_directory else create_provider(name, spotify=spotify, catalog=catalog)
+        for name in _INTERVALS
+    }
     snapshots = SnapshotStore()
     refresh = RefreshService(providers.values(), snapshots)
     incidents = IncidentStore(Path(os.environ.get("TICKER_INCIDENT_DIR", path.parent / "backend-incidents")))
@@ -100,6 +106,7 @@ def create_production_application(
         os.environ.get("TICKER_DASHBOARD_ASSET_CACHE", path.parent / "rewrite_assets")
     )
     app.config["VERSION"] = _build_version()
+    app.extensions["sports_ticker.deployment_status"] = lambda: deployment_summary(path.parent)
     return app
 
 

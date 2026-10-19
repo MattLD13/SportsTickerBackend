@@ -226,11 +226,7 @@ jobs:
             if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "The backend deployment will activate the firmware manifest."
             else
-              if [ "${{ needs.changes.outputs.backend }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "Backend code deployment will restart the service after copying files."
-            else
               sudo systemctl restart ticker
-            fi
               sudo systemctl status ticker --no-pager
             fi
 
@@ -240,6 +236,8 @@ jobs:
     if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') && needs.verify-runtime.result == 'success' && (needs.deploy-mini-firmware.result == 'success' || needs.deploy-mini-firmware.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install verified public layout artifact
         uses: actions/download-artifact@v4
@@ -254,86 +252,90 @@ jobs:
           git rev-parse HEAD > RELEASE_SHA
           echo "Version: ${SHA}"
 
-      - name: Prepare shared renderer ownership
-        uses: appleboy/ssh-action@master
+      - uses: actions/setup-python@v5
         with:
-          host:     ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_KEY }}
-          script: |
-            set -eu
-            cd "/home/${{ secrets.SSH_USER }}"
-            mkdir -p ticker_core
-            test "$(readlink -f ticker_core)" = "/home/${{ secrets.SSH_USER }}/ticker_core"
-            sudo chown -R --no-dereference "${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }}" ticker_core
+          python-version: "3.13"
 
-      - name: Copy files to server
+      - name: Read deployment base
+        id: base
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        shell: bash
+        run: |
+          set -eu
+          key="$RUNNER_TEMP/backend-key"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          base=$(ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" /usr/bin/python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('/home/ubuntu/ticker_data/backend-control/state.json')
+          print(json.loads(path.read_text()).get('processed_revision', '') if path.exists() else Path('/home/ubuntu/RELEASE_SHA').read_text().strip())
+          PY
+          )
+          [[ "$base" =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Package changed backend components
+        env:
+          BASE_REVISION: ${{ steps.base.outputs.revision }}
+        run: |
+          python -m backend_ops.components --base "$BASE_REVISION" --output deployment-staging
+          cp ticker.service ticker-fetcher@.service ticker-backend-guard.service ticker-backend-guard.timer deployment-staging/
+          cp -R backend_ops deployment-staging/bootstrap-ops
+          find deployment-staging/bootstrap-ops -type d -name __pycache__ -prune -exec rm -rf '{}' +
+
+      - name: Copy selected component releases
         uses: appleboy/scp-action@master
         with:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "sports_ticker/**,ticker_core/**,requirements.txt,requirements-backend.txt,ticker.service,VERSION,RELEASE_SHA,backend_ops/**"
-          target:   "/home/${{ secrets.SSH_USER }}/"
+          source:   "deployment-staging/**"
+          target:   "/home/${{ secrets.SSH_USER }}/backend-staging/${{ github.sha }}/"
 
-      - name: Write backend environment and restart backend
+      - name: Activate components with rollback protection
         uses: appleboy/ssh-action@master
         with:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
+          command_timeout: 20m
           script: |
             set -eu
-            cd /home/${{ secrets.SSH_USER }}/
-
-            test -f .env
-            awk '/^TICKER_FIRMWARE_DIR=/ || /^TICKER_MINI_FIRMWARE_/' .env > .env.firmware
-            cat > .env.next <<EOF
-            FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}
-            FINNHUB_KEY_2=${{ secrets.FINNHUB_KEY_2 }}
-            FINNHUB_KEY_3=${{ secrets.FINNHUB_KEY_3 }}
-            FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}
-            FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}
-            SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}
-            SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}
-            SPOTIFY_CALLBACK_URI=${{ secrets.SPOTIFY_CALLBACK_URI }}
-            SPOTIFY_APP_RETURN_URI=${{ secrets.SPOTIFY_APP_RETURN_URI }}
-            SPOTIFY_TOKEN_ENCRYPTION_KEY=${{ secrets.SPOTIFY_TOKEN_ENCRYPTION_KEY }}
-            TICKER_DATABASE_PATH=/home/${{ secrets.SSH_USER }}/ticker_data/ticker-v2.sqlite3
-            TICKER_INITIAL_TICKER_ID=722c59f4-fce3-4735-b072-faaa2f579a0a
-            TICKER_INITIAL_TICKER_NAME=Personal Ticker
-            TICKER_INITIAL_TICKER_PAIRED=true
-            TICKER_VERIFY_TLS=true
-            TICKER_DEPLOY_TOKEN=${{ secrets.POOP_ADMIN_PASSWORD }}
-            EOF
-            cat .env.firmware >> .env.next
-            rm -f .env.firmware
-            mv -f .env.next .env
-            chmod 600 .env
-            sudo rm -f /etc/systemd/system/ticker.service.d/oci.conf
-            sudo cp "/home/${{ secrets.SSH_USER }}/ticker.service" /etc/systemd/system/ticker.service
-            sudo systemctl daemon-reload
-
-            # ── Install deps ──────────────────────────────────────────────
-            pip3 install -r requirements-backend.txt --break-system-packages 2>/dev/null \
-              || pip3 install -r requirements-backend.txt
-
-            # ── Restart backend ───────────────────────────────────────────
-            echo "Restarting ticker (backend)..."
-            sudo systemctl restart ticker
-            healthy=false
-            for attempt in $(seq 1 30); do
-              if curl --fail --silent --max-time 2 http://127.0.0.1:5000/api/v2/health >/dev/null; then
-                healthy=true
-                break
-              fi
-              sleep 1
-            done
-            if [ "$healthy" != "true" ]; then
-              echo "Backend did not pass its HTTP readiness check."
-              exit 1
+            cd /home/${{ secrets.SSH_USER }}/backend-staging/${{ github.sha }}/deployment-staging
+            if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y python3-venv
             fi
-            sudo systemctl status ticker --no-pager
+            mkdir -p bootstrap
+            mv bootstrap-ops bootstrap/backend_ops
+            cp /home/${{ secrets.SSH_USER }}/RELEASE_SHA bootstrap/RELEASE_SHA
+            python3 -c 'import json,pathlib; p=pathlib.Path("plan.json"); pathlib.Path("bootstrap/RELEASE_SHA").write_text(json.loads(p.read_text())["release"])'
+            PYTHONPATH="$PWD/bootstrap" python3 -m backend_ops.manager deploy --staging "$PWD"
+
+      - name: Capture backend evidence
+        if: always()
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          key="$RUNNER_TEMP/backend-key"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip'
+          scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-evidence-${{ github.sha }}
+          path: backend-report.zip
+          if-no-files-found: warn
+          retention-days: 14
 
   request-mini-ota:
     runs-on: ubuntu-latest

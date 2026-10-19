@@ -35,7 +35,7 @@ def main() -> None:
     stack_signal = getattr(signal, "SIGUSR2", None)
     if stack_signal is not None:
         faulthandler.register(stack_signal, all_threads=True)
-    load_dotenv()
+    load_dotenv(os.environ.get("TICKER_ENV_FILE"))
     config = server_config()
     app = create_asgi_application()
     app.flask_app.config["STACK_DUMP_SIGNAL"] = "SIGUSR2" if stack_signal is not None else None

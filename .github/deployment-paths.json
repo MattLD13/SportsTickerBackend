@@ -16,6 +16,9 @@
     "requirements-backend.txt",
     "*.json",
     "ticker.service",
+    "ticker-fetcher@.service",
+    "ticker-backend-guard.service",
+    "ticker-backend-guard.timer",
     "backend_ops/**"
   ],
   "mini": [

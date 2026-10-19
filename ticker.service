@@ -1,40 +1,26 @@
-# Sports Ticker backend (Hypercorn ASGI) — the unit the deploy workflow restarts
-# with `sudo systemctl restart ticker`.
-#
-# Install on the VPS:
-#   sudo cp ticker.service /etc/systemd/system/ticker.service
-#   sudo systemctl daemon-reload && sudo systemctl enable --now ticker
-#
-# The deploy workflow copies the code to /home/ubuntu/.
-
+# Activate an immutable core release with shared runtime state.
 [Unit]
-Description=Sports Ticker Backend (Hypercorn ASGI)
+Description=Sports Ticker Backend Core
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu
-ExecStart=/usr/bin/env python3 -m sports_ticker.server
-# Without this, an OOM kill or an unhandled crash leaves the site down until
-# someone reboots the box.
+WorkingDirectory=/home/ubuntu/backend-components/core/current
+Environment=TICKER_ENV_FILE=/home/ubuntu/.env
+Environment=TICKER_WORKER_DIRECTORY=/home/ubuntu/ticker_data/backend_sockets
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TICKER_STOCK_CACHE_PATH=/home/ubuntu/ticker_data/stocks.json
+ExecStart=/home/ubuntu/backend-components/core/current/.venv/bin/python -m sports_ticker.server
 Restart=always
 RestartSec=5
 TimeoutStopSec=15
-
-# The A1.Flex host provides 12 GB RAM. Keep enough memory available for the
-# operating system while allowing image work, caches, and concurrent refreshes.
 LimitNOFILE=8192
 TasksMax=256
-
-# Bound the service instead of the whole VPS: if the backend ever leaks memory
-# again, the kernel reclaims/kills this unit and systemd restarts it, rather
-# than the host thrashing until it needs a hard reboot. Tune to your VPS size.
 MemoryAccounting=true
 MemoryHigh=4G
 MemoryMax=8G
-
 StandardOutput=append:/home/ubuntu/ticker-backend.log
 StandardError=append:/home/ubuntu/ticker-backend.log
 

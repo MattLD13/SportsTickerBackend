@@ -35,19 +35,27 @@ jobs:
             echo "busy=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Check deployed build
+      - name: Check deployed component revision
         id: check
         if: steps.deploy.outputs.busy == 'false'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
         shell: bash
         run: |
           set -eu
-          head_sha=$(git rev-parse --short=12 HEAD)
-          live_sha=$(curl --fail --silent --show-error --location \
-            --connect-timeout 5 --max-time 15 --retry 2 --retry-delay 2 \
-            https://ticker.mattdicks.org/ \
-            | python -c 'import re, sys; page=sys.stdin.read(); match=re.search(r"chip-ver.*?<span[^>]*>([0-9a-f]{7,12})</span>", page, re.S); print(match.group(1) if match else "")')
-          echo "main=${head_sha} live=${live_sha}"
-          python tools/deployment_scope.py --deployed "${live_sha}" >> "$GITHUB_OUTPUT"
+          key="$RUNNER_TEMP/backend-key"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          live_sha=$(ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" /usr/bin/python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('/home/ubuntu/ticker_data/backend-control/state.json')
+          print(json.loads(path.read_text()).get('processed_revision', '') if path.exists() else Path('/home/ubuntu/RELEASE_SHA').read_text().strip())
+          PY
+          )
+          python tools/deployment_scope.py --deployed "$live_sha" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch backend recovery deploy
         if: steps.deploy.outputs.busy == 'false' && steps.check.outputs.needed == 'true'

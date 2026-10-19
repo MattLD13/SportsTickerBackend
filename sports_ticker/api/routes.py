@@ -139,6 +139,7 @@ def register_routes(
                 "api_version": "v2",
                 "status": "degraded" if degraded or not runtime_health["ready"] else "ok",
                 "release": app.config.get("BACKEND_RELEASE", "development"),
+                  "deployment": app.extensions.get("sports_ticker.deployment_status", lambda: {})(),
                 "runtime": runtime_health,
                 "diagnostics": {"stack_signal": app.config.get("STACK_DUMP_SIGNAL")},
                 "scheduler": {

@@ -1,0 +1,42 @@
+name: Backend diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component name or all
+        type: choice
+        default: all
+        options: [all, core, espn, fotmob, weather, golf, racing, stock, flights, music, news, clock]
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect private backend evidence
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          COMPONENT: ${{ inputs.component }}
+        shell: bash
+        run: |
+          set -eu
+          key="$RUNNER_TEMP/backend-key"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          args=""
+          if [ "$COMPONENT" != all ]; then
+            args="--component $COMPONENT"
+          fi
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip $args"
+          scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-evidence-${{ inputs.component }}-${{ github.run_id }}
+          path: backend-report.zip
+          retention-days: 14
+          if-no-files-found: error

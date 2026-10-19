@@ -109,8 +109,13 @@ class BackendRuntime:
         with self._lock:
             now = self._monotonic()
             age = None if self._completed_at is None else max(0, now - self._completed_at)
+            progress = getattr(self.scheduler, "last_progress_at", None)
+            progress_age = None if progress is None else max(0, now - progress)
+            recent = age is not None and age < self._stall_seconds
+            advancing = self._cycles > 0 and progress_age is not None and progress_age < self._stall_seconds
             return {"enabled": True, "running": self._running,
-                    "ready": self._running and age is not None and age < self._stall_seconds,
+                    "ready": self._running and (recent or advancing),
+                    "last_progress_age_seconds": progress_age,
                     "last_completed_age_seconds": age, "cycles": self._cycles,
                     "active_provider": getattr(self.scheduler, "active_provider", None),
                     "cycle_age_seconds": None if self._started_at is None else max(0, now - self._started_at),

@@ -43,3 +43,72 @@ The signal produces thread locations without dumping local variable values.
 Injected-clock tests cover provider pause, last-good data, settings isolation, retry, and recovery.
 Readiness tests distinguish stale loop progress from upstream failure.
 Evidence tests check source tracebacks, redaction, storage limits, and ZIP contents.
+
+## Independent components
+
+The core and ten fetcher workers have separate immutable releases and service units.
+The fetchers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flights`, `music`, `news`, and `clock`.
+The planner owns source-to-component selection.
+A provider implementation change updates that worker and its declared consumers.
+Shared domain, protocol, or dependency changes update all affected components together.
+The planner follows local symbol dependencies inside `providers/live_sources.py`.
+For example, a stock quote URL change selects only `stock`.
+Unclassified shared provider changes select all components.
+Worker bundles include provider dependencies. They exclude the core API, dashboard, and Pi renderer.
+The core calls workers through a bounded local JSON socket contract.
+Rendering and public V2 payloads retain their existing owners.
+
+Each component stores its current and previous code identities in `ticker_data/backend-control/state.json`.
+Dependency environments remain immutable and use requirement hashes.
+Components can share the same unchanged dependency environment.
+User state, credentials, stock caches, and firmware remain outside releases.
+Core deployment creates a private SQLite backup before activation.
+Rollback never replaces current user settings or pairing records with an older database.
+Database migrations must retain compatibility with the previous release.
+
+## Failure sequence
+
+1. Prepare candidate files and dependencies without changing running services.
+2. Check source hashes and the shared worker contract.
+3. Save a rollback transaction before switching component links.
+4. Restart only selected components.
+5. Require three successful readiness checks with the exact release identity.
+6. If startup fails, restore the transaction's previous versions and quarantine the candidate.
+
+The independent system timer checks components every 30 seconds.
+After three failed checks, it records thread stacks and restarts the failed component once.
+After three further failed checks, it restores the previous release.
+If deployment stops before confirmation, the timer resolves the saved rollback transaction.
+The timer retains healthy data during upstream outages through the scheduler's existing cache and pause rules.
+
+Three repeated programming errors can trigger a private request replay against the previous fetcher process.
+If the previous process returns healthy data, the timer restores that fetcher.
+If both versions fail, the timer records the result and keeps the current code.
+Remote HTTP failures do not trigger code rollback by themselves.
+A shared contract change requires a coordinated rollback of matching component versions.
+The missed-deploy workflow reads the processed revision from deployment state.
+It does not repeatedly deploy a quarantined revision.
+
+## Agent repair workflow
+
+Run `gh workflow run backend-diagnostics.yml -f component=music` to collect music evidence.
+Use `component=all` to collect all components.
+Download the private `backend-evidence-*` workflow artifact.
+Read `TRIAGE.md` and `report.json` before editing source.
+The report includes component versions, changed files, service facts, tracebacks, replay IDs, and rollback decisions.
+Raw replay requests remain private on the server.
+Do not include raw requests in issue text or public artifacts.
+Use sanitized provider fixtures to reproduce the failure.
+Publish reviewed changes through the component deployment workflow.
+
+## Migration and limits
+
+The first release adds readiness and worker infrastructure without changing the active deployment layout.
+The next release freezes that verified version as the rollback baseline.
+The controller then activates immutable core and worker services.
+The baseline environment preserves existing installed dependencies during this one-time migration.
+Later dependency environments use isolated installations.
+Process recovery requires a running server host and systemd.
+This design does not provide host failover or an off-server database backup.
+The controller cannot prove every upstream response before production receives it.
+Focused tests and private replay evidence cover that boundary.
