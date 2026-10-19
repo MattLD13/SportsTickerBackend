@@ -90,6 +90,8 @@ def test_failed_startup_restores_old_release_and_quarantines_candidate(tmp_path)
         manager.activate(state, {"core": NEW}, NEW)
     assert manager.link("core").resolve() == manager.release("core", OLD)
     assert state["components"]["core"]["quarantined"] == [NEW]
+    assert {event["category"] for event in state["report_events"]} == {"startup_failed", "rolled_back"}
+    assert all(event["release"] == NEW and event["state"] == "failure" for event in state["report_events"])
     assert host.restarts == ["core", "core"]
     assert database.read_text() == "pairing and settings remain"
     with pytest.raises(ValueError, match="quarantined"):
@@ -105,6 +107,7 @@ def test_fetcher_code_rollback_requires_a_healthy_previous_replay(tmp_path, repl
     manager.guard(state)
     assert state["components"]["music"]["active"] == (OLD if replay_passes else NEW)
     assert host.restarts == (["music"] if replay_passes else [])
+    assert bool(state.get("report_events")) == replay_passes
 
 
 def test_guard_restarts_once_then_restores_only_the_failed_worker(tmp_path):
@@ -117,6 +120,9 @@ def test_guard_restarts_once_then_restores_only_the_failed_worker(tmp_path):
     assert host.restarts == ["music", "music"]
     assert state["components"]["music"]["active"] == OLD
     assert all(record["active"] == OLD for record in state["components"].values())
+    manager.guard(state)
+    assert state["report_events"][-1]["release"] == OLD
+    assert state["report_events"][-1]["state"] == "success"
 
 
 def test_guard_resolves_an_interrupted_activation_from_durable_state(tmp_path):

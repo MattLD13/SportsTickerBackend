@@ -18,6 +18,7 @@ import time
 from urllib.request import urlopen
 
 from .incidents import IncidentStore, atomic_json
+from .reporting import failure as report_failure, recovered as report_recovered
 from .worker_contract import MAX_MESSAGE, PROVIDERS
 
 COMPONENTS = ("core", *PROVIDERS)
@@ -212,20 +213,25 @@ class Manager:
                 if not self.trial(name, version):
                     raise RuntimeError(f"{name} failed release readiness")
         except Exception as error:
-            self.rollback_pending(state, error)
+            self.rollback_pending(state, error, category="startup_failed")
             raise
         for name, version in versions.items():
             records[name].update(previous=pending["previous"][name], active=version, failures=0,
                                  trial_at=self.clock(), restarts=0, last_good_at=self.clock(),
                                  observed_process_restarts=0, crash_count=0, crash_window_at=self.clock())
+            report_recovered(state, name, self.clock())
         state["pending"] = None
         state["last_success_revision"] = revision
         self.remember_contract(state)
         self.save(state)
         self.incidents.record("deployment_accepted", component="deployment", context={"versions": versions, "revision": revision})
 
-    def rollback_pending(self, state, error):
+    def rollback_pending(self, state, error, *, category="deployment_interrupted"):
         pending = state["pending"]
+        for name, version in pending["versions"].items():
+            if version != pending["previous"][name]:
+                report_failure(state, name, version, category, self.clock(), restored=pending["previous"][name])
+        self.save(state)
         for name, old in pending["previous"].items():
             switch(self.link(name), self.release(name, old))
             record = state["components"][name]
@@ -236,6 +242,8 @@ class Manager:
         for name in (*PROVIDERS, "core"):
             if name in pending["previous"]:
                 self.host.restart(name)
+                if pending["versions"][name] != pending["previous"][name]:
+                    report_failure(state, name, pending["versions"][name], "rolled_back", self.clock(), restored=pending["previous"][name])
         state["pending"] = None
         state["last_rollback"] = {"at": self.clock(), "versions": pending["versions"], "restored": pending["previous"], "reason": str(error)}
         self.save(state)
@@ -262,7 +270,7 @@ class Manager:
         state["pending"] = {"revision": state.get("processed_revision"), "started_at": self.clock(),
                             "versions": {key: state["components"][key]["active"] for key in group}, "previous": group}
         self.save(state)
-        self.rollback_pending(state, RuntimeError(reason))
+        self.rollback_pending(state, RuntimeError(reason), category="rollback_started")
         for key, version in group.items():
             state["components"][key].update(active=version, previous=None, failures=0, restarts=0, trial_at=self.clock(),
                                              crash_count=0, observed_process_restarts=0, crash_window_at=self.clock())
@@ -285,12 +293,16 @@ class Manager:
                 record["crash_count"] = record.get("crash_count", 0) + max(0, restarts - record.get("observed_process_restarts", 0))
                 record["observed_process_restarts"] = restarts
                 if record["crash_count"] >= 3:
+                    report_failure(state, name, record["active"], "crash_loop", self.clock())
+                    self.save(state)
                     self.incidents.record("component_crash_loop", component=name, context={"release": record["active"], "crashes": record["crash_count"]})
                     if self.restore(state, name, "three process crashes within 30 minutes"):
                         continue
             if ready:
                 record["failures"] = 0
                 record["last_good_at"] = self.clock()
+                if health.get("failures", 0) == 0 and record.get("crash_count", 0) < 3:
+                    report_recovered(state, name, self.clock())
                 if self.clock() - record.get("trial_at", 0) > 1800:
                     record["restarts"] = 0
                 if not replay_used and name != "core" and health.get("failures", 0) >= 3 and health.get("error_type") in CODE_ERRORS and record.get("previous"):
@@ -311,6 +323,8 @@ class Manager:
             record["failures"] = record.get("failures", 0) + 1
             if record["failures"] < 3:
                 continue
+            report_failure(state, name, record["active"], "runtime_unready", self.clock())
+            self.save(state)
             self.incidents.record("component_unready", component=name, context={"release": record["active"], "health": health})
             try:
                 self.host.stack(name)

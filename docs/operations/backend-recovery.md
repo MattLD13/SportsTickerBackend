@@ -112,6 +112,30 @@ Do not include raw requests in issue text or public artifacts.
 Use sanitized provider fixtures to reproduce the failure.
 Publish reviewed changes through the component deployment workflow.
 
+## GitHub runtime reporting
+
+The recovery manager owns a durable report queue in deployment state.
+It queues failed startup, repeated readiness failures, crash loops, rollback decisions, and verified recovery.
+It saves failure reports before attempting rollback.
+Normal upstream provider errors do not mark a deployment as failed.
+
+GitHub reads the queue through the existing SSH deployment access.
+The server stores no GitHub token.
+The reporting job uses a temporary workflow token with `checks: write` permission.
+Each affected component and revision gets one runtime check.
+Recovered code updates its check. A restored older revision never clears the failed candidate's check.
+Report sequences prevent retries from replacing a newer result with an older result.
+The server removes a queued report only after GitHub confirms its check.
+
+Public checks contain fixed lifecycle text, component names, code identities, and report references.
+Detailed logs, tracebacks, replay inputs, and credentials never enter public check output.
+Diagnostic artifacts retain the existing encryption policy.
+The health response exposes queue depth and the last acknowledgement time.
+
+The collector uses the existing five-minute monitoring schedule and supports manual dispatch.
+GitHub can delay scheduled runs. Reports remain queued during delivery outages.
+Read [GitHub check runs](https://docs.github.com/en/rest/checks/runs) for the check update API.
+
 ## Migration and limits
 
 The first release adds readiness and worker infrastructure without changing the active deployment layout.
