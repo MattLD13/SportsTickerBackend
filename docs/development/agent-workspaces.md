@@ -97,9 +97,9 @@ The planner uses that login. It does not require a separate API key.
 Every supported agent client can request this same local planner.
 A normal prompt or session start does not invoke it.
 
-1. Luna receives the task, component descriptions, check names, and a filtered repository file index.
-2. Luna can request source excerpts through the manager.
-3. The manager limits inspection to eight requests and 100 lines per excerpt.
+1. Luna receives a compact component catalog, entry paths, and bounded filename hints.
+2. Luna can request a component inventory, literal file search, symbol list, or source excerpt.
+3. The manager limits discovery and inspection to eight requests. Each source excerpt contains at most 100 lines.
 4. Luna returns slices, source entry points, useful symbols, expected edits, checks, and reasons.
 5. The manager validates paths, adds dependencies, and includes consumers for shared edits.
 6. The coding agent receives the resulting packet and performs implementation.
@@ -112,8 +112,19 @@ The planner does not receive the full conversation or every source file.
 The manager sends only requested excerpts and excludes credential paths.
 
 Planning has a 60-second limit and at most three model rounds.
-The task record includes model identity, elapsed time, token usage, inspections, and client diagnostic counts.
+Each evidence round permits at most two discovery or inspection requests. The final round must return a plan.
+Each request has a 48,000-byte limit. All requests together have a 144,000-byte limit.
+These limits measure input text. They exclude the transport schema and client overhead.
+The initial catalog has a 16,000-byte limit.
+Filename hints contain at most 16 paths and 6,000 bytes.
+Hints rank literal filename and path words. They read no source and do not choose components or slices.
+Only the latest bounded discovery responses enter the next request. Previously disclosed paths remain available.
+The model cannot select an undisclosed path.
+Shared changes retain the declared owner and consumer entry points even when the model omits them.
+The task record includes model identity, time, tokens, request bytes, inspection paths, and bounded discovery counts.
 Raw prompts, excerpts, and client event streams do not enter the task record.
+If planning fails, `failures.json` retains its available usage without overwriting the previous valid packet.
+Missing usage remains unknown. Cached input and reasoning remain subsets of the reported input and output totals.
 A normal continuation reuses a valid packet without another model call.
 A changed manifest or planner version invalidates the cached selection.
 If the selection is invalid, choose explicit slices or request Luna again.
@@ -128,6 +139,48 @@ If an expected edit reaches a shared owner, the manager includes every declared 
 Model suggestions do not override repository instructions or authorize publishing.
 
 The [NFL comparison](../research/2026-10-19-nfl-alert-agent-comparison.md) records the measured reason for selective planning.
+
+## Bounded discovery without a model
+
+The coding agent can inspect paths and symbols without invoking Luna:
+
+```powershell
+python tools/workspaces/find.py --search "station_retry"
+python tools/workspaces/find.py --search "sports_ticker/providers ScoreAlertTracker"
+python tools/workspaces/find.py --component mini-runtime
+python tools/workspaces/find.py --symbols sports_ticker/providers/score_alerts.py
+python tools/workspaces/find.py --excerpt sports_ticker/providers/score_alerts.py --symbol ScoreAlertTracker
+```
+
+Search uses literal words. It does not execute expressions or shell text.
+Filename matches return without scanning source. A path prefix can restrict symbol discovery.
+Results report truncation, missing sparse files, and source scan limits.
+Selected-file lookups scan at most one MiB or 20,000 lines and return a bounded window.
+The finder preserves the same credential exclusions and link checks as the workspace manager.
+If a result is truncated, narrow the query or inspect another declared component.
+Use `start.py --path` with the current scope and a reason when discovery expands a recorded task.
+
+## Context evaluation
+
+The benchmark checks three predefined task classes without model calls by default:
+
+```powershell
+python tools/benchmarks/context_discovery.py --output previews/context-evaluation/offline.json
+```
+
+A live comparison requires an explicit flag, a frozen baseline planner, and an output file:
+
+```powershell
+python tools/benchmarks/context_discovery.py --live --baseline-planner previews/context-evaluation/baseline_planner.py --repeat 2 --output previews/context-evaluation/report.json
+```
+
+Expected paths and consumers remain outside both model inputs.
+The report measures request bytes, time, model tokens, selected context coverage, and shared consumer coverage.
+Every failed attempt remains in the all-run totals. Paired comparisons require two completed runs with complete usage.
+The report separates model-selected paths from the effective context after mandatory ownership expansion.
+Atomic checkpoints record each attempt before it starts and after it finishes.
+Interrupted attempts retain unknown usage. A timeout never claims complete accounting.
+This benchmark measures planning and discovery. It does not establish implementation correctness or total coding cost.
 
 ## Client limits
 

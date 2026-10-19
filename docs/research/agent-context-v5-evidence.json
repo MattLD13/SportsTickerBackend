@@ -1,0 +1,2656 @@
+{
+  "version": 1,
+  "date": "2026-10-19",
+  "baseline_planner_version": 2,
+  "method": "Three development cases, two repeats, alternating arm order. Expectations never enter model input.",
+  "limits": [
+    "These cases informed protocol revisions. They are not untouched validation cases.",
+    "Planning measurements do not measure coding correctness or total coding token use.",
+    "Input includes cached input. Output includes reasoning. Subsets are not added twice.",
+    "Failed attempts remain in all-run totals. Paired comparisons exclude unmatched failed runs.",
+    "The working checkout contains uncommitted changes. Implementation digests identify measured code."
+  ],
+  "experiments": [
+    {
+      "planner_version": 3,
+      "measurement": "planning-only",
+      "baseline_sha256": "7e8c14ee9d3d6967f23622b33c02c15d90f456d701e80ae9313bd6ed5a3259a4",
+      "progressive_sha256": "7bd35f2286d46965dfc5e5edde1557749aeca1141b28d4f36601b06e2557e69d",
+      "implementation_sha256": {
+        "tools/workspaces/planner.py": "7bd35f2286d46965dfc5e5edde1557749aeca1141b28d4f36601b06e2557e69d",
+        "tools/workspaces/discovery.py": "4bd78ab52c6e5399d41f29bfcf72ee65333e2cf04d08c03492a30eef9568ced6",
+        "tools/workspaces/start.py": "b1240b35cb2cc7722d1ff2ced7aa09e62ac24da7f4d218a1a16ee96de7026e09",
+        "tools/benchmarks/context_discovery.py": "da7c2e0d7d88a5d5774acc8e00e3048302a58e298860beaaef9f3d50a89caa8f",
+        "docs/contracts/agent-context-cases.json": "896c39276f00d2c886b070b3fb2bda012000601f0f10f259086f35f2b667e280",
+        ".github/agent-workspaces.json": "6aa73d9bc127bb0bf779a9ffaa4afc8547439e058ba9e0d01e2683afb1b833f3"
+      },
+      "model": "gpt-6-luna",
+      "source_revision": "558782aafc92f0c31f6cd11b4c2a08971295cb6f",
+      "cases_sha256": "cea33192e2ebf59c9ec60bfdf77197efb49eed7cc59acd7125748c1e7d6ebf14",
+      "manifest_sha256": "8022fad5575e9005c030136119d3571f9522283515f54ddc730b5dcf875594eb",
+      "all_runs": {
+        "baseline": {
+          "successful_runs": 5,
+          "failed_runs": 1,
+          "usage": {
+            "input_tokens": 467419,
+            "cached_input_tokens": 243840,
+            "output_tokens": 4501,
+            "reasoning_output_tokens": 186,
+            "total_tokens": 471920,
+            "uncached_input_plus_output_tokens": 228080,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          }
+        },
+        "progressive": {
+          "successful_runs": 1,
+          "failed_runs": 5,
+          "usage": {
+            "input_tokens": 453466,
+            "cached_input_tokens": 237824,
+            "output_tokens": 3434,
+            "reasoning_output_tokens": 300,
+            "total_tokens": 456900,
+            "uncached_input_plus_output_tokens": 219076,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          }
+        }
+      },
+      "paired": {
+        "comparable_pairs": 1,
+        "excluded_pairs": 5,
+        "arms": {
+          "baseline": {
+            "seconds": 11.519301,
+            "request_bytes": 98502,
+            "total_tokens": 72716,
+            "complete_context_cases": 1,
+            "mean_entry_point_coverage": 1.0
+          },
+          "progressive": {
+            "seconds": 17.636476,
+            "request_bytes": 57679,
+            "total_tokens": 84323,
+            "complete_context_cases": 0,
+            "mean_entry_point_coverage": 0.5
+          }
+        }
+      },
+      "runs": [
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 11.519301,
+          "usage": {
+            "input_tokens": 72056,
+            "cached_input_tokens": 22656,
+            "output_tokens": 660,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 72716,
+            "uncached_input_plus_output_tokens": 50060,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 98502,
+          "initial_request_bytes": 40460,
+          "max_request_bytes": 58042,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 3,
+            "scope_context_file_count": 21,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 17.636476,
+          "usage": {
+            "input_tokens": 83825,
+            "cached_input_tokens": 35328,
+            "output_tokens": 498,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 84323,
+            "uncached_input_plus_output_tokens": 48995,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 57679,
+          "initial_request_bytes": 8840,
+          "max_request_bytes": 26097,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py"
+              ],
+              "missing": [
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "fraction": 0.5
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 2,
+            "scope_context_file_count": 20,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "failed",
+          "seconds": 29.882465,
+          "usage": {
+            "input_tokens": 126926,
+            "cached_input_tokens": 69120,
+            "output_tokens": 967,
+            "reasoning_output_tokens": 104,
+            "total_tokens": 127893,
+            "uncached_input_plus_output_tokens": 58773,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 56628,
+          "initial_request_bytes": 8827,
+          "max_request_bytes": 22883,
+          "error": "Luna did not establish a task boundary within its planning budget"
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 13.132444,
+          "usage": {
+            "input_tokens": 86157,
+            "cached_input_tokens": 41600,
+            "output_tokens": 678,
+            "reasoning_output_tokens": 66,
+            "total_tokens": 86835,
+            "uncached_input_plus_output_tokens": 45235,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 87694,
+          "initial_request_bytes": 40447,
+          "max_request_bytes": 47247,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 5,
+            "scope_context_file_count": 23,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 17.263072,
+          "usage": {
+            "input_tokens": 110263,
+            "cached_input_tokens": 54656,
+            "output_tokens": 1179,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 111442,
+            "uncached_input_plus_output_tokens": 56786,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 118426,
+          "initial_request_bytes": 40492,
+          "max_request_bytes": 77934,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py"
+              ],
+              "missing": [
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "fraction": 0.8333333333333334
+            },
+            "components": {
+              "required": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "found": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "found": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 18,
+            "scope_context_file_count": 28,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "failed",
+          "seconds": 11.550949,
+          "usage": {
+            "input_tokens": 51342,
+            "cached_input_tokens": 25216,
+            "output_tokens": 300,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 51642,
+            "uncached_input_plus_output_tokens": 26426,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 8872,
+          "initial_request_bytes": 8872,
+          "max_request_bytes": 8872,
+          "error": "The Luna planner exceeded its request byte budget"
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "failed",
+          "seconds": 12.461379,
+          "usage": {
+            "input_tokens": 57301,
+            "cached_input_tokens": 38016,
+            "output_tokens": 408,
+            "reasoning_output_tokens": 23,
+            "total_tokens": 57709,
+            "uncached_input_plus_output_tokens": 19693,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 31262,
+          "initial_request_bytes": 8840,
+          "max_request_bytes": 22422,
+          "error": "Discovery needs a short literal query"
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 7.192382,
+          "usage": {
+            "input_tokens": 41957,
+            "cached_input_tokens": 20736,
+            "output_tokens": 278,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 42235,
+            "uncached_input_plus_output_tokens": 21499,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40460,
+          "initial_request_bytes": 40460,
+          "max_request_bytes": 40460,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 3,
+            "scope_context_file_count": 21,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 12.779376,
+          "usage": {
+            "input_tokens": 88104,
+            "cached_input_tokens": 51328,
+            "output_tokens": 607,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 88711,
+            "uncached_input_plus_output_tokens": 37383,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 87670,
+          "initial_request_bytes": 40447,
+          "max_request_bytes": 47223,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 3,
+            "scope_context_file_count": 9,
+            "scope_build_file_count": 203,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "failed",
+          "seconds": 31.015321,
+          "usage": {
+            "input_tokens": 108482,
+            "cached_input_tokens": 47744,
+            "output_tokens": 950,
+            "reasoning_output_tokens": 82,
+            "total_tokens": 109432,
+            "uncached_input_plus_output_tokens": 61688,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 56717,
+          "initial_request_bytes": 8827,
+          "max_request_bytes": 22872,
+          "error": "A ready plan cannot request more discovery"
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "failed",
+          "seconds": 8.464062,
+          "usage": {
+            "input_tokens": 25590,
+            "cached_input_tokens": 22400,
+            "output_tokens": 311,
+            "reasoning_output_tokens": 91,
+            "total_tokens": 25901,
+            "uncached_input_plus_output_tokens": 3501,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 8872,
+          "initial_request_bytes": 8872,
+          "max_request_bytes": 8872,
+          "error": "The Luna planner exceeded its request byte budget"
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "failed",
+          "seconds": 12.251772,
+          "usage": {
+            "input_tokens": 68882,
+            "cached_input_tokens": 52864,
+            "output_tokens": 1099,
+            "reasoning_output_tokens": 120,
+            "total_tokens": 69981,
+            "uncached_input_plus_output_tokens": 17117,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40492,
+          "initial_request_bytes": 40492,
+          "max_request_bytes": 40492,
+          "error": "Luna exceeded its source inspection budget"
+        }
+      ]
+    },
+    {
+      "planner_version": 4,
+      "measurement": "planning-only",
+      "baseline_sha256": "7e8c14ee9d3d6967f23622b33c02c15d90f456d701e80ae9313bd6ed5a3259a4",
+      "progressive_sha256": "6911e79820c2d09cbf098da44ac8f6371dc073c74a24e1b94c1691f5aafaa365",
+      "implementation_sha256": {
+        "tools/workspaces/planner.py": "6911e79820c2d09cbf098da44ac8f6371dc073c74a24e1b94c1691f5aafaa365",
+        "tools/workspaces/discovery.py": "6ff9045acb3d3036cd94708de6ea1f754cb14773c31c8f372ef6102268f29025",
+        "tools/workspaces/start.py": "b1240b35cb2cc7722d1ff2ced7aa09e62ac24da7f4d218a1a16ee96de7026e09",
+        "tools/benchmarks/context_discovery.py": "9f6f721fe6df3ec00d483bf0a130754ccb5b41b3a95379e5d39950f740530b6c",
+        ".github/agent-workspaces.json": "6aa73d9bc127bb0bf779a9ffaa4afc8547439e058ba9e0d01e2683afb1b833f3"
+      },
+      "model": "gpt-6-luna",
+      "source_revision": "558782aafc92f0c31f6cd11b4c2a08971295cb6f",
+      "cases_sha256": "cea33192e2ebf59c9ec60bfdf77197efb49eed7cc59acd7125748c1e7d6ebf14",
+      "manifest_sha256": "8022fad5575e9005c030136119d3571f9522283515f54ddc730b5dcf875594eb",
+      "all_runs": {
+        "baseline": {
+          "successful_runs": 5,
+          "failed_runs": 1,
+          "usage": {
+            "input_tokens": 495408,
+            "cached_input_tokens": 261376,
+            "output_tokens": 4638,
+            "reasoning_output_tokens": 637,
+            "total_tokens": 500046,
+            "uncached_input_plus_output_tokens": 238670,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          }
+        },
+        "progressive": {
+          "successful_runs": 5,
+          "failed_runs": 1,
+          "usage": {
+            "input_tokens": 378803,
+            "cached_input_tokens": 198400,
+            "output_tokens": 3305,
+            "reasoning_output_tokens": 126,
+            "total_tokens": 382108,
+            "uncached_input_plus_output_tokens": 183708,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          }
+        }
+      },
+      "paired": {
+        "comparable_pairs": 4,
+        "excluded_pairs": 2,
+        "arms": {
+          "baseline": {
+            "seconds": 50.711305,
+            "request_bytes": 321677,
+            "total_tokens": 341048,
+            "complete_context_cases": 4,
+            "mean_entry_point_coverage": 1.0
+          },
+          "progressive": {
+            "seconds": 63.465007,
+            "request_bytes": 198527,
+            "total_tokens": 289335,
+            "complete_context_cases": 1,
+            "mean_entry_point_coverage": 0.6666666666666666
+          }
+        }
+      },
+      "runs": [
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 7.338464,
+          "usage": {
+            "input_tokens": 68833,
+            "cached_input_tokens": 45440,
+            "output_tokens": 342,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 69175,
+            "uncached_input_plus_output_tokens": 23735,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40460,
+          "initial_request_bytes": 40460,
+          "max_request_bytes": 40460,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 22,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 21.17538,
+          "usage": {
+            "input_tokens": 85863,
+            "cached_input_tokens": 56320,
+            "output_tokens": 692,
+            "reasoning_output_tokens": 126,
+            "total_tokens": 86555,
+            "uncached_input_plus_output_tokens": 30235,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 54219,
+          "initial_request_bytes": 12325,
+          "max_request_bytes": 26633,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py"
+              ],
+              "missing": [
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "fraction": 0.5
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 2,
+            "scope_context_file_count": 20,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 18.281699,
+          "usage": {
+            "input_tokens": 98432,
+            "cached_input_tokens": 65408,
+            "output_tokens": 728,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 99160,
+            "uncached_input_plus_output_tokens": 33752,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 62778,
+          "initial_request_bytes": 12523,
+          "max_request_bytes": 27039,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 6,
+            "scope_context_file_count": 24,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 13.020112,
+          "usage": {
+            "input_tokens": 113252,
+            "cached_input_tokens": 66560,
+            "output_tokens": 609,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 113861,
+            "uncached_input_plus_output_tokens": 47301,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 87676,
+          "initial_request_bytes": 40447,
+          "max_request_bytes": 47229,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 5,
+            "scope_context_file_count": 11,
+            "scope_build_file_count": 203,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 19.699753,
+          "usage": {
+            "input_tokens": 93671,
+            "cached_input_tokens": 51456,
+            "output_tokens": 1758,
+            "reasoning_output_tokens": 515,
+            "total_tokens": 95429,
+            "uncached_input_plus_output_tokens": 43973,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 112619,
+          "initial_request_bytes": 40492,
+          "max_request_bytes": 72127,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py"
+              ],
+              "missing": [
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "fraction": 0.8333333333333334
+            },
+            "components": {
+              "required": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "found": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "found": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 15,
+            "scope_context_file_count": 27,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "failed",
+          "seconds": 4.677955,
+          "usage": {
+            "input_tokens": 13549,
+            "cached_input_tokens": 0,
+            "output_tokens": 134,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 13683,
+            "uncached_input_plus_output_tokens": 13683,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 12275,
+          "initial_request_bytes": 12275,
+          "max_request_bytes": 12275,
+          "error": "Discovery needs a short literal query"
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 17.423941,
+          "usage": {
+            "input_tokens": 75636,
+            "cached_input_tokens": 26624,
+            "output_tokens": 531,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 76167,
+            "uncached_input_plus_output_tokens": 49543,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 69007,
+          "initial_request_bytes": 12325,
+          "max_request_bytes": 30026,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py"
+              ],
+              "missing": [
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "fraction": 0.5
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 2,
+            "scope_context_file_count": 20,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 12.075928,
+          "usage": {
+            "input_tokens": 70448,
+            "cached_input_tokens": 28160,
+            "output_tokens": 720,
+            "reasoning_output_tokens": 17,
+            "total_tokens": 71168,
+            "uncached_input_plus_output_tokens": 43008,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 105816,
+          "initial_request_bytes": 40460,
+          "max_request_bytes": 65356,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 22,
+            "scope_build_file_count": 344,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 18.276801,
+          "usage": {
+            "input_tokens": 86152,
+            "cached_input_tokens": 41600,
+            "output_tokens": 692,
+            "reasoning_output_tokens": 105,
+            "total_tokens": 86844,
+            "uncached_input_plus_output_tokens": 45244,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 87725,
+          "initial_request_bytes": 40447,
+          "max_request_bytes": 47278,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 5,
+            "scope_context_file_count": 11,
+            "scope_build_file_count": 181,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "mini-firmware",
+              "mini-runtime"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 6.583987,
+          "usage": {
+            "input_tokens": 27212,
+            "cached_input_tokens": 23296,
+            "output_tokens": 241,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 27453,
+            "uncached_input_plus_output_tokens": 4157,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 12523,
+          "initial_request_bytes": 12523,
+          "max_request_bytes": 12523,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 3,
+            "scope_context_file_count": 9,
+            "scope_build_file_count": 181,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "mini-firmware",
+              "mini-runtime"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 20.86114,
+          "usage": {
+            "input_tokens": 78111,
+            "cached_input_tokens": 26752,
+            "output_tokens": 979,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 79090,
+            "uncached_input_plus_output_tokens": 52338,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 80212,
+          "initial_request_bytes": 12275,
+          "max_request_bytes": 37932,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "tests/python/protocol/test_mini_hockey_contract.py"
+              ],
+              "missing": [
+                "sports_ticker/providers/sports_display.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "components": {
+              "required": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "found": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "found": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 13,
+            "scope_context_file_count": 25,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "failed",
+          "seconds": 8.346963,
+          "usage": {
+            "input_tokens": 63052,
+            "cached_input_tokens": 28160,
+            "output_tokens": 517,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 63569,
+            "uncached_input_plus_output_tokens": 35409,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40492,
+          "initial_request_bytes": 40492,
+          "max_request_bytes": 40492,
+          "error": "Luna exceeded its source inspection budget"
+        }
+      ]
+    },
+    {
+      "planner_version": 5,
+      "measurement": "planning-only",
+      "baseline_sha256": "7e8c14ee9d3d6967f23622b33c02c15d90f456d701e80ae9313bd6ed5a3259a4",
+      "progressive_sha256": "8ca8a61325932a2f599baeb8efb13df2f5f7c7ea3dc5211059cf3d6376f80d06",
+      "implementation_sha256": {
+        "tools/workspaces/planner.py": "8ca8a61325932a2f599baeb8efb13df2f5f7c7ea3dc5211059cf3d6376f80d06",
+        "tools/workspaces/discovery.py": "6ff9045acb3d3036cd94708de6ea1f754cb14773c31c8f372ef6102268f29025",
+        "tools/workspaces/start.py": "a789c07886ae6c0767b816cee0ebd810c451db1efe4a39f558c1e057379a352f",
+        "tools/benchmarks/context_discovery.py": "6d8f3618ba6d8a86a40ff510f096db8fd7cda246efdae1edaea791c31faada78",
+        ".github/agent-workspaces.json": "6aa73d9bc127bb0bf779a9ffaa4afc8547439e058ba9e0d01e2683afb1b833f3"
+      },
+      "model": "gpt-6-luna",
+      "source_revision": "558782aafc92f0c31f6cd11b4c2a08971295cb6f",
+      "cases_sha256": "cea33192e2ebf59c9ec60bfdf77197efb49eed7cc59acd7125748c1e7d6ebf14",
+      "manifest_sha256": "8022fad5575e9005c030136119d3571f9522283515f54ddc730b5dcf875594eb",
+      "all_runs": {
+        "baseline": {
+          "successful_runs": 5,
+          "failed_runs": 1,
+          "usage": {
+            "input_tokens": 375039,
+            "cached_input_tokens": 245504,
+            "output_tokens": 4118,
+            "reasoning_output_tokens": 262,
+            "total_tokens": 379157,
+            "uncached_input_plus_output_tokens": 133653,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          }
+        },
+        "progressive": {
+          "successful_runs": 6,
+          "failed_runs": 0,
+          "usage": {
+            "input_tokens": 385382,
+            "cached_input_tokens": 247680,
+            "output_tokens": 4366,
+            "reasoning_output_tokens": 128,
+            "total_tokens": 389748,
+            "uncached_input_plus_output_tokens": 142068,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          }
+        }
+      },
+      "paired": {
+        "comparable_pairs": 5,
+        "excluded_pairs": 1,
+        "arms": {
+          "baseline": {
+            "seconds": 56.472672,
+            "request_bytes": 356450,
+            "total_tokens": 336669,
+            "complete_context_cases": 2,
+            "mean_entry_point_coverage": 0.8333333333333334
+          },
+          "progressive": {
+            "seconds": 80.039497,
+            "request_bytes": 246684,
+            "total_tokens": 330524,
+            "complete_context_cases": 3,
+            "mean_entry_point_coverage": 0.8333333333333334
+          }
+        }
+      },
+      "runs": [
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 7.413353,
+          "usage": {
+            "input_tokens": 63044,
+            "cached_input_tokens": 51328,
+            "output_tokens": 330,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 63374,
+            "uncached_input_plus_output_tokens": 12046,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40460,
+          "initial_request_bytes": 40460,
+          "max_request_bytes": 40460,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "effective_entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 31,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 25.971069,
+          "usage": {
+            "input_tokens": 108996,
+            "cached_input_tokens": 77440,
+            "output_tokens": 620,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 109616,
+            "uncached_input_plus_output_tokens": 32176,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 61444,
+          "initial_request_bytes": 12627,
+          "max_request_bytes": 26950,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "effective_entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 31,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 8.021962,
+          "usage": {
+            "input_tokens": 31357,
+            "cached_input_tokens": 27136,
+            "output_tokens": 439,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 31796,
+            "uncached_input_plus_output_tokens": 4660,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 12825,
+          "initial_request_bytes": 12825,
+          "max_request_bytes": 12825,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "effective_entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 10,
+            "scope_build_file_count": 181,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "mini-firmware",
+              "mini-runtime"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 12.926238,
+          "usage": {
+            "input_tokens": 69482,
+            "cached_input_tokens": 30080,
+            "output_tokens": 810,
+            "reasoning_output_tokens": 115,
+            "total_tokens": 70292,
+            "uncached_input_plus_output_tokens": 40212,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 89313,
+          "initial_request_bytes": 40447,
+          "max_request_bytes": 48866,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "effective_entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 10,
+            "scope_build_file_count": 203,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 0,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 9.718204,
+          "usage": {
+            "input_tokens": 41954,
+            "cached_input_tokens": 28160,
+            "output_tokens": 884,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 42838,
+            "uncached_input_plus_output_tokens": 14678,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40492,
+          "initial_request_bytes": 40492,
+          "max_request_bytes": 40492,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py"
+              ],
+              "missing": [
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "fraction": 0.8333333333333334
+            },
+            "effective_entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "found": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "found": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 18,
+            "scope_context_file_count": 32,
+            "scope_build_file_count": 341,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 0,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 20.846211,
+          "usage": {
+            "input_tokens": 67304,
+            "cached_input_tokens": 23296,
+            "output_tokens": 1357,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 68661,
+            "uncached_input_plus_output_tokens": 45365,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 92163,
+          "initial_request_bytes": 12577,
+          "max_request_bytes": 41352,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "tests/python/protocol/test_mini_hockey_contract.py"
+              ],
+              "missing": [
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "fraction": 0.5
+            },
+            "effective_entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "found": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "found": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 16,
+            "scope_context_file_count": 34,
+            "scope_build_file_count": 341,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 12.703071,
+          "usage": {
+            "input_tokens": 60807,
+            "cached_input_tokens": 36352,
+            "output_tokens": 481,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 61288,
+            "uncached_input_plus_output_tokens": 24936,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 39577,
+          "initial_request_bytes": 12627,
+          "max_request_bytes": 26950,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "effective_entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 31,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "known-football-conversion",
+          "task_class": "narrow-known",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 14.266183,
+          "usage": {
+            "input_tokens": 89349,
+            "cached_input_tokens": 61056,
+            "output_tokens": 927,
+            "reasoning_output_tokens": 147,
+            "total_tokens": 90276,
+            "uncached_input_plus_output_tokens": 29220,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 98476,
+          "initial_request_bytes": 40460,
+          "max_request_bytes": 58016,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "effective_entry_points": {
+              "required": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "found": [
+                "sports_ticker/providers/score_alerts.py",
+                "tests/python/protocol/test_score_alert_boundaries.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "sports-server"
+              ],
+              "found": [
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "sports-contracts"
+              ],
+              "found": [
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 4,
+            "scope_context_file_count": 31,
+            "scope_build_file_count": 343,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "sports-server",
+              "mini-firmware",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "succeeded",
+          "seconds": 12.148694,
+          "usage": {
+            "input_tokens": 69220,
+            "cached_input_tokens": 44416,
+            "output_tokens": 669,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 69889,
+            "uncached_input_plus_output_tokens": 25473,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 87709,
+          "initial_request_bytes": 40447,
+          "max_request_bytes": 47262,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "effective_entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [
+                "esp32_hub75/src/mini/platform/wifi_station.cpp"
+              ],
+              "fraction": 0.6666666666666666
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 5,
+            "scope_context_file_count": 34,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "unfamiliar-mini-station",
+          "task_class": "unfamiliar-component",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 12.497184,
+          "usage": {
+            "input_tokens": 58699,
+            "cached_input_tokens": 36736,
+            "output_tokens": 464,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 59163,
+            "uncached_input_plus_output_tokens": 22427,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40675,
+          "initial_request_bytes": 12825,
+          "max_request_bytes": 27850,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "effective_entry_points": {
+              "required": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "found": [
+                "esp32_hub75/src/mini/platform/station_retry.h",
+                "esp32_hub75/src/mini/platform/wifi_station.cpp",
+                "tests/native/mini_station_retry.cpp"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "mini-runtime"
+              ],
+              "found": [
+                "mini-runtime"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [],
+              "found": [],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 5,
+            "scope_context_file_count": 34,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "mini-runtime",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": true
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 1,
+          "arm": "progressive",
+          "status": "succeeded",
+          "seconds": 16.136934,
+          "usage": {
+            "input_tokens": 58219,
+            "cached_input_tokens": 46720,
+            "output_tokens": 1005,
+            "reasoning_output_tokens": 128,
+            "total_tokens": 59224,
+            "uncached_input_plus_output_tokens": 12504,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40209,
+          "initial_request_bytes": 12577,
+          "max_request_bytes": 27632,
+          "coverage": {
+            "entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "tests/python/protocol/test_mini_hockey_contract.py"
+              ],
+              "missing": [
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "fraction": 0.5
+            },
+            "effective_entry_points": {
+              "required": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "found": [
+                "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
+                "esp32_hub75/src/mini/rendering/sports_pane.h",
+                "sports_ticker/projections/mini_fields.py",
+                "sports_ticker/providers/sports_display.py",
+                "tests/python/protocol/test_mini_hockey_contract.py",
+                "ticker_core/features/sports/pinned.py"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "components": {
+              "required": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "found": [
+                "app-contracts",
+                "mini-sports-renderer",
+                "server-core",
+                "six-sports-renderer",
+                "sports-server"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "checks": {
+              "required": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "found": [
+                "mini-fields",
+                "sports-contracts"
+              ],
+              "missing": [],
+              "fraction": 1.0
+            },
+            "shared_change_matches": true,
+            "selected_entry_point_count": 12,
+            "scope_context_file_count": 33,
+            "scope_build_file_count": 342,
+            "scope_components": [
+              "instructions",
+              "python-build",
+              "server-core",
+              "app-contracts",
+              "mini-firmware",
+              "sports-server",
+              "mini-sports-renderer",
+              "shared-drawing",
+              "six-build",
+              "six-sports-renderer"
+            ],
+            "complete": false
+          }
+        },
+        {
+          "case_id": "shared-hockey-shootout",
+          "task_class": "shared-contract",
+          "repeat": 1,
+          "arm": "baseline",
+          "status": "failed",
+          "seconds": 7.863265,
+          "usage": {
+            "input_tokens": 41990,
+            "cached_input_tokens": 30464,
+            "output_tokens": 498,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 42488,
+            "uncached_input_plus_output_tokens": 12024,
+            "complete": true,
+            "unknown_usage_attempts": 0,
+            "is_lower_bound": false
+          },
+          "request_bytes": 40492,
+          "initial_request_bytes": 40492,
+          "max_request_bytes": 40492,
+          "error": "Luna exceeded its source inspection budget"
+        }
+      ]
+    }
+  ]
+}

@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from tools.workspaces.manage import (
     WorkspaceError, expand, git, load, manifest_read, resolve, safe_path, stamp, tree, write_json,
 )
-from tools.workspaces.planner import VERSION, plan_task
+from tools.workspaces.planner import VERSION, PlannerFailure, plan_task
 
 
 def edit_owners(manifest: dict, targets: list[str], shared: bool) -> set[str]:
@@ -83,7 +83,16 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
         reasons = ["The agent selected explicit task scope"]
         evidence = {"kind": "explicit", "version": VERSION}
     elif use_planner or replan:
-        decision = (planner or plan_task)(root, task, manifest, tracked, previous["slices"] if previous else None)
+        try:
+            decision = (planner or plan_task)(root, task, manifest, tracked, previous["slices"] if previous else None)
+        except PlannerFailure as error:
+            location.mkdir(parents=True, exist_ok=True)
+            failure_path = location / "failures.json"
+            failures = json.loads(failure_path.read_text()) if failure_path.is_file() else []
+            failures.append({"at": stamp(), "task_sha256": hashlib.sha256(task.encode()).hexdigest(),
+                             "status": "failed", "planner": error.evidence})
+            write_json(failure_path, failures[-20:])
+            raise
         selected, reasons = decision["slices"], [decision["reason"][:600]]
         entry_points = decision["context"]
         edit_targets = decision["edit_targets"]
@@ -104,7 +113,7 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
     if evidence["kind"] == "luna":
         required_context = {path for path in plan["context_files"] if Path(path).name == "AGENTS.md"}
         if set(manifest["shared_consumers"]) <= forced:
-            for name in manifest["shared_consumers"]:
+            for name in manifest["shared_owners"] + manifest["shared_consumers"]:
                 required_context.update(manifest["components"][name].get("context", []))
         plan["context_files"] = sorted(required_context | {row["path"] for row in entry_points})
     if previous:
@@ -154,6 +163,8 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
         lines.append(f"- `{name}`: " + " ".join(manifest["checks"][name]["argv"]))
     lines += ["", "## Working rules", "", "Read applicable nested AGENTS.md files before edits.",
               "Search the selected files before broad repository exploration.",
+              'For bounded discovery, use python tools/workspaces/find.py --search "<literal words>".',
+              "For definitions, use find.py --symbols <path>. For source, use find.py --excerpt <path> --symbol <name>.",
               "Read relevant symbols and sections. Do not preload every selected file.",
               "If a dependency is missing, expand the recorded scope with a reason.",
               "Build files remain available without entering initial context.",

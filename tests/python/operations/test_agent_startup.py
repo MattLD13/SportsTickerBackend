@@ -10,7 +10,7 @@ import pytest
 
 from tools.workspaces.manage import MANIFEST, ROOT, WorkspaceError, git, manifest_read, safe_path
 from tools.workspaces.start import edit_owners, hook, inventory, main, prepare
-from tools.workspaces.planner import MODEL, VERSION
+from tools.workspaces.planner import MODEL, VERSION, PlannerFailure
 
 pytestmark = pytest.mark.critical
 
@@ -182,6 +182,34 @@ def test_cli_explicit_slice_needs_no_model(session_repo, planner_calls, capsys):
     assert result["planner"]["kind"] == "explicit"
     assert result["slices"] == ["mini-sports"]
     assert planner_calls[1] == []
+
+
+def test_failed_planning_saves_usage_without_overwriting_a_valid_scope(session_repo):
+    first = prepare(session_repo, "Inspect Mini", "agent-a", slices=["mini-sports"])
+    packet = Path(first["packet"])
+    before = packet.with_name("state.json").read_bytes()
+    evidence = {"kind": "luna", "version": VERSION, "usage": {"input_tokens": 23, "output_tokens": 4},
+                "usage_complete": True, "rounds": 1}
+    def failed(*_):
+        raise PlannerFailure("Budget exceeded", evidence)
+    with pytest.raises(PlannerFailure):
+        prepare(session_repo, "Synthetic private task", "agent-a", replan=True, planner=failed)
+    assert packet.with_name("state.json").read_bytes() == before
+    failures = packet.with_name("failures.json").read_text()
+    assert "Synthetic private task" not in failures
+    recorded = json.loads(failures)[0]
+    assert recorded["planner"]["usage"] == evidence["usage"]
+    assert recorded["status"] == "failed"
+
+
+def test_model_cannot_omit_shared_owner_context_from_a_contract_change(session_repo):
+    def planner(*_):
+        result = decision(["mini-sports"], ["mini/pane.h"])
+        result["shared_change"] = True
+        return result
+    result = prepare(session_repo, "Change a shared fact", "shared-task", planner=planner, use_planner=True)
+    state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
+    assert {"shared/model.py", "mini/pane.h", "music/song.py"} <= set(state["context_files"])
 
 
 def test_configured_session_commands_execute_from_a_nested_directory(tmp_path):

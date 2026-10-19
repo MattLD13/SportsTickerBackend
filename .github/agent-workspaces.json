@@ -35,7 +35,9 @@
         "tools/workspaces/start.py",
         "tools/workspaces/native_hockey.py",
         "docs/development/agent-rules.md",
-        "tools/workspaces/planner.py"
+        "tools/workspaces/planner.py",
+        "tools/workspaces/discovery.py",
+        "tools/workspaces/find.py"
       ],
       "checks": []
     },
@@ -651,7 +653,12 @@
         "docs/development/agent-rules.md",
         "tests/python/operations/test_agent_workspaces.py",
         "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_context_planner.py"
+        "tests/python/operations/test_context_planner.py",
+        "tools/benchmarks/context_discovery.py",
+        "docs/contracts/agent-context-cases.json",
+        "tests/python/operations/test_context_discovery.py",
+        "tests/python/operations/test_context_benchmark.py",
+        "tests/python/operations/test_context_find.py"
       ],
       "dependencies": [
         "instructions"
@@ -662,11 +669,17 @@
         "tests/python/operations/test_agent_startup.py",
         "tests/python/operations/test_agent_workspaces.py",
         "docs/development/agent-workspaces.md",
-        "tools/workspaces/planner.py"
+        "tools/workspaces/planner.py",
+        "tools/workspaces/discovery.py"
       ],
       "build": [
         "tools/workspaces/native_hockey.py",
-        "tests/python/operations/test_context_planner.py"
+        "tests/python/operations/test_context_planner.py",
+        "tools/benchmarks/context_discovery.py",
+        "docs/contracts/agent-context-cases.json",
+        "tests/python/operations/test_context_discovery.py",
+        "tests/python/operations/test_context_benchmark.py",
+        "tests/python/operations/test_context_find.py"
       ],
       "checks": [
         "agent-setup"
@@ -1020,12 +1033,18 @@
         "-q",
         "tests/python/operations/test_agent_workspaces.py",
         "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_context_planner.py"
+        "tests/python/operations/test_context_planner.py",
+        "tests/python/operations/test_context_discovery.py",
+        "tests/python/operations/test_context_benchmark.py",
+        "tests/python/operations/test_context_find.py"
       ],
       "files": [
         "tests/python/operations/test_agent_workspaces.py",
         "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_context_planner.py"
+        "tests/python/operations/test_context_planner.py",
+        "tests/python/operations/test_context_discovery.py",
+        "tests/python/operations/test_context_benchmark.py",
+        "tests/python/operations/test_context_find.py"
       ]
     },
     "clock-domain": {

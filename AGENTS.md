@@ -7,6 +7,8 @@ This repository owns Ticker Server, Ticker Six, Ticker Mini, and the iOS control
 Use ordinary targeted searches for small tasks with a clear code location.
 Read only the relevant symbols and the nearest scoped instructions.
 If a supplied task packet matches the task, reuse it before source exploration.
+For bounded file and symbol discovery without a model, use `python tools/workspaces/find.py --search "<literal words>"`.
+Use `--symbols <path>` for definitions and `--excerpt <path> --symbol <name>` for a source window.
 
 For a known component, select its manifest slice without a model call:
 
