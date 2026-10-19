@@ -7,7 +7,7 @@ import pytest
 
 from backend_ops.components import ALL, owners, source_owners
 from backend_ops.incidents import atomic_json
-from backend_ops.manager import Manager, read, switch
+from backend_ops.manager import Host as LinuxHost, Manager, read, switch
 
 pytestmark = pytest.mark.critical
 OLD, NEW = "1" * 40, "2" * 40
@@ -152,3 +152,33 @@ def test_contract_rollback_keeps_a_compatible_cohort_after_later_worker_updates(
     manager.activate(state, {"music": third}, third)
     assert manager.restore(state, "core", "core regression after a contract change")
     assert all(record["active"] == OLD for record in state["components"].values())
+
+
+@pytest.mark.parametrize("malformed", [[], {"release": OLD, "runtime": None},
+    {"release": OLD, "runtime": {"enabled": True, "running": True, "ready": True, "cycles": "bad"}}])
+def test_malformed_process_health_counts_as_failure_instead_of_stopping_the_guard(tmp_path, malformed):
+    manager = Manager(tmp_path, host=Host())
+    manager.host.probe = lambda name, release: malformed
+    assert not manager.ready("core", OLD)[0]
+
+
+def test_replay_does_not_roll_back_a_fetcher_that_has_already_recovered(tmp_path):
+    atomic_json(tmp_path / "ticker_data/backend-control/replays/music-last-failure.json", {"op": "fetch", "settings": {}, "ticker_id": "test"})
+    atomic_json(tmp_path / "backend-components/music/current/release-manifest.json", {"contract": "contract"})
+    host = LinuxHost(tmp_path)
+    calls = []
+    host.rpc = lambda path, message, **kwargs: calls.append(message) or {"result": {"health": {"healthy": True}}}
+    assert not host.replay("music", tmp_path / "previous")
+    assert len(calls) == 1
+
+
+def test_guard_detects_crashes_between_successful_health_samples(tmp_path):
+    manager, state, host, _ = setup(tmp_path)
+    manager.activate(state, {"core": NEW}, NEW)
+    original = host.probe
+    host.probe = lambda name, release: {**original(name, release), "process_restarts": 3 if name == "core" and release.name == NEW else 0}
+    manager.guard(state)
+    assert state["components"]["core"]["active"] == OLD
+    assert state["components"]["core"]["crash_count"] == 0
+    manager.guard(state)
+    assert state["components"]["core"]["active"] == OLD

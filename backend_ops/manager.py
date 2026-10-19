@@ -52,6 +52,7 @@ class Host:
         return "ticker.service" if component == "core" else f"ticker-fetcher@{component}.service"
 
     def restart(self, component):
+        self.command(["sudo", "systemctl", "reset-failed", self.unit(component)])
         self.command(["sudo", "systemctl", "restart", self.unit(component)])
 
     def stack(self, component):
@@ -60,9 +61,16 @@ class Host:
     def probe(self, component, release):
         if component == "core":
             with urlopen("http://127.0.0.1:5000/api/v2/health", timeout=3) as response:
-                return json.load(response)
-        return self.rpc(self.home / "ticker_data/backend_sockets" / (component + ".sock"),
-                        {"protocol": 1, "contract": read(release / "release-manifest.json")["contract"], "op": "health"})
+                health = json.load(response)
+        else:
+            health = self.rpc(self.home / "ticker_data/backend_sockets" / (component + ".sock"),
+                              {"protocol": 1, "contract": read(release / "release-manifest.json")["contract"], "op": "health"})
+        if isinstance(health, dict):
+            result = subprocess.run(["systemctl", "show", self.unit(component), "--property=NRestarts", "--value"],
+                                    capture_output=True, text=True, timeout=3, check=False)
+            if result.stdout.strip().isdigit():
+                health["process_restarts"] = int(result.stdout.strip())
+        return health
 
     def rpc(self, path, message, timeout=3):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
@@ -79,6 +87,15 @@ class Host:
         """Compare one failed request with the previous isolated worker process."""
         message = read(self.home / "ticker_data/backend-control/replays" / (component + "-last-failure.json"))
         if message.get("op") != "fetch":
+            return False
+        active_manifest = read(self.home / "backend-components" / component / "current/release-manifest.json")
+        try:
+            current = self.rpc(self.home / "ticker_data/backend_sockets" / (component + ".sock"),
+                               {**message, "contract": active_manifest["contract"]}, timeout=32)
+            failure = current.get("result", {}).get("health", {})
+            if failure.get("healthy") is not False or (failure.get("diagnostic") or {}).get("exception_type") not in CODE_ERRORS:
+                return False
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return False
         message["contract"] = read(previous / "release-manifest.json")["contract"]
         path = self.home / "ticker_data/backend_sockets" / (component + "-probe.sock")
@@ -152,6 +169,8 @@ class Manager:
     def ready(self, component, revision):
         try:
             health = self.host.probe(component, self.release(component, revision))
+            if not isinstance(health, dict):
+                raise ValueError("component health must be an object")
             if health.get("release") != revision:
                 return False, health
             if component == "core":
@@ -159,7 +178,7 @@ class Manager:
                 return bool(runtime.get("enabled") and runtime.get("running") and runtime.get("ready") and runtime.get("cycles", 0) >= 2), health
             manifest = read(self.release(component, revision) / "release-manifest.json")
             return bool(health.get("ready") and health.get("contract") == manifest["contract"] and health.get("busy_seconds", 0) < 45), health
-        except (OSError, ValueError, KeyError) as error:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
             return False, {"probe_error": type(error).__name__}
 
     def trial(self, component, revision, *, seconds=90):
@@ -197,7 +216,8 @@ class Manager:
             raise
         for name, version in versions.items():
             records[name].update(previous=pending["previous"][name], active=version, failures=0,
-                                 trial_at=self.clock(), restarts=0, last_good_at=self.clock())
+                                 trial_at=self.clock(), restarts=0, last_good_at=self.clock(),
+                                 observed_process_restarts=0, crash_count=0, crash_window_at=self.clock())
         state["pending"] = None
         state["last_success_revision"] = revision
         self.remember_contract(state)
@@ -210,7 +230,8 @@ class Manager:
             switch(self.link(name), self.release(name, old))
             record = state["components"][name]
             if record["active"] != old:
-                record.update(active=old, previous=None, failures=0, restarts=0, trial_at=self.clock())
+                record.update(active=old, previous=None, failures=0, restarts=0, trial_at=self.clock(),
+                              crash_count=0, observed_process_restarts=0, crash_window_at=self.clock())
             record["quarantined"] = list(dict.fromkeys([*record.get("quarantined", []), pending["versions"][name]]))[-20:]
         for name in (*PROVIDERS, "core"):
             if name in pending["previous"]:
@@ -243,7 +264,8 @@ class Manager:
         self.save(state)
         self.rollback_pending(state, RuntimeError(reason))
         for key, version in group.items():
-            state["components"][key].update(active=version, previous=None, failures=0, restarts=0, trial_at=self.clock())
+            state["components"][key].update(active=version, previous=None, failures=0, restarts=0, trial_at=self.clock(),
+                                             crash_count=0, observed_process_restarts=0, crash_window_at=self.clock())
         self.remember_contract(state)
         self.save(state)
         return True
@@ -256,6 +278,16 @@ class Manager:
         for name in COMPONENTS:
             record = state["components"][name]
             ready, health = self.ready(name, record["active"])
+            if "process_restarts" in health:
+                restarts = health["process_restarts"]
+                if self.clock() - record.get("crash_window_at", 0) > 1800:
+                    record.update(crash_count=0, crash_window_at=self.clock())
+                record["crash_count"] = record.get("crash_count", 0) + max(0, restarts - record.get("observed_process_restarts", 0))
+                record["observed_process_restarts"] = restarts
+                if record["crash_count"] >= 3:
+                    self.incidents.record("component_crash_loop", component=name, context={"release": record["active"], "crashes": record["crash_count"]})
+                    if self.restore(state, name, "three process crashes within 30 minutes"):
+                        continue
             if ready:
                 record["failures"] = 0
                 record["last_good_at"] = self.clock()
@@ -266,7 +298,12 @@ class Manager:
                         record["last_replay_at"] = self.clock()
                         replay_used = True
                         previous = self.release(name, record["previous"])
-                        if self.host.replay(name, previous):
+                        try:
+                            improved = self.host.replay(name, previous)
+                        except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
+                            self.incidents.record("replay_failed", component=name, error=error)
+                            improved = False
+                        if improved:
                             self.restore(state, name, "previous fetcher passes the failed request")
                         else:
                             self.incidents.record("replay_no_improvement", component=name, context={"replay_id": health.get("replay_id")})
@@ -280,7 +317,7 @@ class Manager:
             except (OSError, subprocess.SubprocessError):
                 pass
             if record.get("restarts", 0) == 0:
-                record.update(restarts=1, failures=0, trial_at=self.clock())
+                record.update(restarts=1, failures=0, trial_at=self.clock(), observed_process_restarts=0)
                 self.save(state)
                 self.host.restart(name)
             elif not self.restore(state, name, "component failed after one recovery restart"):

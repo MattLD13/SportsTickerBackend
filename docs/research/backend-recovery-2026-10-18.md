@@ -78,10 +78,12 @@ Database migrations must retain compatibility with the previous release.
 The independent system timer checks components every 30 seconds.
 After three failed checks, it records thread stacks and restarts the failed component once.
 After three further failed checks, it restores the previous release.
+Three process crashes within 30 minutes also trigger rollback, even when a later health sample succeeds.
 If deployment stops before confirmation, the timer resolves the saved rollback transaction.
 The timer retains healthy data during upstream outages through the scheduler's existing cache and pause rules.
 
 Three repeated programming errors can trigger a private request replay against the previous fetcher process.
+The controller first confirms that the current worker still fails the same request.
 If the previous process returns healthy data, the timer restores that fetcher.
 If both versions fail, the timer records the result and keeps the current code.
 Remote HTTP failures do not trigger code rollback by themselves.

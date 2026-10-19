@@ -76,10 +76,17 @@ def collect(home: Path, *, probe=None, component=None):
         unit = "ticker.service" if name == "core" else f"ticker-fetcher@{name}.service"
         services[name] = {"state": command_output(["systemctl", "show", unit, "--property=ActiveState,SubState,NRestarts,MainPID,MemoryCurrent"]),
                           "log": log_tail(home / ("ticker-backend.log" if name == "core" else f"ticker-fetcher-{name}.log"))}
+        try:
+            from .manager import Host
+            services[name]["health"] = Host(home).probe(name, home / "backend-components" / name / "releases" / record["active"])
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+            services[name]["health"] = {"probe_error": type(error).__name__}
     report = redact({
         "schema_version": 1, "collected_at": time.time(), "collector_release": release_id(),
         "health": health, "deployment": state, "changed_files": changed, "incidents": incidents,
         "components": services,
+        "recovery_timer": command_output(["systemctl", "show", "ticker-backend-guard.timer", "--property=ActiveState,SubState,LastTriggerUSec,NextElapseUSecRealtime"]),
+        "recovery_service": command_output(["systemctl", "show", "ticker-backend-guard.service", "--property=Result,ExecMainStatus,ActiveState"]),
         "service": command_output(["systemctl", "show", "ticker.service", "--property=ActiveState,SubState,NRestarts,MainPID,MemoryCurrent"]),
         "application_log": log_tail(home / "ticker-backend.log"),
         "service_log": command_output(["journalctl", "-u", "ticker.service", "-n", "100", "--no-pager", "-o", "cat"]),
