@@ -177,7 +177,7 @@ def _provider_settings_key(name: str):
     if name == "racing":
         return lambda settings: _sports_key(settings, ("f1", "indycar"))
     if name == "stock":
-        return lambda settings: ()
+        return lambda settings: (settings.custom_stock_symbols,)
     if name == "weather":
         return lambda settings: (settings.weather_lat, settings.weather_lon, settings.weather_city)
     if name == "flights":

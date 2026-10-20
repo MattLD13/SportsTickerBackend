@@ -2592,7 +2592,8 @@
         },
         "type": "stock_ticker",
         "sport": "stock",
-        "home_abbr": "AAPL"
+        "home_abbr": "AAPL",
+        "home_logo": "https://financialmodelingprep.com/image-stock/AAPL.png"
       }
     },
     {
@@ -2609,7 +2610,8 @@
         },
         "type": "stock_ticker",
         "sport": "stock",
-        "home_abbr": "AAPL"
+        "home_abbr": "AAPL",
+        "home_logo": "https://financialmodelingprep.com/image-stock/AAPL.png"
       }
     },
     {
@@ -2626,7 +2628,8 @@
         },
         "type": "stock_ticker",
         "sport": "stock",
-        "home_abbr": "AAPL"
+        "home_abbr": "AAPL",
+        "home_logo": "https://financialmodelingprep.com/image-stock/AAPL.png"
       }
     },
     {

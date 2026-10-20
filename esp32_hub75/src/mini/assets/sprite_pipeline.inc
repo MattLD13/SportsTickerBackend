@@ -78,7 +78,7 @@ bool sportsGameAssetsCached(JsonObjectConst game) {
   return spriteAssets.available(miniSpriteToken(game, "away_logo_asset")) && spriteAssets.available(miniSpriteToken(game, "home_logo_asset"));
 }
 
-bool commitReadySportsLogoPlan(uint32_t generation) {
+bool commitReadyLogoPlan(uint32_t generation) {
   if (generation != logoPlanGeneration || !foregroundLogoPlanReady()) return false;
   if (!sportsFrameReady) pageIndex = logoPlanPageIndex;
   sportsFrameReady = true;
@@ -141,19 +141,19 @@ void prepareMusicArtwork() {
   if (musicArtwork.request(music) && logoWorkerHandle) xTaskNotifyGive(logoWorkerHandle);
 }
 
-void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
-  if (!sportsMode || pairingMode) {
+void prepareLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
+  if (!rotatingMode() || pairingMode) {
     assetsLoading = false;
     return;
   }
 
-  const uint16_t gameCount = countShownGames();
+  const uint16_t gameCount = countShownPages();
   if (gameCount == 0) {
     return;
   }
   const uint16_t targetPage = requestedPage == 0xFFFF ? pageIndex : requestedPage % gameCount;
 
-  const uint16_t windowSize = min<uint16_t>(gameCount, spriteAssets.slotCount() / 2);
+  const uint16_t windowSize = min<uint16_t>(gameCount, spriteAssets.slotCount() / (sportsMode ? 2 : 1));
   if (logoWorkMutex != nullptr) {
     xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
   }
@@ -164,7 +164,7 @@ void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
   logoProgressComplete = 0;
   logoProgressTotal = 0;
   ++logoPlanGeneration;
-  JsonArrayConst items = payload.document()["content"]["sports"].as<JsonArrayConst>();
+  JsonArrayConst items = payload.document()["content"][rotationFamily()].as<JsonArrayConst>();
   for (uint16_t offset = 0; offset < windowSize; ++offset) {
     const uint16_t targetIndex = (targetPage + offset) % gameCount;
     uint16_t visibleIndex = 0;
@@ -176,10 +176,10 @@ void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
         JsonObjectConst game = item["data"].as<JsonObjectConst>();
         if (!game.isNull()) {
           if (offset < LOGO_FOREGROUND_GAMES) {
-            appendLogoForeground(game, "away_logo_asset");
+            if (sportsMode) appendLogoForeground(game, "away_logo_asset");
             appendLogoForeground(game, "home_logo_asset");
           }
-          appendLogoWork(game, "away_logo_asset");
+          if (sportsMode) appendLogoWork(game, "away_logo_asset");
           appendLogoWork(game, "home_logo_asset");
         }
         break;

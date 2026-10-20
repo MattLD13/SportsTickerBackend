@@ -36,7 +36,7 @@ struct ClockPane {
   bool ready = false;
 };
 struct StockPane {
-  std::string symbol, price, percent, change;
+  std::string symbol, price, percent;
 };
 
 template<class Canvas>
@@ -55,25 +55,21 @@ void renderClock(Canvas& canvas, const ClockPane& view) {
 template<class Canvas>
 void renderStock(Canvas& canvas, const StockPane& view) {
   canvas.rect(0, 0, 64, 32, BACKGROUND);
-  const Rgb ink = view.percent.empty() || view.percent[0] != '-' ? STOCK_GAIN : STOCK_LOSS;
-  const int percentGap = textWidth(view.percent) <= 32 ? 1 : 0;
-  const int percentLeft = 63 - textWidth(view.percent, 3, percentGap);
-  const int symbolRight = percentLeft - 6;
-  const int symbolGap = textWidth(view.symbol) <= symbolRight - 1 ? 1 : 0;
-  const int symbolWidth = textWidth(view.symbol, 3, symbolGap) <= symbolRight - 1 ? 3 : 2;
-  text(canvas, view.symbol, 1, 1, SCORE_TEXT, symbolWidth, 5, symbolGap, false, 1, symbolRight);
-  text(canvas, view.percent, percentLeft, 1, ink, 3, 5, percentGap, false, symbolRight + 6, 63);
+  const bool known = !view.percent.empty() && view.percent != "--";
+  const Rgb ink = !known ? MUTED_TEXT : view.percent[0] == '-' ? STOCK_LOSS : STOCK_GAIN;
+  if (!canvas.logo(Side::Home, 1, 1)) badge(canvas, 1, 1, {28, 43, 58}, view.symbol.substr(0, 3));
+  const int symbolWidth = textWidth(view.symbol, 4, 1) <= 42 ? 4 : 3;
+  const int symbolGap = textWidth(view.symbol, symbolWidth, 1) <= 42 ? 1 : 0;
+  text(canvas, view.symbol, 22, 1, SCORE_TEXT, symbolWidth, 7, symbolGap, false, 22, 64);
+  const int percentGap = textWidth(view.percent, 3, 1) <= 36 ? 1 : 0;
+  text(canvas, view.percent, 28, 12, ink, 3, 5, percentGap, false, 28, 64);
   const bool loss = !view.percent.empty() && view.percent[0] == '-';
-  for (int row = 0; row < 3; ++row) {
+  for (int row = 0; known && row < 3; ++row) {
     const int half = loss ? 2 - row : row;
-    canvas.rect(percentLeft - 4 - half / 2, 2 + row, half + 1, 1, ink);
+    canvas.rect(23 - half / 2, 13 + row, half + 1, 1, ink);
   }
-  canvas.rect(1, 8, 62, 1, {24, 35, 48});
+  canvas.rect(1, 20, 62, 1, {24, 35, 48});
   const int priceWidth = textWidth(view.price, 4, 1, true) <= 62 ? 4 : 3;
-  text(canvas, view.price, 1, 11, ink, priceWidth, 9, 1, true, 1, 63);
-  const int changeWidth = textWidth(view.change, 4, 1, true) <= 62 ? 4 : 3;
-  const int changeLeft = 63 - textWidth(view.change, changeWidth, 1, true);
-  if (changeLeft >= 29) text(canvas, "CHANGE", 1, 25, MUTED_TEXT);
-  text(canvas, view.change, changeLeft, 25, ink, changeWidth, 6, 1, true, 1, 63);
+  text(canvas, view.price, 1, 23, SCORE_TEXT, priceWidth, 9, 1, true, 1, 63);
 }
 }  // namespace ticker_ui

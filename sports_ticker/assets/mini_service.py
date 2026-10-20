@@ -26,6 +26,7 @@ _HOSTS = frozenset({
     "i.scdn.co",
     "a.espncdn.com", "raw.githubusercontent.com", "images.fotmob.com",
     "assets.nhle.com", "upload.wikimedia.org", "cdn.nba.com",
+    "financialmodelingprep.com",
 })
 SOURCE_LIMIT = 256 * 1024
 

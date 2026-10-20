@@ -76,3 +76,16 @@ g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_sprite_cache.
 
 The check loads the installed OpenSSL library. It verifies every decoded pixel and mask value against Python output.
 It also verifies checksum rejection, truncated input, restart reuse, interrupted transactions, and bounded eviction.
+
+
+## Stock cards
+
+Mini stock records include `home_logo_asset` when the device advertises `mini_sprite_protocol: 1`.
+The backend prepares company artwork from the stock provider through the same bounded sprite service.
+The service accepts the approved Financial Modeling Prep image host.
+The Mini scales the 18-pixel source sprite to the existing 16-pixel RAM logo size.
+It preloads one logo per stock page and uses the shared page dwell setting.
+Quote updates retain the visible stock when its identity stays in the selected list.
+The stock card shows the logo, symbol, percentage change, and price.
+Stock pages use the sports logo readiness check, initial progress screen, retry timing, and startup timeout.
+After the startup timeout, an unavailable logo uses a symbol badge while downloads continue.

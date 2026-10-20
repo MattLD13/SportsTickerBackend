@@ -73,7 +73,13 @@ void drawAirport(JsonObjectConst airport) {
 }
 
 void drawStock(JsonObjectConst stock) {
-  MiniCanvas canvas;
+  class StockCanvas : public MiniCanvas {
+   public:
+    explicit StockCanvas(const String& value) : token(value) {}
+    bool logo(ticker_ui::Side, int x, int y) { return drawLogoAsset(token, x, y); }
+   private:
+    String token;
+  } canvas(miniSpriteToken(stock, "home_logo_asset"));
   ticker_ui::renderStock(canvas, ticker_ui::stockPane(stock));
   presentContentFrame();
 }
@@ -120,7 +126,7 @@ void renderCurrent() {
   uint16_t complete = 0;
   uint16_t total = 0;
   logoProgressSnapshot(loading, complete, total);
-  if (loading && sportsMode && !sportsFrameReady) {
+  if (loading && rotatingMode() && !sportsFrameReady) {
     drawDownloadingProgress(complete, total);
     return;
   }
@@ -139,7 +145,7 @@ void renderCurrent() {
     }
     prepareSelectedGameLogoSources(game);
     JsonObjectConst selected;
-    selectedSportsItem(selected);
+    selectedPageItem(selected);
     beginFrame("sports", selected["id"] | "", pageIndex, pageCount,
                pageCount > 1 ? pageHoldMillis(pageHoldSeconds) : 0);
     drawGame(game, preparedGameLogos);
@@ -150,7 +156,11 @@ void renderCurrent() {
   else if (displayMode == "music" && firstShownModeItem("music", item)) drawMusic(item);
   else if (displayMode == "flights" && firstShownModeItem("flights", item)) drawFlight(item);
   else if (displayMode == "airports" && firstShownModeItem("airports", item)) drawAirport(item);
-  else if (displayMode == "stock" && firstShownModeItem("stock", item)) drawStock(item);
+  else if (displayMode == "stock" && selectedPageItem(item)) {
+    beginFrame("stock", item["id"] | "", pageIndex, pageCount,
+               pageCount > 1 ? pageHoldMillis(pageHoldSeconds) : 0);
+    drawStock(item["data"].as<JsonObjectConst>());
+  }
   else if (displayMode == "clock") drawClock(preparedClock, preparedClockValid);
   else drawSystemNotice(ticker_ui::SystemKind::Empty, "NO " + displayMode);
 }

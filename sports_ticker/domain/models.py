@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
+import re
 
 from sports_ticker.leagues import allows_my_team_selection, college_conference_settings
 CONTENT_FAMILIES: tuple[str, ...] = (
@@ -108,9 +109,18 @@ class DisplaySettings:
     scroll_speed: float = 0.03
     score_alerts: bool = True
     active_conferences: Mapping[str, bool] = field(default_factory=dict)
+    custom_stock_symbols: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Copy mutable input and normalize scalar settings."""
+
+        symbols = self.custom_stock_symbols
+        if not isinstance(symbols, (list, tuple)) or not all(isinstance(symbol, str) for symbol in symbols):
+            raise ValueError("custom_stock_symbols must be an array of stock symbols")
+        symbols = tuple(dict.fromkeys(symbol.strip().upper() for symbol in symbols))
+        if len(symbols) > 30 or any(re.fullmatch(r"[A-Z][A-Z0-9]{0,9}(?:[.-][A-Z0-9]{1,3})?", symbol) is None for symbol in symbols):
+            raise ValueError("custom_stock_symbols must contain up to 30 valid stock symbols")
+        object.__setattr__(self, "custom_stock_symbols", symbols)
 
         active_sports = self.active_sports if hasattr(self.active_sports, "items") else {}
         normalized = {

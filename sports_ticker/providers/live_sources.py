@@ -250,6 +250,8 @@ class FinnhubStockSource:
             cache_path or os.environ.get("TICKER_STOCK_CACHE_PATH", "ticker_data/stocks.json")
         )
         self._closed_session: str | None = None
+        self._selection_session: str | None = None
+        self._selections: dict[str, list[str]] = {}
         self._market_session = market_session
         self._quotes = self._load_cache()
         self._next_key = 0
@@ -261,12 +263,19 @@ class FinnhubStockSource:
         self._refresh_lock = Lock()
         self._quote_lock = Lock()
         self._refreshing = False
+        self._custom_requests: dict[tuple[str, ...], float] = {}
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
+        with self._refresh_lock:
+            now = self._monotonic()
+            self._custom_requests = {symbols: seen for symbols, seen in self._custom_requests.items() if now - seen < 300}
+            if settings.custom_stock_symbols:
+                self._custom_requests[settings.custom_stock_symbols] = now
         self._start_all_market_refresh()
         records: list[dict[str, object]] = []
         for group in MARKET_GROUPS:
             records.extend(self._group_records(group.id, group.label, group.symbols))
+        records.extend(self._group_records("stock_custom", "Custom", settings.custom_stock_symbols))
         return {"content": records}
 
     def _start_all_market_refresh(self) -> None:
@@ -275,37 +284,71 @@ class FinnhubStockSource:
         now = self._monotonic()
         market = self._market_session(self._clock())
         with self._refresh_lock:
-            if not market.open and (market.closed_session is None or market.closed_session == self._closed_session):
+            custom_symbols = tuple(dict.fromkeys(symbol for symbols in self._custom_requests for symbol in symbols))
+            with self._quote_lock:
+                missing_custom = any(symbol not in self._quotes for symbol in custom_symbols)
+            if not market.open and (market.closed_session is None or (market.closed_session == self._closed_session and not missing_custom)):
                 return
             if self._refreshing or now - self._last_refresh < self._refresh_seconds:
                 return
             self._last_refresh = now
             self._refreshing = True
-        Thread(target=self._refresh_all_markets, args=(market.closed_session,), name="ticker-stock-refresh", daemon=True).start()
+        selection_session = (
+            f"open:{datetime.fromtimestamp(self._clock(), timezone.utc).date().isoformat()}"
+            if market.open else f"close:{market.closed_session}"
+        )
+        Thread(target=self._refresh_all_markets, args=(market.closed_session, selection_session, custom_symbols), name="ticker-stock-refresh", daemon=True).start()
 
-    def _refresh_all_markets(self, closed_session: str | None = None) -> None:
+    def _refresh_all_markets(self, closed_session: str | None = None, selection_session: str | None = None, custom_symbols: Sequence[str] = ()) -> None:
         """Refresh every quote in the source-owned market cache."""
 
         changed = False
-        successful = 0
+        updates = {}
         try:
-            symbols = tuple(
-                dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols)
-            )
+            smart_symbols = tuple(dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols))
+            symbols = tuple(dict.fromkeys((*smart_symbols, *custom_symbols)))
             for symbol in symbols:
                 quote = self._fetch_quote(symbol) if self._keys else None
                 if quote is not None:
-                    with self._quote_lock:
-                        self._quotes[symbol] = quote
+                    updates[symbol] = quote
                     changed = True
-                    successful += 1
-            if closed_session is not None and successful == len(symbols):
+            complete = all(symbol in updates for symbol in smart_symbols)
+            if closed_session is not None and complete:
                 self._closed_session = closed_session
             if changed:
+                with self._quote_lock:
+                    self._quotes.update(updates)
+                    for group in MARKET_GROUPS:
+                        if group.id == "stock_momentum":
+                            self._selections[group.id] = self._rank_symbols(smart_symbols, popular=0)
+                        elif (complete and selection_session != self._selection_session) or group.id not in self._selections:
+                            self._selections[group.id] = self._rank_symbols(group.symbols, popular=2)
+                    if complete:
+                        self._selection_session = selection_session
                 self._save_cache()
         finally:
             with self._refresh_lock:
                 self._refreshing = False
+
+    def _rank_symbols(self, symbols: Sequence[str], *, popular: int) -> list[str]:
+        """Select ten names by daily gain, with reserved places for curated category leaders."""
+
+        available = []
+        for symbol in dict.fromkeys(symbols):
+            quote = self._quotes.get(symbol)
+            if quote is None:
+                continue
+            try:
+                gain = float(quote["change_pct"].rstrip("%"))
+            except (ValueError, TypeError):
+                continue
+            if isfinite(gain):
+                available.append((symbol, gain))
+        leaders = [symbol for symbol, _ in available[:popular]]
+        ranked = sorted(available, key=lambda entry: -entry[1])
+        winners = [symbol for symbol, _ in ranked if symbol not in leaders][:10 - len(leaders)]
+        selected = set(winners + leaders)
+        return [symbol for symbol, _ in ranked if symbol in selected]
 
     def _group_records(
         self,
@@ -318,6 +361,9 @@ class FinnhubStockSource:
         records: list[dict[str, object]] = []
         with self._quote_lock:
             quotes = dict(self._quotes)
+            if group_id != "stock_custom":
+                candidates = tuple(dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols)) if group_id == "stock_momentum" else symbols
+                symbols = self._selections.get(group_id, self._rank_symbols(candidates, popular=0 if group_id == "stock_momentum" else 2))
         for symbol in symbols:
             quote = quotes.get(symbol)
             if quote is None:
@@ -422,6 +468,16 @@ class FinnhubStockSource:
             values = payload.get("quotes", payload) if isinstance(payload, Mapping) else {}
             if isinstance(payload, Mapping) and isinstance(payload.get("closed_session"), str):
                 self._closed_session = payload["closed_session"]
+            if isinstance(payload, Mapping):
+                selection_session = payload.get("selection_session")
+                self._selection_session = selection_session if isinstance(selection_session, str) else None
+                selections = payload.get("selections", {})
+                if isinstance(selections, Mapping):
+                    self._selections = {
+                        group.id: [symbol for symbol in selections[group.id] if symbol in group.symbols]
+                        for group in MARKET_GROUPS
+                        if isinstance(selections.get(group.id), list) and group.id not in {"stock_momentum", "stock_custom"}
+                    }
             return {
                 str(symbol).upper(): {
                     "price": str(data["price"]),
@@ -444,7 +500,8 @@ class FinnhubStockSource:
             with self._quote_lock:
                 quotes = dict(self._quotes)
             temporary.write_text(
-                json.dumps({"quotes": quotes, "closed_session": self._closed_session}, sort_keys=True, separators=(",", ":")),
+                json.dumps({"quotes": quotes, "closed_session": self._closed_session,
+                            "selection_session": self._selection_session, "selections": self._selections}, sort_keys=True, separators=(",", ":")),
                 encoding="utf-8",
             )
             os.replace(temporary, self._cache_path)

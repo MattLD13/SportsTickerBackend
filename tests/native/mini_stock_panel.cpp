@@ -5,6 +5,12 @@
 
 struct Canvas {
   std::array<uint8_t, 64 * 32 * 3> pixels{};
+  bool ready = false;
+  bool logo(ticker_ui::Side, int x, int y) {
+    if (!ready) return false;
+    rect(x, y, ticker_ui::MINI_LOGO_SIZE, ticker_ui::MINI_LOGO_SIZE, {40, 120, 220});
+    return true;
+  }
   void pixel(int x, int y, ticker_ui::Rgb ink) {
     assert(x >= 0 && x < 64 && y >= 0 && y < 32);
     const int offset = (y * 64 + x) * 3;
@@ -23,21 +29,29 @@ int main() {
     for (auto value : glyph.pixels) visible |= value != 0;
     assert(visible);
   }
-  const char* cases[][4] = {
-    {"AAPL", "212.48", "+1.25%", "+2.62"}, {"TSLA", "219.80", "-3.42%", "-7.78"},
-    {"BRK.B", "485.19", "+0.00%", "+0.00"}, {"BTC-USD", "108521.35", "+12.45%", "+12000.50"},
-    {"LONGSYMBOL", "12345678.90", "+1234.56%", "+123456.78"}, {"UNK", "--", "--", "--"}
+  const char* cases[][3] = {
+    {"AAPL", "212.48", "+1.25%"}, {"TSLA", "219.80", "-3.42%"},
+    {"BRK.B", "485.19", "+0.00%"}, {"BTC-USD", "108521.35", "+12.45%"},
+    {"LONGSYMBOL", "12345678.90", "+1234.56%"}, {"UNK", "--", "--"}
   };
   for (const auto& row : cases) {
     JsonDocument data;
-    data["symbol"] = row[0]; data["home_score"] = row[1]; data["away_score"] = row[2]; data["situation"]["change"] = row[3];
+    data["symbol"] = row[0]; data["home_score"] = row[1]; data["away_score"] = row[2];
     const auto view = ticker_ui::stockPane(data.as<JsonObjectConst>());
-    if (std::string(row[3]) != "--") assert(view.change.find('$') != std::string::npos);
+    assert(view.price == (std::string(row[1]) == "--" ? "--" : "$" + std::string(row[1])));
     Canvas canvas;
     ticker_ui::renderStock(canvas, view);
     bool present = false;
     for (auto value : canvas.pixels) present |= value != 0;
     assert(present);
+    Canvas branded;
+    branded.ready = true;
+    ticker_ui::renderStock(branded, view);
+    assert(branded.pixels != canvas.pixels);
+    for (int y = 20; y < 32; ++y) for (int x = 0; x < 64; ++x) for (int c = 0; c < 3; ++c) {
+      const int offset = (y * 64 + x) * 3 + c;
+      assert(branded.pixels[offset] == canvas.pixels[offset]);
+    }
   }
   std::cout << "Stock quote formatting, gains, losses, long values, and frame bounds pass\n";
 }

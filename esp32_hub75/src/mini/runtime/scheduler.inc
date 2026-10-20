@@ -414,27 +414,27 @@ void miniTick() {
   }
   if (workerFinished) {
     if (logoPlanDisplayPending) {
-      commitReadySportsLogoPlan(workerGeneration);
+      commitReadyLogoPlan(workerGeneration);
     }
     if (message.length() == 0) {
       renderCurrent();
     }
   }
-  if (sportsMode && logoPlanDisplayPending && foregroundLogoPlanReady()) {
-    if (commitReadySportsLogoPlan(logoPlanGeneration)) {
+  if (rotatingMode() && logoPlanDisplayPending && foregroundLogoPlanReady()) {
+    if (commitReadyLogoPlan(logoPlanGeneration)) {
       if (message.length() == 0) {
         renderCurrent();
       }
     }
   }
-  if (sportsMode && logoPlanDisplayPending && !sportsFrameReady &&
+  if (rotatingMode() && logoPlanDisplayPending && !sportsFrameReady &&
       assetLoadingStartedAt != 0 && now - assetLoadingStartedAt >= LOGO_STARTUP_TIMEOUT_MS) {
     pageIndex = logoPlanPageIndex;
     sportsFrameReady = true;
     assetsLoading = false;
     logoPlanDisplayPending = false;
     assetLoadingStartedAt = 0;
-    Serial.println("Logo startup timed out. Showing the scoreboard while downloads continue.");
+    Serial.println("Logo startup timed out. Showing content while downloads continue.");
     if (message.length() == 0) {
       renderCurrent();
     }
@@ -482,12 +482,12 @@ void miniTick() {
       if (retrySprites) spriteRetryDueAt = 0;
       xSemaphoreGive(logoWorkMutex);
     }
-    if (retrySprites && sportsMode && !pairingMode) prepareSportsLogoWorkingSet(pageIndex);
-    if (message.length() == 0 && sportsMode && sportsFrameReady &&
+    if (retrySprites && rotatingMode() && !pairingMode) prepareLogoWorkingSet(pageIndex);
+    if (message.length() == 0 && rotatingMode() && sportsFrameReady &&
         pageCount > 1 && displayMetrics.rotationDue(esp_timer_get_time())) {
       const uint16_t nextPage = (pageIndex + 1) % pageCount;
       pageIndex = nextPage;
-      prepareSportsLogoWorkingSet(pageIndex);
+      prepareLogoWorkingSet(pageIndex);
       renderCurrent();
     }
 

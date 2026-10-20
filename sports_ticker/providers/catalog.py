@@ -9,7 +9,7 @@ from time import monotonic
 from urllib.parse import urlparse
 
 from sports_ticker.leagues import LEAGUES, league_for
-from sports_ticker.markets import MARKET_GROUPS
+from sports_ticker.markets import MARKET_OPTIONS
 
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
@@ -73,7 +73,7 @@ class EspnTeamCatalog:
                 "type": "stock",
                 "enabled": True,
             }
-            for group in MARKET_GROUPS
+            for group in MARKET_OPTIONS
         )
         return (*sports, *markets)
 

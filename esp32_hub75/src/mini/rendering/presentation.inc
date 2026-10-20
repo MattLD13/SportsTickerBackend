@@ -6,10 +6,14 @@ bool shownItem(JsonObjectConst item) {
 }
 
 
-uint16_t countShownGames() {
+const char* rotationFamily() { return displayMode == "stock" ? "stock" : "sports"; }
+
+bool rotatingMode() { return sportsMode || displayMode == "stock"; }
+
+uint16_t countShownPages() {
   uint16_t count = 0;
   JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
-  JsonArrayConst items = content["sports"].as<JsonArrayConst>();
+  JsonArrayConst items = content[rotationFamily()].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (shownItem(item)) {
       ++count;
@@ -18,10 +22,10 @@ uint16_t countShownGames() {
   return count;
 }
 
-uint32_t sportsRotationSignature() {
+uint32_t pageRotationSignature() {
   String sequence = displayMode + "|";
   JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
-  JsonArrayConst items = content["sports"].as<JsonArrayConst>();
+  JsonArrayConst items = content[rotationFamily()].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (!shownItem(item)) continue;
     String identity = item["id"] | "";
@@ -44,10 +48,10 @@ uint32_t sportsRotationSignature() {
   return hashBody(sequence);
 }
 
-bool selectedSportsItem(JsonObjectConst& selected) {
+bool selectedPageItem(JsonObjectConst& selected) {
   uint16_t index = 0;
   JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
-  JsonArrayConst items = content["sports"].as<JsonArrayConst>();
+  JsonArrayConst items = content[rotationFamily()].as<JsonArrayConst>();
   for (JsonObjectConst item : items) {
     if (!shownItem(item)) {
       continue;
@@ -63,7 +67,7 @@ bool selectedSportsItem(JsonObjectConst& selected) {
 
 bool selectedGame(JsonObjectConst& selected) {
   JsonObjectConst item;
-  if (!selectedSportsItem(item)) return false;
+  if (!selectedPageItem(item)) return false;
   selected = item["data"].as<JsonObjectConst>();
   return !selected.isNull();
 }

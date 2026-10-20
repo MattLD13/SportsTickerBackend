@@ -791,6 +791,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         let activeSettings = activeTicker?.settings
         return [
             "active_sports": state.active_sports,
+            "custom_stock_symbols": state.custom_stock_symbols,
             "my_teams": sharedMyTeams ?? state.my_teams,
             "mode": state.mode,
             "sports_filter": state.sports_filter,

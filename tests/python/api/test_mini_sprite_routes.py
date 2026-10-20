@@ -63,3 +63,47 @@ def test_mini_asset_contract_prepares_once_and_serves_checked_immutable_bytes(tm
         assert "away_logo_asset" not in full["content"]["sports"][0]["data"]
     finally:
         application.close()
+
+
+def test_mini_stock_logos_use_shared_immutable_sprites_without_changing_six(tmp_path):
+    output = io.BytesIO()
+    Image.new("RGBA", (32, 32), (40, 180, 90, 255)).save(output, format="PNG")
+    calls = []
+    def fetch(url, *_):
+        calls.append(url)
+        return SourceReply(output.getvalue())
+
+    service = MiniSpriteService(tmp_path / "sprites", fetcher=fetch, clock=lambda: 1000)
+    app = create_backend_application(tmp_path / "db.sqlite3", [], mini_sprites=service, clock=lambda: 1000)
+    application = app.extensions["sports_ticker.backend_application"]
+    client = app.test_client()
+    try:
+        settings = DisplaySettings(mode="stock", active_sports={"stock_tech_ai": True})
+        for ticker_id, family in (("mini", "mini"), ("six", "full")):
+            application.create_ticker(ticker_id, display_settings=settings, pairing={"paired": True},
+                                      credential_hash=device_token_hash("a" * 64))
+            application.register_device(ticker_id, profile={"product_family": family, "capabilities": {"modes": ["sports", "stock"]}}, metadata={"mini_sprite_protocol": 1})
+            application.snapshot_store.replace(TickerSnapshot(ticker_id, 1, datetime.now(timezone.utc), (
+                ContentItem("stock:AAPL", "stock", "stock", True, {
+                    "type": "stock_ticker", "sport": "stock", "symbol": "AAPL", "market_group": "stock_tech_ai",
+                    "home_score": "212.48", "away_score": "+1.25%",
+                    "home_logo": "https://financialmodelingprep.com/image-stock/AAPL.png",
+                }),), (), (), settings))
+        headers = {"X-Device-Token": "a" * 64}
+        client.get("/api/v2/tickers/mini/data", headers=headers)
+        service.wait()
+        for method, options in ((client.get, {}), (client.post, {"json": {}})):
+            response = method("/api/v2/tickers/mini/data", headers=headers, **options)
+            assert response.status_code == 200
+            stock = response.get_json()["content"]["stock"][0]["data"]
+            asset = stock["home_logo_asset"]
+            assert asset["state"] == "ready"
+            assert asset["width"] == asset["height"] == 18
+            body = client.get(asset["url"]).data
+            assert len(body) == 705 and hashlib.sha256(body).hexdigest() == asset["sha256"]
+        six = client.get("/api/v2/tickers/six/data", headers=headers).get_json()["content"]["stock"][0]["data"]
+        assert "home_logo_asset" not in six
+        assert six["home_logo"] == "https://financialmodelingprep.com/image-stock/AAPL.png"
+        assert calls == ["https://financialmodelingprep.com/image-stock/AAPL.png"]
+    finally:
+        application.close()

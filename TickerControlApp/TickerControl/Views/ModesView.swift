@@ -11,6 +11,8 @@ import CryptoKit
 
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
+    @State private var showingCustomStocks = false
+    @State private var customStocksTickerID: String?
     @State private var leagueControls = EnabledLeagueControls()
 
     // 1. LOCAL BUFFER: This is the secret.
@@ -444,29 +446,34 @@ struct ModesView: View {
                         }
                     } else if vm.state.mode == "stock" {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
+                            Text("MARKETS").font(.caption).bold().foregroundStyle(.secondary)
+                            Text("Smart markets update automatically. Tap Custom to create or edit your list.")
+                                .font(.caption).foregroundStyle(.secondary)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
                                 ForEach(stockOptions) { opt in
-                                    let isActive = vm.state.active_sports[opt.id] ?? true
+                                    let isActive = vm.state.active_sports[opt.id] ?? (opt.id == "stock_tech_ai")
                                     Button {
-                                        // 1. CLEAR ALL OTHER STOCKS FIRST
-                                        // This forces a "Single Select" behavior
+                                        if opt.id == "stock_custom" {
+                                            guard vm.state.ticker_id == vm.activeTicker?.id else { return }
+                                            customStocksTickerID = vm.activeTicker?.id
+                                            showingCustomStocks = true
+                                            return
+                                        }
                                         for stockKey in stockOptions.map({ $0.id }) {
                                             vm.state.active_sports[stockKey] = false
                                         }
 
-                                        // 2. SET THE NEW ONE
                                         vm.state.active_sports[opt.id] = true
 
-                                        // 3. SAVE
                                         vm.saveSettings()
                                     } label: {
-                                        Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                        Label(opt.label, systemImage: opt.id == "stock_custom" ? "square.and.pencil" : "chart.line.uptrend.xyaxis").font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
                                             .background(isActive ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
                                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
                                             .foregroundColor(.white)
                                     }
+                                    .disabled(opt.id == "stock_custom" && (vm.activeTicker == nil || vm.state.ticker_id != vm.activeTicker?.id))
                                 }
                             }
                         }
@@ -492,6 +499,18 @@ struct ModesView: View {
                 Spacer(minLength: 120)
             }
         }
+        .sheet(isPresented: $showingCustomStocks) {
+            CustomStockListEditor(symbols: vm.state.custom_stock_symbols) { symbols in
+                guard vm.activeTicker?.id == customStocksTickerID,
+                      vm.state.ticker_id == customStocksTickerID else { return }
+                vm.state.custom_stock_symbols = symbols
+                for option in stockOptions { vm.state.active_sports[option.id] = false }
+                vm.state.active_sports[symbols.isEmpty ? "stock_tech_ai" : "stock_custom"] = true
+                vm.startBurstPolling()
+                vm.saveSettings()
+            }
+        }
+        .onChange(of: vm.activeTicker?.id) { _ in showingCustomStocks = false }
         // 4. SYNC LOGIC: Updates the text field only when NOT typing
         .onAppear {
             localWeatherInput = vm.state.weather_city
@@ -512,6 +531,88 @@ struct ModesView: View {
         }
         .onChange(of: vm.state.track_guest_name) { newValue in
             if !isGuestFieldFocused { localGuestName = newValue }
+        }
+    }
+}
+
+
+private struct CustomStockListEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var symbols: [String]
+    @State private var input = ""
+    @State private var inputError: String?
+    let onSave: ([String]) -> Void
+
+    init(symbols: [String], onSave: @escaping ([String]) -> Void) {
+        _symbols = State(initialValue: symbols)
+        self.onSave = onSave
+    }
+
+    private func addSymbols() {
+        let additions = input.uppercased().split { $0.isWhitespace || $0 == "," }.map(String.init)
+        guard !additions.isEmpty else { return }
+        guard additions.allSatisfy({ $0.range(of: #"^[A-Z][A-Z0-9]{0,9}(?:[.-][A-Z0-9]{1,3})?$"#, options: .regularExpression) != nil }) else {
+            inputError = "Enter stock symbols, such as AAPL, NVDA, or BRK.B."
+            return
+        }
+        var updated = symbols
+        for symbol in additions where !updated.contains(symbol) { updated.append(symbol) }
+        guard updated.count <= 30 else {
+            inputError = "A custom list can contain up to 30 stocks."
+            return
+        }
+        symbols = updated
+        input = ""
+        inputError = nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Create one list for this ticker. Add symbols, remove stocks, or drag to change their order.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    HStack {
+                        TextField("AAPL, NVDA, MSFT", text: $input)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .onSubmit { addSymbols() }
+                            .accessibilityIdentifier("custom-stock-input")
+                        Button("Add") { addSymbols() }
+                            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    if let inputError { Text(inputError).foregroundStyle(.red) }
+                } header: { Text("Add or paste stock symbols") }
+                Section {
+                    if symbols.isEmpty {
+                        Text("Your custom list is empty.").foregroundStyle(.secondary)
+                    }
+                    ForEach(symbols, id: \.self) { symbol in Text(symbol) }
+                        .onDelete { symbols.remove(atOffsets: $0) }
+                        .onMove { symbols.move(fromOffsets: $0, toOffset: $1) }
+                } header: { Text("Stocks (\(symbols.count)/30)") }
+                  footer: { Text("Prices update during market hours. Saving an empty list switches this ticker to Tech / AI.") }
+                if !symbols.isEmpty {
+                    Section {
+                        ShareLink(item: symbols.joined(separator: ", ")) {
+                            Label("Share stock symbols", systemImage: "square.and.arrow.up")
+                        }
+                        Text("Paste shared symbols into Custom on another ticker to copy the list.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Custom Stocks")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { onSave(symbols); dismiss() }
+                        .disabled(!input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("save-custom-stocks")
+                }
+                ToolbarItem(placement: .bottomBar) { EditButton() }
+            }
         }
     }
 }

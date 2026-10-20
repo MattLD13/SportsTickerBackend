@@ -880,6 +880,7 @@ def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:
         "active_sports": _json_value(settings.active_sports),
         "active_conferences": _json_value(settings.active_conferences),
         "my_teams": list(settings.my_teams),
+        "custom_stock_symbols": list(settings.custom_stock_symbols),
         "mode": settings.mode,
         "sports_filter": settings.sports_filter,
         "sports_presentation": settings.sports_presentation,

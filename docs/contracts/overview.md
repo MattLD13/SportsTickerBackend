@@ -33,6 +33,12 @@ Pairing is an effective output state. A pinned game uses `sports_presentation: p
 Alerts, news, connection loss, and updates use overlays.
 Clients consume projected domain facts and explicit family and kind values.
 
+Each ticker stores one ordered `custom_stock_symbols` array with up to 30 symbols.
+The server trims symbols, converts them to uppercase, and removes duplicates.
+`active_sports.stock_custom` selects this list. Existing market categories remain smart lists.
+Custom stocks use the shared quote cache and retain their saved order.
+The controller shares symbols as text. Pasting shared symbols copies them into the custom list of another ticker.
+
 `meta.schedule.live_games` counts fresh visible live sports records in this ticker's snapshot.
 It excludes other tickers and deduplicates game identifiers.
 `meta.schedule.has_enabled_rules` identifies enabled schedule blocks or live-sports conditions for this ticker's supported modes.

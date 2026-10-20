@@ -43,6 +43,7 @@ def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Disp
         active_sports=active_sports,
         active_conferences=value.get("active_conferences", {}),
         my_teams=value.get("my_teams", ()),
+        custom_stock_symbols=value.get("custom_stock_symbols", ()),
         mode=value.get("mode", "sports"),
         sports_filter=value.get("sports_filter", "all"),
         sports_presentation=value.get("sports_presentation", "rotation"),

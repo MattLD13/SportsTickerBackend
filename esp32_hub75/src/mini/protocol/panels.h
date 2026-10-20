@@ -251,14 +251,8 @@ inline StockPane stockPane(JsonObjectConst stock) {
   StockPane view;
   view.symbol = label(stock["symbol"].isNull() ? stock["home_abbr"] : stock["symbol"], "STOCK", 10);
   view.price = label(stock["home_score"], "--", 15);
-  if (!view.price.empty() && view.price[0] != '$') view.price = "$" + view.price;
+  if (view.price != "--" && !view.price.empty() && view.price[0] != '$') view.price = "$" + view.price;
   view.percent = label(stock["away_score"], "--", 12);
-  view.change = label(stock["situation"]["change"], "--", 15);
-  if (view.change != "--") {
-    const bool signedValue = view.change[0] == '-' || view.change[0] == '+';
-    const size_t currency = signedValue ? 1 : 0;
-    if (view.change.find('$') == std::string::npos) view.change.insert(currency, "$");
-  }
   return view;
 }
 

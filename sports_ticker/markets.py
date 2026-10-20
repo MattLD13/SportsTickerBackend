@@ -24,14 +24,16 @@ MARKET_GROUPS: tuple[MarketGroup, ...] = (
     MarketGroup("stock_consumer", "Consumer Stocks", ("WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR")),
 )
 
+MARKET_OPTIONS = (*MARKET_GROUPS, MarketGroup("stock_custom", "Custom", ()))
+
 
 def selected_market_groups(active: Mapping[str, object]) -> tuple[MarketGroup, ...]:
     """Return enabled market groups from one ticker setting mapping."""
 
     configured = {str(key).strip().lower(): bool(value) for key, value in active.items()}
-    if any(group.id in configured for group in MARKET_GROUPS):
-        return tuple(group for group in MARKET_GROUPS if configured.get(group.id, False))
+    if any(group.id in configured for group in MARKET_OPTIONS):
+        return tuple(group for group in MARKET_OPTIONS if configured.get(group.id, False))
     return tuple(group for group in MARKET_GROUPS if group.enabled_by_default)
 
 
-__all__ = ["MARKET_GROUPS", "MarketGroup", "selected_market_groups"]
+__all__ = ["MARKET_GROUPS", "MARKET_OPTIONS", "MarketGroup", "selected_market_groups"]

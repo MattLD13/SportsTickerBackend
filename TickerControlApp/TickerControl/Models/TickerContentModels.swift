@@ -233,6 +233,7 @@ struct TeamData: Decodable, Identifiable, Hashable, Sendable {
 }
 struct TickerState: Codable, Sendable {
     var active_sports: [String: Bool]
+    var custom_stock_symbols: [String] = []
     var mode: String
     var sports_filter: String
     var scroll_seamless: Bool
@@ -258,7 +259,7 @@ struct TickerState: Codable, Sendable {
     var sports_presentation: String
     var pinned_content_id: String
     enum CodingKeys: String, CodingKey {
-        case active_sports, mode, sports_filter, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
+        case custom_stock_symbols, active_sports, mode, sports_filter, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
     }
 
     // === 1. ROBUST DECODER ===
@@ -267,6 +268,8 @@ struct TickerState: Codable, Sendable {
 
         // If server fails to send sports, default to ALL enabled (Safety Net)
         active_sports = (try? container.decode([String: Bool].self, forKey: .active_sports)) ?? TickerState.defaultActiveSports
+
+        custom_stock_symbols = try container.decodeIfPresent([String].self, forKey: .custom_stock_symbols) ?? []
 
         let rawMode = (try? container.decode(String.self, forKey: .mode)) ?? "sports"
         if rawMode == "flight2" {

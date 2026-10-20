@@ -78,6 +78,8 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
         asset_game = background.get("game", row["game"])
         for side in ("away", "home"):
             urls = mini_logo_sources(asset_game, side) if asset_mode == "sports" else ()
+            if asset_mode == "stock" and side == "home":
+                urls = (asset_game["home_logo"],) if asset_game.get("home_logo") else ()
             if not urls:
                 continue
             url = urls[0]
@@ -117,13 +119,19 @@ def local_render(directory: Path, include: Path | None) -> None:
             subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--branch", f"v{version[1]}",
                             "https://github.com/bblanchon/ArduinoJson.git", str(dependency)], check=True)
         include = dependency / "src"
-    compiler = shutil.which("g++")
+    compiler = shutil.which("g++") or shutil.which("cl")
     if not compiler:
         raise RuntimeError("A native C++ compiler is required. Use --host to render on the physical Pi.")
     executable = directory / ("render-mini.exe" if sys.platform == "win32" else "render-mini")
-    subprocess.run([compiler, "-std=c++17", "-O1", f"-I{ROOT / 'esp32_hub75/src/mini/protocol'}",
-                    f"-I{ROOT / 'esp32_hub75/src/mini/assets'}", f"-I{include}",
-                    str(ROOT / "tools/rendering/render_mini_ui.cpp"), "-o", str(executable)], check=True)
+    if Path(compiler).stem.lower() == "cl":
+        arguments = ["/nologo", "/std:c++17", "/EHsc", "/O1", f"/I{ROOT / 'esp32_hub75/src/mini/protocol'}",
+                     f"/I{ROOT / 'esp32_hub75/src/mini/assets'}", f"/I{include}",
+                     str(ROOT / "tools/rendering/render_mini_ui.cpp"), f"/Fe:{executable}", f"/Fo:{directory / 'render-mini.obj'}"]
+    else:
+        arguments = ["-std=c++17", "-O1", f"-I{ROOT / 'esp32_hub75/src/mini/protocol'}",
+                     f"-I{ROOT / 'esp32_hub75/src/mini/assets'}", f"-I{include}",
+                     str(ROOT / "tools/rendering/render_mini_ui.cpp"), "-o", str(executable)]
+    subprocess.run([compiler, *arguments], check=True)
     subprocess.run([str(executable.resolve()), str((directory / "input.json").resolve()), str((directory / "frames").resolve())], check=True)
 
 

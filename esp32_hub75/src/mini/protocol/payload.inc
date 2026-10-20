@@ -1,7 +1,7 @@
 bool updateFromPayload(const ResponseBody& body) {
   JsonObjectConst visibleItem;
   String visibleId;
-  if (sportsMode && sportsFrameReady && selectedSportsItem(visibleItem)) visibleId = visibleItem["id"] | "";
+  if (rotatingMode() && sportsFrameReady && selectedPageItem(visibleItem)) visibleId = visibleItem["id"] | "";
   const bool accepted = payload.accept(body);
   lastDataJsonError = payload.error();
   lastDataJsonOffset = payload.offset();
@@ -28,20 +28,21 @@ bool updateFromPayload(const ResponseBody& body) {
   JsonObjectConst settings = payload.document()["settings"].as<JsonObjectConst>();
   String mode = settings["mode"] | "sports";
   mode.toLowerCase();
+  const bool modeChanged = displayMode != mode;
+  if (modeChanged) { pageIndex = 0; visibleId = ""; }
   displayMode = mode;
   configuredTimezone = settings["timezone"] | DEFAULT_TIMEZONE;
   configuredTimezone.trim();
   if (configuredTimezone.length() == 0) configuredTimezone = DEFAULT_TIMEZONE;
-  const bool wasSportsMode = sportsMode;
   sportsMode = displayMode == "sports";
-  if (sportsMode && !wasSportsMode) {
+  if (rotatingMode() && modeChanged) {
     sportsFrameReady = false;
   }
   pageHoldSeconds = settings["scroll_speed"] | 0.03f;
-  pageCount = sportsMode && !pairingMode ? countShownGames() : 0;
-  if (visibleId.length() > 0 && sportsMode) {
+  pageCount = rotatingMode() && !pairingMode ? countShownPages() : 0;
+  if (visibleId.length() > 0 && rotatingMode()) {
     uint16_t index = 0;
-    for (JsonObjectConst item : payload.document()["content"]["sports"].as<JsonArrayConst>()) {
+    for (JsonObjectConst item : payload.document()["content"][rotationFamily()].as<JsonArrayConst>()) {
       if (!shownItem(item)) continue;
       if (visibleId == (item["id"] | "")) { pageIndex = index; break; }
       ++index;
@@ -52,14 +53,14 @@ bool updateFromPayload(const ResponseBody& body) {
   if (brightness < 0.0f) brightness = 0.0f;
   if (brightness > 100.0f) brightness = 100.0f;
   matrix->setBrightness8(static_cast<uint8_t>(brightness * 2.55f));
-  const uint32_t newRotationSignature = sportsRotationSignature();
+  const uint32_t newRotationSignature = pageRotationSignature();
   const bool workingSetChanged = newRotationSignature != rotationSignature;
   if (workingSetChanged) {
     rotationSignature = newRotationSignature;
   }
   if (workingSetChanged || logoWorkingSetSignature != newRotationSignature) {
     logoWorkingSetSignature = newRotationSignature;
-    prepareSportsLogoWorkingSet(pageIndex);
+    prepareLogoWorkingSet(pageIndex);
   }
   prepareMusicArtwork();
   message = "";

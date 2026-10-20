@@ -15,6 +15,18 @@ final class ContractModelsTests: XCTestCase {
         XCTAssertEqual(response.games.count, 0)
     }
 
+    func testCustomStockListRoundTripKeepsOrder() throws {
+        let data = Data(#"{"mode":"stock","active_sports":{"stock_custom":true},"custom_stock_symbols":["NVDA","BRK.B","AAPL"]}"#.utf8)
+        let state = try JSONDecoder().decode(TickerState.self, from: data)
+        XCTAssertEqual(state.custom_stock_symbols, ["NVDA", "BRK.B", "AAPL"])
+        let encoded = try JSONEncoder().encode(state)
+        let restored = try JSONDecoder().decode(TickerState.self, from: encoded)
+        XCTAssertEqual(restored.custom_stock_symbols, state.custom_stock_symbols)
+        XCTAssertEqual(restored.active_sports["stock_custom"], true)
+        let empty = try JSONDecoder().decode(TickerState.self, from: Data("{}".utf8))
+        XCTAssertEqual(empty.custom_stock_symbols, [])
+    }
+
     func testHardwareProfileContractDecodes() throws {
         let profile = try JSONDecoder().decode(TickerProfile.self, from: fixture("hardware-profile-response"))
         XCTAssertGreaterThan(profile.display.width, 0)

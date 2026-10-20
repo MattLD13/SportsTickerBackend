@@ -520,6 +520,11 @@ class BackendApplication:
                 game = item["data"]
                 for side in ("away", "home"):
                     game[f"{side}_logo_asset"] = self.mini_sprites.reference(*mini_logo_sources(game, side))
+            for item in data["content"].get("stock", ()):
+                if not item.get("is_shown", True):
+                    continue
+                stock = item["data"]
+                stock["home_logo_asset"] = self.mini_sprites.reference(stock.get("home_logo", ""))
         if self.mini_artwork is not None and ticker.profile.product_family == "mini":
             for item in data["content"].get("music", ()):
                 music = item["data"]
