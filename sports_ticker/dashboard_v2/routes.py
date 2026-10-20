@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 import os
 import hashlib
+import re
 from math import isfinite
 from pathlib import Path
 from time import monotonic, time
@@ -47,7 +48,7 @@ def public_index():
     fleet = _fleet_rows(tickers, effective)
     active_modes = {item["mode"] for item in fleet if item["link"] == "online" and item["mode"] in DISPLAY_MODES}
     mode_label = " / ".join(item["name"] for item in _display_modes() if item["id"] in active_modes) or "Offline"
-    markets = _market_rows(application, tickers, fleet)
+    markets = _market_rows(tickers, fleet)
     visible = _display_content(application, ticker.ticker_id) if ticker is not None else {}
     shown = sum(len(items) for items in visible.values())
     return render_template(
@@ -61,6 +62,7 @@ def public_index():
         server_health=_server_health(),
         fleet_mode_label=mode_label,
         active_modes=active_modes,
+        active_mode_count=len(active_modes),
         hardware_specs=_hardware_specs(tickers),
         sports_leagues=sports,
         util_leagues=utilities,
@@ -239,28 +241,34 @@ def _fleet_rows(tickers, effective=None) -> list[dict[str, object]]:
             "last_poll": "never" if age is None else f"{age}s ago",
             "uptime": _duration(metadata.get("uptime_seconds")),
             "temp": f"{temperature:.0f}C" if type(temperature) in (int, float) and isfinite(temperature) else "-",
-            "build": str(metadata.get("build") or "-"),
+            "build": _build_label(metadata.get("build")),
+            "build_id": str(metadata.get("build") or "Not reported"),
             "offline_reason": "" if age is not None and age < 90 else "No recent heartbeat",
         })
     return rows
 
 
-def _market_rows(application, tickers, fleet):
-    """Show every stock option and aggregate enabled groups across the fleet."""
-    enabled = {group.id for ticker in tickers for group in selected_market_groups(ticker.display_settings.active_sports)}
-    if not tickers:
-        enabled = {group.id for group in selected_market_groups({})}
+def _build_label(value):
+    """Format existing device versions without exposing revision hashes as labels."""
+    build = str(value or "").strip()
+    six = re.fullmatch(r"r(\d+)(?:\+[A-Za-z0-9.-]+)?", build)
+    mini = re.fullmatch(r"mini-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)", build)
+    if six:
+        return f"Build {six[1]}"
+    if mini:
+        return f"v{mini[1]}"
+    return build or "Not reported"
+
+
+def _market_rows(tickers, fleet):
+    """Mark stock groups green only while connected tickers use them."""
     live = set()
     for ticker, row in zip(tickers, fleet):
         if row["link"] != "online" or row["mode"] != "stock":
             continue
-        selected = {group.id for group in selected_market_groups(ticker.display_settings.active_sports)}
-        snapshot = application.get_snapshot(ticker.ticker_id)
-        if snapshot is not None:
-            live.update(item.data.get("market_group") for item in snapshot.content
-                        if item.family == "stock" and item.is_shown and item.data.get("market_group") in selected)
+        live.update(group.id for group in selected_market_groups(ticker.display_settings.active_sports))
     return [{"id": group.id, "label": group.label,
-             "state": "live" if group.id in live else "on" if group.id in enabled else "off"}
+             "state": "live" if group.id in live else "on"}
             for group in MARKET_GROUPS]
 
 
@@ -281,9 +289,11 @@ def _hardware_specs(tickers):
             timing = f"{round(1 / speed) if speed > 0 else 33} PX/SEC"
         cards.append({
             "name": name, "resolution": f"{display.width}X{display.height}",
+            "controller": "ESP32-S3 controller" if family == "mini" else "Raspberry Pi controller",
             "panels": f"{display.panel_count} X 64X32", "timing_label": "Page duration" if family == "mini" else "Scroll rate",
             "timing": timing, "modes": len(profile.capabilities.modes) if ticker else len(DISPLAY_MODES),
-            "build": str(metadata.get("build") or "Not reported"), "uptime": _duration(metadata.get("uptime_seconds")),
+            "build": _build_label(metadata.get("build")),
+            "build_id": str(metadata.get("build") or "Not reported"), "uptime": _duration(metadata.get("uptime_seconds")),
         })
     return cards
 
@@ -383,7 +393,7 @@ def _live_sports_content() -> dict[str, list[dict[str, object]]]:
 
 def _demo_content(mode: str, *, at: float | None = None) -> dict[str, list[dict[str, object]]]:
     """Select reviewed public inputs without exposing personal utility data."""
-    selected = {"sports": ("FB02", "BS09", "BK03", "HK07", "SC04"), "weather": ("MD04",), "clock": ("MD20",)}
+    selected = {"sports": ("FB02", "BS09", "BK03", "HK07", "SC04"), "clock": ("MD20",)}
     if mode == "music":
         sample_time = time() if at is None else at
         cycle_start = _SAMPLE_STARTED + int((sample_time - _SAMPLE_STARTED + 112) // 303) * 303
@@ -395,7 +405,7 @@ def _demo_content(mode: str, *, at: float | None = None) -> dict[str, list[dict[
 
 def _public_mode_content(mode, *, at=None):
     """Select live public feeds without copying personal device utility state."""
-    if mode in {"stock", "flights", "airports"}:
+    if mode in {"stock", "weather", "flights", "airports"}:
         source = current_app.extensions.get("sports_ticker.public_demo_data")
         return source.content(mode) if source is not None else ({mode: []}, "unavailable")
     if mode == "sports":

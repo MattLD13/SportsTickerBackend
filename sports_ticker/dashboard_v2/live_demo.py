@@ -13,6 +13,7 @@ from sports_ticker.projections import project_data_v2
 
 PUBLIC_SETTINGS = DisplaySettings(
     active_sports={"stock_tech_ai": True},
+    weather_city="NYC", weather_lat=40.7128, weather_lon=-74.0060,
     airport_code_iata="EWR", airport_code_icao="KEWR", airport_name="Newark Liberty International",
 )
 
@@ -21,10 +22,10 @@ class PublicDemoData:
     """Cache bounded public refreshes through the existing production provider ports."""
 
     def __init__(self, providers, *, clock=monotonic):
-        self._providers = {name: providers[name] for name in ("stock", "flights") if name in providers}
+        self._providers = {name: providers[name] for name in ("stock", "weather", "flights") if name in providers}
         self._clock = clock
         self._lock = Lock()
-        self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="public-demo")
+        self._pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="public-demo")
         self._pending = set()
         self._attempted = {}
         self._content = {}
@@ -37,7 +38,8 @@ class PublicDemoData:
         name = "flights" if mode == "airports" else mode
         now = self._clock()
         with self._lock:
-            if name in self._providers and not self._closed and name not in self._pending and now - self._attempted.get(name, -float("inf")) >= 30:
+            interval = 300 if name == "weather" else 30
+            if name in self._providers and not self._closed and name not in self._pending and now - self._attempted.get(name, -float("inf")) >= interval:
                 self._pending.add(name)
                 self._attempted[name] = now
                 self._pool.submit(self._refresh, name)

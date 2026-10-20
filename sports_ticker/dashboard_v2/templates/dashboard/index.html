@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='style.css', v=version_hash) }}">
 <script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
@@ -121,7 +121,7 @@
       </div>
       <div class="cell stat">
         <div class="stat-label" data-led data-led-color="dim">ACTIVE MODES</div>
-        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ fleet_mode_label }}</div>
+        <div class="stat-value" data-active-mode-count data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ active_mode_count }}</div>
         <div class="stat-sub">across connected tickers</div>
       </div>
     </div>
@@ -164,7 +164,7 @@
         <span>{{ b.last_poll }}</span>
         <span>{{ b.uptime }}</span>
         <span>{{ b.temp }}</span>
-        <span class="fleet-build">{{ b.build }}</span>
+        <span class="fleet-build" title="{{ b.build_id }}">{{ b.build }}</span>
         {% if b.offline_reason %}
         <span class="fleet-why">Offline — {{ b.offline_reason }}</span>
         {% endif %}
@@ -320,7 +320,10 @@
       <div class="hardware-specs">
       {% for board in hardware_specs %}
       <div class="spec" data-hardware="{{ board.name }}">
-        <div class="spec-title" data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ board.name }}</div>
+        <header class="spec-header">
+          <h3 class="spec-title"><span data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ board.name }}</span></h3>
+          <p class="spec-caption">{{ board.controller }}</p>
+        </header>
         <div class="spec-row">
           <span class="spec-key">Resolution</span>
           <span data-led data-led-inline data-led-pad="0" data-led-color="amber">{{ board.resolution }}</span>
@@ -343,7 +346,7 @@
         </div>
         <div class="spec-row">
           <span class="spec-key">Build</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.build }}</span>
+          <span title="{{ board.build_id }}" data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.build }}</span>
         </div>
         <div class="spec-row">
           <span class="spec-key">Uptime</span>

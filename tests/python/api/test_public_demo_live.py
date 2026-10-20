@@ -235,6 +235,7 @@ def test_fleet_modes_stock_options_and_device_specific_specs(demo_app, monkeypat
     assert "On air" not in mode_block("clock")
     assert "On air" not in mode_block("music")
     assert page.count('class="mode-flag"') == 2
+    assert re.search(r'data-active-mode-count[^>]*>2</div>', page)
     assert "Sports / Stocks" in page
     assert 'data-market-option="stock_tech_ai"' in page
     assert 'data-market-option="stock_momentum"' in page
@@ -242,7 +243,8 @@ def test_fleet_modes_stock_options_and_device_specific_specs(demo_app, monkeypat
     assert 'data-market-option="stock_finance"' in page
     assert 'data-market-option="stock_consumer"' in page
     assert 'is-live" data-market-option="stock_momentum"' in page
-    assert 'is-off" data-market-option="stock_energy"' in page
+    assert 'is-on" data-market-option="stock_energy"' in page
+    assert 'is-on" data-market-option="stock_consumer"' in page
     assert len(re.findall('data-market-option=', page)) == 5
     six_card = page.split('data-hardware="Ticker Six"', 1)[1].split('data-hardware="Ticker Mini"', 1)[0]
     mini_card = page.split('data-hardware="Ticker Mini"', 1)[1].split('</section>', 1)[0]
@@ -252,6 +254,8 @@ def test_fleet_modes_stock_options_and_device_specific_specs(demo_app, monkeypat
         assert expected in mini_card
     assert "six-device-build" not in mini_card
     assert "mini-device-build" not in six_card
+    assert '<header class="spec-header">' in six_card
+    assert '<header class="spec-header">' in mini_card
 
 
 def test_empty_fleet_has_no_on_air_badge_and_shows_all_stock_options(demo_app):
@@ -260,6 +264,9 @@ def test_empty_fleet_has_no_on_air_badge_and_shows_all_stock_options(demo_app):
     assert page.count('data-market-option=') == 5
     assert 'data-hardware="Ticker Six"' in page
     assert 'data-hardware="Ticker Mini"' in page
+    assert 'class="led-chip is-off" data-market-option=' not in page
+    assert 'class="led-chip is-live" data-market-option=' not in page
+    assert page.count('class="led-chip is-on" data-market-option=') == 5
 
 
 def test_live_provider_envelopes_keep_renderer_identity(demo_app):
@@ -289,3 +296,67 @@ def test_live_provider_envelopes_keep_renderer_identity(demo_app):
         assert response.headers["X-Ticker-Items"] == "1"
         image = Image.open(BytesIO(response.data))
         assert image.size == ((129 if mode == "stock" else 384), 32)
+
+
+@pytest.mark.parametrize("raw,label", [
+    ("r1757+558782a", "Build 1757"), ("r1757", "Build 1757"),
+    ("mini-1.3.36", "v1.3.36"), ("mini-1.4.0-beta.1", "v1.4.0-beta.1"),
+    (None, "Not reported"), ("custom-build", "custom-build"),
+])
+def test_device_build_labels_keep_existing_version_numbers(raw, label):
+    from sports_ticker.dashboard_v2.routes import _build_label
+    assert _build_label(raw) == label
+
+
+def test_page_versions_stylesheet_and_preserves_full_device_build_on_hover(demo_app, monkeypatch):
+    import re
+    from sports_ticker.domain import DisplaySettings
+    from sports_ticker.fleet.models import DeviceMetadata, PairingState, TickerRecord
+    from sports_ticker.fleet.profiles import TickerProfile
+
+    now = datetime.now(timezone.utc).timestamp()
+    records = [TickerRecord(name, name, DisplaySettings(), PairingState(paired=True), DeviceMetadata(now, {
+        "profile": TickerProfile.from_mapping({"product_family": family}).to_mapping(), "build": build,
+    })) for name, family, build in (("Six", "full", "r1757+558782a"), ("Mini", "mini", "mini-1.3.36"))]
+    backend = demo_app.extensions["sports_ticker.backend_application"]
+    monkeypatch.setattr(backend, "list_tickers", lambda: records)
+    monkeypatch.setattr(backend.schedule_service, "effective_settings", lambda identifier, settings, **kwargs: settings)
+    demo_app.config["VERSION"] = "first"
+    first = demo_app.test_client().get("/").get_data(as_text=True)
+    assert 'title="r1757+558782a">Build 1757</span>' in first
+    assert 'title="mini-1.3.36">v1.3.36</span>' in first
+    assert re.search(r'data-active-mode-count[^>]*>1</div>', first)
+    assert '/dashboard/static/style.css?v=first' in first
+    demo_app.config["VERSION"] = "next"
+    second = demo_app.test_client().get("/").get_data(as_text=True)
+    assert '/dashboard/static/style.css?v=next' in second
+
+
+def test_markets_allow_multiple_green_groups_and_keep_unused_groups_orange():
+    from sports_ticker.dashboard_v2.routes import _market_rows
+    from sports_ticker.domain import DisplaySettings
+
+    tickers = [SimpleNamespace(display_settings=DisplaySettings(active_sports={group: True}))
+               for group in ("stock_finance", "stock_momentum", "stock_energy", "stock_consumer")]
+    fleet = [{"mode": "stock", "link": "online"}, {"mode": "stock", "link": "online"},
+             {"mode": "sports", "link": "online"}, {"mode": "stock", "link": "off"}]
+    states = {row["id"]: row["state"] for row in _market_rows(tickers, fleet)}
+    assert states == {"stock_tech_ai": "on", "stock_momentum": "live", "stock_energy": "on",
+                      "stock_finance": "live", "stock_consumer": "on"}
+
+
+def test_public_weather_uses_nyc_coordinates_without_ticker_settings():
+    calls = []
+    def fetch(settings):
+        calls.append(settings)
+        return ProviderResult(content=(ContentItem(id="weather:nyc", family="weather", kind="weather", data={
+            "type": "weather", "away_abbr": settings.weather_city, "home_abbr": "68", "situation": {"icon": "cloud"},
+        }),))
+    source = PublicDemoData({"weather": SimpleNamespace(fetch=fetch)})
+    source.content("weather")
+    source.close()
+    content, state = source.content("weather")
+    assert state == "live"
+    assert content["weather"][0]["data"]["away_abbr"] == "NYC"
+    assert [(settings.weather_lat, settings.weather_lon) for settings in calls] == [(40.7128, -74.0060)]
+    assert calls[0].airport_code_iata == "EWR"
