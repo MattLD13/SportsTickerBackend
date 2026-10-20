@@ -107,22 +107,24 @@ def _settings(lat: float, lon: float) -> DisplaySettings:
     return DisplaySettings(mode="weather", weather_city="Test City", weather_lat=lat, weather_lon=lon)
 
 
-def test_hybrid_weather_uses_nws_for_us_coordinates() -> None:
+def test_hybrid_weather_prefers_open_meteo_current_for_us_coordinates() -> None:
     client = FakeJsonClient(nws=True)
     result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(40.7, -74.0))
 
     data = result.content[0].data
     assert result.health.healthy is True
     assert data["temperature"] == 68
-    assert data["icon"] == "rain"
-    assert data["wind"] == 22
+    assert data["icon"] == "cloud"
+    assert data["wind"] == 5
     assert data["situation"]["stats"]["uv"] == "5"
     assert data["situation"]["sunrise"] is None
     assert data["situation"]["sunset"] is None
     assert data["forecast"][0]["high"] == 75
     assert data["forecast"][0]["day"] == "TODAY"
     assert any(url.startswith("https://api.weather.gov/points/") for url in client.urls)
-    assert not any(url.endswith("/v1/forecast") for url in client.urls)
+    current_url = next(url for url in client.urls if "api.open-meteo.com/v1/forecast" in url)
+    assert "current=" in current_url
+    assert "daily=" not in current_url
 
 
 def test_hybrid_weather_uses_open_meteo_current_when_nws_observation_is_stale() -> None:
@@ -156,7 +158,7 @@ def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> No
     assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
 
 
-def test_hybrid_weather_uses_nws_uv_bulletin_without_open_meteo_forecast() -> None:
+def test_hybrid_weather_uses_nws_uv_bulletin_and_open_meteo_current() -> None:
     client = FakeJsonClient(nws=True)
     result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(40.7, -74.0))
 
@@ -164,7 +166,9 @@ def test_hybrid_weather_uses_nws_uv_bulletin_without_open_meteo_forecast() -> No
     assert result.health.healthy is True
     assert result.health.error is None
     assert data["situation"]["stats"]["uv"] == "5"
-    assert not any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
+    current_url = next(url for url in client.urls if "api.open-meteo.com/v1/forecast" in url)
+    assert "current=" in current_url
+    assert "daily=" not in current_url
 
 
 def test_hybrid_weather_reports_nws_uv_failure() -> None:
