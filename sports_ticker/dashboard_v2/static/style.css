@@ -509,8 +509,14 @@ a { color: inherit; text-decoration: none; }
   color: var(--text-dim);
 }
 
-.spec { border: 1px solid var(--line); background: var(--panel); overflow: hidden; }
-.hardware-specs { display: grid; gap: 24px; min-width: 0; }
+.spec { position: relative; border: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+.hardware-catalog { min-width: 0; }
+.hardware-specs { display: flex; gap: 16px; min-width: 0; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.hardware-specs .spec { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
+.catalog-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.catalog-tabs button { flex: 1; padding: 10px 8px; font: inherit; font-size: 13px; color: var(--text); border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+.catalog-tabs button[aria-selected="true"] { color: var(--amber); border-color: rgba(255,176,46,.4); background: rgba(255,176,46,.06); }
+.catalog-hint { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
 .spec-header { padding: 22px; border-bottom: 1px solid var(--line); background: var(--fill); }
 .spec-title { font-size: 20px; font-weight: 500; line-height: 1.2; }
 .spec-title [data-led] { --led-pitch: 2.4; }

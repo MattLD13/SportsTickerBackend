@@ -317,13 +317,29 @@
         </div>
       </div>
 
-      <div class="hardware-specs">
+      <div class="hardware-catalog" data-hardware-catalog>
+      <div class="catalog-tabs" role="tablist" aria-label="Ticker hardware">
+        {% for board in hardware_specs %}
+        <button type="button" role="tab" id="hardware-tab-{{ loop.index }}" aria-controls="hardware-card-{{ loop.index }}"
+                aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ '0' if loop.first else '-1' }}"
+                data-catalog-index="{{ loop.index0 }}">{{ board.name | replace('Ticker ', '') }}</button>
+        {% endfor %}
+      </div>
+      <div class="hardware-specs" aria-label="Hardware cards">
       {% for board in hardware_specs %}
-      <div class="spec" data-hardware="{{ board.name }}">
+      <div class="spec" data-hardware="{{ board.name }}" id="hardware-card-{{ loop.index }}" role="tabpanel" aria-labelledby="hardware-tab-{{ loop.index }}" tabindex="0">
         <header class="spec-header">
           <h3 class="spec-title"><span data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ board.name }}</span></h3>
           <p class="spec-caption">{{ board.controller }}</p>
         </header>
+        {% if board.details is defined %}
+        {% for label, value in board.details %}
+        <div class="spec-row">
+          <span class="spec-key">{{ label }}</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ value }}</span>
+        </div>
+        {% endfor %}
+        {% else %}
         <div class="spec-row">
           <span class="spec-key">Resolution</span>
           <span data-led data-led-inline data-led-pad="0" data-led-color="amber">{{ board.resolution }}</span>
@@ -344,6 +360,7 @@
           <span class="spec-key">Modes</span>
           <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.modes }}</span>
         </div>
+        {% endif %}
         <div class="spec-row">
           <span class="spec-key">Build</span>
           <span title="{{ board.build_id }}" data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.build }}</span>
@@ -354,6 +371,8 @@
         </div>
       </div>
       {% endfor %}
+      </div>
+      <p class="catalog-hint">Swipe or use the tabs to browse.</p>
       </div>
     </div>
   </section>
@@ -410,6 +429,7 @@
 
 <script src="{{ url_for('dashboard_v2.static', filename='led.js', v=version_hash) }}"></script>
 <script src="{{ url_for('dashboard_v2.static', filename='ticker-demo.js', v=version_hash) }}"></script>
+<script src="{{ url_for('dashboard_v2.static', filename='hardware-catalog.js', v=version_hash) }}"></script>
 <script>
 (function () {
   if (!('IntersectionObserver' in window)) {

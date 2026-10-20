@@ -65,13 +65,22 @@ class PublicDemoData:
                 content["airports"] = boards
                 arrivals = [row for item in boards for row in item["data"].get("arrivals", ()) if row.get("flight_number")]
                 arrivals.sort(key=lambda row: (not row.get("is_live", False), bool(row.get("actual_timestamp"))))
-                content["flights"] = []
-                if arrivals:
-                    number = arrivals[0]["flight_number"]
-                    tracked = self._fetch(name, replace(PUBLIC_SETTINGS, track_flight_id=number, track_guest_name=number))
+                departures = [row for item in boards for row in item["data"].get("departures", ()) if row.get("flight_number")]
+                candidates = [(row, True) for row in arrivals] + [(row, False) for row in departures]
+                candidates.sort(key=lambda value: (not value[0].get("is_live", False), bool(value[0].get("actual_timestamp"))))
+                content["flights"] = [self._scheduled_flight(*candidates[0])] if candidates else []
+                for row, _ in candidates[:3]:
+                    number = row["flight_number"]
+                    try:
+                        tracked = self._fetch(name, replace(PUBLIC_SETTINGS, track_flight_id=number, track_guest_name=number))
+                    except Exception:
+                        continue
                     if tracked.health.healthy:
-                        content["flights"] = [item for item in self._project(tracked)["flights"]
-                            if "EWR" in (item["data"].get("origin_iata"), item["data"].get("dest_iata"))]
+                        matches = [item for item in self._project(tracked)["flights"]
+                                   if "EWR" in (item["data"].get("origin_iata"), item["data"].get("dest_iata"))]
+                        if matches:
+                            content["flights"] = matches
+                            break
             else:
                 groups = {group.id for group in selected_market_groups(PUBLIC_SETTINGS.active_sports)}
                 content[name] = [
@@ -89,6 +98,19 @@ class PublicDemoData:
         finally:
             with self._lock:
                 self._pending.discard(name)
+
+    @staticmethod
+    def _scheduled_flight(row, arriving):
+        """Display real airport schedule facts when live tracking is unavailable."""
+        number = row["flight_number"]
+        origin = row.get("origin_iata") or (row.get("airport_code", "---") if arriving else "EWR")
+        destination = row.get("destination_iata") or ("EWR" if arriving else row.get("airport_code", "---"))
+        data = {key: row[key] for key in ("airline_logo", "airline_iata", "airline_icao", "aircraft_type", "source_updated_at") if key in row}
+        data.update(id=number, type="flight_visitor", sport="flight", guest_name=number,
+                    origin_iata=origin, dest_iata=destination, route=f"{origin} > {destination}",
+                    origin_city=row.get("origin_city") or origin, dest_city=row.get("destination_city") or destination,
+                    status=row.get("status") or row.get("state") or "STATUS UNAVAILABLE")
+        return {"id": number, "family": "flights", "kind": "flight_visitor", "data": data}
 
     @staticmethod
     def _project(result):

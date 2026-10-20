@@ -13,7 +13,7 @@ from pathlib import Path
 from time import monotonic, time
 from concurrent.futures import wait
 from zoneinfo import ZoneInfo
-from threading import Lock
+from threading import Lock, active_count
 
 from flask import abort, current_app, render_template, request, send_file
 from PIL import Image
@@ -166,6 +166,7 @@ def demo_frame():
     response.headers["X-Ticker-Renderer"] = _version_hash()
     response.headers["X-Ticker-Data"] = data_state
     response.headers["X-Ticker-Items"] = len(items)
+    _prevent_preview_caching(response)
     return response.make_conditional(request)
 
 
@@ -195,7 +196,17 @@ def demo_animation():
     response.headers["X-Ticker-Segment"] = segment
     response.headers["X-Ticker-Renderer"] = _version_hash()
     response.headers["X-Ticker-Data"] = data_state
+    _prevent_preview_caching(response)
     return response.make_conditional(request)
+
+
+def _prevent_preview_caching(response):
+    """Keep live pixels out of browser and CDN image caches."""
+    response.headers["Cache-Control"] = "private, no-store, max-age=0, must-revalidate"
+    response.headers["CDN-Cache-Control"] = "no-store"
+    response.headers["Cloudflare-CDN-Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
 
 _STARTED_AT = monotonic()
@@ -256,7 +267,9 @@ def _build_label(value):
     if six:
         return f"Build {six[1]}"
     if mini:
-        return f"v{mini[1]}"
+        return f"Build {mini[1]}"
+    if re.fullmatch(r"[0-9a-f]{7,40}", build):
+        return f"Build {build[:7]}"
     return build or "Not reported"
 
 
@@ -295,6 +308,13 @@ def _hardware_specs(tickers):
             "build": _build_label(metadata.get("build")),
             "build_id": str(metadata.get("build") or "Not reported"), "uptime": _duration(metadata.get("uptime_seconds")),
         })
+    health = _server_health()
+    cards.append({
+        "name": "Ticker Server", "controller": "Shared backend", "build": _build_label(_version_hash()),
+        "build_id": _version_hash(), "uptime": _uptime(),
+        "details": [("API", "V2"), ("Modes", len(DISPLAY_MODES)),
+                    ("Memory", f"{health['rss_mb']} MB"), ("Threads", health["threads"]), ("Open files", health["fds"])],
+    })
     return cards
 
 
@@ -538,4 +558,4 @@ def _server_health() -> dict[str, object]:
         fds: int | str = len(os.listdir("/proc/self/fd"))
     except OSError:
         fds = "-"
-    return {"rss_mb": rss_mb, "threads": "-", "fds": fds}
+    return {"rss_mb": rss_mb, "threads": active_count(), "fds": fds}

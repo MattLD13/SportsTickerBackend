@@ -11,7 +11,9 @@ All visitors share the cached result. Failed refreshes retain available results 
 An unavailable source produces an empty view instead of a saved quote or flight.
 
 Stocks use the production Tech / AI group, including prepared company logos.
-Flights select a real EWR arrival and request its tracked flight details.
+Flights prefer validated tracking details for an EWR flight.
+If tracking is unavailable, Flights displays that flight's real airport schedule facts.
+It checks up to three candidates from the airport board.
 Airports use the live EWR arrivals and departures board.
 The former default demo used one saved Apple quote and reviewed flight examples.
 The layout explorer retains its reviewed examples.
@@ -42,10 +44,13 @@ Ticker Six and Ticker Mini have separate hardware cards.
 Each card uses its product geometry and its device's build and uptime.
 The Mini card shows page duration. The Six card shows scroll speed.
 The former card showed server build and server uptime beside Six geometry.
-Each card now has a padded header and a 24-pixel gap from the next card.
+Each card has a padded header in a horizontal scrolling catalog.
+The catalog includes Ticker Six, Ticker Mini, and Ticker Server.
+Tabs, keyboard arrows, and swipe scrolling select the visible card.
+The server card shows API version, memory, threads, open files, build, and process uptime.
 The home stylesheet URL includes the current release version to replace cached styling after deployment.
 The former URL allowed the browser to retain old card styles for four hours.
-Build labels show existing versions as Build 1757 and v1.3.36.
+Build labels show existing versions as Build 1757 and Build 1.3.36.
 Hover text retains the complete device identifier. Firmware version values remain unchanged.
 
 ## Evidence
@@ -73,5 +78,22 @@ Hover text retains the complete device identifier. Firmware version values remai
 - The critical suite passed 763 tests, with ten skips and 350 deselected tests.
 
 Follow-up screenshots and measurements remain under the ignored `previews/demo-card-polish/` directory.
+
+## Live-image cache correction
+
+Production PNG responses had a four-hour browser cache lifetime, including an unavailable Flights frame.
+The weather animation's initial URL had no unique request token.
+The live response now sends private and no-store directives to browsers and CDNs.
+The browser also disables its fetch cache and includes release and request identifiers in every preview URL.
+The server retains its bounded rendered-frame cache, which remains separate from browser and CDN caching.
+See [Cloudflare cache directives](https://developers.cloudflare.com/cache/concepts/cache-control/) for the no-store behavior.
+
+The previous flight selector checked only one candidate and discarded the schedule if tracking details were missing.
+Regression checks now cover a missing first candidate, a usable second candidate, and real schedule output without tracking.
+Schedule cards omit unreported telemetry instead of inventing altitude, speed, or distance.
+When a public source is still loading, the browser shows a NYC or EWR loading message.
+
+Browser checks confirmed three catalog cards, tab clicks, keyboard arrows, swipe synchronization, and no horizontal page overflow.
+These checks used desktop and mobile widths and collected no browser script errors.
 
 Browser captures, real provider frames, and timing reports remain under the ignored `previews/demo-live-fix/` directory.

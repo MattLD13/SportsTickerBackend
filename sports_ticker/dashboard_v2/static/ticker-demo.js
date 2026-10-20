@@ -3,6 +3,7 @@
   'use strict';
   const HEIGHT = 32, WIDTH = 384;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const build = new URL(document.currentScript.src).searchParams.get('v') || 'dev';
 
   function mount(root) {
     const viewport = root.querySelector('[data-demo-vp]');
@@ -113,11 +114,18 @@
       const controller = new AbortController(); request = controller;
       let candidate = null;
       try {
-        const url = smooth(mode)
+        let url = smooth(mode)
           ? `${base}/api/v2/demo/animation.png?mode=${encodeURIComponent(mode.id)}${nextSegment === null ? '' : `&segment=${nextSegment}`}`
           : `${base}/api/v2/demo/frame.png?mode=${encodeURIComponent(mode.id)}&_t=${Date.now()}`;
-        const response = await fetch(url, {signal:controller.signal});
+        url += `&_build=${encodeURIComponent(build)}&_fresh=${Date.now()}`;
+        const response = await fetch(url, {signal:controller.signal, cache:'no-store'});
         if (!response.ok) throw new Error('Preview unavailable');
+        root.dataset.source = response.headers.get('X-Ticker-Data') || '';
+        if (root.dataset.source === 'unavailable') {
+          if (!objectUrl) status(mode.id === 'weather' ? 'FETCHING NYC WEATHER...' :
+            ['flights', 'airports'].includes(mode.id) ? 'FETCHING EWR FLIGHTS...' : 'FETCHING MARKET DATA...');
+          return;
+        }
         candidate = URL.createObjectURL(await response.blob());
         const image = new Image();
         await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = candidate; });

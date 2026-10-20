@@ -300,7 +300,7 @@ def test_live_provider_envelopes_keep_renderer_identity(demo_app):
 
 @pytest.mark.parametrize("raw,label", [
     ("r1757+558782a", "Build 1757"), ("r1757", "Build 1757"),
-    ("mini-1.3.36", "v1.3.36"), ("mini-1.4.0-beta.1", "v1.4.0-beta.1"),
+    ("mini-1.3.36", "Build 1.3.36"), ("mini-1.4.0-beta.1", "Build 1.4.0-beta.1"),
     (None, "Not reported"), ("custom-build", "custom-build"),
 ])
 def test_device_build_labels_keep_existing_version_numbers(raw, label):
@@ -324,7 +324,7 @@ def test_page_versions_stylesheet_and_preserves_full_device_build_on_hover(demo_
     demo_app.config["VERSION"] = "first"
     first = demo_app.test_client().get("/").get_data(as_text=True)
     assert 'title="r1757+558782a">Build 1757</span>' in first
-    assert 'title="mini-1.3.36">v1.3.36</span>' in first
+    assert 'title="mini-1.3.36">Build 1.3.36</span>' in first
     assert re.search(r'data-active-mode-count[^>]*>1</div>', first)
     assert '/dashboard/static/style.css?v=first' in first
     demo_app.config["VERSION"] = "next"
@@ -360,3 +360,62 @@ def test_public_weather_uses_nyc_coordinates_without_ticker_settings():
     assert content["weather"][0]["data"]["away_abbr"] == "NYC"
     assert [(settings.weather_lat, settings.weather_lon) for settings in calls] == [(40.7128, -74.0060)]
     assert calls[0].airport_code_iata == "EWR"
+
+
+@pytest.mark.parametrize("mode,path", [("flights", "frame"), ("weather", "frame"), ("weather", "animation")])
+def test_live_pixels_are_not_stored_by_browsers_or_cdns(demo_app, mode, path):
+    response = demo_app.test_client().get(f"/api/v2/demo/{path}.png?mode={mode}")
+    assert response.status_code == 200
+    assert response.cache_control.no_store
+    assert response.cache_control.private
+    assert response.cache_control.max_age == 0
+    assert response.headers["CDN-Cache-Control"] == "no-store"
+    assert response.headers["Cloudflare-CDN-Cache-Control"] == "no-store"
+    assert response.headers["Expires"] == "0"
+
+
+def test_flight_demo_tries_next_candidate_and_keeps_real_schedule_when_tracking_fails():
+    board = ContentItem(id="airport:EWR", family="airports", kind="flight_airport_hud", data={
+        "arrivals": [{"flight_number": "UA1", "origin_iata": "ORD", "origin_city": "CHICAGO", "status": "Scheduled"},
+                     {"flight_number": "UA2", "origin_iata": "SFO", "status": "En-route"}],
+    })
+    calls = []
+    tracking = [False]
+    def fetch(settings):
+        calls.append(settings.track_flight_id)
+        if settings.track_flight_id == "UA2" and tracking[0]:
+            return ProviderResult(content=(ContentItem(id="UA2", family="flights", kind="flight_visitor", data={
+                "id": "UA2", "origin_iata": "SFO", "dest_iata": "EWR", "status": "en-route",
+            }),))
+        return ProviderResult(content=(board,))
+    source = PublicDemoData({"flights": SimpleNamespace(fetch=fetch)})
+    try:
+        source._refresh("flights")
+        source._closed = True
+        content, state = source.content("flights")
+        game = content["flights"][0]["data"]
+        assert state == "live"
+        assert game["route"] == "ORD > EWR"
+        assert game["status"] == "Scheduled"
+        assert "alt" not in game and "speed" not in game
+        assert calls == ["", "UA1", "UA2"]
+        tracking[0] = True
+        source._refresh("flights")
+        assert source.content("flights")[0]["flights"][0]["id"] == "UA2"
+    finally:
+        source.close()
+
+
+def test_hardware_catalog_includes_server_with_its_own_build_and_runtime(demo_app):
+    demo_app.config["VERSION"] = "abcdef1234567890"
+    page = demo_app.test_client().get("/").get_data(as_text=True)
+    assert 'data-hardware="Ticker Server"' in page
+    assert 'role="tablist" aria-label="Ticker hardware"' in page
+    assert 'aria-controls="hardware-card-3"' in page
+    assert 'hardware-catalog.js?v=abcdef123456' in page
+    server = page.split('data-hardware="Ticker Server"', 1)[1].split('catalog-hint', 1)[0]
+    assert "Shared backend" in server
+    assert "Build abcdef1" in server
+    assert "Threads" in server
+    assert "Memory" in server
+    assert "Resolution" not in server
