@@ -2,7 +2,7 @@ import math
 import time
 from PIL import Image, ImageDraw, ImageStat
 
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.rendering.pixels import PANE, draw_hybrid_text, draw_tiny_text, normalize_special_chars
 from ticker_core.rendering.style import TOURNAMENT_SEED
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
@@ -807,10 +807,6 @@ class SportsMixin:
             elif power_play_team == away_ab:
                 a_badge = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
 
-        if is_basketball and game.get('game_phase', 'playing') == 'playing' and game.get('state') in {'in', 'crit'}:
-            self._draw_basketball_lineups(img, game, page_tick)
-            return img
-
         # Side scrims via alpha_composite (correct blending)
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(scrim)
@@ -855,16 +851,19 @@ class SportsMixin:
                                 self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
         a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
+        lineup_reservations = []
         if h_badge:
             h_col = TOURNAMENT_SEED if sport == 'march_madness' else (255, 90, 90) if h_badge == 'EN' else (255, 204, 0)
             h_badge_x = int(h_sc_x + h_sc_w + 9)
             self.draw_outlined_text(d, h_badge_x, 1, h_badge,
                                     self.tiny, h_col, (0, 0, 0, 220), anchor='mt')
+            lineup_reservations.append(d.textbbox((h_badge_x, 1), h_badge, font=self.tiny, anchor='mt'))
         if a_badge:
             a_col = TOURNAMENT_SEED if sport == 'march_madness' else (255, 90, 90) if a_badge == 'EN' else (255, 204, 0)
             a_badge_x = int(a_sc_x - a_sc_w - 9)
             self.draw_outlined_text(d, a_badge_x, 1, a_badge,
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mt')
+            lineup_reservations.append(d.textbbox((a_badge_x, 1), a_badge, font=self.tiny, anchor='mt'))
 
         if is_nhl:
             shootout = sit.get('shootout')
@@ -878,60 +877,77 @@ class SportsMixin:
             else:
                 self._draw_hockey_context(d, sit, page_tick)
 
+        if is_basketball and game.get('game_phase', 'playing') == 'playing' and game.get('state') in {'in', 'crit'}:
+            clock_box = d.textbbox((cx, H // 2), prd, font=self.big_font, anchor='mm')
+            self._draw_basketball_lineups(d, sit, int(h_sc_x + h_sc_w) + 3, int(a_sc_x - a_sc_w) - 3,
+                                          [clock_box, *lineup_reservations])
+
         # No possession arrow for hockey/basketball full-bleed mode.
 
         return img
 
 
-    def _draw_basketball_lineups(self, image, game, page_tick):
-        """Keep scores visible beside two pages of live on-court players."""
-        shade = Image.new('RGBA', image.size, (0, 0, 0, 190))
-        image.alpha_composite(shade)
-        draw = ImageDraw.Draw(image)
-        situation = game.get('situation') or {}
+    def _draw_basketball_lineups(self, draw, situation, left_edge, right_edge, reservations):
+        """Fit all ten complete player labels around the original scoreboard."""
         lineups = situation.get('basketballOnCourt') or {}
-        pages = basketball_page_count(situation)
-        page = page_tick % pages
-        for source_side, display_side, logo_x, score_x, score_anchor, x0, x1 in (
-            ('away', 'home', 7, 34, 'lm', 81, 159),
-            ('home', 'away', 353, 350, 'rm', 224, 302),
-        ):
-            color = self.get_team_color(game, display_side)
-            edge = 0 if source_side == 'away' else 381
-            draw.rectangle((edge, 0, edge + 2, 31), fill=color)
-            logo = self.get_logo(game.get(f'{display_side}_logo'), (24, 24), game.get(f'{display_side}_logo_rendering'))
-            self._paste_team_mark(image, logo, (logo_x, 4), game.get(f'{display_side}_abbr'), 24, color)
-            self.draw_outlined_text(draw, score_x, 16, str(game.get(f'{display_side}_score', '')),
-                                    self.basketball_score, (255, 255, 255), (0, 0, 0, 255), anchor=score_anchor)
-            players = lineups.get(source_side) or ()
-            if not players:
-                for y, text in ((10, 'LINEUP'), (22, 'UNAVAILABLE')):
-                    self.draw_outlined_text(draw, (x0 + x1) // 2, y, text, self.tiny,
-                                            (180, 180, 180), (0, 0, 0, 255))
-                continue
-            # A shorter lineup repeats while the other team shows its second page.
-            side_page = page % max(1, (len(players) + 2) // 3)
-            visible = players[side_page * 3:side_page * 3 + 3]
-            first_y = 16 - (len(visible) - 1) * 5
-            for row, player in enumerate(visible):
-                words = normalize_special_chars(player.get('name', '')).split()
-                if len(words) > 1 and words[-1].upper().rstrip('.') in {'JR', 'SR', 'II', 'III', 'IV'}:
-                    words.pop()
-                surname = words[-1] if words else ''
+        for side in ('away', 'home'):
+            slots = []
+            for row in range(5):
+                y = 1 + row * 6
+                segments = [(left_edge, 190)] if side == 'away' else [(194, right_edge)]
+                for bx0, by0, bx1, by1 in reservations:
+                    if y - 1 >= by1 + 1 or y + 6 <= by0 - 1:
+                        continue
+                    remaining = []
+                    for x0, x1 in segments:
+                        if bx1 + 2 <= x0 or bx0 - 2 >= x1:
+                            remaining.append((x0, x1))
+                        else:
+                            remaining.extend((a, b) for a, b in ((x0, bx0 - 2), (bx1 + 2, x1)) if b > a)
+                    segments = remaining
+                x0, x1 = max(segments, key=lambda segment: segment[1] - segment[0])
+                slots.append((x0, x1, y))
+            labels = []
+            for player in lineups.get(side) or ():
                 number = player.get('jerseyNumber')
-                prefix = ' '.join(value for value in (f'#{number}' if number != '' else '', player.get('position')) if value)
-                label = f'{prefix} {surname}'.strip()
-                while surname and draw.textlength(label, font=self.tiny) > x1 - x0:
-                    surname = surname[:-1]
-                    label = f'{prefix} {surname}…'.strip()
-                self.draw_outlined_text(draw, x0, first_y + row * 10, label, self.tiny,
-                                        (255, 255, 255), (0, 0, 0, 255), anchor='lm')
-        status = self.shorten_status(game.get('status', ''), game.get('sport', ''))
-        self.draw_outlined_text(draw, 192, 10, status, self.tiny, (255, 240, 150), (0, 0, 0, 255))
-        self.draw_outlined_text(draw, 192, 24, f'COURT {page + 1}/{pages}', self.micro,
-                                (220, 220, 220), (0, 0, 0, 255))
+                words = str(player.get('name') or '').split()
+                surname_start = len(words) - 1
+                if len(words) > 1 and words[-1].upper().rstrip('.') in {'JR', 'SR', 'II', 'III', 'IV'}:
+                    surname_start -= 1
+                while surname_start > 0 and words[surname_start - 1].lower() in {'da', 'de', 'del', 'della', 'di', 'dos', 'la', 'van', 'von'}:
+                    surname_start -= 1
+                surname = ' '.join(words[max(0, surname_start):])
+                labels.append(' '.join(str(value) for value in (
+                    f'#{number}' if number else '', player.get('position'), surname,
+                ) if value))
+            # The top and bottom rows provide more room for complete long names.
+            labels.sort(key=len, reverse=True)
+            slots.sort(key=lambda slot: slot[1] - slot[0], reverse=True)
+            for label, (x0, x1, y) in zip(labels, slots):
+                self._draw_basketball_player_label(draw, x0 + 1, y, label, x1 - x0 - 2)
 
-    # ── Sport background helpers — exact ports of the HTML JS functions ──────
+    @staticmethod
+    def _draw_basketball_player_label(draw, x, y, label, max_width):
+        """Draw complete surnames with sharp five-row glyphs and compact spacing."""
+        glyphs = [PANE.get(char, PANE[' ']) for char in normalize_special_chars(label).upper()]
+        widths = [len(glyph[0]) if any(any(row) for row in glyph) else 2 for glyph in glyphs]
+        gap = 1 if sum(widths) + len(widths) - 1 <= max_width else 0
+        width = max(1, sum(widths) + gap * (len(widths) - 1))
+        mask = Image.new('L', (width, 5))
+        pixels = mask.load()
+        cursor = 0
+        for glyph, glyph_width in zip(glyphs, widths):
+            for row, values in enumerate(glyph):
+                for column, on in enumerate(values):
+                    if on:
+                        pixels[cursor + column, row] = 255
+            cursor += glyph_width + gap
+        if width > max_width:
+            mask = mask.resize((max_width, 5), Image.Resampling.LANCZOS)
+        for dx, dy in ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)):
+            draw.bitmap((x + dx, y + dy), mask, fill=(0, 0, 0, 240))
+        draw.bitmap((x, y), mask, fill=(255, 255, 255))
+        return mask.width
 
     def _draw_hockey_rink(self, d, W, H):
         """
@@ -1198,7 +1214,6 @@ class PreparedSportsFullRenderer(SportsMixin):
     def __init__(self, fonts, logos):
         self.big_font = fonts.big
         self.clock_giant = fonts.clock
-        self.basketball_score = fonts.huge
         self.tiny = fonts.tiny
         self.tiny_small = fonts.tiny_small
         self.micro = fonts.micro
@@ -1304,12 +1319,6 @@ class PreparedSportsFullRenderer(SportsMixin):
         draw.rectangle([cx - 1, by + 8, cx, by + 9], fill=(220, 180, 120))
         draw.rectangle([cx - 1, by + 10, cx, by + 15], fill=(180, 135, 65))
         draw.rectangle([cx - 2, by + 16, cx + 1, by + 17], fill=(150, 105, 40))
-
-
-def basketball_page_count(situation):
-    """Return the pages needed for three players per team."""
-    lineups = situation.get('basketballOnCourt') or {}
-    return max(1, *((len(lineups.get(side) or ()) + 2) // 3 for side in ('away', 'home')))
 
 
 def hockey_page_count(situation):

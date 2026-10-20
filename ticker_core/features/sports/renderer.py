@@ -13,7 +13,7 @@ from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
-from .pinned import PreparedSportsFullRenderer, basketball_page_count, hockey_page_count
+from .pinned import PreparedSportsFullRenderer, hockey_page_count
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo
@@ -418,14 +418,10 @@ class SportsRenderer:
 
 
     def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
-        """Invalidate player and goal pages at the same cadence as their renderer."""
+        """Invalidate paged hockey frames at the same cadence as their renderer."""
         pages = 1
         if scene.item.get("sports_presentation") == "pinned" and str(scene.item.get("sport") or "").lower() in {"nhl", "hockey"}:
             pages = hockey_page_count(scene.item.get("situation") or {})
-        sport = str(scene.item.get("sport") or "").lower()
-        if scene.item.get("sports_presentation") == "pinned" and (sport in {"nba", "march_madness"} or "basketball" in sport):
-            if scene.item.get("game_phase", "playing") == "playing" and scene.item.get("state") in {"in", "crit"}:
-                pages = basketball_page_count(scene.item.get("situation") or {})
         phase = (int(context.now.timestamp()) // 5) % pages if pages > 1 else None
         return ("scoreboard", json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":")), scene.mode, asset_revision, phase)
 
