@@ -40,7 +40,7 @@
       </span>
       <span class="chip">
         <span class="dot-live"></span>
-        <span data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ global_mode.replace('_', ' ') }}</span>
+        <span data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ fleet_mode_label }}</span>
       </span>
     </div>
   </div>
@@ -120,9 +120,9 @@
         <div class="stat-sub">of {{ league_count }} feeds enabled</div>
       </div>
       <div class="cell stat">
-        <div class="stat-label" data-led data-led-color="dim">MODE</div>
-        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ global_mode.replace('_', ' ') }}</div>
-        <div class="stat-sub">global display mode</div>
+        <div class="stat-label" data-led data-led-color="dim">ACTIVE MODES</div>
+        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ fleet_mode_label }}</div>
+        <div class="stat-sub">across connected tickers</div>
       </div>
     </div>
   </section>
@@ -134,14 +134,13 @@
     <div class="sec-head">
       <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">02 / FLEET</span>
       <h2 class="sec-title">
-        Every board, and why it is
-        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">dark</span>
+        Every board, and what it is
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">doing</span>
       </h2>
       <p class="sec-note">
-        Each controller reports its uptime, temperature and build on the same
-        poll it uses to ask for content. A panel showing nothing says which gate
-        is holding it, so a dark board never has to be guessed at.
-        Machine-readable at <a href="/api/health">/api/health</a>.
+        See each ticker's current mode, connection, uptime, chip temperature and
+        software version. Connection status shows whether it is checking in with
+        the server. Server status is available at <a href="/api/v2/health">/api/v2/health</a>.
       </p>
 
       <div class="legend">
@@ -166,8 +165,8 @@
         <span>{{ b.uptime }}</span>
         <span>{{ b.temp }}</span>
         <span class="fleet-build">{{ b.build }}</span>
-        {% if b.dark_reason %}
-        <span class="fleet-why">Dark — {{ b.dark_reason }}</span>
+        {% if b.offline_reason %}
+        <span class="fleet-why">Offline — {{ b.offline_reason }}</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -175,7 +174,7 @@
 
     <div class="fleet-foot">
       <span>{{ fleet_online }}/{{ fleet | length }} polling</span>
-      <span>{{ fleet_dark }} dark</span>
+      <span>{{ fleet_offline }} offline</span>
       <span class="spacer"></span>
       <span>server {{ server_health.rss_mb or '—' }}MB · {{ server_health.threads }} threads
             · {{ server_health.fds or '—' }} fds</span>
@@ -203,11 +202,11 @@
 
     <div class="grid grid-3">
       {% for m in display_modes %}
-      <div class="cell mode{% if m.id == global_mode %} is-current{% endif %}">
-        <div class="mode-key" data-led data-led-color="{% if m.id == global_mode %}amber{% else %}dim{% endif %}" data-led-fit>{{ m.name }}</div>
+      <div class="cell mode{% if m.id in active_modes %} is-current{% endif %}" data-mode-option="{{ m.id }}">
+        <div class="mode-key" data-led data-led-color="{% if m.id in active_modes %}amber{% else %}dim{% endif %}" data-led-fit>{{ m.name }}</div>
         <div class="mode-body">
           <p class="mode-desc">{{ m.desc }}</p>
-          {% if m.id == global_mode %}<span class="mode-flag">On air</span>{% endif %}
+          {% if m.id in active_modes %}<span class="mode-flag">On air</span>{% endif %}
         </div>
       </div>
       {% endfor %}
@@ -223,8 +222,8 @@
         <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">track</span>
       </h2>
       <p class="sec-note">
-        Leagues are toggled per-server, so the board only spends requests on the
-        sports actually in season.
+        Each ticker has its own league settings. Markets show all available stock
+        groups and their status across the fleet.
       </p>
 
       <div class="legend">
@@ -251,7 +250,7 @@
         <div class="chip-group-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">MARKETS</div>
         <div class="chips">
           {% for l in market_leagues %}
-          <span class="led-chip is-{{ l.state }}">
+          <span class="led-chip is-{{ l.state }}" data-market-option="{{ l.id }}">
             <span class="bulb"></span>
             <span data-led data-led-inline data-led-pad="0"
                   data-led-color="{{ {'live': 'green', 'on': 'amber', 'off': 'dim'}[l.state] }}">{{ l.label | replace(' Stocks', '') }}</span>
@@ -293,6 +292,7 @@
           384&times;32 surface. A Raspberry&nbsp;Pi drives the matrix over a bonnet
           and runs the controller, which asks the backend what to draw and then
           composites the frame locally.
+          Ticker Mini uses one 64&times;32 panel with an ESP32-S3 controller.
         </p>
         <p>
           The backend is a <strong>Flask server on an Ubuntu VPS</strong>. It polls
@@ -317,35 +317,40 @@
         </div>
       </div>
 
-      <div class="spec">
+      <div class="hardware-specs">
+      {% for board in hardware_specs %}
+      <div class="spec" data-hardware="{{ board.name }}">
+        <div class="spec-title" data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ board.name }}</div>
         <div class="spec-row">
           <span class="spec-key">Resolution</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="amber">{{ panel_w }}X{{ panel_h }}</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="amber">{{ board.resolution }}</span>
         </div>
         <div class="spec-row">
           <span class="spec-key">Panels</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="white">6 X 64X32</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.panels }}</span>
         </div>
         <div class="spec-row">
           <span class="spec-key">Interface</span>
           <span data-led data-led-inline data-led-pad="0" data-led-color="white">HUB75</span>
         </div>
         <div class="spec-row">
-          <span class="spec-key">Scroll rate</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ scroll_px_s }} PX/SEC</span>
+          <span class="spec-key">{{ board.timing_label }}</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.timing }}</span>
         </div>
         <div class="spec-row">
           <span class="spec-key">Modes</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ display_modes | length }}</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.modes }}</span>
         </div>
         <div class="spec-row">
           <span class="spec-key">Build</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ version_hash[:7] }}</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.build }}</span>
         </div>
         <div class="spec-row">
           <span class="spec-key">Uptime</span>
-          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ uptime_str }}</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ board.uptime }}</span>
         </div>
+      </div>
+      {% endfor %}
       </div>
     </div>
   </section>

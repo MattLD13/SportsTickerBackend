@@ -510,6 +510,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 .spec { border: 1px solid var(--line); background: var(--panel); }
+.hardware-specs { display: grid; gap: 24px; min-width: 0; }
+.spec-title { display: block; padding: 18px; border-bottom: 1px solid var(--line); }
 .spec-row {
   display: flex;
   align-items: center;

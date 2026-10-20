@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
 from threading import RLock
+
+from PIL import Image
 
 from ticker_core.bootstrap import create_default_content_catalog, create_default_frame_builder
 from ticker_core.context import RenderContext
@@ -68,6 +70,51 @@ class PreviewRenderer:
             self._sessions.clear()
             self._frames.clear()
             self._bytes = 0
+
+    def _remember(self, key, encoded):
+        self._frames[key] = encoded
+        self._bytes += len(encoded)
+        while len(self._frames) > 64 or self._bytes > 8 * 1024 * 1024:
+            _, removed = self._frames.popitem(last=False)
+            self._bytes -= len(removed)
+        return encoded
+
+    def animation(self, items: list[dict], mode: str, start: datetime) -> bytes:
+        """Render one bounded three-second atlas through production drawing code."""
+        from ticker_core.bootstrap import CachedLogoView
+        from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
+        from ticker_core.features.weather import WeatherRenderer
+        from ticker_core.rendering import load_default_font_set
+
+        key = ("animation", mode, start.isoformat(), json.dumps(items, sort_keys=True), self._assets.revision)
+        with self._lock:
+            if key in self._frames:
+                self._frames.move_to_end(key)
+                return self._frames[key]
+            atlas = Image.new("RGB", (384, 32 * 90))
+            game = deepcopy(items[0]) if items else {}
+            fonts = load_default_font_set()
+            if mode == "music" and items:
+                renderer = MusicRenderer(fonts, CachedLogoView(self._assets))
+                warm = start - timedelta(seconds=2)
+                age = max(0.0, float(game.get("progress", 0)) + warm.timestamp() - float(game.get("fetch_ts", warm.timestamp())))
+                state = MusicAnimationState(rotation=(-100 * age) % 360, scroll=15 * age, previous_time=warm.timestamp())
+                for index in range(60):
+                    _, state = renderer.render_with_state(RenderContext(warm + timedelta(seconds=index / 30)), game, state)
+            elif items:
+                renderer = WeatherRenderer(fonts)
+            else:
+                frame = Image.open(BytesIO(self.render([], mode, "pinned", start))).convert("RGB")
+            for index in range(90):
+                context = RenderContext(start + timedelta(seconds=index / 30))
+                if mode == "music" and items:
+                    frame, state = renderer.render_with_state(context, game, state)
+                elif items:
+                    frame = renderer.detailed(context, game)
+                atlas.paste(frame.convert("RGB"), (0, index * 32))
+            stream = BytesIO()
+            atlas.save(stream, format="PNG")
+            return self._remember(key, stream.getvalue())
 
     def render(self, items: list[dict], mode: str, presentation: str, now: datetime, *, row: dict | None = None) -> bytes:
         """Draw through production renderers after asset preparation completes."""
@@ -131,9 +178,4 @@ class PreviewRenderer:
             stream = BytesIO()
             image.convert("RGB").save(stream, format="PNG")
             encoded = stream.getvalue()
-            self._frames[cache_key] = encoded
-            self._bytes += len(encoded)
-            while len(self._frames) > 64 or self._bytes > 8 * 1024 * 1024:
-                _, removed = self._frames.popitem(last=False)
-                self._bytes -= len(removed)
-            return encoded
+            return self._remember(cache_key, encoded)

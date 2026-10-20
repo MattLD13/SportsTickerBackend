@@ -17,9 +17,10 @@ from threading import Lock
 from flask import abort, current_app, render_template, request, send_file
 from PIL import Image
 
-from sports_ticker.domain import DisplaySettings
+from sports_ticker.domain import DISPLAY_MODES, DisplaySettings
+from sports_ticker.fleet.profiles import TickerProfile
 from sports_ticker.leagues import LEAGUES
-from sports_ticker.markets import selected_market_groups
+from sports_ticker.markets import MARKET_GROUPS, selected_market_groups
 from sports_ticker.projections import project_data_v2, select_display_content
 from sports_ticker.providers.http import JsonHttpError
 
@@ -35,14 +36,18 @@ def public_index():
     tickers = application.list_tickers()
     ticker = tickers[0] if tickers else None
     settings = ticker.display_settings if ticker is not None else None
-    mode = "pairing" if ticker is not None and not ticker.pairing.paired else (settings.mode if settings else "sports")
     snapshot = application.get_snapshot(ticker.ticker_id) if ticker is not None else None
     content = snapshot.content if snapshot is not None else ()
     active_sports = settings.active_sports if settings is not None else {}
-    sports = _league_rows(active_sports, content, "sports", _coverage_catalog(application))
+    sports = _sports_rows(active_sports, content, _coverage_catalog(application))
     utilities = _utility_rows(content)
-    markets = _league_rows(active_sports, content, "stock")
-    fleet = _fleet_rows(tickers)
+    effective = {item.ticker_id: application.schedule_service.effective_settings(
+        item.ticker_id, item.display_settings, allowed_modes=item.profile.capabilities.modes,
+    ) for item in tickers}
+    fleet = _fleet_rows(tickers, effective)
+    active_modes = {item["mode"] for item in fleet if item["link"] == "online" and item["mode"] in DISPLAY_MODES}
+    mode_label = " / ".join(item["name"] for item in _display_modes() if item["id"] in active_modes) or "Offline"
+    markets = _market_rows(application, tickers, fleet)
     visible = _display_content(application, ticker.ticker_id) if ticker is not None else {}
     shown = sum(len(items) for items in visible.values())
     return render_template(
@@ -52,9 +57,11 @@ def public_index():
         uptime_str=_uptime(),
         fleet=fleet,
         fleet_online=sum(1 for item in fleet if item["link"] == "online"),
-        fleet_dark=sum(1 for item in fleet if item["dark_reason"]),
+        fleet_offline=sum(1 for item in fleet if item["offline_reason"]),
         server_health=_server_health(),
-        global_mode=mode,
+        fleet_mode_label=mode_label,
+        active_modes=active_modes,
+        hardware_specs=_hardware_specs(tickers),
         sports_leagues=sports,
         util_leagues=utilities,
         market_leagues=markets,
@@ -121,6 +128,7 @@ def demo_layouts():
 def demo_frame():
     """Render public content through the current production Pi renderer."""
     name = request.args.get("case", "")
+    data_state = "example"
     row = layout_case(name) if name else None
     if name and row is None:
         abort(404)
@@ -142,9 +150,8 @@ def demo_frame():
     else:
         if mode not in {item["id"] for item in _demo_modes()}:
             abort(404)
-        content = _live_sports_content() if mode == "sports" else {}
-        content = content or _demo_content(mode)
-        items = [dict(item["data"]) for records in content.values() for item in records if item.get("is_shown", True)]
+        content, data_state = _public_mode_content(mode)
+        items = _preview_items(content)
         if mode not in {"sports", "stock"}:
             presentation = "pinned"
         timestamp = int(time() * 4) / 4
@@ -155,6 +162,37 @@ def demo_frame():
     response = send_file(BytesIO(encoded), mimetype="image/png", max_age=0)
     response.set_etag(hashlib.sha256(encoded).hexdigest())
     response.headers["X-Ticker-Renderer"] = _version_hash()
+    response.headers["X-Ticker-Data"] = data_state
+    response.headers["X-Ticker-Items"] = len(items)
+    return response.make_conditional(request)
+
+
+@dashboard_v2.get("/api/v2/demo/animation.png")
+def demo_animation():
+    """Prepare consecutive production frames for smooth browser playback."""
+    mode = request.args.get("mode", "")
+    if mode not in {"music", "weather"}:
+        abort(400)
+    current_segment = int(time() // 3)
+    try:
+        segment = int(request.args.get("segment", current_segment))
+    except ValueError:
+        abort(400)
+    if not current_segment - 2 <= segment <= current_segment + 1:
+        abort(400)
+    content, data_state = _public_mode_content(mode, at=segment * 3)
+    items = _preview_items(content)
+    assets = _preview_assets()
+    assets.prefetch(content)
+    now = datetime.fromtimestamp(segment * 3, ZoneInfo("America/New_York"))
+    encoded = assets.renderer.animation(items, mode, now)
+    response = send_file(BytesIO(encoded), mimetype="image/png", max_age=0)
+    response.set_etag(hashlib.sha256(encoded).hexdigest())
+    response.headers["X-Ticker-Frames"] = 90
+    response.headers["X-Ticker-FPS"] = 30
+    response.headers["X-Ticker-Segment"] = segment
+    response.headers["X-Ticker-Renderer"] = _version_hash()
+    response.headers["X-Ticker-Data"] = data_state
     return response.make_conditional(request)
 
 
@@ -182,7 +220,7 @@ def _uptime() -> str:
     return f"{hours}h {minutes}m" if hours else f"{minutes}m {seconds}s"
 
 
-def _fleet_rows(tickers) -> list[dict[str, object]]:
+def _fleet_rows(tickers, effective=None) -> list[dict[str, object]]:
     """Project Pi heartbeat metadata into established fleet rows."""
 
     now = datetime.now(timezone.utc).timestamp()
@@ -196,14 +234,58 @@ def _fleet_rows(tickers) -> list[dict[str, object]]:
             "name": ticker.name,
             "id": ticker.ticker_id[:8],
             "link": "online" if age is not None and age < 90 else "off",
-            "mode": ("pairing" if not ticker.pairing.paired else ticker.display_settings.mode).replace("_", " "),
+            "mode": "pairing" if ticker.pairing is None or not ticker.pairing.paired else
+                (effective or {}).get(ticker.ticker_id, ticker.display_settings).mode,
             "last_poll": "never" if age is None else f"{age}s ago",
             "uptime": _duration(metadata.get("uptime_seconds")),
             "temp": f"{temperature:.0f}C" if type(temperature) in (int, float) and isfinite(temperature) else "-",
             "build": str(metadata.get("build") or "-"),
-            "dark_reason": "" if age is not None and age < 90 else "No recent heartbeat",
+            "offline_reason": "" if age is not None and age < 90 else "No recent heartbeat",
         })
     return rows
+
+
+def _market_rows(application, tickers, fleet):
+    """Show every stock option and aggregate enabled groups across the fleet."""
+    enabled = {group.id for ticker in tickers for group in selected_market_groups(ticker.display_settings.active_sports)}
+    if not tickers:
+        enabled = {group.id for group in selected_market_groups({})}
+    live = set()
+    for ticker, row in zip(tickers, fleet):
+        if row["link"] != "online" or row["mode"] != "stock":
+            continue
+        selected = {group.id for group in selected_market_groups(ticker.display_settings.active_sports)}
+        snapshot = application.get_snapshot(ticker.ticker_id)
+        if snapshot is not None:
+            live.update(item.data.get("market_group") for item in snapshot.content
+                        if item.family == "stock" and item.is_shown and item.data.get("market_group") in selected)
+    return [{"id": group.id, "label": group.label,
+             "state": "live" if group.id in live else "on" if group.id in enabled else "off"}
+            for group in MARKET_GROUPS]
+
+
+def _hardware_specs(tickers):
+    """Keep product geometry separate and show each device's own telemetry."""
+    cards = []
+    for family, name in (("full", "Ticker Six"), ("mini", "Ticker Mini")):
+        candidates = [ticker for ticker in tickers if ticker.profile.product_family == family]
+        ticker = max(candidates, key=lambda item: item.device.last_seen_at or 0) if candidates else None
+        profile = ticker.profile if ticker else TickerProfile.from_mapping({"product_family": family})
+        display = profile.display
+        metadata = ticker.device.metadata if ticker else {}
+        speed = ticker.display_settings.scroll_speed if ticker else 0.03
+        if family == "mini":
+            seconds = min(10, max(1, speed * 100))
+            timing = f"{seconds:g} SEC/PAGE"
+        else:
+            timing = f"{round(1 / speed) if speed > 0 else 33} PX/SEC"
+        cards.append({
+            "name": name, "resolution": f"{display.width}X{display.height}",
+            "panels": f"{display.panel_count} X 64X32", "timing_label": "Page duration" if family == "mini" else "Scroll rate",
+            "timing": timing, "modes": len(profile.capabilities.modes) if ticker else len(DISPLAY_MODES),
+            "build": str(metadata.get("build") or "Not reported"), "uptime": _duration(metadata.get("uptime_seconds")),
+        })
+    return cards
 
 
 def _coverage_catalog(application):
@@ -216,18 +298,14 @@ def _coverage_catalog(application):
     return tuple({"id": league.id, "label": league.label, "type": "sport"} for league in LEAGUES)
 
 
-def _league_rows(active_sports, content, family: str, catalog=()) -> list[dict[str, str]]:
-    """Keep sports and market coverage within their catalog boundaries."""
-    field = "market_group" if family == "stock" else "sport"
-    records = {str(item.data.get(field, "")).lower() for item in content if item.family == family}
-    if family == "stock":
-        entries = ({"id": group.id, "label": group.label} for group in selected_market_groups(active_sports))
-    else:
-        entries = (
-            entry for entry in catalog
-            if entry["type"] == "sport" and active_sports.get(entry["id"], True)
-            and active_sports.get(entry.get("conference_parent", entry["id"]), True)
-        )
+def _sports_rows(active_sports, content, catalog) -> list[dict[str, str]]:
+    """Keep sports coverage within the shared league and conference catalog."""
+    records = {str(item.data.get("sport", "")).lower() for item in content if item.family == "sports"}
+    entries = (
+        entry for entry in catalog
+        if entry["type"] == "sport" and active_sports.get(entry["id"], True)
+        and active_sports.get(entry.get("conference_parent", entry["id"]), True)
+    )
     return [
         {"id": entry["id"], "label": entry["label"], "state": "live" if entry["id"] in records else "on"}
         for entry in entries
@@ -303,16 +381,43 @@ def _live_sports_content() -> dict[str, list[dict[str, object]]]:
     return {}
 
 
-def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
+def _demo_content(mode: str, *, at: float | None = None) -> dict[str, list[dict[str, object]]]:
     """Select reviewed public inputs without exposing personal utility data."""
-    selected = {"sports": ("FB02", "BS09", "BK03", "HK07", "SC04"), "stock": ("MD01",),
-                "weather": ("MD04",), "flights": ("MD13",), "airports": ("MD18",), "clock": ("MD20",)}
+    selected = {"sports": ("FB02", "BS09", "BK03", "HK07", "SC04"), "weather": ("MD04",), "clock": ("MD20",)}
     if mode == "music":
-        cycle_start = _SAMPLE_STARTED + int((time() - _SAMPLE_STARTED + 112) // 303) * 303
+        sample_time = time() if at is None else at
+        cycle_start = _SAMPLE_STARTED + int((sample_time - _SAMPLE_STARTED + 112) // 303) * 303
         return {"music": [{"data": {"type": "music", "sport": "music", "name": "MR. BLUE SKY",
             "artist": "ELECTRIC LIGHT ORCHESTRA", "cover": "demo:album", "is_playing": True,
             "progress": 112, "duration": 303, "fetch_ts": cycle_start}}]}
     return {mode: [{"id": name, "data": layout_case(name)["game"]} for name in selected.get(mode, ())]}
+
+
+def _public_mode_content(mode, *, at=None):
+    """Select live public feeds without copying personal device utility state."""
+    if mode in {"stock", "flights", "airports"}:
+        source = current_app.extensions.get("sports_ticker.public_demo_data")
+        return source.content(mode) if source is not None else ({mode: []}, "unavailable")
+    if mode == "sports":
+        content = _live_sports_content()
+        if content:
+            return content, "live"
+    return _demo_content(mode, at=at), "example"
+
+
+def _preview_items(content):
+    """Carry explicit V2 identity and renderer kind into preview scenes."""
+    items = []
+    for records in content.values():
+        for record in records:
+            if not record.get("is_shown", True):
+                continue
+            game = dict(record["data"])
+            for field, value in (("id", record.get("id")), ("type", record.get("kind")), ("sport", record.get("family"))):
+                if value:
+                    game.setdefault(field, value)
+            items.append(game)
+    return items
 
 
 def _display_content(application, ticker_id: str, *, mode: str | None = None) -> dict[str, list[dict[str, object]]]:
@@ -375,7 +480,8 @@ class _PreviewAssets:
 
         from ticker_core.assets import AssetPlanner
 
-        requests = [item for item in AssetPlanner().plan(content).requests if not item.url.startswith("demo:")]
+        requests = [item for item in AssetPlanner().plan(content).requests if not item.url.startswith("demo:")
+                    and (set(content) != {"stock"} or item.size == (24, 24))]
         wait(self._coordinator.prefetch(requests), timeout=2)
 
     @property

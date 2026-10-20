@@ -32,7 +32,7 @@ def _close(app):
 
 def test_public_coverage_separates_markets_and_uses_conference_names(tmp_path, monkeypatch) -> None:
     from types import SimpleNamespace
-    from sports_ticker.dashboard_v2.routes import _league_rows
+    from sports_ticker.dashboard_v2.routes import _sports_rows
 
     catalog = (
         {"id": "nfl", "label": "NFL", "type": "sport"},
@@ -48,15 +48,11 @@ def test_public_coverage_separates_markets_and_uses_conference_names(tmp_path, m
         SimpleNamespace(family="sports", data={"sport": "nfl"}),
         SimpleNamespace(family="stock", data={"market_group": "stock_finance", "sport": "nfl"}),
     )
-    markets = _league_rows(active, content, "stock", catalog)
-    assert markets == [{"id": "stock_finance", "label": "Financial Stocks", "state": "live"}]
-    sports = _league_rows(active, content, "sports", catalog)
+    sports = _sports_rows(active, content, catalog)
     assert [row["label"] for row in sports] == ["NFL", "NCAA (FBS)", "ACC", "NCAA (FCS)", "Big Sky"]
     assert sports[0]["state"] == "live"
     active["ncf_fbs"] = False
-    assert "ncf_fbs:1" not in {row["id"] for row in _league_rows(active, content, "sports", catalog)}
-    assert {row["id"] for row in _league_rows({}, (), "stock")} == {"stock_tech_ai"}
-    assert _league_rows({"stock_finance": False}, (), "stock") == []
+    assert "ncf_fbs:1" not in {row["id"] for row in _sports_rows(active, content, catalog)}
 
     app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
     try:
@@ -227,6 +223,11 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
         for section in ("demo", "fleet", "modes", "coverage", "hardware"):
             assert f'id="{section}"'.encode() in home_page
         assert b'href="/demo/layouts"' in home_page
+        assert b"Every board, and what it is" in home_page
+        assert b">doing</span>" in home_page
+        assert b"offline</span>" in home_page
+        assert b"dark</span>" not in home_page
+        assert b'href="/api/v2/health"' in home_page
         assert b"Explore big + Mini layouts" not in client.get("/demo").data
         assert b'"id": "music", "kind": "frame"' in client.get("/").data
 

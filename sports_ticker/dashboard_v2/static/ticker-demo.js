@@ -16,6 +16,9 @@
     let rotating = root.dataset.autorotate === 'true' && !reducedMotion;
     let timer = null, rotation = null, animation = null, request = null;
     let track = null, stripWidth = 0, offset = 0, previousTime = null, objectUrl = null;
+    let atlas = null, queuedAtlas = null, canvas = null, canvasContext = null;
+    let atlasStarted = 0, lastAtlasFrame = -1, nextSegment = null;
+    let unavailableRetries = 0;
     const buttons = [];
     let auto = null;
 
@@ -31,11 +34,44 @@
       animation = null; previousTime = null;
       if (request) request.abort();
       request = null;
+      if (queuedAtlas) URL.revokeObjectURL(queuedAtlas.url);
+      atlas = null; queuedAtlas = null; canvas = null; canvasContext = null; nextSegment = null;
+    }
+
+    function smooth(mode) { return !reducedMotion && ['music', 'weather'].includes(mode.id); }
+
+    function showAtlas(chunk, started) {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = chunk.url; atlas = chunk; atlasStarted = started; lastAtlasFrame = -1;
+      nextSegment = chunk.segment + 1;
+      if (!canvas) {
+        canvas = document.createElement('canvas'); canvas.width = WIDTH; canvas.height = HEIGHT;
+        canvas.className = 'demo-frame'; canvas.setAttribute('role', 'img');
+        canvas.setAttribute('aria-label', `${modes[index].label} ticker preview`);
+        canvasContext = canvas.getContext('2d'); canvasContext.imageSmoothingEnabled = false;
+        viewport.replaceChildren(canvas);
+      }
     }
 
     function tick(time) {
       animation = null;
-      if (!visible || !track || !stripWidth || reducedMotion) return;
+      if (!visible || reducedMotion) return;
+      if (atlas) {
+        const duration = atlas.frames / atlas.fps * 1000;
+        if (time - atlasStarted >= duration && queuedAtlas) {
+          const next = queuedAtlas; queuedAtlas = null;
+          showAtlas(next, Math.max(atlasStarted + duration, time - duration));
+          timer = setTimeout(() => refresh(generation), 0);
+        }
+        const frame = Math.min(atlas.frames - 1, Math.floor(Math.max(0, time - atlasStarted) / 1000 * atlas.fps));
+        if (frame !== lastAtlasFrame) {
+          canvasContext.drawImage(atlas.image, 0, frame * HEIGHT, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT);
+          lastAtlasFrame = frame;
+        }
+        animation = requestAnimationFrame(tick);
+        return;
+      }
+      if (!track || !stripWidth) return;
       if (previousTime !== null) offset = (offset + Math.min((time - previousTime) / 1000, .1) * speed) % stripWidth;
       previousTime = time;
       const scale = viewport.clientHeight / HEIGHT;
@@ -44,7 +80,7 @@
     }
 
     function startAnimation() {
-      if (visible && track && animation === null && !reducedMotion) animation = requestAnimationFrame(tick);
+      if (visible && (track || atlas) && animation === null && !reducedMotion) animation = requestAnimationFrame(tick);
     }
 
     function showPixels(image, url, mode) {
@@ -77,21 +113,40 @@
       const controller = new AbortController(); request = controller;
       let candidate = null;
       try {
-        const response = await fetch(`${base}/api/v2/demo/frame.png?mode=${encodeURIComponent(mode.id)}&_t=${Date.now()}`, {signal:controller.signal});
+        const url = smooth(mode)
+          ? `${base}/api/v2/demo/animation.png?mode=${encodeURIComponent(mode.id)}${nextSegment === null ? '' : `&segment=${nextSegment}`}`
+          : `${base}/api/v2/demo/frame.png?mode=${encodeURIComponent(mode.id)}&_t=${Date.now()}`;
+        const response = await fetch(url, {signal:controller.signal});
         if (!response.ok) throw new Error('Preview unavailable');
         candidate = URL.createObjectURL(await response.blob());
         const image = new Image();
         await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = candidate; });
         if (token !== generation || controller.signal.aborted) return;
-        showPixels(image, candidate, mode); candidate = null;
+        root.dataset.source = response.headers.get('X-Ticker-Data') || '';
+        if (smooth(mode)) {
+          const chunk = {image, url:candidate, frames:Number(response.headers.get('X-Ticker-Frames')),
+            fps:Number(response.headers.get('X-Ticker-FPS')), segment:Number(response.headers.get('X-Ticker-Segment'))};
+          if (chunk.frames !== 90 || chunk.fps !== 30 || !Number.isInteger(chunk.segment) || image.naturalWidth !== WIDTH || image.naturalHeight !== HEIGHT * chunk.frames) throw new Error('Invalid animation');
+          if (atlas) queuedAtlas = chunk;
+          else { showAtlas(chunk, performance.now()); startAnimation(); }
+        } else showPixels(image, candidate, mode);
+        candidate = null;
       } catch (error) {
+        if (token === generation && smooth(mode) && error.name !== 'AbortError') nextSegment = null;
         if (error.name !== 'AbortError' && token === generation && !objectUrl) status('PREVIEW UNAVAILABLE — RETRYING...');
       } finally {
         if (candidate) URL.revokeObjectURL(candidate);
         if (request === controller) request = null;
         if (visible && token === generation && !controller.signal.aborted) {
-          const period = mode.id === 'clock' ? 1000 : ['music', 'weather'].includes(mode.id) ? 250 : 15000;
-          timer = setTimeout(() => refresh(token), period);
+          if (smooth(mode)) {
+            if (!queuedAtlas) timer = setTimeout(() => refresh(token), nextSegment === null ? 1000 : 0);
+          } else {
+            const waiting = root.dataset.source === 'unavailable';
+            const period = waiting ? Math.min(15000, 1000 * 2 ** Math.min(4, unavailableRetries++))
+              : mode.id === 'clock' || ['music', 'weather'].includes(mode.id) ? 1000 : 15000;
+            if (!waiting) unavailableRetries = 0;
+            timer = setTimeout(() => refresh(token), period);
+          }
         }
       }
     }
@@ -112,6 +167,7 @@
       if (manual) setRotating(false);
       index = (next + modes.length) % modes.length;
       track = null; stripWidth = 0; offset = 0;
+      unavailableRetries = 0;
       if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
       root.dataset.mode = modes[index].id;
       buttons.forEach((button, i) => { button.classList.toggle('is-active', i === index); button.setAttribute('aria-pressed', String(i === index)); });

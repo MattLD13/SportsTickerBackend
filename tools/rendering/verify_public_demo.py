@@ -12,12 +12,12 @@ EXPECTED_HASHES = {
     "sports_ticker/dashboard_v2/static/layout-explorer.js": "000f60aa73c5bb0c2b9e996847e691ad6df11f7166f5bc02287965f8de1e5bc4",
     "sports_ticker/dashboard_v2/static/layout-explorer.css": "3c40636efc755308866aac02327e0c9bb9c5198b4c0290fce69ce2b8b9bb6dbf",
     "sports_ticker/dashboard_v2/templates/demo_layouts.html": "7e9526fbb773bfd766509645629ca0841a8f829db4908cb837ab7f26ffe8a709",
-    "sports_ticker/dashboard_v2/templates/dashboard/index.html": "4fa11eda2e79e9dcef5b8af9b61fdae89331c086e6527b11988884470d9420ef",
+    "sports_ticker/dashboard_v2/templates/dashboard/index.html": "a8f043cc0ff85f92b3fa02b93a36190cacaace14ac1a0e5c78a639cac234ba87",
     "sports_ticker/dashboard_v2/templates/demo_ticker.html": "36aa4ad71c01f98aa80f54ffceb3f743bee46ddceecb2bee2598c64ac7bb863b",
     "sports_ticker/dashboard_v2/templates/demo_portfolio.html": "7d7fe0bf667e9ae06512f58350da8495890138919ce8b136366d2b77b50937e7",
     "sports_ticker/dashboard_v2/static/led.js": "f2bdef1b209887868e6333c886bbf9cecc14b0362c1d4490d038f4f475dc92b7",
-    "sports_ticker/dashboard_v2/static/style.css": "4fa8d200c025a6bd6fcb6933b15ab26d7ddd65021892c050ea579ac4ef549c8f",
-    "sports_ticker/dashboard_v2/static/ticker-demo.js": "8fa8918cf2a419e9a29cb63ea2ccd266e55d687bb4f52efc876dbcb543a9dac0",
+    "sports_ticker/dashboard_v2/static/style.css": "0ee91eda3b5b7e5b3dd18bc72dab8f0de328f355e397c42bc3761427fa5ae4e7",
+    "sports_ticker/dashboard_v2/static/ticker-demo.js": "7c64d20d366917ffbb1183f9ad34e0ab04996d2096adb49dd37ace2d42be1fbe",
 }
 
 
