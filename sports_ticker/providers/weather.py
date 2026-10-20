@@ -27,6 +27,7 @@ _NWS_POINT_CACHE_SECONDS = 24 * 60 * 60
 _NWS_UVI_CACHE_SECONDS = 24 * 60 * 60
 _GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 _POSTAL_CODE = re.compile(r"^\d{5}(?:-\d{4})?$")
+_NWS_OBSERVATION_MAX_AGE = timedelta(minutes=45)
 _UVI_VALUE = re.compile(r"([A-Z][A-Z .'-]*?)\s{2,}([A-Z]{2})\s+(\d+(?:\.\d+)?)")
 _UVI_VALID_DATE = re.compile(r"\bVALID\s+([A-Z]{3})\s+(\d{1,2})\s+(\d{4})\b")
 
@@ -162,6 +163,28 @@ class OpenMeteoWeatherProvider:
             return current.get("us_aqi"), None
         except Exception as exc:
             return None, f"air quality: {exc}"
+
+    def fetch_current(self, settings: DisplaySettings) -> ContentItem:
+        """Fetch current conditions without depending on AQI availability."""
+
+        if not isinstance(settings, DisplaySettings):
+            raise TypeError("settings must be DisplaySettings")
+        payload = self.client.get_json(
+            _query(
+                _FORECAST_URL,
+                latitude=settings.weather_lat,
+                longitude=settings.weather_lon,
+                current=(
+                    "temperature_2m,weather_code,apparent_temperature,"
+                    "wind_speed_10m,relative_humidity_2m,is_day,cloud_cover"
+                ),
+                temperature_unit="fahrenheit",
+                wind_speed_unit="mph",
+                timezone="auto",
+            ),
+            timeout=self.timeout,
+        )
+        return _content_item(settings, payload, None)
 
     def fetch_aqi(self, settings: DisplaySettings) -> Any:
         """Return AQI without making AQI availability control weather health."""
@@ -320,8 +343,13 @@ class HybridWeatherProvider:
         forecast_payload = self.client.get_json(forecast_url, timeout=self.timeout)
         observation = self._nws_observation(stations_url)
         hourly_payload = None
-        if hourly_url and not _nws_observation_is_fresh(observation):
-            hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
+        current_fallback = None
+        if not _nws_observation_is_fresh(observation):
+            try:
+                current_fallback = self._open_meteo.fetch_current(settings)
+            except Exception:
+                if hourly_url:
+                    hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
         aqi = self._open_meteo.fetch_aqi(settings)
         supplemental_error = None
         try:
@@ -337,6 +365,7 @@ class HybridWeatherProvider:
             aqi,
             hourly_payload,
             supplemental,
+            current_fallback,
         )
         return ProviderResult(
             content=(item,),
@@ -467,6 +496,7 @@ def _nws_content_item(
     aqi: Any,
     hourly_payload: Any = None,
     supplemental: Mapping[str, Any] | None = None,
+    current_fallback: ContentItem | None = None,
 ) -> ContentItem:
     """Normalize NWS forecast and observation data into the weather contract."""
 
@@ -479,36 +509,49 @@ def _nws_content_item(
     hourly_periods = _mapping(hourly_payload.get("properties")).get("periods") if isinstance(hourly_payload, Mapping) else None
     hourly_period = _mapping(hourly_periods[0]) if isinstance(hourly_periods, Sequence) and not isinstance(hourly_periods, (str, bytes)) and hourly_periods else {}
     current_properties = observation_properties if _nws_observation_is_fresh(observation) else {}
+    fallback_data = current_fallback.data if current_fallback is not None else {}
+    use_meteo_current = not current_properties and bool(fallback_data)
     supplemental = supplemental or {}
-    if not current_properties and not hourly_period:
+    if not current_properties and not hourly_period and not use_meteo_current:
         raise ValueError("NWS has no current observation or hourly forecast")
 
-    temperature = _temperature_f(
-        current_properties.get("temperature"),
-        _number(hourly_period.get("temperature"), _number(first_period.get("temperature"), 0)),
-        hourly_period.get("temperatureUnit") or first_period.get("temperatureUnit"),
-    )
-    description = _text(
-        current_properties.get("textDescription")
-        or hourly_period.get("shortForecast")
-        or first_period.get("shortForecast")
-        or "Weather unavailable"
-    )
-    icon = _condition_icon(description)
-    feels = _temperature_f(
-        current_properties.get("heatIndex")
-        or current_properties.get("windChill"),
-        temperature,
-        "F",
-    )
-    wind = _wind_mph(current_properties.get("windSpeed"))
-    humidity = _number(_mapping(current_properties.get("relativeHumidity")).get("value"), 0)
-    is_day = hourly_period.get("isDaytime", first_period.get("isDaytime"))
-    if not isinstance(is_day, bool):
-        is_day = None
-    cloud_cover = None
+    if use_meteo_current:
+        temperature = _number(fallback_data.get("temperature"), 0)
+        icon = _text(fallback_data.get("icon")) or "cloud"
+        feels = _number(fallback_data.get("feels"), temperature)
+        wind = _number(fallback_data.get("wind"), 0)
+        humidity = _number(fallback_data.get("humidity"), 0)
+        is_day = fallback_data.get("is_day")
+        cloud_cover = _optional_int(fallback_data.get("cloud_cover"))
+        fallback_situation = _mapping(fallback_data.get("situation"))
+        obs_time = fallback_situation.get("obs_time")
+    else:
+        temperature = _temperature_f(
+            current_properties.get("temperature"),
+            _number(hourly_period.get("temperature"), _number(first_period.get("temperature"), 0)),
+            hourly_period.get("temperatureUnit") or first_period.get("temperatureUnit"),
+        )
+        description = _text(
+            current_properties.get("textDescription")
+            or hourly_period.get("shortForecast")
+            or first_period.get("shortForecast")
+            or "Weather unavailable"
+        )
+        icon = _condition_icon(description)
+        feels = _temperature_f(
+            current_properties.get("heatIndex")
+            or current_properties.get("windChill"),
+            temperature,
+            "F",
+        )
+        wind = _wind_mph(current_properties.get("windSpeed"))
+        humidity = _number(_mapping(current_properties.get("relativeHumidity")).get("value"), 0)
+        is_day = hourly_period.get("isDaytime", first_period.get("isDaytime"))
+        if not isinstance(is_day, bool):
+            is_day = None
+        cloud_cover = None
+        obs_time = current_properties.get("timestamp") or hourly_period.get("startTime") or first_period.get("startTime")
     aqi_value = _optional_int(aqi)
-    obs_time = current_properties.get("timestamp") or hourly_period.get("startTime") or first_period.get("startTime")
     source_time = _parse_datetime(obs_time)
     forecast = _nws_forecast(periods, today=source_time.date() if source_time is not None else None)
     day_night = None if is_day is None else ("day" if is_day else "night")
@@ -564,7 +607,7 @@ def _nws_content_item(
 
 
 def _nws_observation_is_fresh(observation: Mapping[str, Any]) -> bool:
-    """Use station observations only while they contain a recent temperature."""
+    """Use station observations only when their timestamp is recent and valid."""
 
     properties = _mapping(observation.get("properties"))
     temperature = _mapping(properties.get("temperature")).get("value")
@@ -572,14 +615,15 @@ def _nws_observation_is_fresh(observation: Mapping[str, Any]) -> bool:
         return False
     timestamp = _text(properties.get("timestamp"))
     if not timestamp:
-        return True
+        return False
     try:
         observed_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     except ValueError:
         return False
     if observed_at.tzinfo is None:
         observed_at = observed_at.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - observed_at <= timedelta(hours=2)
+    age = datetime.now(timezone.utc) - observed_at
+    return timedelta(0) <= age <= _NWS_OBSERVATION_MAX_AGE
 
 
 def _nws_forecast(periods: Sequence[Any], *, today: date | None = None) -> list[dict[str, Any]]:
