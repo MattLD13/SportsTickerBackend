@@ -42,22 +42,25 @@ struct ModesView: View {
 
     private func leagueButton(_ option: LeagueOption, isConference: Bool = false, embedded: Bool = false) -> some View {
         let isActive = vm.state.active_sports[option.id] ?? true
+        let fill: Color = embedded ? .clear : (isActive ? .green.opacity(0.8) : .white.opacity(0.05))
+        let border: Color = embedded ? .clear : (isActive ? .green : .white.opacity(0.1))
+        let horizontalPadding: CGFloat = embedded ? 8 : 12
+        let label = Text(option.label)
+            .font(.subheadline).bold()
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, horizontalPadding)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, 4)
+            .background(fill)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(border, lineWidth: 1))
+            .foregroundColor(.white)
+            .contentShape(Rectangle())
         return Button {
             EnabledLeagueControls.toggle(option, in: &vm.state.active_sports)
             vm.saveSettings()
         } label: {
-            Text(option.label)
-                .font(.subheadline).bold()
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, embedded ? 8 : 12)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .padding(.vertical, 4)
-                .background(embedded ? Color.clear : (isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05)))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(embedded ? Color.clear : (isActive ? Color.green : Color.white.opacity(0.1)), lineWidth: 1))
-                .foregroundColor(.white)
-                .contentShape(Rectangle())
+            label
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("\(isConference ? "conference" : "league")-\(option.id)")
