@@ -107,6 +107,7 @@ class SportsMixin:
         is_nhl   = 'hockey' in sport or 'nhl' in sport
         is_mlb   = 'baseball' in sport or 'mlb' in sport
         is_soc   = 'soccer' in sport
+        is_basketball = sport in {'nba', 'march_madness'} or 'basketball' in sport
         sit      = game.get('situation', {}) or {}
         home_clr = self.get_team_color(game, 'home')
         away_clr = self.get_team_color(game, 'away')
@@ -806,6 +807,10 @@ class SportsMixin:
             elif power_play_team == away_ab:
                 a_badge = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
 
+        if is_basketball and game.get('game_phase', 'playing') == 'playing' and game.get('state') in {'in', 'crit'}:
+            self._draw_basketball_lineups(img, game, page_tick)
+            return img
+
         # Side scrims via alpha_composite (correct blending)
         scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(scrim)
@@ -877,6 +882,54 @@ class SportsMixin:
 
         return img
 
+
+    def _draw_basketball_lineups(self, image, game, page_tick):
+        """Keep scores visible beside two pages of live on-court players."""
+        shade = Image.new('RGBA', image.size, (0, 0, 0, 190))
+        image.alpha_composite(shade)
+        draw = ImageDraw.Draw(image)
+        situation = game.get('situation') or {}
+        lineups = situation.get('basketballOnCourt') or {}
+        pages = basketball_page_count(situation)
+        page = page_tick % pages
+        for source_side, display_side, logo_x, score_x, score_anchor, x0, x1 in (
+            ('away', 'home', 7, 34, 'lm', 81, 159),
+            ('home', 'away', 353, 350, 'rm', 224, 302),
+        ):
+            color = self.get_team_color(game, display_side)
+            edge = 0 if source_side == 'away' else 381
+            draw.rectangle((edge, 0, edge + 2, 31), fill=color)
+            logo = self.get_logo(game.get(f'{display_side}_logo'), (24, 24), game.get(f'{display_side}_logo_rendering'))
+            self._paste_team_mark(image, logo, (logo_x, 4), game.get(f'{display_side}_abbr'), 24, color)
+            self.draw_outlined_text(draw, score_x, 16, str(game.get(f'{display_side}_score', '')),
+                                    self.basketball_score, (255, 255, 255), (0, 0, 0, 255), anchor=score_anchor)
+            players = lineups.get(source_side) or ()
+            if not players:
+                for y, text in ((10, 'LINEUP'), (22, 'UNAVAILABLE')):
+                    self.draw_outlined_text(draw, (x0 + x1) // 2, y, text, self.tiny,
+                                            (180, 180, 180), (0, 0, 0, 255))
+                continue
+            # A shorter lineup repeats while the other team shows its second page.
+            side_page = page % max(1, (len(players) + 2) // 3)
+            visible = players[side_page * 3:side_page * 3 + 3]
+            first_y = 16 - (len(visible) - 1) * 5
+            for row, player in enumerate(visible):
+                words = normalize_special_chars(player.get('name', '')).split()
+                if len(words) > 1 and words[-1].upper().rstrip('.') in {'JR', 'SR', 'II', 'III', 'IV'}:
+                    words.pop()
+                surname = words[-1] if words else ''
+                number = player.get('jerseyNumber')
+                prefix = ' '.join(value for value in (f'#{number}' if number != '' else '', player.get('position')) if value)
+                label = f'{prefix} {surname}'.strip()
+                while surname and draw.textlength(label, font=self.tiny) > x1 - x0:
+                    surname = surname[:-1]
+                    label = f'{prefix} {surname}…'.strip()
+                self.draw_outlined_text(draw, x0, first_y + row * 10, label, self.tiny,
+                                        (255, 255, 255), (0, 0, 0, 255), anchor='lm')
+        status = self.shorten_status(game.get('status', ''), game.get('sport', ''))
+        self.draw_outlined_text(draw, 192, 10, status, self.tiny, (255, 240, 150), (0, 0, 0, 255))
+        self.draw_outlined_text(draw, 192, 24, f'COURT {page + 1}/{pages}', self.micro,
+                                (220, 220, 220), (0, 0, 0, 255))
 
     # ── Sport background helpers — exact ports of the HTML JS functions ──────
 
@@ -1145,6 +1198,7 @@ class PreparedSportsFullRenderer(SportsMixin):
     def __init__(self, fonts, logos):
         self.big_font = fonts.big
         self.clock_giant = fonts.clock
+        self.basketball_score = fonts.huge
         self.tiny = fonts.tiny
         self.tiny_small = fonts.tiny_small
         self.micro = fonts.micro
@@ -1250,6 +1304,12 @@ class PreparedSportsFullRenderer(SportsMixin):
         draw.rectangle([cx - 1, by + 8, cx, by + 9], fill=(220, 180, 120))
         draw.rectangle([cx - 1, by + 10, cx, by + 15], fill=(180, 135, 65))
         draw.rectangle([cx - 2, by + 16, cx + 1, by + 17], fill=(150, 105, 40))
+
+
+def basketball_page_count(situation):
+    """Return the pages needed for three players per team."""
+    lineups = situation.get('basketballOnCourt') or {}
+    return max(1, *((len(lineups.get(side) or ()) + 2) // 3 for side in ('away', 'home')))
 
 
 def hockey_page_count(situation):

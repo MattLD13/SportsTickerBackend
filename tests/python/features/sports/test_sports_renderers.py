@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from sports_ticker.providers.nhl_live import _game_events
-from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
+from sports_ticker.providers.sports_display import basketball_on_court, nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
@@ -764,3 +764,61 @@ def test_full_hockey_card_uses_empty_net_side(
         assert labels[0] < 192
 
 
+
+
+@pytest.mark.parametrize("sport", ["nba", "march_madness", "basketball"])
+def test_basketball_pages_keep_jersey_position_and_larger_text(sports, monkeypatch, sport):
+    fixture = Path(__file__).parents[3] / "fixtures/display/basketball_on_court_espn.json"
+    lineups = basketball_on_court(json.loads(fixture.read_text()))
+    game = {"sport": sport, "state": "in", "game_phase": "playing", "status": "Q4 11:23",
+            "away_abbr": "CLE", "home_abbr": "NY", "away_score": 111, "home_score": 119,
+            "sports_presentation": "pinned", "situation": {"basketballOnCourt": lineups}}
+    calls = []
+    original = sports._full.draw_outlined_text
+
+    def capture(draw, x, y, text, font, *args, **kwargs):
+        calls.append((x, y, text, font, kwargs.get("anchor", "mm")))
+        return original(draw, x, y, text, font, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture)
+    scene = ContentScene(game, "sports")
+    frames, keys = [], []
+    for seconds in (0, 5, 10):
+        context = RenderContext(datetime.fromtimestamp(seconds, timezone.utc))
+        frames.append(sports.render(context, scene).image)
+        keys.append(sports.visual_key(context, scene))
+    assert keys[0] != keys[1] and keys[0] == keys[2]
+    assert frames[0].tobytes() != frames[1].tobytes()
+    assert frames[0].tobytes() == frames[2].tobytes()
+    assert all(frame.size == (384, 32) for frame in frames)
+    assert {text for _, _, text, _, _ in calls}.issuperset({"111", "119", "Q4-11:23", "COURT 1/2", "COURT 2/2"})
+    labels = [call for call in calls if call[2].startswith("#")]
+    assert len(labels) == 16
+    for side, x in (("away", 81), ("home", 224)):
+        for player in lineups[side]:
+            assert any(cx == x and label.startswith(f"#{player['jerseyNumber']} {player['position']} ")
+                       for cx, _, label, _, _ in labels)
+    for x, y, label, font, anchor in labels:
+        assert font.size == 9 > sports._full.tiny_small.size
+        box = ImageDraw.Draw(frames[0]).textbbox((x, y), label, font=font, anchor=anchor)
+        assert x - 1 <= box[0] and box[2] <= x + 78
+        assert box[1] >= 1 and box[3] <= 31
+
+
+def test_basketball_missing_lineup_and_finished_game_do_not_show_players(sports, monkeypatch):
+    calls = []
+    original = sports._full.draw_outlined_text
+
+    def capture(draw, x, y, text, *args, **kwargs):
+        calls.append(str(text))
+        return original(draw, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(sports._full, "draw_outlined_text", capture)
+    game = {"sport": "nba", "state": "in", "status": "Q1 1:00", "situation": {}}
+    sports.render_full(game)
+    assert calls.count("UNAVAILABLE") == 2
+    calls.clear()
+    game.update(state="post", game_phase="final", status="FINAL",
+                situation={"basketballOnCourt": {"away": [{"name": "Old Player", "jerseyNumber": "00", "position": "G"}]}})
+    sports.render_full(game)
+    assert not any(label.startswith("#") or label == "UNAVAILABLE" for label in calls)

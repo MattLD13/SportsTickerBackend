@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "maxItems": 5,
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "jerseyNumber", "position"],
+    "additionalProperties": false,
+    "properties": {
+      "id": {"type": "string", "minLength": 1},
+      "name": {"type": "string", "minLength": 1},
+      "jerseyNumber": {"type": "string", "pattern": "^([0-9]{1,2})?$"},
+      "position": {"enum": ["", "PG", "SG", "SF", "PF", "C", "G", "F", "G-F", "F-G", "F-C", "C-F"]}
+    }
+  }
+}

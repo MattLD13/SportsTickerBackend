@@ -1,0 +1,465 @@
+{
+  "header": {
+    "id": "401809234",
+    "competitions": [
+      {
+        "competitors": [
+          {
+            "homeAway": "home",
+            "team": {
+              "id": "18"
+            }
+          },
+          {
+            "homeAway": "away",
+            "team": {
+              "id": "5"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "boxscore": {
+    "players": [
+      {
+        "team": {
+          "id": "5"
+        },
+        "statistics": [
+          {
+            "athletes": [
+              {
+                "active": false,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4066328",
+                  "displayName": "Jarrett Allen",
+                  "jersey": "31",
+                  "position": {
+                    "name": "Center",
+                    "displayName": "Center",
+                    "abbreviation": "C"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4432158",
+                  "displayName": "Evan Mobley",
+                  "jersey": "4",
+                  "position": {
+                    "name": "Center",
+                    "displayName": "Center",
+                    "abbreviation": "C"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3908809",
+                  "displayName": "Donovan Mitchell",
+                  "jersey": "45",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4066757",
+                  "displayName": "Sam Merrill",
+                  "jersey": "5",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4683747",
+                  "displayName": "Jaylon Tyson",
+                  "jersey": "20",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "2580365",
+                  "displayName": "Larry Nance Jr.",
+                  "jersey": "22",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3912848",
+                  "displayName": "Dean Wade",
+                  "jersey": "32",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4066421",
+                  "displayName": "Lonzo Ball",
+                  "jersey": "2",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4701233",
+                  "displayName": "Craig Porter Jr.",
+                  "jersey": "9",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "5023693",
+                  "displayName": "Tyrese Proctor",
+                  "jersey": "24",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": true,
+                "ejected": false,
+                "athlete": {
+                  "id": "4997539",
+                  "displayName": "Luke Travers",
+                  "jersey": "33",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": true,
+                "ejected": false,
+                "athlete": {
+                  "id": "5106268",
+                  "displayName": "Nae'Qwan Tomlin",
+                  "jersey": "30",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": true,
+                "ejected": false,
+                "athlete": {
+                  "id": "3934723",
+                  "displayName": "Thomas Bryant",
+                  "jersey": "3",
+                  "position": {
+                    "name": "Center",
+                    "displayName": "Center",
+                    "abbreviation": "C"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "team": {
+          "id": "18"
+        },
+        "statistics": [
+          {
+            "athletes": [
+              {
+                "active": true,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3934719",
+                  "displayName": "OG Anunoby",
+                  "jersey": "8",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3136195",
+                  "displayName": "Karl-Anthony Towns",
+                  "jersey": "32",
+                  "position": {
+                    "name": "Center",
+                    "displayName": "Center",
+                    "abbreviation": "C"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4871141",
+                  "displayName": "Ariel Hukporti",
+                  "jersey": "55",
+                  "position": {
+                    "name": "Center",
+                    "displayName": "Center",
+                    "abbreviation": "C"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3147657",
+                  "displayName": "Mikal Bridges",
+                  "jersey": "25",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": true,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3934672",
+                  "displayName": "Jalen Brunson",
+                  "jersey": "11",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4017844",
+                  "displayName": "Guerschon Yabusele",
+                  "jersey": "28",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4395623",
+                  "displayName": "Trey Jemison III",
+                  "jersey": "50",
+                  "position": {
+                    "name": "Center",
+                    "displayName": "Center",
+                    "abbreviation": "C"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "2528426",
+                  "displayName": "Jordan Clarkson",
+                  "jersey": "00",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "3914044",
+                  "displayName": "Landry Shamet",
+                  "jersey": "44",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": true,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4431823",
+                  "displayName": "Miles McBride",
+                  "jersey": "2",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": false,
+                "ejected": false,
+                "athlete": {
+                  "id": "4433225",
+                  "displayName": "Tyler Kolek",
+                  "jersey": "13",
+                  "position": {
+                    "name": "Guard",
+                    "displayName": "Guard",
+                    "abbreviation": "G"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": true,
+                "ejected": false,
+                "athlete": {
+                  "id": "5211983",
+                  "displayName": "Pacome Dadiet",
+                  "jersey": "4",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              },
+              {
+                "active": false,
+                "starter": false,
+                "didNotPlay": true,
+                "ejected": false,
+                "athlete": {
+                  "id": "5289900",
+                  "displayName": "Mohamed Diawara",
+                  "jersey": "51",
+                  "position": {
+                    "name": "Forward",
+                    "displayName": "Forward",
+                    "abbreviation": "F"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

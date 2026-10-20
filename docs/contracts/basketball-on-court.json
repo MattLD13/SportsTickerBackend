@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Current players from explicit provider on-court flags. Teams retain source ownership. Empty lists mean unavailable. Non-playing games omit this field.",
+  "type": "object",
+  "required": ["away", "home"],
+  "additionalProperties": false,
+  "properties": {
+    "away": {"$ref": "basketball-on-court-team.json"},
+    "home": {"$ref": "basketball-on-court-team.json"}
+  }
+}

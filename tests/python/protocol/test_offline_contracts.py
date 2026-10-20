@@ -91,6 +91,25 @@ def validate(name, value):
     _validate(value, _read(CONTRACTS / f"{name}.json"))
 
 
+def test_basketball_on_court_contract_uses_explicit_player_records():
+    from sports_ticker.providers.sports_display import basketball_on_court
+
+    summary = _read(Path(__file__).parents[2] / "fixtures/display/basketball_on_court_espn.json")
+    lineup = basketball_on_court(summary)
+    validate("basketball-on-court", lineup)
+    validate("basketball-on-court", {"away": [], "home": []})
+    document = _read(FIXTURES / "display" / "sports.json")
+    document["content"]["sports"][0]["data"]["situation"] = {"basketballOnCourt": lineup}
+    validate("display-response", document)
+    for invalid in (
+        {"away": lineup["away"] * 2, "home": []},
+        {"away": [{**lineup["away"][0], "jerseyNumber": 4}], "home": []},
+        {"away": [{**lineup["away"][0], "position": "unknown"}], "home": []},
+    ):
+        with pytest.raises(AssertionError):
+            validate("basketball-on-court", invalid)
+
+
 @pytest.mark.parametrize("path", sorted(FIXTURES.glob("*.json")), ids=lambda path: path.stem)
 def test_saved_positive_contract(path):
     validate(path.stem, _read(path))
