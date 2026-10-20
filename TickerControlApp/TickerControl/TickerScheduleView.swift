@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct TickerScheduleView: View {
     @ObservedObject var vm: TickerViewModel
@@ -7,6 +8,12 @@ struct TickerScheduleView: View {
 
     @State private var schedule: TickerScheduleResponse?
     @State private var selectedDay = 0
+    @State private var dayCount = 3
+    @State private var selectedBlockID: String?
+    @State private var calendarDraft: ScheduleCalendarDraft?
+    @State private var repeatChange: ScheduleCalendarDraft?
+    @State private var dragging = false
+    @State private var newRange: ScheduleBlockSelection?
     @State private var blockEditor: ScheduleBlockSelection?
     @State private var conditionEditor: ScheduleConditionSelection?
     @State private var blockToDelete: TickerScheduleBlock?
@@ -22,8 +29,9 @@ struct TickerScheduleView: View {
         let modes = ["sports", "stock", "weather", "music", "flights", "airports", "clock"]
         return device.capabilities.isEmpty ? modes : modes.filter { device.capabilities.contains($0) }
     }
-    private var visibleBlocks: [TickerScheduleBlock] {
-        SchedulePresentation.blocks(schedule?.blocks ?? [], on: selectedDay)
+    private var visibleDays: [Int] { ScheduleCalendarInteraction.days(start: selectedDay, count: dayCount) }
+    private var selectedBlock: TickerScheduleBlock? {
+        schedule?.blocks.first { $0.id == selectedBlockID }
     }
 
     var body: some View {
@@ -67,7 +75,7 @@ struct TickerScheduleView: View {
             .sheet(item: $blockEditor) { selection in
                 ScheduleBlockEditor(vm: vm, tickerID: device.id, block: selection.block,
                     supportedModes: supportedModes, timeZone: tickerTimeZone,
-                    initialDays: [selection.day], initialStart: selection.start,
+                    initialDays: [selection.day], initialStart: selection.start, initialEnd: selection.end,
                     isPresented: Binding(get: { blockEditor != nil },
                         set: { if !$0 { blockEditor = nil } }), onSaved: scheduleChanged)
                     .id(selection.id)
@@ -85,6 +93,14 @@ struct TickerScheduleView: View {
                 Button("Delete schedule", role: .destructive) { deleteBlock(block) }
             } message: { block in
                 Text("\(SchedulePresentation.modeName(block.mode)) · \(block.dayLabel) · \(block.timeLabel)")
+            }
+            .alert("Change repeating schedule?", isPresented: Binding(
+                get: { repeatChange != nil }, set: { if !$0 { repeatChange = nil } }
+            ), presenting: repeatChange) { change in
+                Button("Apply to all repeat days") { commit(change) }
+                Button("Cancel", role: .cancel) { calendarDraft = nil }
+            } message: { change in
+                Text("\(change.proposed.dayLabel) · \(change.proposed.timeLabel). This changes the whole repeating schedule.")
             }
             .onAppear { loadSchedule() }
         }
@@ -108,21 +124,35 @@ struct TickerScheduleView: View {
                 Label("Paused until the next scheduled change", systemImage: "pause.circle")
                     .font(.caption).foregroundStyle(.orange)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                Picker("Calendar view", selection: $dayCount) {
+                    Text("Day").tag(1)
+                    Text("3 days").tag(3)
+                }.pickerStyle(.segmented).frame(width: 150)
+                    .accessibilityIdentifier("schedule-view-picker")
+                Spacer(minLength: 0)
+                Button { selectedDay = (selectedDay - dayCount + 7) % 7 } label: {
+                    Image(systemName: "chevron.left").frame(width: 36, height: 44)
+                }.accessibilityLabel("Previous days")
+                Button { selectedDay = (selectedDay + dayCount) % 7 } label: {
+                    Image(systemName: "chevron.right").frame(width: 36, height: 44)
+                }.accessibilityLabel("Next days")
+            }.disabled(dragging)
+            if dayCount == 1 {
+              ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(0..<7, id: \.self) { day in
                         dayFilter(day)
                     }
                 }
+              }
             }
-            HStack {
-                Text(SchedulePresentation.weekdays[selectedDay]).font(.title3.weight(.semibold))
-                Spacer()
-                if visibleBlocks.isEmpty, schedule != nil {
-                    Button("Add schedule") { addSchedule() }
-                        .font(.subheadline).accessibilityIdentifier("schedule-empty-add")
-                } else {
-                    Text("\(visibleBlocks.count) scheduled").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 0) {
+                Text(tickerTimeZone.abbreviation() ?? "Time").font(.caption2).foregroundStyle(.secondary)
+                    .frame(width: 36)
+                ForEach(visibleDays, id: \.self) { day in
+                    Text(dayCount == 1 ? SchedulePresentation.weekdays[day] : String(SchedulePresentation.weekdays[day].prefix(3)))
+                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity)
                 }
             }
         }
@@ -148,14 +178,16 @@ struct TickerScheduleView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 calendarGrid
-                Text("Tap a block to edit. Tap an empty hour to add a schedule.")
+                Text("Hold a block to move it. Tap to select its resize handles. Hold an empty space to draw a block.")
                     .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 20)
                 Text("Outside these blocks, your ticker uses its usual settings.")
                     .font(.footnote).foregroundStyle(.secondary).padding(20)
             }
-            .refreshable { await refreshSchedule() }
+            .scrollDisabled(dragging)
+            .refreshable { if !dragging { await refreshSchedule() } }
             .onAppear { proxy.scrollTo("schedule-hour-7", anchor: .top) }
             .onChange(of: selectedDay) { _, _ in
+                selectedBlockID = nil
                 proxy.scrollTo("schedule-hour-7", anchor: .top)
             }
         }
@@ -169,55 +201,89 @@ struct TickerScheduleView: View {
                         hourRow(hour).id("schedule-hour-\(hour)")
                     }
                 }
-                ForEach(SchedulePresentation.calendarPlacements(visibleBlocks)) { placement in
-                    calendarBlock(placement, width: geometry.size.width)
+                ForEach(Array(visibleDays.enumerated()), id: \.element) { dayIndex, day in
+                    ForEach(SchedulePresentation.calendarPlacements(SchedulePresentation.blocks(schedule?.blocks ?? [], on: day))) { placement in
+                        calendarBlock(placement, day: day, dayIndex: dayIndex, width: geometry.size.width)
+                    }
+                }
+                if let calendarDraft {
+                    draftBlocks(calendarDraft.proposed, width: geometry.size.width)
+                }
+                if let newRange {
+                    draftBlocks(newBlock(newRange), width: geometry.size.width)
                 }
             }
+            .coordinateSpace(name: "schedule-grid")
         }
         .frame(height: hourHeight * 24 + hourHeight)
         .padding(.trailing, 16)
+        .allowsHitTesting(pending.isEmpty && repeatChange == nil)
     }
 
     private func hourRow(_ hour: Int) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text(SchedulePresentation.hourLabel(hour)).font(.caption2).foregroundStyle(.secondary)
                 .frame(width: 48, alignment: .trailing).offset(y: -7)
-            VStack(spacing: 0) {
-                Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
-                Spacer(minLength: 0)
-                Rectangle().fill(Color.white.opacity(0.04)).frame(height: 1)
-                Spacer(minLength: 0)
+            HStack(spacing: 0) {
+                ForEach(visibleDays, id: \.self) { day in
+                    ScheduleEmptyCalendarCell(day: day, hour: hour, hourHeight: hourHeight,
+                        tap: { addSchedule(start: min(1425, $0), day: day) },
+                        began: { dragging = true },
+                        changed: { value in updateCreation(day: day, value: value) },
+                        ended: finishCreation, cancelled: cancelGesture)
+                }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { addSchedule(start: hour * 60) }
-            .accessibilityElement()
-            .accessibilityLabel("Add schedule at \(SchedulePresentation.clock(hour * 60))")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { addSchedule(start: hour * 60) }
-            .accessibilityIdentifier("schedule-add-hour-\(hour)")
         }
         .frame(height: hourHeight)
     }
 
-    private func calendarBlock(_ placement: ScheduleCalendarPlacement, width: CGFloat) -> some View {
+    private func calendarBlock(_ placement: ScheduleCalendarPlacement, day: Int, dayIndex: Int, width: CGFloat) -> some View {
         let block = placement.block
-        let availableWidth = max(1, width - 62)
+        let availableWidth = max(1, width - 56) / CGFloat(dayCount)
         let columnWidth = availableWidth / CGFloat(placement.columns)
-        let height = CGFloat(placement.visualEnd - block.start_minute) / 60 * hourHeight
-        return ScheduleCalendarBlock(block: block, pending: pending.contains(block.id)) { edit(block) }
+        let duration = selectedBlockID == block.id ? max(15, block.end_minute - block.start_minute) : placement.visualEnd - block.start_minute
+        let height = CGFloat(duration) / 60 * hourHeight
+        return ScheduleCalendarBlock(block: block, occurrenceDay: day,
+            pending: pending.contains(block.id), selected: selectedBlockID == block.id,
+            select: { selectedBlockID = block.id }, edit: { edit(block) },
+            began: {
+                dragging = true
+                selectedBlockID = block.id
+                calendarDraft = ScheduleCalendarDraft(original: block, proposed: block)
+            },
+            changed: { operation, value in
+                updateGesture(block, operation: operation, value: value, columnWidth: availableWidth, from: dayIndex)
+            },
+            ended: finishGesture, cancelled: cancelGesture)
             .frame(width: max(1, columnWidth - 4), height: max(1, height - 3), alignment: .topLeading)
-            .offset(x: 56 + CGFloat(placement.column) * columnWidth,
+            .opacity(calendarDraft?.original.id == block.id ? 0.25 : 1)
+            .offset(x: 56 + CGFloat(dayIndex) * availableWidth + CGFloat(placement.column) * columnWidth,
                     y: CGFloat(block.start_minute) / 60 * hourHeight)
-            .contextMenu {
-                Button("Edit schedule", systemImage: "pencil") { edit(block) }
-                Button(block.enabled ? "Turn off" : "Turn on", systemImage: "power") {
-                    setEnabled(block, !block.enabled)
-                }
-                Button("Delete schedule", systemImage: "trash", role: .destructive) { blockToDelete = block }
-            }
+            .zIndex(selectedBlockID == block.id ? 2 : 0)
     }
 
     private var calendarControls: some View {
+      VStack(spacing: 3) {
+        if let selectedBlock {
+            HStack {
+                Button("Edit mode & days") { edit(selectedBlock) }
+                    .accessibilityIdentifier("schedule-selected-edit")
+                Menu {
+                    Button(selectedBlock.enabled ? "Turn off" : "Turn on", systemImage: "power") {
+                        setEnabled(selectedBlock, !selectedBlock.enabled)
+                    }
+                    Button("Delete schedule", systemImage: "trash", role: .destructive) {
+                        blockToDelete = selectedBlock
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
+                }.accessibilityLabel("Schedule actions").accessibilityIdentifier("schedule-selected-more")
+                Spacer()
+                Button("Done") { selectedBlockID = nil }
+            }.font(.subheadline).padding(.horizontal, 20)
+            Text("\(calendarDraft?.proposed.dayLabel ?? selectedBlock.dayLabel) · \(calendarDraft?.proposed.timeLabel ?? selectedBlock.timeLabel)")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         HStack(spacing: 14) {
             Menu {
                 ForEach(schedule?.conditions ?? []) { condition in
@@ -244,6 +310,7 @@ struct TickerScheduleView: View {
         }
         .padding(.horizontal, 20).padding(.vertical, 5)
         .background(.ultraThinMaterial)
+      }.disabled(dragging)
     }
 
     private var scheduleBackground: some View {
@@ -251,13 +318,92 @@ struct TickerScheduleView: View {
                        startPoint: .top, endPoint: .bottom).ignoresSafeArea()
     }
 
-    private func addSchedule(start: Int = 480) {
-        blockEditor = ScheduleBlockSelection(block: nil, day: selectedDay, start: start)
+    private func addSchedule(start: Int = 480, day: Int? = nil) {
+        blockEditor = ScheduleBlockSelection(block: nil, day: day ?? selectedDay, start: start)
     }
     private func edit(_ block: TickerScheduleBlock) {
         blockEditor = ScheduleBlockSelection(block: block, day: selectedDay, start: block.start_minute)
     }
     private func scheduleChanged() { loadSchedule(); vm.fetchData() }
+
+    private func updateGesture(_ block: TickerScheduleBlock, operation: ScheduleCalendarEdit,
+                               value: DragGesture.Value, columnWidth: CGFloat, from column: Int) {
+        guard !pending.contains(block.id) else { return }
+        dragging = true
+        selectedBlockID = block.id
+        let offset = operation == .move ? ScheduleCalendarInteraction.columnOffset(
+            translation: Double(value.translation.width), width: Double(columnWidth), column: column, count: dayCount) : 0
+        let proposed = ScheduleCalendarInteraction.applying(operation, to: block,
+            minutes: Double(value.translation.height / hourHeight * 60), dayOffset: offset)
+        calendarDraft = ScheduleCalendarDraft(original: block, proposed: proposed)
+    }
+
+    private func finishGesture() {
+        dragging = false
+        guard let change = calendarDraft else { return }
+        guard ScheduleCalendarInteraction.hasChanges(change.original, change.proposed) else {
+            calendarDraft = nil
+            return
+        }
+        if change.original.days_of_week.count > 1 { repeatChange = change } else { commit(change) }
+    }
+
+    private func cancelGesture() {
+        guard dragging else { return }
+        dragging = false
+        calendarDraft = nil
+        newRange = nil
+    }
+
+    private func commit(_ change: ScheduleCalendarDraft) {
+        let block = change.proposed
+        pending.insert(block.id)
+        vm.updateScheduleBlock(tickerID: device.id, blockID: block.id, daysOfWeek: block.days_of_week,
+            startMinute: block.start_minute, endMinute: block.end_minute, mode: block.mode,
+            sportsFilter: block.sports_filter, enabled: block.enabled) { result in
+                switch result {
+                case .success:
+                    loadSchedule { pending.remove(block.id); calendarDraft = nil }
+                    vm.fetchData()
+                case .failure(let error):
+                    pending.remove(block.id)
+                    calendarDraft = nil
+                    errorMessage = error.localizedDescription
+                }
+            }
+    }
+
+    private func updateCreation(day: Int, value: DragGesture.Value) {
+        dragging = true
+        let range = ScheduleCalendarInteraction.drawnRange(first: Double(value.startLocation.y / hourHeight * 60),
+            last: Double(value.location.y / hourHeight * 60))
+        newRange = ScheduleBlockSelection(block: nil, day: day, start: range.start, end: range.end)
+    }
+
+    private func finishCreation() {
+        dragging = false
+        blockEditor = newRange
+        newRange = nil
+    }
+
+    private func newBlock(_ selection: ScheduleBlockSelection) -> TickerScheduleBlock {
+        let mode = supportedModes.first ?? "sports"
+        return TickerScheduleBlock(id: "new-selection", ticker_id: device.id, days_of_week: [selection.day],
+            day_names: [], start_minute: selection.start, end_minute: selection.end ?? min(1440, selection.start + 60),
+            mode: mode, sports_filter: mode == "sports" ? "all" : nil, enabled: true, created_at: 0, updated_at: 0)
+    }
+
+    private func draftBlocks(_ block: TickerScheduleBlock, width: CGFloat) -> some View {
+        let columnWidth = max(1, width - 56) / CGFloat(dayCount)
+        return ForEach(Array(visibleDays.enumerated()), id: \.element) { index, day in
+            if block.days_of_week.contains(day) {
+                ScheduleCalendarBlockContent(block: block, pending: false, selected: true)
+                    .frame(width: columnWidth - 4, height: CGFloat(max(15, block.end_minute - block.start_minute)) / 60 * hourHeight - 3)
+                    .offset(x: 56 + CGFloat(index) * columnWidth, y: CGFloat(block.start_minute) / 60 * hourHeight)
+                    .allowsHitTesting(false).accessibilityHidden(true).zIndex(3)
+            }
+        }
+    }
 
     private func loadSchedule(completion: @escaping () -> Void = {}) {
         loadRevision += 1
@@ -325,6 +471,12 @@ private struct ScheduleBlockSelection: Identifiable {
     let block: TickerScheduleBlock?
     let day: Int
     let start: Int
+    var end: Int? = nil
+}
+
+private struct ScheduleCalendarDraft {
+    let original: TickerScheduleBlock
+    let proposed: TickerScheduleBlock
 }
 
 private struct ScheduleConditionSelection: Identifiable {
@@ -334,8 +486,111 @@ private struct ScheduleConditionSelection: Identifiable {
 
 private struct ScheduleCalendarBlock: View {
     let block: TickerScheduleBlock
+    let occurrenceDay: Int
     let pending: Bool
+    let selected: Bool
+    let select: () -> Void
     let edit: () -> Void
+    let began: () -> Void
+    let changed: (ScheduleCalendarEdit, DragGesture.Value) -> Void
+    let ended: () -> Void
+    let cancelled: () -> Void
+    @GestureState private var held = false
+
+    var body: some View {
+        ScheduleCalendarBlockContent(block: block, pending: pending, selected: selected)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: select)
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.35)
+                .sequenced(before: DragGesture(minimumDistance: 1, coordinateSpace: .named("schedule-grid")))
+                .updating($held) { _, state, _ in state = true }
+                .onChanged { value in
+                    switch value {
+                    case .first(true), .second(true, nil): began()
+                    case .second(true, let drag?): changed(.move, drag)
+                    default: break
+                    }
+                }
+                .onEnded { value in
+                    if case .second(true, .some) = value { ended() } else { cancelled() }
+                })
+            .overlay(alignment: .topLeading) {
+                if selected && !pending { resizeHandle(.start).offset(y: -22) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if selected && !pending { resizeHandle(.end).offset(y: 22) }
+            }
+            .onChange(of: held) { _, active in if !active { cancelled() } }
+            .allowsHitTesting(!pending)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("\(SchedulePresentation.modeName(block.mode)), \(block.timeLabel), \(block.dayLabel)")
+            .accessibilityValue(block.enabled ? "Enabled" : "Disabled")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { select() }
+            .accessibilityAction(named: Text("Edit mode and days")) { edit() }
+            .accessibilityIdentifier("schedule-edit-\(block.id)-day-\(occurrenceDay)")
+    }
+
+    private func resizeHandle(_ edge: ScheduleCalendarEdit) -> some View {
+        Circle().fill(.white).frame(width: 12, height: 12)
+            .overlay(Circle().stroke(.blue, lineWidth: 2))
+            .frame(width: 44, height: 44).contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("schedule-grid"))
+                .updating($held) { _, state, _ in state = true }
+                .onChanged { changed(edge, $0) }.onEnded { _ in ended() })
+            .accessibilityLabel(edge == .start ? "Change start time" : "Change end time")
+            .accessibilityIdentifier("schedule-resize-\(edge.rawValue)-\(block.id)-day-\(occurrenceDay)")
+    }
+}
+
+private struct ScheduleEmptyCalendarCell: View {
+    let day: Int
+    let hour: Int
+    let hourHeight: CGFloat
+    let tap: (Int) -> Void
+    let began: () -> Void
+    let changed: (DragGesture.Value) -> Void
+    let ended: () -> Void
+    let cancelled: () -> Void
+    @GestureState private var held = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<4, id: \.self) { quarter in
+                Rectangle().fill(Color.white.opacity(quarter == 0 ? 0.12 : 0.035)).frame(height: 1)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(alignment: .leading) { Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1) }
+        .contentShape(Rectangle())
+        .simultaneousGesture(SpatialTapGesture().onEnded { value in
+            let quarter = max(0, min(3, Int(value.location.y / hourHeight * 4)))
+            tap(hour * 60 + quarter * 15)
+        })
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.35)
+            .sequenced(before: DragGesture(minimumDistance: 1, coordinateSpace: .named("schedule-grid")))
+            .updating($held) { _, state, _ in state = true }
+            .onChanged { value in
+                switch value {
+                case .first(true), .second(true, nil): began()
+                case .second(true, let drag?): changed(drag)
+                default: break
+                }
+            }
+            .onEnded { value in if case .second(true, .some) = value { ended() } else { cancelled() } })
+        .onChange(of: held) { _, active in if !active { cancelled() } }
+        .accessibilityElement()
+        .accessibilityLabel("Add schedule at \(SchedulePresentation.clock(hour * 60))")
+        .accessibilityAddTraits(.isButton).accessibilityAction { tap(hour * 60) }
+        .accessibilityIdentifier("schedule-add-hour-\(hour)-day-\(day)")
+    }
+}
+
+private struct ScheduleCalendarBlockContent: View {
+    let block: TickerScheduleBlock
+    let pending: Bool
+    let selected: Bool
 
     private var color: Color {
         switch block.mode {
@@ -347,36 +602,37 @@ private struct ScheduleCalendarBlock: View {
         default: return .purple
         }
     }
+    private var compactTime: String {
+        "\(shortClock(block.start_minute))–\(shortClock(block.end_minute))"
+    }
+    private var compact: Bool { selected && block.end_minute - block.start_minute < 45 }
+    private func shortClock(_ minute: Int) -> String {
+        let hour = (minute / 60) % 24
+        let display = hour % 12 == 0 ? 12 : hour % 12
+        let fraction = minute % 60 == 0 ? "" : String(format: ":%02d", minute % 60)
+        return "\(display)\(fraction)\(hour >= 12 ? "PM" : "AM")"
+    }
 
     var body: some View {
-        Button(action: edit) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(SchedulePresentation.modeName(block.mode)).font(.subheadline.weight(.semibold))
-                    if !block.enabled { Text("Off").font(.caption2).foregroundStyle(.secondary) }
-                    Spacer(minLength: 0)
-                    if pending { ProgressView().controlSize(.mini) }
-                }
-                Text(block.timeLabel).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
-                if block.mode == "sports", let filter = block.sports_filter, filter != "all" {
-                    Text(filter == "live" ? "Live games only" : "My teams").font(.caption2)
-                }
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(SchedulePresentation.modeName(block.mode)).font((compact ? Font.caption2 : Font.caption).weight(.semibold))
+                .lineLimit(compact ? 1 : 3)
+            if !compact {
+                Text(compactTime).font(.caption2).lineLimit(2)
+                if !block.enabled { Text("Off").font(.caption2).foregroundStyle(.secondary) }
             }
-            .foregroundStyle(.white).padding(.horizontal, 10).padding(.vertical, 6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(color.opacity(block.enabled ? 0.3 : 0.08), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3) }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(color.opacity(0.65), style: StrokeStyle(lineWidth: 1, dash: block.enabled ? [] : [4, 3]))
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            if pending { ProgressView().controlSize(.mini) }
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain).disabled(pending).opacity(block.enabled ? 1 : 0.55)
-        .accessibilityLabel("\(SchedulePresentation.modeName(block.mode)), \(block.timeLabel), \(block.dayLabel)")
-        .accessibilityValue(block.enabled ? "Enabled" : "Disabled")
-        .accessibilityIdentifier("schedule-edit-\(block.id)")
+        .foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, compact ? 1 : 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(color.opacity(block.enabled ? 0.3 : 0.08), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3) }
+        .overlay {
+            RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Color.white : color.opacity(0.65),
+                style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: block.enabled ? [] : [4, 3]))
+        }
+        .opacity(block.enabled ? 1 : 0.55)
     }
 }
 
@@ -404,7 +660,7 @@ private struct ScheduleBlockEditor: View {
     private var valid: Bool { validRange && !selectedDays.isEmpty && supportedModes.contains(mode) }
 
     init(vm: TickerViewModel, tickerID: String, block: TickerScheduleBlock?, supportedModes: [String],
-         timeZone: TimeZone, initialDays: [Int]?, initialStart: Int,
+         timeZone: TimeZone, initialDays: [Int]?, initialStart: Int, initialEnd: Int?,
          isPresented: Binding<Bool>, onSaved: @escaping () -> Void) {
         self.vm = vm
         self.tickerID = tickerID
@@ -415,7 +671,7 @@ private struct ScheduleBlockEditor: View {
         _isPresented = isPresented
         _selectedDays = State(initialValue: Set(block?.days_of_week ?? initialDays ?? Array(0...6)))
         _startDate = State(initialValue: SchedulePresentation.timeDate(minute: block?.start_minute ?? initialStart, timeZone: timeZone))
-        _endDate = State(initialValue: SchedulePresentation.timeDate(minute: block?.end_minute ?? min(initialStart + 60, 1440), timeZone: timeZone))
+        _endDate = State(initialValue: SchedulePresentation.timeDate(minute: block?.end_minute ?? initialEnd ?? min(initialStart + 60, 1440), timeZone: timeZone))
         _mode = State(initialValue: block?.mode ?? supportedModes.first ?? "sports")
         _sportsFilter = State(initialValue: block?.sports_filter ?? "all")
         _enabled = State(initialValue: block?.enabled ?? true)
@@ -521,10 +777,18 @@ private struct ScheduleBlockEditor: View {
 
     private var timeSection: some View {
         Section {
-            DatePicker("Starts", selection: $startDate, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.compact).accessibilityIdentifier("schedule-start-time")
-            DatePicker("Ends", selection: $endDate, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.compact).accessibilityIdentifier("schedule-end-time")
+            HStack {
+                Text("Starts")
+                Spacer()
+                ScheduleTimePicker(date: $startDate, timeZone: timeZone).frame(width: 140, height: 36)
+                    .accessibilityIdentifier("schedule-start-time")
+            }
+            HStack {
+                Text("Ends")
+                Spacer()
+                ScheduleTimePicker(date: $endDate, timeZone: timeZone).frame(width: 140, height: 36)
+                    .accessibilityIdentifier("schedule-end-time")
+            }
         } header: { Text("When") } footer: {
             if validRange {
                 Text("\(SchedulePresentation.clock(start)) – \(SchedulePresentation.clock(end)). Times use the ticker's time zone.")
@@ -568,6 +832,34 @@ private struct ScheduleBlockEditor: View {
                 endMinute: end, mode: mode, sportsFilter: mode == "sports" ? sportsFilter : nil,
                 enabled: enabled, completion: completion)
         }
+    }
+}
+
+private struct ScheduleTimePicker: UIViewRepresentable {
+    @Binding var date: Date
+    let timeZone: TimeZone
+
+    func makeCoordinator() -> Coordinator { Coordinator(date: $date) }
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let picker = UIDatePicker()
+        picker.datePickerMode = .time
+        picker.preferredDatePickerStyle = .compact
+        picker.minuteInterval = 15
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        return picker
+    }
+
+    func updateUIView(_ picker: UIDatePicker, context: Context) {
+        context.coordinator.date = $date
+        picker.timeZone = timeZone
+        if picker.date != date { picker.setDate(date, animated: false) }
+    }
+
+    final class Coordinator: NSObject {
+        var date: Binding<Date>
+        init(date: Binding<Date>) { self.date = date }
+        @objc func changed(_ picker: UIDatePicker) { date.wrappedValue = picker.date }
     }
 }
 

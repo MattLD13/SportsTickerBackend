@@ -49,11 +49,15 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
                 Self.block("music", days: [5, 6], start: 600, end: 840, mode: "music"),
             ]
         }
+        if arguments.contains("-singleDaySchedulePreview"), let index = blocks.firstIndex(where: { $0["id"] as? String == "weather" }) {
+            blocks[index]["days_of_week"] = [0]
+        }
     }
 
     private static func block(_ id: String, days: [Int], start: Int, end: Int, mode: String) -> [String: Any] {
-        ["id": id, "ticker_id": "schedule-preview", "days_of_week": days, "day_names": [],
-         "start_minute": start, "end_minute": end, "mode": mode, "sports_filter": "all",
+        let filter: Any = mode == "sports" ? "all" as Any : NSNull()
+        return ["id": id, "ticker_id": "schedule-preview", "days_of_week": days, "day_names": [],
+         "start_minute": start, "end_minute": end, "mode": mode, "sports_filter": filter,
          "enabled": true, "created_at": 0, "updated_at": 0]
     }
 
@@ -86,6 +90,18 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
         if path.contains("/schedule/blocks"), method != "GET" {
             if ProcessInfo.processInfo.arguments.contains("-scheduleWriteFailure") {
                 return (["error": ["message": "enabled schedule blocks cannot overlap"]], 400)
+            }
+            if method != "DELETE", body["enabled"] as? Bool == true {
+                let identifier = path.components(separatedBy: "/").last ?? ""
+                let days = Set(body["days_of_week"] as? [Int] ?? [])
+                let start = body["start_minute"] as? Int ?? 0
+                let end = body["end_minute"] as? Int ?? 0
+                let overlaps = blocks.contains { existing in
+                    existing["id"] as? String != identifier && existing["enabled"] as? Bool == true &&
+                    !days.isDisjoint(with: existing["days_of_week"] as? [Int] ?? []) &&
+                    start < (existing["end_minute"] as? Int ?? 0) && end > (existing["start_minute"] as? Int ?? 0)
+                }
+                if overlaps { return (["error": ["message": "enabled schedule blocks cannot overlap"]], 400) }
             }
             return mutate(&blocks, path: path, method: method, body: body)
         }

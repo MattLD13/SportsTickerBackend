@@ -8,9 +8,16 @@ final class ScheduleUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["-schedulePreview"] + arguments
         app.launch()
+        wait(app.segmentedControls["schedule-view-picker"])
+        app.segmentedControls["schedule-view-picker"].buttons["Day"].tap()
     }
 
-    private func button(_ id: String) -> XCUIElement { app.buttons[id] }
+    private func button(_ id: String) -> XCUIElement {
+        if id.hasPrefix("schedule-edit-") || id.hasPrefix("schedule-add-hour-") {
+            return app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", id + "-day-")).firstMatch
+        }
+        return app.buttons[id]
+    }
 
     private func wait(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 8), file: file, line: line)
@@ -21,6 +28,124 @@ final class ScheduleUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func drag(_ element: XCUIElement, dx: CGFloat = 0, dy: CGFloat) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.35))
+        start.press(forDuration: 0.6, thenDragTo: start.withOffset(CGVector(dx: dx, dy: dy)),
+                    withVelocity: .slow, thenHoldForDuration: 0.2)
+    }
+
+    private func expectTime(_ element: XCUIElement, _ value: String) {
+        expectation(for: NSPredicate(format: "label CONTAINS %@", value), evaluatedWith: element)
+        waitForExpectations(timeout: 8)
+    }
+
+    private func openBlock(_ element: XCUIElement) {
+        element.tap()
+        wait(button("schedule-selected-edit"))
+        button("schedule-selected-edit").tap()
+    }
+
+    func testDirectMoveSnapsAndPersists() {
+        launch(["-singleDaySchedulePreview"])
+        let weather = button("schedule-edit-weather")
+        wait(weather)
+        drag(weather, dy: -18)
+        expectTime(weather, "7:45 AM – 8:45 AM")
+        capture("direct-move")
+        openBlock(weather)
+        wait(button("schedule-editor-save"))
+        capture("direct-move-reopened")
+        XCTAssertTrue(app.staticTexts["schedule-time-summary"].label.contains("7:45 AM – 8:45 AM"),
+                      app.staticTexts["schedule-time-summary"].label)
+    }
+
+    func testDirectResizeBothEdges() {
+        launch(["-singleDaySchedulePreview"])
+        let weather = button("schedule-edit-weather")
+        wait(weather)
+        weather.tap()
+        let start = app.descendants(matching: .any)["schedule-resize-start-weather-day-0"].firstMatch
+        wait(start)
+        drag(start, dy: -36)
+        expectTime(weather, "7:30 AM – 9:00 AM")
+        let end = app.descendants(matching: .any)["schedule-resize-end-weather-day-0"].firstMatch
+        wait(end)
+        drag(end, dy: -36)
+        expectTime(weather, "7:30 AM – 8:30 AM")
+        capture("direct-resize")
+    }
+
+    func testDirectMoveAcrossDayColumns() {
+        launch(["-singleDaySchedulePreview"])
+        app.segmentedControls["schedule-view-picker"].buttons["3 days"].tap()
+        let monday = app.buttons["schedule-edit-weather-day-0"]
+        wait(monday)
+        capture("three-day-calendar")
+        drag(monday, dx: monday.frame.width + 4, dy: -18)
+        let tuesday = app.buttons["schedule-edit-weather-day-1"]
+        wait(tuesday)
+        expectTime(tuesday, "7:45 AM – 8:45 AM")
+        XCTAssertFalse(monday.exists)
+        capture("direct-day-move")
+    }
+
+    func testDirectRepeatChangeCanBeCancelled() {
+        launch()
+        let weather = button("schedule-edit-weather")
+        wait(weather)
+        drag(weather, dy: -18)
+        wait(app.alerts.buttons["Apply to all repeat days"])
+        app.alerts.buttons["Cancel"].tap()
+        expectTime(weather, "8:00 AM – 9:00 AM")
+        XCTAssertFalse(app.staticTexts["schedule-error"].exists)
+    }
+
+    func testDirectRepeatChangeUpdatesAllRepeatDays() {
+        launch()
+        let weather = button("schedule-edit-weather")
+        wait(weather)
+        drag(weather, dy: -18)
+        wait(app.alerts.buttons["Apply to all repeat days"])
+        app.alerts.buttons["Apply to all repeat days"].tap()
+        expectTime(weather, "7:45 AM – 8:45 AM")
+        button("schedule-filter-1").tap()
+        expectTime(button("schedule-edit-weather"), "7:45 AM – 8:45 AM")
+    }
+
+    func testDirectOverlapPreservesSavedTimes() {
+        launch(["-singleDaySchedulePreview"])
+        let weather = button("schedule-edit-weather")
+        wait(weather)
+        drag(weather, dy: 18)
+        wait(app.staticTexts["schedule-error"])
+        expectTime(weather, "8:00 AM – 9:00 AM")
+        XCTAssertTrue(app.staticTexts["schedule-error"].label.contains("cannot overlap"))
+    }
+
+    func testDirectFailedSaveRestoresOriginalBlock() {
+        launch(["-singleDaySchedulePreview", "-scheduleWriteFailure"])
+        let weather = button("schedule-edit-weather")
+        wait(weather)
+        drag(weather, dy: -18)
+        wait(app.staticTexts["schedule-error"])
+        expectTime(weather, "8:00 AM – 9:00 AM")
+        capture("direct-rejected-save")
+    }
+
+    func testDirectDrawPrefillsQuarterHourRange() {
+        launch(["-emptySchedulePreview"])
+        let hour = button("schedule-add-hour-10")
+        wait(hour)
+        let origin = hour.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.05))
+        origin.press(forDuration: 0.6, thenDragTo: origin.withOffset(CGVector(dx: 0, dy: 108)),
+                     withVelocity: .slow, thenHoldForDuration: 0.2)
+        wait(button("schedule-editor-save"))
+        XCTAssertTrue(app.staticTexts["schedule-time-summary"].label.contains("10:00 AM – 11:30 AM"))
+        capture("direct-draw-editor")
+        button("schedule-editor-cancel").tap()
+        XCTAssertFalse(button("schedule-edit-new-1").exists)
     }
 
     func testOverviewAndDayFilter() {
@@ -37,8 +162,8 @@ final class ScheduleUITests: XCTestCase {
 
     func testAddPresetsSaveAndCancel() {
         launch(["-emptySchedulePreview"])
-        wait(button("schedule-empty-add"))
-        button("schedule-empty-add").tap()
+        wait(button("schedule-add"))
+        button("schedule-add").tap()
         wait(button("schedule-editor-save"))
         button("schedule-preset-weekends").tap()
         XCTAssertEqual(button("schedule-day-5").value as? String, "Selected")
@@ -71,7 +196,7 @@ final class ScheduleUITests: XCTestCase {
     func testEditPreservesMidnightAndEnabledState() {
         launch()
         wait(button("schedule-edit-sports"))
-        button("schedule-edit-sports").tap()
+        openBlock(button("schedule-edit-sports"))
         wait(button("schedule-editor-save"))
         XCTAssertTrue(app.staticTexts["schedule-time-summary"].label.contains("6:00 PM – Midnight"))
         XCTAssertEqual(button("schedule-day-5").value as? String, "Not selected")
@@ -84,7 +209,7 @@ final class ScheduleUITests: XCTestCase {
         expectation(for: NSPredicate(format: "value == %@", "Disabled"), evaluatedWith: block)
         waitForExpectations(timeout: 8)
         XCTAssertEqual(block.value as? String, "Disabled")
-        button("schedule-edit-sports").tap()
+        openBlock(button("schedule-edit-sports"))
         wait(button("schedule-editor-save"))
         XCTAssertEqual(app.switches["schedule-editor-enabled"].value as? String, "0")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Midnight")).firstMatch.exists)
@@ -94,12 +219,13 @@ final class ScheduleUITests: XCTestCase {
         launch()
         let row = button("schedule-edit-weather")
         wait(row)
-        row.press(forDuration: 0.8)
+        row.tap()
+        button("schedule-selected-more").tap()
         app.buttons["Delete schedule"].firstMatch.tap()
         wait(app.alerts.buttons["Delete schedule"])
         app.buttons["Cancel"].firstMatch.tap()
         XCTAssertTrue(row.exists)
-        row.press(forDuration: 0.8)
+        button("schedule-selected-more").tap()
         app.buttons["Delete schedule"].firstMatch.tap()
         app.alerts.buttons["Delete schedule"].tap()
         let gone = NSPredicate(format: "exists == false")
@@ -136,7 +262,7 @@ final class ScheduleUITests: XCTestCase {
         capture("calendar-weekend")
         button("schedule-add-hour-15").tap()
         wait(button("schedule-editor-save"))
-        XCTAssertTrue(app.staticTexts["schedule-time-summary"].label.contains("3:00 PM – 4:00 PM"))
+        XCTAssertTrue(app.staticTexts["schedule-time-summary"].label.contains("3:30 PM – 4:30 PM"))
         app.descendants(matching: .any)["schedule-editor-mode"].firstMatch.tap()
         let weather = app.buttons["Weather"].firstMatch
         wait(weather)
@@ -147,7 +273,7 @@ final class ScheduleUITests: XCTestCase {
         button("schedule-editor-save").tap()
         wait(button("schedule-edit-new-1"))
         XCTAssertTrue(button("schedule-edit-new-1").label.contains("Weather"))
-        XCTAssertTrue(button("schedule-edit-new-1").label.contains("3:00 PM – 4:00 PM"))
+        XCTAssertTrue(button("schedule-edit-new-1").label.contains("3:30 PM – 4:30 PM"))
         capture("calendar-new-block")
     }
 

@@ -20,6 +20,55 @@ struct TickerScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     var timeLabel: String {
         "\(SchedulePresentation.clock(start_minute)) – \(SchedulePresentation.clock(end_minute))"
     }
+
+    func rescheduled(days: [Int], start: Int, end: Int) -> Self {
+        Self(id: id, ticker_id: ticker_id, days_of_week: days, day_names: [],
+             start_minute: start, end_minute: end, mode: mode, sports_filter: sports_filter,
+             enabled: enabled, created_at: created_at, updated_at: updated_at)
+    }
+}
+
+enum ScheduleCalendarEdit: String { case move, start, end }
+
+enum ScheduleCalendarInteraction {
+    static func snap(_ minutes: Double) -> Int { Int((minutes / 15).rounded()) * 15 }
+
+    static func days(start: Int, count: Int) -> [Int] { (0..<count).map { (start + $0) % 7 } }
+
+    static func columnOffset(translation: Double, width: Double, column: Int, count: Int) -> Int {
+        let offset = Int((translation / max(1, width)).rounded())
+        return max(-column, min(count - 1 - column, offset))
+    }
+
+    static func hasChanges(_ original: TickerScheduleBlock, _ proposed: TickerScheduleBlock) -> Bool {
+        original.start_minute != proposed.start_minute || original.end_minute != proposed.end_minute ||
+            Set(original.days_of_week) != Set(proposed.days_of_week)
+    }
+
+    static func drawnRange(first: Double, last: Double) -> (start: Int, end: Int) {
+        let first = max(0, min(1425, snap(first)))
+        let last = max(0, min(1440, snap(last)))
+        let start = min(first, last)
+        return (start, max(start + 15, max(first, last)))
+    }
+
+    static func applying(_ edit: ScheduleCalendarEdit, to block: TickerScheduleBlock,
+                         minutes: Double, dayOffset: Int = 0) -> TickerScheduleBlock {
+        let delta = snap(minutes)
+        var start = block.start_minute
+        var end = block.end_minute
+        var days = block.days_of_week
+        let minimum = min(15, end - start)
+        switch edit {
+        case .move:
+            start = max(0, min(1440 - (end - start), start + delta))
+            end = start + block.end_minute - block.start_minute
+            days = days.map { (($0 + dayOffset) % 7 + 7) % 7 }.sorted()
+        case .start: start = max(0, min(end - minimum, start + delta))
+        case .end: end = min(1440, max(start + minimum, end + delta))
+        }
+        return block.rescheduled(days: days, start: start, end: end)
+    }
 }
 
 struct TickerScheduleCondition: Codable, Identifiable, Hashable, Sendable {
