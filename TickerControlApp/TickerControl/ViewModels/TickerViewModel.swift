@@ -249,7 +249,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 result = .failure(error)
             } else if let httpResponse = response as? HTTPURLResponse,
                       !(200...299).contains(httpResponse.statusCode) {
-                result = .failure(TickerScheduleRequestError.server("Schedule request failed (HTTP \(httpResponse.statusCode))."))
+                result = .failure(TickerScheduleRequestError.server(TickerHTTPClient.serverMessage(data) ?? "Schedule request failed (HTTP \(httpResponse.statusCode))."))
             } else if let data {
                 do {
                     result = .success(try JSONDecoder().decode(T.self, from: data))

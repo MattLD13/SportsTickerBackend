@@ -6,817 +6,377 @@ struct TickerScheduleView: View {
     @Binding var isPresented: Bool
 
     @State private var schedule: TickerScheduleResponse?
-    @State private var selectedMode = "sports"
-    @State private var selectedDays: Set<Int> = [0]
-    @State private var isTimelineInteracting = false
-    @State private var editingBlock: TickerScheduleBlock?
-    @State private var editingCondition: TickerScheduleCondition?
-    @State private var showingBlockEditor = false
-    @State private var showingConditionEditor = false
+    @State private var selectedDay = 0
+    @State private var blockEditor: ScheduleBlockSelection?
+    @State private var conditionEditor: ScheduleConditionSelection?
+    @State private var blockToDelete: TickerScheduleBlock?
+    @State private var pending: Set<String> = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var scheduleMutationRevision: [String: Int] = [:]
+    @State private var loadRevision = 0
 
-    private var tickerTimeZone: TimeZone {
-        TimeZone(identifier: schedule?.timezone ?? "") ?? .current
-    }
-
+    @ScaledMetric(relativeTo: .body) private var hourHeight: CGFloat = 72
+    private var tickerTimeZone: TimeZone { TimeZone(identifier: schedule?.timezone ?? "") ?? .current }
     private var supportedModes: [String] {
-        let modes = device.profile?.capabilities.modes ?? [
-            "sports", "stock", "weather", "music", "flights", "airports", "clock"
-        ]
-        return modes.isEmpty ? ["sports"] : modes
+        if let modes = device.profile?.capabilities.modes, !modes.isEmpty { return modes }
+        let modes = ["sports", "stock", "weather", "music", "flights", "airports", "clock"]
+        return device.capabilities.isEmpty ? modes : modes.filter { device.capabilities.contains($0) }
     }
-
-    private var timezoneLabel: String {
-        guard let value = schedule?.timezone, !value.isEmpty else { return "the ticker timezone" }
-        return value
+    private var visibleBlocks: [TickerScheduleBlock] {
+        SchedulePresentation.blocks(schedule?.blocks ?? [], on: selectedDay)
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Weekly schedule")
-                                    .font(.title3.bold())
-                                Text(timezoneLabel)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "calendar.badge.clock")
-                                .font(.title2)
-                                .foregroundColor(.blue)
-                        }
-                        Text("Choose a day group, then drag blocks vertically. Drag either edge to resize in 15-minute steps.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .liquidGlass()
-
-                    ScheduleTimelineView(
-                        schedule: schedule,
-                        supportedModes: supportedModes,
-                        selectedDays: $selectedDays,
-                        selectedMode: $selectedMode,
-                        isInteracting: $isTimelineInteracting,
-                        onCreate: createBlock,
-                        onEdit: { block in
-                            editingBlock = block
-                            showingBlockEditor = true
-                        },
-                        onDelete: deleteBlock,
-                        onUpdate: updateBlock
-                    )
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .liquidGlass()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Conditions")
-                            .font(.headline)
-                        if let conditions = schedule?.conditions, !conditions.isEmpty {
-                            ForEach(conditions) { condition in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(condition.label)
-                                        Text("Switches sports mode to Live Only")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    Button("Edit") {
-                                        editingCondition = condition
-                                        showingConditionEditor = true
-                                    }
-                                    .buttonStyle(.borderless)
-                                }
-                            }
-                        } else {
-                            Text("No live-game condition is configured.")
-                                .foregroundColor(.secondary)
-                        }
-                        if schedule?.conditions.isEmpty ?? true {
-                            Button {
-                                editingCondition = nil
-                                showingConditionEditor = true
-                            } label: {
-                                Label("Add live-game condition", systemImage: "bolt.badge.clock")
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .liquidGlass()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Ticker override")
-                            .font(.headline)
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(schedule?.effective.override == true ? "App override active" : "Follow schedule")
-                                if let expiry = schedule?.effective.override_expires_at {
-                                    Text("Expires \(Date(timeIntervalSince1970: expiry).formatted(date: .abbreviated, time: .shortened))")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Button(schedule?.effective.override == true ? "Stop" : "Override") {
-                                setOverride(!(schedule?.effective.override ?? false))
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.orange)
-                        }
-                        Text("An override expires at the next schedule transition, then recurring rules resume.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .liquidGlass()
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundColor(.red)
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .liquidGlass()
+        NavigationStack {
+            VStack(spacing: 0) {
+                calendarHeader
+                if schedule != nil {
+                    calendarBody
+                    calendarControls
+                } else if isLoading {
+                    Spacer()
+                    ProgressView("Loading your schedule…")
+                    Spacer()
+                } else {
+                    ContentUnavailableView {
+                        Label("Schedule unavailable", systemImage: "calendar.badge.exclamationmark")
+                    } description: {
+                        Text("Check the connection and try again.")
+                    } actions: {
+                        Button("Try again") { loadSchedule() }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                if let errorMessage {
+                    Text(errorMessage).font(.footnote).foregroundStyle(.red)
+                        .padding(12).accessibilityIdentifier("schedule-error")
+                }
             }
-            .scrollDisabled(isTimelineInteracting)
-            .background(Color.black.opacity(0.18).ignoresSafeArea())
+            .background(scheduleBackground)
             .navigationTitle("Schedule")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if isLoading { ProgressView() }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { isPresented = false }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { addSchedule() } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Add schedule").accessibilityIdentifier("schedule-add")
+                        .disabled(schedule == nil || isLoading)
+                }
             }
-            .sheet(isPresented: $showingBlockEditor, onDismiss: loadSchedule) {
-                ScheduleBlockEditor(
-                    vm: vm,
-                    tickerID: device.id,
-                    block: editingBlock,
-                    supportedModes: supportedModes,
-                    timeZone: tickerTimeZone,
-                    isPresented: $showingBlockEditor
-                )
+            .sheet(item: $blockEditor) { selection in
+                ScheduleBlockEditor(vm: vm, tickerID: device.id, block: selection.block,
+                    supportedModes: supportedModes, timeZone: tickerTimeZone,
+                    initialDays: [selection.day], initialStart: selection.start,
+                    isPresented: Binding(get: { blockEditor != nil },
+                        set: { if !$0 { blockEditor = nil } }), onSaved: scheduleChanged)
+                    .id(selection.id)
             }
-            .sheet(isPresented: $showingConditionEditor, onDismiss: loadSchedule) {
-                ScheduleConditionEditor(
-                    vm: vm,
-                    tickerID: device.id,
-                    condition: editingCondition,
-                    isPresented: $showingConditionEditor
-                )
+            .sheet(item: $conditionEditor) { selection in
+                ScheduleConditionEditor(vm: vm, tickerID: device.id, condition: selection.condition,
+                    isPresented: Binding(get: { conditionEditor != nil },
+                        set: { if !$0 { conditionEditor = nil } }), onSaved: scheduleChanged)
+                    .id(selection.id)
             }
-            .onAppear(perform: loadSchedule)
+            .alert("Delete this schedule?", isPresented: Binding(
+                get: { blockToDelete != nil }, set: { if !$0 { blockToDelete = nil } }
+            ), presenting: blockToDelete) { block in
+                Button("Cancel", role: .cancel) {}
+                Button("Delete schedule", role: .destructive) { deleteBlock(block) }
+            } message: { block in
+                Text("\(SchedulePresentation.modeName(block.mode)) · \(block.dayLabel) · \(block.timeLabel)")
+            }
+            .onAppear { loadSchedule() }
         }
+        .preferredColorScheme(.dark)
+        .tint(.blue)
         .presentationDetents([.large])
     }
 
-    private func loadSchedule() {
-        isLoading = true
-        vm.fetchSchedule(for: device.id) { result in
-            isLoading = false
-            switch result {
-            case .success(let value):
-                schedule = value
-                errorMessage = nil
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+    private var calendarHeader: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(device.name).font(.headline)
+                    Text("Repeating week · \(schedule?.timezone.replacingOccurrences(of: "_", with: " ") ?? "Loading…")")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if isLoading { ProgressView().controlSize(.small) }
+            }
+            if let effective = schedule?.effective, effective.override {
+                Label("Paused until the next scheduled change", systemImage: "pause.circle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(0..<7, id: \.self) { day in
+                        dayFilter(day)
+                    }
+                }
+            }
+            HStack {
+                Text(SchedulePresentation.weekdays[selectedDay]).font(.title3.weight(.semibold))
+                Spacer()
+                if visibleBlocks.isEmpty, schedule != nil {
+                    Button("Add schedule") { addSchedule() }
+                        .font(.subheadline).accessibilityIdentifier("schedule-empty-add")
+                } else {
+                    Text("\(visibleBlocks.count) scheduled").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 14)
+    }
+
+    private func dayFilter(_ day: Int) -> some View {
+        let selected = selectedDay == day
+        return Button { selectedDay = day } label: {
+            Text(String(SchedulePresentation.weekdays[day].prefix(3)))
+                .font(.subheadline.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+                .background(selected ? Color.blue : Color.white.opacity(0.06), in: Capsule())
+                .foregroundStyle(selected ? Color.white : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(SchedulePresentation.weekdays[day])
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+        .accessibilityIdentifier("schedule-filter-\(day)")
+    }
+
+    private var calendarBody: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                calendarGrid
+                Text("Tap a block to edit. Tap an empty hour to add a schedule.")
+                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 20)
+                Text("Outside these blocks, your ticker uses its usual settings.")
+                    .font(.footnote).foregroundStyle(.secondary).padding(20)
+            }
+            .refreshable { await refreshSchedule() }
+            .onAppear { proxy.scrollTo("schedule-hour-7", anchor: .top) }
+            .onChange(of: selectedDay) { _, _ in
+                proxy.scrollTo("schedule-hour-7", anchor: .top)
             }
         }
     }
 
-    private func deleteBlock(_ block: TickerScheduleBlock) {
-        vm.deleteScheduleBlock(tickerID: device.id, blockID: block.id) { result in
-            switch result {
-            case .success:
-                updateLocalSchedule { blocks in
-                    blocks.filter { $0.id != block.id }
+    private var calendarGrid: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        hourRow(hour).id("schedule-hour-\(hour)")
+                    }
                 }
-            case .failure(let error):
-                errorMessage = error.localizedDescription
-                loadSchedule()
+                ForEach(SchedulePresentation.calendarPlacements(visibleBlocks)) { placement in
+                    calendarBlock(placement, width: geometry.size.width)
+                }
+            }
+        }
+        .frame(height: hourHeight * 24 + hourHeight)
+        .padding(.trailing, 16)
+    }
+
+    private func hourRow(_ hour: Int) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(SchedulePresentation.hourLabel(hour)).font(.caption2).foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .trailing).offset(y: -7)
+            VStack(spacing: 0) {
+                Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
+                Spacer(minLength: 0)
+                Rectangle().fill(Color.white.opacity(0.04)).frame(height: 1)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { addSchedule(start: hour * 60) }
+            .accessibilityElement()
+            .accessibilityLabel("Add schedule at \(SchedulePresentation.clock(hour * 60))")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { addSchedule(start: hour * 60) }
+            .accessibilityIdentifier("schedule-add-hour-\(hour)")
+        }
+        .frame(height: hourHeight)
+    }
+
+    private func calendarBlock(_ placement: ScheduleCalendarPlacement, width: CGFloat) -> some View {
+        let block = placement.block
+        let availableWidth = max(1, width - 62)
+        let columnWidth = availableWidth / CGFloat(placement.columns)
+        let height = CGFloat(placement.visualEnd - block.start_minute) / 60 * hourHeight
+        return ScheduleCalendarBlock(block: block, pending: pending.contains(block.id)) { edit(block) }
+            .frame(width: max(1, columnWidth - 4), height: max(1, height - 3), alignment: .topLeading)
+            .offset(x: 56 + CGFloat(placement.column) * columnWidth,
+                    y: CGFloat(block.start_minute) / 60 * hourHeight)
+            .contextMenu {
+                Button("Edit schedule", systemImage: "pencil") { edit(block) }
+                Button(block.enabled ? "Turn off" : "Turn on", systemImage: "power") {
+                    setEnabled(block, !block.enabled)
+                }
+                Button("Delete schedule", systemImage: "trash", role: .destructive) { blockToDelete = block }
+            }
+    }
+
+    private var calendarControls: some View {
+        HStack(spacing: 14) {
+            Menu {
+                ForEach(schedule?.conditions ?? []) { condition in
+                    Button(condition.label) { conditionEditor = ScheduleConditionSelection(condition: condition) }
+                        .accessibilityIdentifier("schedule-condition-\(condition.id)")
+                }
+                if schedule?.conditions.isEmpty ?? true {
+                    Button("Add live sports rule") { conditionEditor = ScheduleConditionSelection(condition: nil) }
+                        .accessibilityIdentifier("schedule-condition-add")
+                }
+            } label: {
+                Label("Live sports", systemImage: "bolt.fill")
+                    .font(.subheadline.weight(.medium)).frame(minHeight: 44)
+            }
+            .accessibilityIdentifier("schedule-rules")
+            Spacer(minLength: 0)
+            Button { setOverride(!(schedule?.effective.override ?? false)) } label: {
+                Label(schedule?.effective.override == true ? "Resume schedule" : "Pause schedule",
+                      systemImage: schedule?.effective.override == true ? "play.circle" : "pause.circle")
+                    .font(.subheadline.weight(.medium)).frame(minHeight: 44)
+            }
+            .tint(.orange).disabled(pending.contains("override"))
+            .accessibilityIdentifier("schedule-override")
+        }
+        .padding(.horizontal, 20).padding(.vertical, 5)
+        .background(.ultraThinMaterial)
+    }
+
+    private var scheduleBackground: some View {
+        LinearGradient(colors: [Color(red: 0.14, green: 0.19, blue: 0.25), Color(red: 0.04, green: 0.06, blue: 0.09)],
+                       startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+    }
+
+    private func addSchedule(start: Int = 480) {
+        blockEditor = ScheduleBlockSelection(block: nil, day: selectedDay, start: start)
+    }
+    private func edit(_ block: TickerScheduleBlock) {
+        blockEditor = ScheduleBlockSelection(block: block, day: selectedDay, start: block.start_minute)
+    }
+    private func scheduleChanged() { loadSchedule(); vm.fetchData() }
+
+    private func loadSchedule(completion: @escaping () -> Void = {}) {
+        loadRevision += 1
+        let revision = loadRevision
+        isLoading = true
+        vm.fetchSchedule(for: device.id) { result in
+            defer { completion() }
+            guard loadRevision == revision else { return }
+            isLoading = false
+            switch result {
+            case .success(let value):
+                if schedule == nil, (0...6).contains(value.effective.day_of_week) {
+                    selectedDay = value.effective.day_of_week
+                }
+                schedule = value
+                errorMessage = nil
+            case .failure(let error): errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func refreshSchedule() async {
+        await withCheckedContinuation { continuation in
+            loadSchedule { continuation.resume() }
+        }
+    }
+
+    private func setEnabled(_ block: TickerScheduleBlock, _ enabled: Bool) {
+        pending.insert(block.id)
+        vm.updateScheduleBlock(tickerID: device.id, blockID: block.id,
+            daysOfWeek: block.days_of_week, startMinute: block.start_minute, endMinute: block.end_minute,
+            mode: block.mode, sportsFilter: block.sports_filter, enabled: enabled) { result in
+                switch result {
+                case .success: loadSchedule { pending.remove(block.id) }
+                case .failure(let error): pending.remove(block.id); errorMessage = error.localizedDescription
+                }
+            }
+    }
+
+    private func deleteBlock(_ block: TickerScheduleBlock) {
+        pending.insert(block.id)
+        vm.deleteScheduleBlock(tickerID: device.id, blockID: block.id) { result in
+            pending.remove(block.id)
+            switch result {
+            case .success: scheduleChanged()
+            case .failure(let error): errorMessage = error.localizedDescription
             }
         }
     }
 
     private func setOverride(_ enabled: Bool) {
+        pending.insert("override")
         vm.setScheduleOverride(tickerID: device.id, enabled: enabled) { result in
+            pending.remove("override")
             switch result {
-            case .success:
-                loadSchedule()
-                vm.fetchData()
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+            case .success: scheduleChanged()
+            case .failure(let error): errorMessage = error.localizedDescription
             }
         }
-    }
-
-    private func createBlock(days: [Int], startMinute: Int, mode: String) {
-        let start = min(1380, max(0, (startMinute / 15) * 15))
-        vm.createScheduleBlock(
-            tickerID: device.id,
-            daysOfWeek: days,
-            startMinute: start,
-            endMinute: min(1440, start + 60),
-            mode: mode,
-            sportsFilter: mode == "sports" ? "all" : nil
-        ) { result in
-            switch result {
-            case .success(let created):
-                updateLocalSchedule { blocks in
-                    blocks + [created]
-                }
-            case .failure(let error):
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func updateBlock(
-        _ block: TickerScheduleBlock,
-        daysOfWeek: [Int],
-        startMinute: Int,
-        endMinute: Int
-    ) {
-        let revision = (scheduleMutationRevision[block.id] ?? 0) + 1
-        scheduleMutationRevision[block.id] = revision
-        let optimisticBlock = TickerScheduleBlock(
-            id: block.id,
-            ticker_id: block.ticker_id,
-            days_of_week: daysOfWeek,
-            day_names: dayNames(for: daysOfWeek),
-            start_minute: startMinute,
-            end_minute: endMinute,
-            mode: block.mode,
-            sports_filter: block.sports_filter,
-            enabled: block.enabled,
-            created_at: block.created_at,
-            updated_at: Date().timeIntervalSince1970
-        )
-        updateLocalSchedule { blocks in
-            blocks.map { $0.id == block.id ? optimisticBlock : $0 }
-        }
-        vm.updateScheduleBlock(
-            tickerID: device.id,
-            blockID: block.id,
-            daysOfWeek: daysOfWeek,
-            startMinute: startMinute,
-            endMinute: endMinute,
-            mode: block.mode,
-            sportsFilter: block.sports_filter,
-            enabled: block.enabled
-        ) { result in
-            switch result {
-            case .success(let updated):
-                guard scheduleMutationRevision[updated.id] == revision else { return }
-                updateLocalSchedule { blocks in
-                    blocks.map { $0.id == updated.id ? updated : $0 }
-                }
-            case .failure(let error):
-                guard scheduleMutationRevision[block.id] == revision else { return }
-                errorMessage = error.localizedDescription
-                loadSchedule()
-            }
-        }
-    }
-
-    private func updateLocalSchedule(_ transform: ([TickerScheduleBlock]) -> [TickerScheduleBlock]) {
-        guard let current = schedule else { return }
-        let blocks = transform(current.blocks)
-        let days = current.days.map { day in
-            TickerScheduleDay(
-                day_of_week: day.day_of_week,
-                name: day.name,
-                blocks: blocks.filter { $0.days_of_week.contains(day.day_of_week) }
-            )
-        }
-        schedule = TickerScheduleResponse(
-            api_version: current.api_version,
-            ticker_id: current.ticker_id,
-            timezone: current.timezone,
-            days: days,
-            blocks: blocks,
-            conditions: current.conditions,
-            live_games: current.live_games,
-            effective: current.effective
-        )
-    }
-
-    private func dayNames(for days: [Int]) -> [String] {
-        let names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-        return days.sorted().compactMap { names.indices.contains($0) ? names[$0] : nil }
     }
 }
 
-private struct ScheduleTimelineView: View {
-    private static let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    private static let minuteHeight: CGFloat = 0.8
-    private static let timelineHeight: CGFloat = 1152
-    private static let timeGutter: CGFloat = 52
-    private static let cycleCount = 5
-    private static let centerCycle = 2
-    private static let nowAnchorID = "schedule-now-anchor"
-    private static let minimumBlockMinutes = 15
-
-    let schedule: TickerScheduleResponse?
-    let supportedModes: [String]
-    @Binding var selectedDays: Set<Int>
-    @Binding var selectedMode: String
-    @Binding var isInteracting: Bool
-    let onCreate: ([Int], Int, String) -> Void
-    let onEdit: (TickerScheduleBlock) -> Void
-    let onDelete: (TickerScheduleBlock) -> Void
-    let onUpdate: (TickerScheduleBlock, [Int], Int, Int) -> Void
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            scheduleContent(currentDate: context.date)
-        }
-    }
-
-    private func scheduleContent(currentDate: Date) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            dayChooser
-
-            modePalette
-
-            verticalTimeline(currentDate: currentDate)
-            .frame(height: 500)
-            .background(Color.black.opacity(0.18))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            }
-            .scrollIndicators(.visible)
-
-            Text("Tap an empty time or drag a mode into it to add a one-hour block. Drag a block to move it, or use either edge to resize it.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private var dayChooser: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Apply blocks to")
-                .font(.subheadline.bold())
-                .foregroundColor(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
-                ForEach(0..<7, id: \.self) { day in
-                    dayButton(Self.dayNames[day], days: [day])
-                }
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
-                dayButton("Weekdays", days: Array(0...4))
-                dayButton("Weekends", days: Array(5...6))
-                dayButton("Every day", days: Array(0...6))
-            }
-        }
-    }
-
-    private func dayButton(_ title: String, days: [Int]) -> some View {
-        Button {
-            selectedDays = Set(days)
-        } label: {
-            Text(title)
-                .font(.caption.bold())
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .foregroundColor(selectedDays == Set(days) ? .white : .primary)
-                .background(selectedDays == Set(days) ? Color.blue.opacity(0.8) : Color.white.opacity(0.08))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selectedDays == Set(days) ? Color.blue : Color.white.opacity(0.08), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var modePalette: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Drag a mode onto the timeline")
-                .font(.subheadline.bold())
-                .foregroundColor(.secondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(supportedModes, id: \.self) { mode in
-                        Button {
-                            selectedMode = mode
-                        } label: {
-                            Label(mode.capitalized, systemImage: modeIcon(mode))
-                                .font(.caption.bold())
-                                .lineLimit(1)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 9)
-                                .foregroundColor(selectedMode == mode ? .white : .primary)
-                                .background(selectedMode == mode ? modeColor(mode).opacity(0.8) : Color.white.opacity(0.08))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .draggable(mode)
-                    }
-                }
-            }
-        }
-    }
-
-    private func verticalTimeline(currentDate: Date) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                VStack(spacing: 0) {
-                    ForEach(0..<Self.cycleCount, id: \.self) { cycle in
-                        timelineCanvas(currentDate: cycle == Self.centerCycle ? currentDate : nil)
-                            .id("schedule-cycle-\(cycle)")
-                    }
-                }
-            }
-            .scrollDisabled(isInteracting)
-            .scrollIndicators(.visible)
-            .onAppear {
-                DispatchQueue.main.async {
-                    proxy.scrollTo(Self.nowAnchorID, anchor: .center)
-                }
-            }
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y
-            } action: { _, offset in
-                guard !isInteracting else { return }
-                let cycleHeight = Self.timelineHeight
-                if offset < cycleHeight * 0.65 || offset > cycleHeight * 3.35 {
-                    DispatchQueue.main.async {
-                        guard !self.isInteracting else { return }
-                        proxy.scrollTo(Self.nowAnchorID, anchor: .center)
-                    }
-                }
-            }
-        }
-    }
-
-    private func timelineCanvas(currentDate: Date?) -> some View {
-        GeometryReader { proxy in
-            let trackWidth = max(1, proxy.size.width - Self.timeGutter)
-            HStack(spacing: 0) {
-                timeLabels
-                    .frame(width: Self.timeGutter, height: Self.timelineHeight)
-                ZStack(alignment: .topLeading) {
-                    verticalGrid(width: trackWidth)
-                        .contentShape(Rectangle())
-                        .gesture(SpatialTapGesture().onEnded { value in
-                            let minute = max(0, min(1440, minute(for: value.location.y)))
-                            onCreate(Array(selectedDays).sorted(), snapMinute(minute), selectedMode)
-                        })
-                        .dropDestination(for: String.self) { items, location in
-                            guard let mode = items.first, supportedModes.contains(mode) else { return false }
-                            let minute = max(0, min(1440, minute(for: location.y)))
-                            onCreate(Array(selectedDays).sorted(), snapMinute(minute), mode)
-                            return true
-                        }
-                    if let currentDate, let currentMinute = currentMinute(at: currentDate) {
-                        currentTimeIndicator(minute: currentMinute, width: trackWidth)
-                            .id(Self.nowAnchorID)
-                    }
-                    ForEach(occurrences()) { occurrence in
-                        timelineBlock(occurrence, width: trackWidth)
-                    }
-                }
-                .frame(width: trackWidth, height: Self.timelineHeight)
-                .contentShape(Rectangle())
-                .coordinateSpace(name: "schedule-timeline")
-            }
-        }
-        .frame(height: Self.timelineHeight)
-    }
-
-    private func verticalGrid(width: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            Color.white.opacity(0.035)
-            ForEach(0...48, id: \.self) { index in
-                Rectangle()
-                    .fill(Color.white.opacity(index % 2 == 0 ? 0.2 : 0.07))
-                    .frame(width: width, height: 1)
-                    .offset(y: y(for: index * 30))
-            }
-        }
-    }
-
-    private var timeLabels: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(0...24, id: \.self) { index in
-                Text(Self.clock(index * 60))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.secondary)
-                    .frame(width: Self.timeGutter - 8, alignment: .trailing)
-                    .offset(y: y(for: index * 60) - 7)
-            }
-        }
-        .frame(width: Self.timeGutter, height: Self.timelineHeight, alignment: .topLeading)
-        .background(Color.black.opacity(0.08))
-        .clipped()
-    }
-
-    private func currentTimeIndicator(minute: Int, width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Circle()
-                .fill(Color.green)
-                .frame(width: 8, height: 8)
-                .offset(x: -4)
-            Rectangle()
-                .fill(Color.green)
-                .frame(width: width, height: 2)
-        }
-        .offset(y: y(for: minute) - 1)
-        .allowsHitTesting(false)
-        .zIndex(10)
-    }
-
-    private func occurrences() -> [TimelineOccurrence] {
-        guard let blocks = schedule?.blocks else { return [] }
-        let days = selectedDays
-        var result: [TimelineOccurrence] = []
-        for block in blocks {
-            let matchesSelection = days.count == 1
-                ? block.days_of_week.contains(days.first!)
-                : Set(block.days_of_week) == days
-            if matchesSelection {
-                result.append(TimelineOccurrence(
-                    id: block.id,
-                    block: block,
-                    startMinute: block.start_minute,
-                    endMinute: block.end_minute,
-                    isPreview: false
-                ))
-            }
-        }
-        return result.sorted { $0.startMinute < $1.startMinute }
-    }
-
-    private func timelineBlock(_ occurrence: TimelineOccurrence, width: CGFloat) -> some View {
-        ScheduleTimelineBlockView(
-            block: occurrence.block,
-            startMinute: occurrence.startMinute,
-            endMinute: occurrence.endMinute,
-            isPreview: occurrence.isPreview,
-            width: width,
-            onEdit: onEdit,
-            onDelete: onDelete,
-            onUpdate: onUpdate,
-            onInteractionChanged: { isInteracting = $0 }
-        )
-    }
-
-    private func snapMinute(_ value: Int) -> Int {
-        Int((Double(value) / 15.0).rounded()) * 15
-    }
-
-    private func minute(for y: CGFloat) -> Int {
-        Int((y / Self.minuteHeight).rounded())
-    }
-
-    private func y(for minute: Int) -> CGFloat {
-        CGFloat(max(0, min(1440, minute))) * Self.minuteHeight
-    }
-
-    private func currentMinute(at date: Date) -> Int? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: schedule?.timezone ?? "") ?? .current
-        let hour = calendar.component(.hour, from: date)
-        let minute = calendar.component(.minute, from: date)
-        return hour * 60 + minute
-    }
-
-    private func modeIcon(_ mode: String) -> String {
-        [
-            "sports": "sportscourt.fill",
-            "stock": "chart.line.uptrend.xyaxis",
-            "weather": "cloud.sun.fill",
-            "music": "music.note",
-            "flights": "airplane",
-            "airports": "building.2.fill",
-            "clock": "clock.fill",
-        ][mode, default: "circle"]
-    }
-
-    private func modeColor(_ mode: String) -> Color {
-        [
-            "sports": .green,
-            "stock": .orange,
-            "weather": .cyan,
-            "music": .purple,
-            "flights": .yellow,
-            "airports": .blue,
-            "clock": .gray,
-        ][mode, default: .blue]
-    }
-
-    private static func clock(_ minute: Int) -> String {
-        let normalizedMinute = minute == 1440 ? 0 : minute
-        let hour = (normalizedMinute / 60) % 24
-        let displayHour = hour % 12 == 0 ? 12 : hour % 12
-        let meridiem = hour < 12 ? "AM" : "PM"
-        return String(format: "%d:%02d %@", displayHour, normalizedMinute % 60, meridiem)
-    }
-
-    private struct TimelineOccurrence: Identifiable {
-        let id: String
-        let block: TickerScheduleBlock
-        let startMinute: Int
-        let endMinute: Int
-        let isPreview: Bool
-    }
+private struct ScheduleBlockSelection: Identifiable {
+    let id = UUID()
+    let block: TickerScheduleBlock?
+    let day: Int
+    let start: Int
 }
 
-private struct ScheduleTimelineBlockView: View {
-    private static let minuteHeight: CGFloat = 0.8
-    private static let minimumBlockMinutes = 15
+private struct ScheduleConditionSelection: Identifiable {
+    let id = UUID()
+    let condition: TickerScheduleCondition?
+}
 
+private struct ScheduleCalendarBlock: View {
     let block: TickerScheduleBlock
-    let startMinute: Int
-    let endMinute: Int
-    let isPreview: Bool
-    let width: CGFloat
-    let onEdit: (TickerScheduleBlock) -> Void
-    let onDelete: (TickerScheduleBlock) -> Void
-    let onUpdate: (TickerScheduleBlock, [Int], Int, Int) -> Void
-    let onInteractionChanged: (Bool) -> Void
+    let pending: Bool
+    let edit: () -> Void
 
-    @State private var session: EditSession?
-    @State private var previewStartMinute: CGFloat?
-    @State private var previewEndMinute: CGFloat?
-
-    private var displayedStartMinute: CGFloat {
-        previewStartMinute ?? CGFloat(startMinute)
-    }
-
-    private var displayedEndMinute: CGFloat {
-        previewEndMinute ?? CGFloat(endMinute)
+    private var color: Color {
+        switch block.mode {
+        case "sports": return .blue
+        case "stock": return .green
+        case "music": return .pink
+        case "weather": return .cyan
+        case "flights", "airports": return .orange
+        default: return .purple
+        }
     }
 
     var body: some View {
-        let duration = max(Self.minimumBlockMinutes, Int(displayedEndMinute - displayedStartMinute))
-        let blockHeight = max(40, CGFloat(duration) * Self.minuteHeight - 4)
-        VStack(spacing: 0) {
-            resizeHandle(edge: .start)
-            HStack(spacing: 4) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(block.mode.capitalized)
-                        .font(.caption.bold())
-                        .lineLimit(1)
-                    Text("\(Self.clock(Self.snapMinute(Int(displayedStartMinute.rounded()))))–\(Self.clock(Self.snapMinute(Int(displayedEndMinute.rounded()))))")
-                        .font(.caption2.monospacedDigit())
-                        .lineLimit(1)
+        Button(action: edit) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(SchedulePresentation.modeName(block.mode)).font(.subheadline.weight(.semibold))
+                    if !block.enabled { Text("Off").font(.caption2).foregroundStyle(.secondary) }
+                    Spacer(minLength: 0)
+                    if pending { ProgressView().controlSize(.mini) }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .highPriorityGesture(moveGesture)
-                Menu {
-                    Button("Edit", action: { onEdit(block) })
-                    Button("Delete", role: .destructive, action: { onDelete(block) })
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.caption.bold())
-                        .frame(width: 28, height: 30)
+                Text(block.timeLabel).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                if block.mode == "sports", let filter = block.sports_filter, filter != "all" {
+                    Text(filter == "live" ? "Live games only" : "My teams").font(.caption2)
                 }
-                .menuStyle(.borderlessButton)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            resizeHandle(edge: .end)
+            .foregroundStyle(.white).padding(.horizontal, 10).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(color.opacity(block.enabled ? 0.3 : 0.08), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3) }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(color.opacity(0.65), style: StrokeStyle(lineWidth: 1, dash: block.enabled ? [] : [4, 3]))
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
-        .padding(.horizontal, 4)
-        .frame(width: max(0, width - 12), height: blockHeight)
-        .foregroundColor(.white)
-        .background(Self.modeColor(block.mode).opacity(block.enabled ? 0.82 : 0.35))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Self.modeColor(block.mode), lineWidth: isPreview || session != nil ? 2 : 1))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .offset(x: 6, y: displayedStartMinute * Self.minuteHeight + 2)
-        .opacity(block.enabled ? 1 : 0.55)
-        .onDisappear {
-            onInteractionChanged(false)
-        }
-    }
-
-    private func resizeHandle(edge: ResizeEdge) -> some View {
-        Capsule()
-            .fill(Color.white.opacity(0.8))
-            .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-            .highPriorityGesture(resizeGesture(edge: edge))
-    }
-
-    private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named("schedule-timeline"))
-            .onChanged { value in
-                beginSessionIfNeeded()
-                guard let session else { return }
-                let duration = CGFloat(session.endMinute - session.startMinute)
-                let delta = value.translation.height / Self.minuteHeight
-                let nextStart = max(0, min(1440 - duration, CGFloat(session.startMinute) + delta))
-                previewStartMinute = nextStart
-                previewEndMinute = nextStart + duration
-            }
-            .onEnded { _ in
-                finishSession()
-            }
-    }
-
-    private func resizeGesture(edge: ResizeEdge) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named("schedule-timeline"))
-            .onChanged { value in
-                beginSessionIfNeeded()
-                guard let session else { return }
-                let delta = value.translation.height / Self.minuteHeight
-                var start = CGFloat(session.startMinute)
-                var end = CGFloat(session.endMinute)
-                if edge == .start {
-                    start = max(0, min(end - CGFloat(Self.minimumBlockMinutes), start + delta))
-                } else {
-                    end = min(1440, max(start + CGFloat(Self.minimumBlockMinutes), end + delta))
-                }
-                previewStartMinute = start
-                previewEndMinute = end
-            }
-            .onEnded { _ in
-                finishSession()
-            }
-    }
-
-    private func beginSessionIfNeeded() {
-        guard session == nil else { return }
-        session = EditSession(startMinute: startMinute, endMinute: endMinute)
-        previewStartMinute = CGFloat(startMinute)
-        previewEndMinute = CGFloat(endMinute)
-        onInteractionChanged(true)
-    }
-
-    private func finishSession() {
-        guard let session else {
-            onInteractionChanged(false)
-            return
-        }
-        let nextStart = Self.snapMinute(Int((previewStartMinute ?? CGFloat(session.startMinute)).rounded()))
-        let nextEnd = Self.snapMinute(Int((previewEndMinute ?? CGFloat(session.endMinute)).rounded()))
-        let clampedStart = max(0, min(1440 - Self.minimumBlockMinutes, nextStart))
-        let clampedEnd = max(clampedStart + Self.minimumBlockMinutes, min(1440, nextEnd))
-        self.session = nil
-        previewStartMinute = nil
-        previewEndMinute = nil
-        onInteractionChanged(false)
-        guard clampedStart != session.startMinute || clampedEnd != session.endMinute else { return }
-        onUpdate(block, block.days_of_week, clampedStart, clampedEnd)
-    }
-
-    private static func snapMinute(_ value: Int) -> Int {
-        Int((Double(value) / 15.0).rounded()) * 15
-    }
-
-    private static func clock(_ minute: Int) -> String {
-        let normalizedMinute = minute == 1440 ? 0 : max(0, min(1440, minute))
-        let hour = (normalizedMinute / 60) % 24
-        let displayHour = hour % 12 == 0 ? 12 : hour % 12
-        let meridiem = hour < 12 ? "AM" : "PM"
-        return String(format: "%d:%02d %@", displayHour, normalizedMinute % 60, meridiem)
-    }
-
-    private static func modeColor(_ mode: String) -> Color {
-        [
-            "sports": Color.green,
-            "stock": Color.orange,
-            "weather": Color.cyan,
-            "music": Color.purple,
-            "flights": Color.yellow,
-            "airports": Color.blue,
-            "clock": Color.gray,
-        ][mode, default: Color.blue]
-    }
-
-    private enum ResizeEdge {
-        case start
-        case end
-    }
-
-    private struct EditSession {
-        let startMinute: Int
-        let endMinute: Int
+        .buttonStyle(.plain).disabled(pending).opacity(block.enabled ? 1 : 0.55)
+        .accessibilityLabel("\(SchedulePresentation.modeName(block.mode)), \(block.timeLabel), \(block.dayLabel)")
+        .accessibilityValue(block.enabled ? "Enabled" : "Disabled")
+        .accessibilityIdentifier("schedule-edit-\(block.id)")
     }
 }
 
@@ -827,169 +387,187 @@ private struct ScheduleBlockEditor: View {
     let supportedModes: [String]
     let timeZone: TimeZone
     @Binding var isPresented: Bool
+    let onSaved: () -> Void
 
     @State private var selectedDays: Set<Int>
     @State private var startDate: Date
     @State private var endDate: Date
-    @State private var endOfDay: Bool
     @State private var mode: String
     @State private var sportsFilter: String
     @State private var enabled: Bool
     @State private var errorMessage: String?
     @State private var isSaving = false
 
-    private var calendar: Calendar {
-        var value = Calendar(identifier: .gregorian)
-        value.timeZone = timeZone
-        return value
-    }
+    private var start: Int { SchedulePresentation.minute(startDate, timeZone: timeZone) }
+    private var end: Int { SchedulePresentation.minute(endDate, timeZone: timeZone, endOfDay: true) }
+    private var validRange: Bool { SchedulePresentation.validTimeRange(start: start, end: end) }
+    private var valid: Bool { validRange && !selectedDays.isEmpty && supportedModes.contains(mode) }
 
-    private let dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-    init(
-        vm: TickerViewModel,
-        tickerID: String,
-        block: TickerScheduleBlock?,
-        supportedModes: [String],
-        timeZone: TimeZone,
-        isPresented: Binding<Bool>
-    ) {
+    init(vm: TickerViewModel, tickerID: String, block: TickerScheduleBlock?, supportedModes: [String],
+         timeZone: TimeZone, initialDays: [Int]?, initialStart: Int,
+         isPresented: Binding<Bool>, onSaved: @escaping () -> Void) {
         self.vm = vm
         self.tickerID = tickerID
         self.block = block
         self.supportedModes = supportedModes
         self.timeZone = timeZone
+        self.onSaved = onSaved
         _isPresented = isPresented
-        var localCalendar = Calendar(identifier: .gregorian)
-        localCalendar.timeZone = timeZone
-        let currentDay = (localCalendar.component(.weekday, from: Date()) + 5) % 7
-        _selectedDays = State(initialValue: Set(block?.days_of_week ?? [currentDay]))
-        _startDate = State(initialValue: Self.date(minute: block?.start_minute ?? 480, timeZone: timeZone))
-        _endDate = State(initialValue: Self.date(minute: min(block?.end_minute ?? 540, 1439), timeZone: timeZone))
-        _endOfDay = State(initialValue: block?.end_minute == 1440)
+        _selectedDays = State(initialValue: Set(block?.days_of_week ?? initialDays ?? Array(0...6)))
+        _startDate = State(initialValue: SchedulePresentation.timeDate(minute: block?.start_minute ?? initialStart, timeZone: timeZone))
+        _endDate = State(initialValue: SchedulePresentation.timeDate(minute: block?.end_minute ?? min(initialStart + 60, 1440), timeZone: timeZone))
         _mode = State(initialValue: block?.mode ?? supportedModes.first ?? "sports")
         _sportsFilter = State(initialValue: block?.sports_filter ?? "all")
         _enabled = State(initialValue: block?.enabled ?? true)
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section("Repeats on") {
-                    HStack {
-                        Button("Weekdays") { selectedDays = Set(0...4) }
-                        Button("Weekends") { selectedDays = Set(5...6) }
-                        Button("Every day") { selectedDays = Set(0...6) }
-                    }
-                    .font(.caption)
-                    ForEach(0..<dayNames.count, id: \.self) { day in
-                        Toggle(dayNames[day], isOn: Binding(
-                            get: { selectedDays.contains(day) },
-                            set: { value in
-                                if value { selectedDays.insert(day) }
-                                else { selectedDays.remove(day) }
-                            }
-                        ))
-                    }
+                modeSection
+                repeatSection
+                timeSection
+                Section {
+                    Toggle("Schedule enabled", isOn: $enabled)
+                        .accessibilityIdentifier("schedule-editor-enabled")
                 }
-
-                Section("Time") {
-                    DatePicker("Starts", selection: $startDate, displayedComponents: [.hourAndMinute])
-                    Toggle("Runs through midnight", isOn: $endOfDay)
-                    if !endOfDay {
-                        DatePicker("Ends", selection: $endDate, displayedComponents: [.hourAndMinute])
-                    }
-                }
-
-                Section("Mode") {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(supportedModes, id: \.self) { value in
-                            Text(value.capitalized).tag(value)
-                        }
-                    }
-                    if mode == "sports" {
-                        Picker("Sports view", selection: $sportsFilter) {
-                            Text("All games").tag("all")
-                            Text("Live only").tag("live")
-                            Text("My teams").tag("my_teams")
-                        }
-                    }
-                    Toggle("Enabled", isOn: $enabled)
-                }
-
                 if let errorMessage {
-                    Text(errorMessage).foregroundColor(.red)
+                    Section {
+                        Text(errorMessage).foregroundStyle(.red)
+                            .accessibilityIdentifier("schedule-editor-error")
+                    }
                 }
             }
-            .environment(\.calendar, calendar)
-            .navigationTitle(block == nil ? "Add block" : "Edit block")
+            .navigationTitle(block == nil ? "Add schedule" : "Edit schedule")
             .navigationBarTitleDisplayMode(.inline)
+            .environment(\.timeZone, timeZone)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { isPresented = false }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isPresented = false }.disabled(isSaving)
+                        .accessibilityIdentifier("schedule-editor-cancel")
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(isSaving ? "Saving…" : "Save") { save() }
-                        .disabled(isSaving || selectedDays.isEmpty)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save", action: save)
+                        .fontWeight(.semibold).disabled(isSaving || !valid)
+                        .accessibilityIdentifier("schedule-editor-save")
                 }
             }
+            .interactiveDismissDisabled(isSaving)
+        }
+    }
+
+    private var modeSection: some View {
+        Section {
+            Picker("Show", selection: $mode) {
+                ForEach(supportedModes, id: \.self) { item in
+                    Label(SchedulePresentation.modeName(item), systemImage: modeSymbol(item)).tag(item)
+                }
+            }
+            .pickerStyle(.navigationLink)
+            .accessibilityIdentifier("schedule-editor-mode")
+            if mode == "sports" {
+                Picker("Games", selection: $sportsFilter) {
+                    Text("All games").tag("all")
+                    Text("Live only").tag("live")
+                    Text("My teams").tag("my_teams")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("schedule-editor-sports-filter")
+            }
+        } header: { Text("What to show") }
+    }
+
+    private var repeatSection: some View {
+        Section {
+            HStack(spacing: 8) {
+                dayPreset("Every day", days: Array(0...6), id: "every-day")
+                dayPreset("Weekdays", days: Array(0...4), id: "weekdays")
+                dayPreset("Weekends", days: [5, 6], id: "weekends")
+            }
+            HStack(spacing: 4) {
+                ForEach(0..<7, id: \.self) { day in
+                    Button {
+                        if !selectedDays.insert(day).inserted { selectedDays.remove(day) }
+                    } label: {
+                        Text(String(SchedulePresentation.weekdays[day].prefix(1)))
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(selectedDays.contains(day) ? Color.blue : Color.gray.opacity(0.13),
+                                        in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(selectedDays.contains(day) ? .white : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(SchedulePresentation.weekdays[day])
+                    .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
+                    .accessibilityIdentifier("schedule-day-\(day)")
+                }
+            }
+        } header: { Text("Repeat") } footer: {
+            Text(SchedulePresentation.repeatLabel(Array(selectedDays)))
+                .foregroundStyle(selectedDays.isEmpty ? .red : .secondary)
+                .accessibilityIdentifier("schedule-repeat-summary")
+        }
+    }
+
+    private func dayPreset(_ title: String, days: [Int], id: String) -> some View {
+        Button(title) { selectedDays = Set(days) }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .tint(selectedDays == Set(days) ? .blue : .gray)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityIdentifier("schedule-preset-\(id)")
+    }
+
+    private var timeSection: some View {
+        Section {
+            DatePicker("Starts", selection: $startDate, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact).accessibilityIdentifier("schedule-start-time")
+            DatePicker("Ends", selection: $endDate, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact).accessibilityIdentifier("schedule-end-time")
+        } header: { Text("When") } footer: {
+            if validRange {
+                Text("\(SchedulePresentation.clock(start)) – \(SchedulePresentation.clock(end)). Times use the ticker's time zone.")
+                    .accessibilityIdentifier("schedule-time-summary")
+            } else {
+                Text("Choose an end time after the start. Select midnight to finish at the end of the day.")
+                    .foregroundStyle(.red).accessibilityIdentifier("schedule-time-error")
+            }
+        }
+    }
+
+    private func modeSymbol(_ value: String) -> String {
+        switch value {
+        case "sports": return "sportscourt.fill"
+        case "stock": return "chart.line.uptrend.xyaxis"
+        case "music": return "music.note"
+        case "weather": return "cloud.sun.fill"
+        case "flights": return "airplane"
+        case "airports": return "airplane.arrival"
+        default: return "clock.fill"
         }
     }
 
     private func save() {
+        guard valid else { return }
         isSaving = true
         errorMessage = nil
-        let start = minute(from: startDate)
-        let end = endOfDay ? 1440 : minute(from: endDate)
-        if !endOfDay && end <= start {
-            isSaving = false
-            errorMessage = "The end time must be after the start time."
-            return
-        }
         let completion: (Result<TickerScheduleBlock, Error>) -> Void = { result in
             isSaving = false
             switch result {
-            case .success:
-                isPresented = false
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+            case .success: onSaved(); isPresented = false
+            case .failure(let error): errorMessage = error.localizedDescription
             }
         }
         if let block {
-            vm.updateScheduleBlock(
-                tickerID: tickerID,
-                blockID: block.id,
-                daysOfWeek: selectedDays.sorted(),
-                startMinute: start,
-                endMinute: end,
-                mode: mode,
-                sportsFilter: mode == "sports" ? sportsFilter : nil,
-                enabled: enabled,
-                completion: completion
-            )
+            vm.updateScheduleBlock(tickerID: tickerID, blockID: block.id, daysOfWeek: selectedDays.sorted(),
+                startMinute: start, endMinute: end, mode: mode,
+                sportsFilter: mode == "sports" ? sportsFilter : nil, enabled: enabled, completion: completion)
         } else {
-            vm.createScheduleBlock(
-                tickerID: tickerID,
-                daysOfWeek: selectedDays.sorted(),
-                startMinute: start,
-                endMinute: end,
-                mode: mode,
-                sportsFilter: mode == "sports" ? sportsFilter : nil,
-                enabled: enabled,
-                completion: completion
-            )
+            vm.createScheduleBlock(tickerID: tickerID, daysOfWeek: selectedDays.sorted(), startMinute: start,
+                endMinute: end, mode: mode, sportsFilter: mode == "sports" ? sportsFilter : nil,
+                enabled: enabled, completion: completion)
         }
-    }
-
-    private func minute(from date: Date) -> Int {
-        calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
-    }
-
-    private static func date(minute: Int, timeZone: TimeZone) -> Date {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        let base = calendar.startOfDay(for: Date())
-        return base.addingTimeInterval(TimeInterval(minute * 60))
     }
 }
 
@@ -998,100 +576,88 @@ private struct ScheduleConditionEditor: View {
     let tickerID: String
     let condition: TickerScheduleCondition?
     @Binding var isPresented: Bool
-
+    let onSaved: () -> Void
     @State private var threshold: Int
     @State private var comparison: String
     @State private var enabled: Bool
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var confirmingDelete = false
 
-    init(
-        vm: TickerViewModel,
-        tickerID: String,
-        condition: TickerScheduleCondition?,
-        isPresented: Binding<Bool>
-    ) {
-        self.vm = vm
-        self.tickerID = tickerID
-        self.condition = condition
+    init(vm: TickerViewModel, tickerID: String, condition: TickerScheduleCondition?,
+         isPresented: Binding<Bool>, onSaved: @escaping () -> Void) {
+        self.vm = vm; self.tickerID = tickerID; self.condition = condition; self.onSaved = onSaved
         _isPresented = isPresented
         _threshold = State(initialValue: condition?.threshold ?? 5)
-        _comparison = State(initialValue: condition?.`operator` ?? "gt")
+        _comparison = State(initialValue: condition?.operator ?? "gte")
         _enabled = State(initialValue: condition?.enabled ?? true)
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section("Live sports condition") {
-                    Picker("When live games", selection: $comparison) {
-                        Text("More than").tag("gt")
+                Section {
+                    Label("Show only live games", systemImage: "sportscourt.fill").font(.headline)
+                    Text("Your ticker switches its sports feed when enough games are live.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                Section("When games are live") {
+                    Picker("Number of games", selection: $comparison) {
                         Text("At least").tag("gte")
-                    }
+                        Text("More than").tag("gt")
+                    }.pickerStyle(.segmented)
                     Stepper("\(threshold) games", value: $threshold, in: 1...30)
-                    Toggle("Enabled", isOn: $enabled)
-                    Label("Switch to Live Only while sports mode is active", systemImage: "sportscourt.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Label("Pinned sports always wins", systemImage: "pin.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .accessibilityIdentifier("schedule-condition-threshold")
+                    Toggle("Rule enabled", isOn: $enabled)
+                }
+                Section {
+                    Label("Runs while Sports mode is active", systemImage: "checkmark.circle")
+                    Label("Pinned games keep priority", systemImage: "pin.fill")
+                }.font(.subheadline).foregroundStyle(.secondary)
+                if condition != nil {
+                    Section {
+                        Button("Delete rule", role: .destructive) { confirmingDelete = true }.disabled(isSaving)
+                    }
                 }
                 if let errorMessage {
-                    Text(errorMessage).foregroundColor(.red)
+                    Section { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle(condition == nil ? "Add condition" : "Edit condition")
+            .navigationTitle("Live sports rule")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    HStack {
-                        Button("Cancel") { isPresented = false }
-                        if condition != nil {
-                            Button("Delete", role: .destructive) { delete() }
-                        }
-                    }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isPresented = false }.disabled(isSaving)
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(isSaving ? "Saving…" : "Save") { save() }
-                        .disabled(isSaving)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save", action: save).disabled(isSaving)
+                        .accessibilityIdentifier("schedule-condition-save")
                 }
             }
+            .alert("Delete this live sports rule?", isPresented: $confirmingDelete) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete rule", role: .destructive, action: delete)
+            }
+            .interactiveDismissDisabled(isSaving)
         }
     }
 
     private func save() {
-        isSaving = true
-        errorMessage = nil
+        isSaving = true; errorMessage = nil
         if let condition {
-            vm.updateScheduleCondition(
-                tickerID: tickerID,
-                conditionID: condition.id,
-                threshold: threshold,
-                `operator`: comparison,
-                enabled: enabled
-            ) { result in
-                finish(result)
-            }
+            vm.updateScheduleCondition(tickerID: tickerID, conditionID: condition.id, threshold: threshold,
+                operator: comparison, enabled: enabled, completion: finish)
         } else {
-            vm.createScheduleCondition(
-                tickerID: tickerID,
-                threshold: threshold,
-                `operator`: comparison,
-                enabled: enabled
-            ) { result in
-                finish(result)
-            }
+            vm.createScheduleCondition(tickerID: tickerID, threshold: threshold,
+                operator: comparison, enabled: enabled, completion: finish)
         }
     }
 
     private func finish(_ result: Result<TickerScheduleCondition, Error>) {
         isSaving = false
         switch result {
-        case .success:
-            isPresented = false
-        case .failure(let error):
-            errorMessage = error.localizedDescription
+        case .success: onSaved(); isPresented = false
+        case .failure(let error): errorMessage = error.localizedDescription
         }
     }
 
@@ -1101,146 +667,9 @@ private struct ScheduleConditionEditor: View {
         vm.deleteScheduleCondition(tickerID: tickerID, conditionID: condition.id) { result in
             isSaving = false
             switch result {
-            case .success:
-                isPresented = false
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+            case .success: onSaved(); isPresented = false
+            case .failure(let error): errorMessage = error.localizedDescription
             }
         }
     }
 }
-
-#if DEBUG
-struct ScheduleInteractionTestView: View {
-    @State private var schedule = ScheduleInteractionTestFixture.schedule
-    @State private var selectedDays: Set<Int> = [0]
-    @State private var selectedMode = "sports"
-    @State private var isTimelineInteracting = false
-    @State private var lastMutation = "Ready"
-
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Schedule interaction test")
-                        .font(.title2.bold())
-                    Text(lastMutation)
-                        .font(.caption.monospaced())
-                        .foregroundColor(.secondary)
-                    ScheduleTimelineView(
-                        schedule: schedule,
-                        supportedModes: ["sports"],
-                        selectedDays: $selectedDays,
-                        selectedMode: $selectedMode,
-                        isInteracting: $isTimelineInteracting,
-                        onCreate: { days, start, mode in
-                            lastMutation = "Create \(mode) at \(start)"
-                        },
-                        onEdit: { block in
-                            lastMutation = "Edit \(block.id)"
-                        },
-                        onDelete: { block in
-                            schedule = ScheduleInteractionTestFixture.replacing(
-                                schedule,
-                                blocks: schedule.blocks.filter { $0.id != block.id }
-                            )
-                            lastMutation = "Deleted \(block.id)"
-                        },
-                        onUpdate: { block, days, start, end in
-                            let updated = ScheduleInteractionTestFixture.updated(block, days: days, start: start, end: end)
-                            schedule = ScheduleInteractionTestFixture.replacing(
-                                schedule,
-                                blocks: schedule.blocks.map { $0.id == block.id ? updated : $0 }
-                            )
-                            lastMutation = "Updated \(start)–\(end)"
-                        }
-                    )
-                    .padding(16)
-                    .liquidGlass()
-                }
-                .padding()
-            }
-            .scrollDisabled(isTimelineInteracting)
-            .navigationTitle("Local test")
-        }
-    }
-}
-
-private enum ScheduleInteractionTestFixture {
-    static let block = TickerScheduleBlock(
-        id: "local-test-block",
-        ticker_id: "local-test-ticker",
-        days_of_week: [0],
-        day_names: ["monday"],
-        start_minute: 1260,
-        end_minute: 1380,
-        mode: "sports",
-        sports_filter: "all",
-        enabled: true,
-        created_at: 0,
-        updated_at: 0
-    )
-
-    static let schedule: TickerScheduleResponse = {
-        let days = (0..<7).map { day in
-            TickerScheduleDay(
-                day_of_week: day,
-                name: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][day],
-                blocks: day == 0 ? [block] : []
-            )
-        }
-        let effective = try! JSONDecoder().decode(
-            TickerScheduleStatus.self,
-            from: Data("""
-            {"active":true,"override":false,"source":"time","mode":"sports","sports_filter":"all","sports_presentation":"rotation","live_games":0,"timezone":"America/New_York","local_day":"monday","local_time":"21:00","rule_id":"local-test-block","scheduled_mode":"sports","scheduled_sports_filter":"all"}
-            """.utf8)
-        )
-        return TickerScheduleResponse(
-            api_version: "v2",
-            ticker_id: "local-test-ticker",
-            timezone: "America/New_York",
-            days: days,
-            blocks: [block],
-            conditions: [],
-            live_games: 0,
-            effective: effective
-        )
-    }()
-
-    static func updated(_ block: TickerScheduleBlock, days: [Int], start: Int, end: Int) -> TickerScheduleBlock {
-        TickerScheduleBlock(
-            id: block.id,
-            ticker_id: block.ticker_id,
-            days_of_week: days,
-            day_names: days.sorted().map { ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][$0] },
-            start_minute: start,
-            end_minute: end,
-            mode: block.mode,
-            sports_filter: block.sports_filter,
-            enabled: block.enabled,
-            created_at: block.created_at,
-            updated_at: Date().timeIntervalSince1970
-        )
-    }
-
-    static func replacing(_ schedule: TickerScheduleResponse, blocks: [TickerScheduleBlock]) -> TickerScheduleResponse {
-        let days = schedule.days.map { day in
-            TickerScheduleDay(
-                day_of_week: day.day_of_week,
-                name: day.name,
-                blocks: blocks.filter { $0.days_of_week.contains(day.day_of_week) }
-            )
-        }
-        return TickerScheduleResponse(
-            api_version: schedule.api_version,
-            ticker_id: schedule.ticker_id,
-            timezone: schedule.timezone,
-            days: days,
-            blocks: blocks,
-            conditions: schedule.conditions,
-            live_games: schedule.live_games,
-            effective: schedule.effective
-        )
-    }
-}
-#endif

@@ -14,20 +14,11 @@ struct TickerScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     let updated_at: Double
 
     var dayLabel: String {
-        if day_names.count == 7 { return "Every day" }
-        return day_names.map { String($0.capitalized.prefix(3)) }.joined(separator: ", ")
+        SchedulePresentation.repeatLabel(days_of_week)
     }
 
     var timeLabel: String {
-        "\(Self.clock(start_minute))–\(Self.clock(end_minute))"
-    }
-
-    private static func clock(_ minute: Int) -> String {
-        let hour = (minute / 60) % 24
-        let value = minute % 60
-        let suffix = hour >= 12 ? "PM" : "AM"
-        let displayHour = hour % 12 == 0 ? 12 : hour % 12
-        return String(format: "%d:%02d %@", displayHour, value, suffix)
+        "\(SchedulePresentation.clock(start_minute)) – \(SchedulePresentation.clock(end_minute))"
     }
 }
 
@@ -45,9 +36,109 @@ struct TickerScheduleCondition: Codable, Identifiable, Hashable, Sendable {
     let updated_at: Double
 
     var label: String {
-        let comparison = `operator` == "gte" ? "≥" : ">"
-        return "When \(kind.replacingOccurrences(of: "_", with: " ")) \(comparison) \(threshold)"
+        let comparison = `operator` == "gte" ? "At least" : "More than"
+        return "\(comparison) \(threshold) games live"
     }
+}
+
+enum SchedulePresentation {
+    static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    static func repeatLabel(_ days: [Int]) -> String {
+        let selected = Set(days)
+        if selected == Set(0...6) { return "Every day" }
+        if selected == Set(0...4) { return "Weekdays" }
+        if selected == Set(5...6) { return "Weekends" }
+        if selected.isEmpty { return "Choose days" }
+        return selected.sorted().filter { weekdays.indices.contains($0) }
+            .map { String(weekdays[$0].prefix(3)) }.joined(separator: ", ")
+    }
+
+    static func clock(_ minute: Int) -> String {
+        if minute == 1440 { return "Midnight" }
+        let hour = minute / 60
+        let suffix = hour >= 12 ? "PM" : "AM"
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        return String(format: "%d:%02d %@", displayHour, minute % 60, suffix)
+    }
+
+    static func hourLabel(_ hour: Int) -> String {
+        "\(hour % 12 == 0 ? 12 : hour % 12) \(hour >= 12 ? "PM" : "AM")"
+    }
+
+    static func calendarPlacements(_ blocks: [TickerScheduleBlock]) -> [ScheduleCalendarPlacement] {
+        let ordered = self.blocks(blocks, on: nil)
+        var result: [ScheduleCalendarPlacement] = []
+        var groupStart = 0
+        var groupEnd = -1
+        var laneEnds: [Int] = []
+        func finishGroup() {
+            for index in groupStart..<result.count { result[index].columns = laneEnds.count }
+        }
+        for block in ordered {
+            if block.start_minute >= groupEnd {
+                finishGroup()
+                groupStart = result.count
+                laneEnds = []
+            }
+            let visualEnd = max(block.end_minute, block.start_minute + 45)
+            let column = laneEnds.firstIndex { $0 <= block.start_minute } ?? laneEnds.count
+            if column == laneEnds.count { laneEnds.append(visualEnd) } else { laneEnds[column] = visualEnd }
+            result.append(ScheduleCalendarPlacement(block: block, column: column, columns: 1, visualEnd: visualEnd))
+            groupEnd = max(groupEnd, visualEnd)
+        }
+        finishGroup()
+        return result
+    }
+
+    static func modeName(_ mode: String) -> String {
+        switch mode {
+        case "sports": return "Sports"
+        case "stock": return "Stocks"
+        case "music": return "Music"
+        case "weather": return "Weather"
+        case "flights": return "Flight tracking"
+        case "airports": return "Airport board"
+        case "clock": return "Clock"
+        default: return mode.capitalized
+        }
+    }
+
+    static func blocks(_ blocks: [TickerScheduleBlock], on day: Int?) -> [TickerScheduleBlock] {
+        blocks.filter { block in day.map { block.days_of_week.contains($0) } ?? true }.sorted {
+            if $0.start_minute != $1.start_minute { return $0.start_minute < $1.start_minute }
+            if $0.end_minute != $1.end_minute { return $0.end_minute < $1.end_minute }
+            return $0.id < $1.id
+        }
+    }
+
+    static func validTimeRange(start: Int, end: Int) -> Bool {
+        start >= 0 && start < 1440 && end > start && end <= 1440
+    }
+
+    static func timeDate(minute: Int, timeZone: TimeZone) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        // A fixed winter date avoids offset arithmetic across a daylight-saving transition.
+        let components = DateComponents(year: 2001, month: 1, day: minute == 1440 ? 16 : 15,
+                                        hour: (minute % 1440) / 60, minute: minute % 60)
+        return calendar.date(from: components)!
+    }
+
+    static func minute(_ date: Date, timeZone: TimeZone, endOfDay: Bool = false) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let value = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+        return endOfDay && value == 0 ? 1440 : value
+    }
+}
+
+struct ScheduleCalendarPlacement: Identifiable {
+    let block: TickerScheduleBlock
+    let column: Int
+    var columns: Int
+    let visualEnd: Int
+    var id: String { block.id }
 }
 
 struct TickerScheduleDay: Codable, Hashable, Sendable {
