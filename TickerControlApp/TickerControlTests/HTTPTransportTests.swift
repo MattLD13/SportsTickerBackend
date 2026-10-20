@@ -29,6 +29,39 @@ private final class ContractURLProtocol: URLProtocol {
 }
 
 final class HTTPTransportTests: XCTestCase {
+    func testSettingsEncoderRejectsInvalidNumbersBeforeFoundationWritesJSON() throws {
+        XCTAssertThrowsError(try TickerHTTPClient.jsonData(["display_settings": ["scroll_speed": Double.nan]]))
+        XCTAssertThrowsError(try TickerHTTPClient.jsonData(["display_settings": ["brightness": Double.infinity]]))
+        let data = try TickerHTTPClient.jsonData(["spotify_account_id": NSNull()])
+        let value = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertTrue(value["spotify_account_id"] is NSNull)
+    }
+    func testResponsePolicyRequiresExpectedHTTPStatus() {
+        let url = URL(string: "https://ticker.example")!
+        let accepted = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        let rejected = HTTPURLResponse(url: url, statusCode: 403, httpVersion: nil, headerFields: nil)!
+        let data = Data(#"{"error":{"message":"Pair this ticker again."}}"#.utf8)
+        XCTAssertNil(TickerHTTPClient.failureMessage(data: nil, response: accepted, error: nil))
+        XCTAssertEqual(TickerHTTPClient.failureMessage(data: data, response: rejected, error: nil),
+                       "The server rejected the request (HTTP 403). Pair this ticker again.")
+        XCTAssertNotNil(TickerHTTPClient.failureMessage(data: nil, response: accepted, error: nil, expectedStatus: 201))
+        XCTAssertNotNil(TickerHTTPClient.failureMessage(data: nil, response: nil, error: nil))
+    }
+
+    func testNetworkFailureCannotBecomeSuccessfulSave() {
+        let response = HTTPURLResponse(url: URL(string: "https://ticker.example")!, statusCode: 200,
+                                       httpVersion: nil, headerFields: nil)!
+        XCTAssertNotNil(TickerHTTPClient.failureMessage(data: nil, response: response, error: URLError(.timedOut)))
+        XCTAssertNotNil(TickerHTTPClient.failureMessage(data: nil, response: response, error: URLError(.cancelled)))
+    }
+
+    func testServerErrorUsesBoundedStructuredMessage() {
+        XCTAssertNil(TickerHTTPClient.serverMessage(Data("<html>bad gateway</html>".utf8)))
+        XCTAssertNil(TickerHTTPClient.serverMessage(Data(#"{"error":{"message":"  "}}"#.utf8)))
+        let data = try! JSONSerialization.data(withJSONObject: ["error": ["message": String(repeating: "x", count: 500)]])
+        XCTAssertEqual(TickerHTTPClient.serverMessage(data)?.count, 200)
+    }
+
     private func client() -> TickerHTTPClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ContractURLProtocol.self]

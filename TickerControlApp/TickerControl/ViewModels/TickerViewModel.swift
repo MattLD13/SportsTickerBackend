@@ -3,7 +3,6 @@ import Foundation
 import Combine
 import UIKit
 import CoreLocation
-import Security
 import AuthenticationServices
 import NetworkExtension
 import CoreBluetooth
@@ -60,8 +59,14 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var pairCode: String = ""
     @Published var pairName: String = ""
     @Published var pairError: String?
+    @Published var operationError: String?
     @Published var showPairSuccess: Bool = false
-    @Published var serverURL: String { didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") } }
+    @Published var serverURL: String {
+        didSet {
+            UserDefaults.standard.set(serverURL, forKey: "serverURL")
+            if oldValue != serverURL { invalidateRequests() }
+        }
+    }
     @Published var weatherLocInput: String = "New York"
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
@@ -88,9 +93,17 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var isServerReachable = false
     private let polling = TickerPollingCoordinator()
     private let httpClient: any TickerHTTPTransport
+    private let credentialStore: any TickerCredentialStore
     private var currentSaveTask: (any TickerHTTPTask)?
+    private var savePending = false
+    private var pendingScheduleOverride = false
     private var deviceListTask: (any TickerHTTPTask)?
-    private var deviceListGate = DeviceListRequestGate()
+    private var deviceListGate = TickerRequestGate()
+    private var displayTask: (any TickerHTTPTask)?
+    private var displayGate = TickerRequestGate()
+    private var saveGate = TickerRequestGate()
+    private var weatherGate = TickerRequestGate()
+    private var spotifyGate = TickerRequestGate()
     private var selection: DeviceSelectionReducer
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
     private var wifiLocationManager: CLLocationManager?
@@ -123,8 +136,36 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
 
     private func selectActiveTicker(_ tickerID: String?) {
+        invalidateRequests()
         selection.select(tickerID)
         savedTickerID = tickerID
+    }
+
+    private func invalidateRequests() {
+        displayGate.invalidate()
+        saveGate.invalidate()
+        deviceListGate.invalidate()
+        weatherGate.invalidate()
+        spotifyGate.invalidate()
+        displayTask?.cancel()
+        currentSaveTask?.cancel()
+        deviceListTask?.cancel()
+        displayTask = nil
+        currentSaveTask = nil
+        savePending = false
+        pendingScheduleOverride = false
+        deviceListTask = nil
+        polling.cancelPendingSave()
+        spotifyAuthorizationSession?.cancel()
+        spotifyAuthorizationSession = nil
+        isConnectingSpotify = false
+        isEditing = false
+    }
+
+    private func authorizationToken(for tickerID: String) -> String? {
+        if let token = controllerToken(for: tickerID) { return token }
+        guard controllerGroupID != nil else { return nil }
+        return devices.lazy.compactMap { self.controllerToken(for: $0.id) }.first
     }
 
     func switchToTicker(_ tickerID: String) {
@@ -142,74 +183,29 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
 
     private func controllerToken(for tickerID: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "matt.TickerControl.controller-token",
-            kSecAttrAccount as String: tickerID,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        credentialStore.read(service: "matt.TickerControl.controller-token", account: tickerID)
     }
 
     private func controllerGroupSecret() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "matt.TickerControl.controller-group-secret",
-            kSecAttrAccount as String: getBaseURL(),
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        credentialStore.read(service: "matt.TickerControl.controller-group-secret", account: getBaseURL())
     }
 
     @discardableResult
     private func saveControllerGroup(id: String, secret: String) -> Bool {
+        guard credentialStore.write(secret, service: "matt.TickerControl.controller-group-secret", account: getBaseURL()) else {
+            return false
+        }
         controllerGroupID = id
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "matt.TickerControl.controller-group-secret",
-            kSecAttrAccount as String: getBaseURL(),
-        ]
-        let attributes: [String: Any] = [kSecValueData as String: Data(secret.utf8)]
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecSuccess { return true }
-        guard updateStatus == errSecItemNotFound else { return false }
-        var addQuery = query
-        addQuery[kSecValueData as String] = Data(secret.utf8)
-        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+        return true
     }
 
     @discardableResult
     private func saveControllerToken(_ token: String, for tickerID: String) -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "matt.TickerControl.controller-token",
-            kSecAttrAccount as String: tickerID,
-        ]
-        let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8)]
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecSuccess { return true }
-        guard updateStatus == errSecItemNotFound else { return false }
-
-        var addQuery = query
-        addQuery[kSecValueData as String] = Data(token.utf8)
-        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+        credentialStore.write(token, service: "matt.TickerControl.controller-token", account: tickerID)
     }
 
     private func removeControllerToken(for tickerID: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "matt.TickerControl.controller-token",
-            kSecAttrAccount as String: tickerID,
-        ]
-        SecItemDelete(query as CFDictionary)
+        credentialStore.remove(service: "matt.TickerControl.controller-token", account: tickerID)
     }
 
     private func tickerURL(_ tickerID: String, suffix: String = "") -> URL? {
@@ -221,8 +217,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         let identifier = tickerID ?? savedTickerID
         guard let identifier else { return nil }
         // A group session can authorize every ticker in the same app group.
-        let token = controllerToken(for: identifier)
-            ?? (controllerGroupID != nil ? savedTickerID.flatMap { controllerToken(for: $0) } : nil)
+        let token = authorizationToken(for: identifier)
         guard let token else { return nil }
         return TickerHTTPClient.authorizedRequest(url: url, method: method, token: token)
     }
@@ -242,7 +237,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
         if let body {
             do {
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                request.httpBody = try TickerHTTPClient.jsonData( body)
             } catch {
                 completion(.failure(error))
                 return
@@ -454,8 +449,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         self.init(httpClient: TickerHTTPClient())
     }
 
-    init(httpClient: any TickerHTTPTransport) {
+    init(httpClient: any TickerHTTPTransport, credentialStore: any TickerCredentialStore = KeychainTickerCredentialStore()) {
         self.httpClient = httpClient
+        self.credentialStore = credentialStore
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
         self.selection = DeviceSelectionReducer(activeTickerID: UserDefaults.standard.string(forKey: "latchedTickerID"))
@@ -575,74 +571,72 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
     }
 
-    // === 1. FETCH DATA (Read) ===
+    func cancelWiFiSetup() {
+        bleProvisioning.cancel()
+        isWifiSetupInProgress = false
+        wifiHomePassword = ""
+    }
+
+    // Display reads belong to one server, ticker, and request generation.
     func fetchData() {
-        let base = getBaseURL()
-        if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
+        guard displayTask == nil else { return }
         guard let tickerID = savedTickerID,
-              controllerToken(for: tickerID) != nil,
+              let token = authorizationToken(for: tickerID),
               let url = tickerURL(tickerID, suffix: "/data"),
               let request = authorizedRequest(url: url, method: "GET", tickerID: tickerID) else {
-            self.isServerReachable = true
-            self.updateOverallStatus()
+            connectionStatus = savedTickerID == nil ? "Pair a ticker to connect" : "Pair this ticker again to reconnect"
+            statusColor = .orange
             return
         }
-
-        httpClient.dataTask(with: request) { data, _, error in
-            if let error = error {
-                DispatchQueue.main.async {
+        let identity = displayGate.begin(tickerID: tickerID, authorizationToken: token, serverURL: getBaseURL())
+        displayTask = httpClient.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                guard self.displayGate.accepts(identity, activeTickerID: self.savedTickerID,
+                    activeAuthorizationToken: self.savedTickerID.flatMap(self.authorizationToken),
+                    activeServerURL: self.getBaseURL()) else { return }
+                self.displayTask = nil
+                if let message = TickerHTTPClient.failureMessage(data: data, response: response, error: error) {
                     self.isServerReachable = false
-                    self.updateOverallStatus()
+                    self.connectionStatus = message
+                    self.statusColor = .red
+                    return
                 }
-                return
-            }
-
-            guard let data = data else { return }
-
-            do {
-                let displayResponse = try TickerDisplayResponse(data: data)
-                let decoded = displayResponse.response
-
-                DispatchQueue.main.async {
+                guard let data else {
+                    self.connectionStatus = "The server returned an empty display response."
+                    self.statusColor = .red
+                    return
+                }
+                do {
+                    let display = try TickerDisplayResponse(data: data)
+                    let decoded = display.response
                     self.isServerReachable = true
-                    let scheduleSource = decoded.meta.schedule?.source ?? "base"
-                    self.scheduleActive = scheduleSource == "time" || scheduleSource == "condition"
-
-                    self.games = displayResponse.orderedGames(pinnedIDs: self.pinnedGameIDs)
-
+                    let source = decoded.meta.schedule?.source ?? "base"
+                    self.scheduleActive = source == "time" || source == "condition"
                     if !self.isEditing {
-                        let decodedPins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
-                        self.pinnedGameIDs = Array(Set(decodedPins)).sorted()
+                        let pins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
+                        self.pinnedGameIDs = pins
                         self.state = decoded.settings
                         self.state.ticker_id = tickerID
-                        if let sharedTeams = self.sharedMyTeams {
-                            self.state.my_teams = sharedTeams
+                        if let shared = self.sharedMyTeams {
+                            self.state.my_teams = shared
                         } else {
                             self.sharedMyTeams = decoded.settings.my_teams
                         }
-                        self.state.pinned_games = decodedPins
-                        self.state.pinned_game = decodedPins.first
-                        if !self.state.my_teams.isEmpty {
-                            print("📥 Synced State: \(self.state.my_teams.count) teams loaded.")
-                        }
-
-                        // === FIX START: REMOVED LATCH LOGIC ===
-                        // We deleted the lines that auto-saved savedTickerID here.
-                        // This prevents the app from re-attaching to a ticker it doesn't own.
-                        // ======================================
-
+                        self.state.pinned_games = pins
+                        self.state.pinned_game = pins.first
                         if !decoded.settings.weather_city.isEmpty {
                             self.weatherLocInput = decoded.settings.weather_city
                         }
                     }
-
+                    self.games = display.orderedGames(pinnedIDs: self.pinnedGameIDs)
                     self.updateOverallStatus()
+                } catch {
+                    self.connectionStatus = "The server returned invalid ticker data."
+                    self.statusColor = .red
                 }
-            } catch {
-                print("❌ DECODING ERROR: \(error)")
-                DispatchQueue.main.async { self.isServerReachable = true }
             }
-        }.resume()
+        }
+        displayTask?.resume()
     }
 
     // === 2. TOGGLE TEAM (Edit) ===
@@ -684,58 +678,59 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         saveSettings()
     }
     func sendPinnedGames() { saveSettings() }
-    // === 4. SAVE SETTINGS (Write) ===
+    // Serialize writes and combine pending edits before sending the next state.
     func saveSettings(scheduleOverride: Bool = false) {
-        self.isEditing = true   // LOCK: block polling while save is in-flight
-        guard let validID = self.savedTickerID,
-              let url = tickerURL(validID),
-              var request = authorizedRequest(url: url, method: "PATCH", tickerID: validID) else {
-            self.isEditing = false
+        isEditing = true
+        guard let tickerID = savedTickerID,
+              let token = authorizationToken(for: tickerID),
+              let url = tickerURL(tickerID),
+              var request = authorizedRequest(url: url, method: "PATCH", tickerID: tickerID) else {
+            isEditing = false
+            operationError = "Pair this ticker before changing its settings."
             return
         }
-
+        if currentSaveTask != nil {
+            savePending = true
+            pendingScheduleOverride = pendingScheduleOverride || scheduleOverride
+            return
+        }
         do {
             var payload: [String: Any] = ["display_settings": v2DisplaySettingsPayload()]
-            if scheduleOverride {
-                payload["schedule_override"] = true
-            }
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-            print("📤 Saving settings to \(url.absoluteString)")
-            currentSaveTask?.cancel()
+            if scheduleOverride { payload["schedule_override"] = true }
+            request.httpBody = try TickerHTTPClient.jsonData( payload)
+            request.timeoutInterval = 15
+            let identity = saveGate.begin(tickerID: tickerID, authorizationToken: token, serverURL: getBaseURL())
+            displayGate.invalidate()
+            displayTask?.cancel()
+            displayTask = nil
             currentSaveTask = httpClient.dataTask(with: request) { data, response, error in
-                if let error = error {
-                    // Ignore cancellation errors — they mean a newer save superseded this one.
-                    if (error as NSError).code == NSURLErrorCancelled { return }
-                    print("❌ Save failed: \(error.localizedDescription)")
-                }
-
-                // === NEW SECURITY HANDLING ===
-                if let httpResponse = response as? HTTPURLResponse {
-                    if httpResponse.statusCode == 403 {
-                        DispatchQueue.main.async {
-                            print("⛔ Access Denied. Unpairing local app.")
-                            self.isEditing = false
-                            self.removeControllerToken(for: validID)
-                            self.selectActiveTicker(nil)
-                            self.games = []
-                            self.devices.removeAll()
-                            self.updateOverallStatus()
-                        }
+                DispatchQueue.main.async {
+                    guard self.saveGate.accepts(identity, activeTickerID: self.savedTickerID,
+                        activeAuthorizationToken: self.savedTickerID.flatMap(self.authorizationToken),
+                        activeServerURL: self.getBaseURL()) else { return }
+                    self.currentSaveTask = nil
+                    if self.savePending {
+                        let override = self.pendingScheduleOverride
+                        self.savePending = false
+                        self.pendingScheduleOverride = false
+                        self.saveSettings(scheduleOverride: override)
                         return
                     }
-                    if httpResponse.statusCode != 200 {
-                        print("⛔ Save rejected. Status: \(httpResponse.statusCode)")
-                    }
-                }
-                // =============================
-                DispatchQueue.main.async {
                     self.isEditing = false
+                    if let message = TickerHTTPClient.failureMessage(data: data, response: response, error: error) {
+                        self.operationError = message
+                        return
+                    }
+                    self.operationError = nil
                     self.fetchData()
-                    self.syncSharedMyTeams(excluding: validID)
+                    self.syncSharedMyTeams(excluding: tickerID)
                 }
             }
             currentSaveTask?.resume()
-        } catch { print("Save Error") }
+        } catch {
+            isEditing = false
+            operationError = "These settings could not be encoded. Check the entered values."
+        }
     }
 
     private func syncSharedMyTeams(excluding activeID: String) {
@@ -782,7 +777,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             "live_delay_seconds": liveDelaySeconds ?? activeSettings?.live_delay_seconds ?? 45,
             "scroll_seamless": seamless ?? state.scroll_seamless,
             "scroll_speed": scrollSpeed ?? state.scroll_speed,
-            "score_alerts": true,
         ]
     }
 
@@ -841,7 +835,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     func fetchDevices() {
         deviceListTask?.cancel()
         let tickerID = savedTickerID
-        let token = tickerID.flatMap(controllerToken)
+        let token = tickerID.flatMap(authorizationToken)
         guard let tickerID,
               let token,
               let url = URL(string: "\(getBaseURL())/api/v2/tickers"),
@@ -853,14 +847,15 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             return
         }
 
-        let requestIdentity = deviceListGate.begin(tickerID: tickerID, authorizationToken: token)
+        let requestIdentity = deviceListGate.begin(tickerID: tickerID, authorizationToken: token, serverURL: getBaseURL())
         let task = httpClient.dataTask(with: request) { data, _, _ in
             guard let data, let decoded = try? JSONDecoder().decode(V2TickerList.self, from: data) else { return }
             DispatchQueue.main.async {
                 guard self.deviceListGate.accepts(
                     requestIdentity,
                     activeTickerID: self.savedTickerID,
-                    activeAuthorizationToken: self.savedTickerID.flatMap(self.controllerToken)
+                    activeAuthorizationToken: self.savedTickerID.flatMap(self.authorizationToken),
+                    activeServerURL: self.getBaseURL()
                 ) else { return }
 
                 // The backend list is authoritative for membership. Every returned row is
@@ -896,41 +891,31 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
 
     func updateWeatherAndSave() {
+        guard let tickerID = savedTickerID, let token = authorizationToken(for: tickerID) else {
+            operationError = "Pair a ticker before changing its weather location."
+            return
+        }
         let geocoder = CLGeocoder()
-
-        // 1. IMMEDIATELY LOCK: Stops 0.5s updates from overwriting VM state
-        self.isEditing = true
-
+        let identity = weatherGate.begin(tickerID: tickerID, authorizationToken: token, serverURL: getBaseURL())
+        isEditing = true
         geocoder.geocodeAddressString(weatherLocInput) { placemarks, error in
             DispatchQueue.main.async {
-                if let pm = placemarks?.first, let loc = pm.location, let name = pm.locality ?? pm.name {
-                    // Update internal values
-                    self.state.weather_city = name
-                    self.state.weather_lat = loc.coordinate.latitude
-                    self.state.weather_lon = loc.coordinate.longitude
-                }
-
-                self.state.weather_location = self.weatherLocInput
-
-                // 2. SEND TO SERVER
-                self.saveSettings()
-
-                // 3. EXTENDED LOCK: Give the server 2 seconds to finish writing
-                // the new file to disk before we resume polling.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                guard self.weatherGate.accepts(identity, activeTickerID: self.savedTickerID,
+                    activeAuthorizationToken: self.savedTickerID.flatMap(self.authorizationToken),
+                    activeServerURL: self.getBaseURL()) else { return }
+                guard error == nil, let place = placemarks?.first, let location = place.location,
+                      let name = place.locality ?? place.name else {
                     self.isEditing = false
-                    self.fetchData() // Force one clean fetch
+                    self.operationError = "That weather location could not be found. Check its city or ZIP code."
+                    return
                 }
+                self.state.weather_city = name
+                self.state.weather_lat = location.coordinate.latitude
+                self.state.weather_lon = location.coordinate.longitude
+                self.state.weather_location = self.weatherLocInput
+                self.saveSettings()
             }
         }
-    }
-
-    private func pairingServerMessage(_ data: Data?) -> String? {
-        guard let data,
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = root["error"] as? [String: Any],
-              let message = error["message"] as? String else { return nil }
-        return message
     }
 
     func pairTicker(
@@ -960,7 +945,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
             do {
-                req.httpBody = try JSONSerialization.data(withJSONObject: body)
+                req.httpBody = try TickerHTTPClient.jsonData( body)
             } catch {
                 self.pairError = "Failed to encode pairing data"
                 onFailure?("Failed to encode pairing data")
@@ -980,7 +965,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
                 // Check HTTP Status Code
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 201 {
-                     let detail = self.pairingServerMessage(data).map { ": \($0)" } ?? ""
+                     let detail = TickerHTTPClient.serverMessage(data).map { ": \($0)" } ?? ""
                      let message = "Server error (HTTP \(httpResponse.statusCode))\(detail)"
                      DispatchQueue.main.async {
                          self.pairError = message
@@ -1021,7 +1006,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                             onFailure?("The controller token could not be saved securely")
                             return
                         }
-                        self.savedTickerID = self.selection.activeTickerID
+                        self.selectActiveTicker(self.selection.activeTickerID)
+                        self.pairError = nil
                         self.showPairSuccess = true
                         self.updateTickerName(name, tickerID: newID)
                         // Start one latest-generation list request after selection and token storage.
@@ -1061,9 +1047,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             }
             DispatchQueue.main.async {
                 self.devices.removeAll { $0.id == id }
-                self.games.removeAll()
                 self.removeControllerToken(for: id)
                 if self.savedTickerID == id {
+                    self.games.removeAll()
                     self.deviceListTask?.cancel()
                     self.deviceListGate.invalidate()
                     var nextSelection = DeviceSelectionReducer(activeTickerID: self.savedTickerID)
@@ -1087,7 +1073,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     func updateDeviceSettings(id: String, brightness: Double? = nil, speed: Double? = nil, seamless: Bool? = nil, inverted: Bool? = nil, liveDelayMode: Bool? = nil, delaySeconds: Int? = nil) {
         guard let url = tickerURL(id),
               var req = authorizedRequest(url: url, method: "PATCH", tickerID: id) else {
-            print("❌ Invalid URL for device update")
+            operationError = "Pair this ticker before changing its settings."
             return
         }
         let body: [String: Any] = ["display_settings": v2DeviceSettingsPatch(
@@ -1102,26 +1088,19 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         print("📤 Sending Update to \(id): \(body)")
 
         do {
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            req.httpBody = try TickerHTTPClient.jsonData( body)
         } catch {
-            print("❌ JSON Serialization Error: \(error)")
+            operationError = "These device settings could not be encoded."
             return
         }
 
         httpClient.dataTask(with: req) { data, response, error in
-            if let error = error {
-                print("❌ Network Error: \(error.localizedDescription)")
-                return
-            }
-            if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 200 {
-                    print("✅ Settings Saved Successfully")
-                    // Refresh device list so toggles (inverted, live delay, etc.)
-                    // reflect the confirmed server state immediately.
-                    DispatchQueue.main.async { self.fetchDevices() }
-                } else {
-                    print("⛔ Server Rejected Request. Status: \(httpResponse.statusCode). Did you Pair?")
+            DispatchQueue.main.async {
+                if let message = TickerHTTPClient.failureMessage(data: data, response: response, error: error) {
+                    self.operationError = message
+                    return
                 }
+                self.fetchDevices()
             }
         }.resume()
     }
@@ -1147,12 +1126,13 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private func updateTickerName(_ name: String, tickerID: String) {
         guard let url = tickerURL(tickerID),
               var request = authorizedRequest(url: url, method: "PATCH", tickerID: tickerID) else { return }
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
+        request.httpBody = try? TickerHTTPClient.jsonData( ["name": name])
         httpClient.dataTask(with: request).resume()
     }
 
     func fetchSpotifyStatus() {
         guard let tickerID = savedTickerID,
+              let token = authorizationToken(for: tickerID),
               let url = tickerURL(tickerID, suffix: "/integrations/spotify"),
               let request = authorizedRequest(url: url, method: "GET") else {
             spotifyStatus = "Connect a Ticker first"
@@ -1160,12 +1140,22 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             spotifyAccounts = []
             return
         }
-        httpClient.dataTask(with: request) { data, response, _ in
-            guard let data, let status = try? JSONDecoder().decode(SpotifyStatus.self, from: data) else {
-                DispatchQueue.main.async { self.spotifyStatus = "Spotify unavailable" }
-                return
-            }
+        let identity = spotifyGate.begin(tickerID: tickerID, authorizationToken: token, serverURL: getBaseURL())
+        httpClient.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
+                guard self.spotifyGate.accepts(identity, activeTickerID: self.savedTickerID,
+                    activeAuthorizationToken: self.savedTickerID.flatMap(self.authorizationToken),
+                    activeServerURL: self.getBaseURL()) else { return }
+                if let message = TickerHTTPClient.failureMessage(data: data, response: response, error: error) {
+                    self.spotifyStatus = "Spotify unavailable"
+                    self.spotifyError = message
+                    return
+                }
+                guard let data, let status = try? JSONDecoder().decode(SpotifyStatus.self, from: data) else {
+                    self.spotifyStatus = "Spotify unavailable"
+                    self.spotifyError = "The server returned invalid Spotify data."
+                    return
+                }
                 self.spotifyStatus = status.connected ? "Connected" : "Not connected"
                 self.spotifyAccountName = status.display_name
                 self.spotifyAccounts = status.accounts
@@ -1254,7 +1244,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
               var request = authorizedRequest(url: url, method: "PATCH") else { return }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(
-            withJSONObject: ["spotify_account_id": accountID as Any]
+            withJSONObject: ["spotify_account_id": accountID.map { $0 as Any } ?? NSNull()]
         )
         httpClient.dataTask(with: request) { _, response, _ in
             DispatchQueue.main.async {
@@ -1320,10 +1310,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }.resume()
     }
 
-    func sendDebug() {
-        connectionStatus = "Debug controls are not available from the V2 API"
-        statusColor = .orange
-    }
+
 }
 // ==========================================
 // MARK: - 3. UI COMPONENTS

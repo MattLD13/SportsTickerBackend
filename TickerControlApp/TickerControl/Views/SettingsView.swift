@@ -13,7 +13,7 @@ struct SettingsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var showPairing = false
     @State private var rebootConfirm = false
-    @State private var showRawJSON = false
+    @State private var showFeedDetails = false
 
     var body: some View {
         ScrollView {
@@ -25,7 +25,10 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Server URL").font(.caption).foregroundColor(.gray)
                         TextField("https://...", text: $vm.serverURL).textFieldStyle(.plain).padding(10).background(Color.black.opacity(0.2)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1))).foregroundColor(.white)
-                            .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchDevices() }
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchModeOptions(); vm.fetchDevices() }
                     }.padding().liquidGlass()
                 }.padding(.horizontal)
 
@@ -50,21 +53,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("DEBUG").font(.caption).bold().foregroundStyle(.secondary)
                         VStack(spacing: 0) {
-                            Toggle("Debug Mode", isOn: Binding(
-                                get: { vm.state.debug_mode },
-                                set: { val in
-                                    vm.isEditing = true
-                                    vm.state.debug_mode = val
-                                    vm.sendDebug()
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false }
-                                }
-                            ))
-                            .padding()
-                            .toggleStyle(SwitchToggleStyle(tint: .orange))
-
-                            Divider().background(Color.white.opacity(0.1))
-
-                            Button("View Raw Server JSON") { showRawJSON = true }
+                            Button("View feed details") { showFeedDetails = true }
                                 .padding()
                                 .foregroundColor(.blue)
 
@@ -97,7 +86,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showPairing) {
             PairingView(vm: vm, isPresented: $showPairing)
         }
-        .sheet(isPresented: $showRawJSON) {
+        .sheet(isPresented: $showFeedDetails) {
             ScrollView { Text(String(describing: vm.games)).font(.caption.monospaced()).padding() }.presentationDetents([.medium])
         }
     }

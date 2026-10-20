@@ -24,19 +24,28 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
     private var pendingPairingCode: String?
     private var onSuccess: ((String?) -> Void)?
     private var onFailure: ((String) -> Void)?
+    private var timeout: Timer?
 
     func start(code: String, ssid: String, password: String, onSuccess: @escaping (String?) -> Void, onFailure: @escaping (String) -> Void) {
+        reset()
         setupCode = code
         homeSSID = ssid
         homePassword = password
         self.onSuccess = onSuccess
         self.onFailure = onFailure
         central = CBCentralManager(delegate: self, queue: .main)
+        timeout = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
+            self?.fail("Ticker setup timed out. Move closer, check its WIFI PIN, and try again.")
+        }
     }
+
+    func cancel() { reset() }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         guard central.state == .poweredOn else {
             if central.state == .poweredOff { fail("Turn on Bluetooth to set up the ticker.") }
+            if central.state == .unauthorized { fail("Allow Bluetooth access in iPhone Settings to set up the ticker.") }
+            if central.state == .unsupported { fail("This device does not support Bluetooth ticker setup.") }
             return
         }
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
@@ -135,19 +144,26 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
     }
 
     private func finish() {
-        central?.cancelPeripheralConnection(peripheral!)
-        onSuccess?(pendingPairingCode)
+        let completion = onSuccess
+        let code = pendingPairingCode
         reset()
+        completion?(code)
     }
 
     private func fail(_ message: String) {
-        central?.stopScan()
-        if let peripheral { central?.cancelPeripheralConnection(peripheral) }
-        onFailure?(message)
+        let completion = onFailure
         reset()
+        completion?(message)
     }
 
     private func reset() {
+        timeout?.invalidate()
+        timeout = nil
+        central?.stopScan()
+        peripheral?.delegate = nil
+        if let peripheral { central?.cancelPeripheralConnection(peripheral) }
+        central?.delegate = nil
+        central = nil
         peripheral = nil
         challengeCharacteristic = nil
         credentialsCharacteristic = nil
@@ -158,5 +174,8 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
         nextChunk = 0
         onSuccess = nil
         onFailure = nil
+        setupCode = ""
+        homeSSID = ""
+        homePassword = ""
     }
 }

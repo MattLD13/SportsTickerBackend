@@ -21,7 +21,7 @@ let package = Package(
                 "ViewModels",
                 "Views",
             ],
-            sources: ["DeviceListState.swift", "TickerScheduleModels.swift", "Models/TickerHardwareProfile.swift", "Models/TickerContentModels.swift", "Models/EnabledLeagueControls.swift", "Services/TickerHTTPClient.swift", "Services/TickerPollingCoordinator.swift", "Services/TickerDisplayResponse.swift"]
+            sources: ["DeviceListState.swift", "TickerScheduleModels.swift", "Models/TickerHardwareProfile.swift", "Models/TickerContentModels.swift", "Models/EnabledLeagueControls.swift", "Services/TickerHTTPClient.swift", "Services/TickerCredentialStore.swift", "Services/TickerPollingCoordinator.swift", "Services/TickerDisplayResponse.swift"]
         ),
         .testTarget(
             name: "TickerControlStateTests",

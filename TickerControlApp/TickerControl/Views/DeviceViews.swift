@@ -105,6 +105,7 @@ struct WiFiSetupView: View {
             .navigationTitle("Ticker Wi-Fi")
             .navigationBarItems(trailing: Button("Close") { isPresented = false })
             .onAppear { vm.fetchCurrentWiFiSSID() }
+            .onDisappear { vm.cancelWiFiSetup() }
         }
     }
 }

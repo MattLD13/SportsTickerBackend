@@ -62,6 +62,11 @@ final class TickerPollingCoordinator {
         }
     }
 
+    func cancelPendingSave() {
+        saveTimer?.invalidate()
+        saveTimer = nil
+    }
+
     func stop() {
         dataTimer?.invalidate()
         deviceTimer?.invalidate()

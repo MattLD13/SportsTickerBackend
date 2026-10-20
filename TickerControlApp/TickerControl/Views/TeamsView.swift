@@ -69,21 +69,9 @@ struct TeamsView: View {
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
 
-                                // === SMART MATCHING LOGIC ===
-                                // 1. Clean inputs
-                                let cleanAbbr = team.abbr.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let cleanLeague = selectedLeague.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                                // 2. Construct the "Smart ID" (e.g. nfl:NYG)
-                                let smartID = "\(cleanLeague):\(cleanAbbr)"
-
-                                // 3. Check against saved list using scoped ID (e.g. "mlb:ATL")
-                                let isSelected = vm.state.my_teams.contains(team.id) ||
-                                                 vm.state.my_teams.contains(smartID)
-
+                                let isSelected = vm.state.my_teams.contains(team.id)
                                 Button {
-                                    print("🔵 Toggling Team: \(smartID)") // DEBUG PRINT
-                                    vm.toggleTeam(smartID)
+                                    vm.toggleTeam(team.id)
                                 } label: {
                                     VStack {
                                         TeamLogoView(url: team.logo, abbr: team.abbr, size: 40)

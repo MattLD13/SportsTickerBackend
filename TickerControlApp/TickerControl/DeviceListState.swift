@@ -1,22 +1,24 @@
 import Foundation
 
-/// Identifies the ticker and token that a device-list request used.
-struct DeviceListRequestIdentity: Equatable, Sendable {
+/// Identifies the server, ticker, and token used by one request.
+struct TickerRequestIdentity: Equatable, Sendable {
     let generation: UInt64
     let tickerID: String
     let authorizationToken: String
+    let serverURL: String
 }
 
-/// Rejects device-list completions that started before a newer selection or refresh.
-struct DeviceListRequestGate: Sendable {
+/// Rejects completions from a replaced request or session.
+struct TickerRequestGate: Sendable {
     private(set) var generation: UInt64 = 0
 
-    mutating func begin(tickerID: String, authorizationToken: String) -> DeviceListRequestIdentity {
+    mutating func begin(tickerID: String, authorizationToken: String, serverURL: String) -> TickerRequestIdentity {
         generation &+= 1
-        return DeviceListRequestIdentity(
+        return TickerRequestIdentity(
             generation: generation,
             tickerID: tickerID,
-            authorizationToken: authorizationToken
+            authorizationToken: authorizationToken,
+            serverURL: serverURL
         )
     }
 
@@ -25,13 +27,15 @@ struct DeviceListRequestGate: Sendable {
     }
 
     func accepts(
-        _ request: DeviceListRequestIdentity,
+        _ request: TickerRequestIdentity,
         activeTickerID: String?,
-        activeAuthorizationToken: String?
+        activeAuthorizationToken: String?,
+        activeServerURL: String
     ) -> Bool {
         request.generation == generation &&
         request.tickerID == activeTickerID &&
-        request.authorizationToken == activeAuthorizationToken
+        request.authorizationToken == activeAuthorizationToken &&
+        request.serverURL == activeServerURL
     }
 }
 

@@ -41,5 +41,13 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .onOpenURL { vm.handleSpotifyCallback($0) }
+        .alert("Ticker request failed", isPresented: Binding(
+            get: { vm.operationError != nil },
+            set: { if !$0 { vm.operationError = nil } }
+        )) {
+            Button("OK") { vm.operationError = nil }
+        } message: {
+            Text(vm.operationError ?? "")
+        }
     }
 }
