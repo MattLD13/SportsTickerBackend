@@ -102,7 +102,12 @@ def changed_components(root, base, head="HEAD"):
     paths = subprocess.check_output(["git", "diff", "--name-only", base, head], cwd=root, text=True).splitlines()
     selected = set()
     for path in paths:
-        selected.update(owners(path, before=git_text(root, base, path), after=git_text(root, head, path)))
+        if path == "sports_ticker/providers/live_sources.py":
+            before = git_text(root, base, path)
+            after = git_text(root, head, path)
+        else:
+            before = after = None
+        selected.update(owners(path, before=before, after=after))
     return [name for name in ALL if name in selected]
 
 
