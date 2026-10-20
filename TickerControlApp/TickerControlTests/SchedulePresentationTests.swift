@@ -3,55 +3,37 @@ import XCTest
 @testable import TickerControlState
 
 final class SchedulePresentationTests: XCTestCase {
-    func testDraggingStaysInsideTheVisibleDayColumns() {
-        XCTAssertEqual(ScheduleCalendarInteraction.columnOffset(translation: 500, width: 120, column: 0, count: 3), 2)
-        XCTAssertEqual(ScheduleCalendarInteraction.columnOffset(translation: -500, width: 120, column: 2, count: 3), -2)
-        XCTAssertEqual(ScheduleCalendarInteraction.columnOffset(translation: 120, width: 120, column: 0, count: 3), 1)
-        XCTAssertEqual(ScheduleCalendarInteraction.columnOffset(translation: 120, width: 120, column: 0, count: 1), 0)
+    func testGroupedLabelsReserveSpaceWithoutHidingOverlappingBlocks() {
+        let first = TickerScheduleBlock(id: "short", ticker_id: "preview", days_of_week: [0], day_names: [],
+            start_minute: 480, end_minute: 495, mode: "weather", sports_filter: nil,
+            enabled: true, created_at: 0, updated_at: 0)
+        let positions = SchedulePresentation.calendarPlacements([first, block("next", days: [0], start: 525)], minimumMinutes: 60)
+        XCTAssertEqual(positions.map(\.columns), [2, 2])
+        XCTAssertEqual(positions[0].visualEnd, 540)
+        XCTAssertEqual(first.end_minute, 495)
     }
-    func testCalendarEditsSnapToQuarterHoursAndPreserveDuration() {
-        let value = block("move", days: [0, 4], start: 480)
-        XCTAssertEqual(ScheduleCalendarInteraction.snap(7), 0)
-        XCTAssertEqual(ScheduleCalendarInteraction.snap(8), 15)
-        XCTAssertEqual(ScheduleCalendarInteraction.snap(-8), -15)
-        let moved = ScheduleCalendarInteraction.applying(.move, to: value, minutes: 22, dayOffset: -1)
-        XCTAssertEqual(moved.start_minute, 495)
-        XCTAssertEqual(moved.end_minute, 555)
-        XCTAssertEqual(moved.days_of_week, [3, 6])
-        XCTAssertEqual(moved.id, value.id)
-        XCTAssertEqual(moved.mode, value.mode)
-        XCTAssertEqual(moved.sports_filter, value.sports_filter)
-        XCTAssertEqual(moved.enabled, value.enabled)
-        let unchanged = ScheduleCalendarInteraction.applying(.move, to: value, minutes: 1)
-        XCTAssertFalse(ScheduleCalendarInteraction.hasChanges(value, unchanged))
-        XCTAssertTrue(ScheduleCalendarInteraction.hasChanges(value, moved))
+    func testWeekdayAndWeekendScopesSelectTheirActualDays() {
+        XCTAssertEqual(ScheduleCalendarScope.weekdays.columns(start: 3, count: 3)[0].days, [0, 1, 2, 3, 4])
+        XCTAssertEqual(ScheduleCalendarScope.weekends.columns(start: 3, count: 3)[0].days, [5, 6])
+        XCTAssertEqual(ScheduleCalendarScope.days.columns(start: 6, count: 3).map(\.days), [[6], [0], [1]])
     }
 
-    func testCalendarEditsClampAtDayEdgesAndDoNotInvert() {
-        let value = block("move", days: [0], start: 480)
-        let early = ScheduleCalendarInteraction.applying(.move, to: value, minutes: -900)
-        XCTAssertEqual(early.start_minute, 0)
-        XCTAssertEqual(early.end_minute, 60)
-        let late = ScheduleCalendarInteraction.applying(.move, to: value, minutes: 2000)
-        XCTAssertEqual(late.start_minute, 1380)
-        XCTAssertEqual(late.end_minute, 1440)
-        XCTAssertEqual(ScheduleCalendarInteraction.applying(.start, to: value, minutes: 200).start_minute, 525)
-        XCTAssertEqual(ScheduleCalendarInteraction.applying(.end, to: value, minutes: -200).end_minute, 495)
-        XCTAssertEqual(ScheduleCalendarInteraction.days(start: 6, count: 3), [6, 0, 1])
+    func testGroupedCalendarKeepsPartialDaysExplicitAndDoesNotDuplicateBlocks() {
+        let values = [block("monday", days: [0], start: 480), block("routine", days: Array(0...4), start: 540),
+                      block("weekend", days: [5, 6], start: 600)]
+        let weekdays = ScheduleCalendarScope.weekdays.columns(start: 0, count: 3)[0].blocks(values)
+        XCTAssertEqual(weekdays.map(\.id), ["monday", "routine"])
+        XCTAssertEqual(weekdays[0].dayLabel, "Mon")
+        let weekends = ScheduleCalendarScope.weekends.columns(start: 0, count: 3)[0].blocks(values)
+        XCTAssertEqual(weekends.map(\.id), ["weekend"])
     }
 
-    func testDrawingSnapsInBothDirectionsAndStopsAtMidnight() {
-        let forward = ScheduleCalendarInteraction.drawnRange(first: 602, last: 693)
-        XCTAssertEqual(forward.start, 600)
-        XCTAssertEqual(forward.end, 690)
-        let backward = ScheduleCalendarInteraction.drawnRange(first: 600, last: 540)
-        XCTAssertEqual(backward.start, 540)
-        XCTAssertEqual(backward.end, 600)
-        let late = ScheduleCalendarInteraction.drawnRange(first: 1439, last: 1500)
-        XCTAssertEqual(late.start, 1425)
-        XCTAssertEqual(late.end, 1440)
+    func testEmptySpaceUsesQuarterHourPlacement() {
+        XCTAssertEqual(ScheduleCalendarColumn.minute(hour: 8, fraction: 0.1), 480)
+        XCTAssertEqual(ScheduleCalendarColumn.minute(hour: 8, fraction: 0.3), 495)
+        XCTAssertEqual(ScheduleCalendarColumn.minute(hour: 8, fraction: 0.6), 510)
+        XCTAssertEqual(ScheduleCalendarColumn.minute(hour: 23, fraction: 1), 1425)
     }
-
     func testRepeatPresetsUseNumericContractDays() {
         XCTAssertEqual(SchedulePresentation.repeatLabel(Array(0...6)), "Every day")
         XCTAssertEqual(SchedulePresentation.repeatLabel(Array(0...4)), "Weekdays")

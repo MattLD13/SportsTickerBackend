@@ -8,10 +8,27 @@ struct SchedulePreviewView: View {
     @State private var presented = true
 
     var body: some View {
-        TickerScheduleView(vm: vm, device: TickerDevice(
+        Group {
+          if ProcessInfo.processInfo.arguments.contains("-scheduleHomePreview") {
+            HomeView(vm: vm)
+                .background(LinearGradient(colors: [Color(red: 0.22, green: 0.28, blue: 0.35),
+                    Color(red: 0.05, green: 0.07, blue: 0.10)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+                .onAppear {
+                    vm.devices = [device]
+                    vm.switchToTicker(device.id)
+                    vm.fetchData()
+                }
+          } else {
+            TickerScheduleView(vm: vm, device: device, isPresented: $presented)
+          }
+        }.preferredColorScheme(.dark)
+    }
+
+    private var device: TickerDevice {
+        TickerDevice(
             id: "schedule-preview", name: "Living room ticker",
             settings: DeviceSettings(brightness: 80, scroll_speed: 0.03),
-            last_seen: nil, capabilities: [], profile: nil), isPresented: $presented)
+            last_seen: nil, capabilities: [], profile: nil)
     }
 }
 
@@ -34,6 +51,12 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
     private var manual = false
     private var failedRead = false
     private var mutationNumber = 0
+    private var effective: [String: Any] {
+        let expiry: Any = manual ? (Date().timeIntervalSince1970 + 3600) as Any : NSNull()
+        return ["active": !manual, "override": manual, "source": manual ? "app_override" : "time",
+         "override_expires_at": expiry,
+         "timezone": "America/New_York"]
+    }
 
     init() {
         let arguments = ProcessInfo.processInfo.arguments
@@ -85,7 +108,11 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
             }
             return (["api_version": "2", "ticker_id": "schedule-preview", "timezone": "America/New_York",
                      "days": [], "blocks": blocks, "conditions": conditions, "live_games": 3,
-                     "effective": ["override": manual, "source": manual ? "override" : "base"]], 200)
+                     "effective": effective], 200)
+        }
+        if path.hasSuffix("/data") {
+            return (["settings": ["mode": "sports", "sports_filter": "all"], "content": [:],
+                     "meta": ["schedule": effective]], 200)
         }
         if path.contains("/schedule/blocks"), method != "GET" {
             if ProcessInfo.processInfo.arguments.contains("-scheduleWriteFailure") {
@@ -108,7 +135,13 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
         if path.contains("/schedule/conditions"), method != "GET" {
             return mutate(&conditions, path: path, method: method, body: body)
         }
-        if let enabled = body["schedule_override"] as? Bool { manual = enabled; return ([:], 200) }
+        if let enabled = body["schedule_override"] as? Bool {
+            if ProcessInfo.processInfo.arguments.contains("-homeOverrideFailure") {
+                return (["error": ["message": "The server could not change the schedule."]], 503)
+            }
+            manual = enabled
+            return ([:], 200)
+        }
         if path.hasSuffix("/catalog/leagues") { return (["leagues": []], 200) }
         if path.hasSuffix("/catalog/modes") { return (["modes": []], 200) }
         if path.hasSuffix("/tickers") { return (["tickers": []], 200) }

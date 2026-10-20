@@ -21,54 +21,6 @@ struct TickerScheduleBlock: Codable, Identifiable, Hashable, Sendable {
         "\(SchedulePresentation.clock(start_minute)) – \(SchedulePresentation.clock(end_minute))"
     }
 
-    func rescheduled(days: [Int], start: Int, end: Int) -> Self {
-        Self(id: id, ticker_id: ticker_id, days_of_week: days, day_names: [],
-             start_minute: start, end_minute: end, mode: mode, sports_filter: sports_filter,
-             enabled: enabled, created_at: created_at, updated_at: updated_at)
-    }
-}
-
-enum ScheduleCalendarEdit: String { case move, start, end }
-
-enum ScheduleCalendarInteraction {
-    static func snap(_ minutes: Double) -> Int { Int((minutes / 15).rounded()) * 15 }
-
-    static func days(start: Int, count: Int) -> [Int] { (0..<count).map { (start + $0) % 7 } }
-
-    static func columnOffset(translation: Double, width: Double, column: Int, count: Int) -> Int {
-        let offset = Int((translation / max(1, width)).rounded())
-        return max(-column, min(count - 1 - column, offset))
-    }
-
-    static func hasChanges(_ original: TickerScheduleBlock, _ proposed: TickerScheduleBlock) -> Bool {
-        original.start_minute != proposed.start_minute || original.end_minute != proposed.end_minute ||
-            Set(original.days_of_week) != Set(proposed.days_of_week)
-    }
-
-    static func drawnRange(first: Double, last: Double) -> (start: Int, end: Int) {
-        let first = max(0, min(1425, snap(first)))
-        let last = max(0, min(1440, snap(last)))
-        let start = min(first, last)
-        return (start, max(start + 15, max(first, last)))
-    }
-
-    static func applying(_ edit: ScheduleCalendarEdit, to block: TickerScheduleBlock,
-                         minutes: Double, dayOffset: Int = 0) -> TickerScheduleBlock {
-        let delta = snap(minutes)
-        var start = block.start_minute
-        var end = block.end_minute
-        var days = block.days_of_week
-        let minimum = min(15, end - start)
-        switch edit {
-        case .move:
-            start = max(0, min(1440 - (end - start), start + delta))
-            end = start + block.end_minute - block.start_minute
-            days = days.map { (($0 + dayOffset) % 7 + 7) % 7 }.sorted()
-        case .start: start = max(0, min(end - minimum, start + delta))
-        case .end: end = min(1440, max(start + minimum, end + delta))
-        }
-        return block.rescheduled(days: days, start: start, end: end)
-    }
 }
 
 struct TickerScheduleCondition: Codable, Identifiable, Hashable, Sendable {
@@ -87,6 +39,40 @@ struct TickerScheduleCondition: Codable, Identifiable, Hashable, Sendable {
     var label: String {
         let comparison = `operator` == "gte" ? "At least" : "More than"
         return "\(comparison) \(threshold) games live"
+    }
+}
+
+enum ScheduleCalendarScope: String, CaseIterable {
+    case weekdays = "Weekdays"
+    case weekends = "Weekends"
+    case days = "By day"
+
+    func columns(start: Int, count: Int) -> [ScheduleCalendarColumn] {
+        switch self {
+        case .weekdays: return [ScheduleCalendarColumn(id: "weekdays", title: "Monday – Friday", days: Array(0...4))]
+        case .weekends: return [ScheduleCalendarColumn(id: "weekends", title: "Saturday – Sunday", days: [5, 6])]
+        case .days:
+            return (0..<count).map {
+                let day = (start + $0) % 7
+                return ScheduleCalendarColumn(id: "day-\(day)", title: SchedulePresentation.weekdays[day], days: [day])
+            }
+        }
+    }
+}
+
+struct ScheduleCalendarColumn: Identifiable {
+    let id: String
+    let title: String
+    let days: [Int]
+
+    func blocks(_ values: [TickerScheduleBlock]) -> [TickerScheduleBlock] {
+        let selected = Set(days)
+        return SchedulePresentation.blocks(values.filter { !selected.isDisjoint(with: $0.days_of_week) }, on: nil)
+    }
+
+    static func minute(hour: Int, fraction: Double) -> Int {
+        let quarter = max(0, min(3, Int(fraction * 4)))
+        return min(1425, hour * 60 + quarter * 15)
     }
 }
 
@@ -115,7 +101,7 @@ enum SchedulePresentation {
         "\(hour % 12 == 0 ? 12 : hour % 12) \(hour >= 12 ? "PM" : "AM")"
     }
 
-    static func calendarPlacements(_ blocks: [TickerScheduleBlock]) -> [ScheduleCalendarPlacement] {
+    static func calendarPlacements(_ blocks: [TickerScheduleBlock], minimumMinutes: Int = 45) -> [ScheduleCalendarPlacement] {
         let ordered = self.blocks(blocks, on: nil)
         var result: [ScheduleCalendarPlacement] = []
         var groupStart = 0
@@ -130,7 +116,7 @@ enum SchedulePresentation {
                 groupStart = result.count
                 laneEnds = []
             }
-            let visualEnd = max(block.end_minute, block.start_minute + 45)
+            let visualEnd = max(block.end_minute, block.start_minute + minimumMinutes)
             let column = laneEnds.firstIndex { $0 <= block.start_minute } ?? laneEnds.count
             if column == laneEnds.count { laneEnds.append(visualEnd) } else { laneEnds[column] = visualEnd }
             result.append(ScheduleCalendarPlacement(block: block, column: column, columns: 1, visualEnd: visualEnd))

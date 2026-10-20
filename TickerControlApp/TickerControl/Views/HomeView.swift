@@ -69,6 +69,10 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.top, 60)
 
+                if vm.scheduleStatus != nil {
+                    HomeScheduleControl(vm: vm).id(vm.activeTicker?.id).padding(.horizontal)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
                     HStack(spacing: 12) {
@@ -127,6 +131,58 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showTickerSwitcher) {
             TickerSwitcherView(vm: vm, isPresented: $showTickerSwitcher)
+        }
+    }
+}
+
+struct HomeScheduleControl: View {
+    @ObservedObject var vm: TickerViewModel
+    @State private var updating = false
+    @State private var errorMessage: String?
+
+    private var paused: Bool { vm.scheduleStatus?.override == true }
+    private var detail: String {
+        if paused, let expiry = vm.scheduleStatus?.override_expires_at {
+            let zone = TimeZone(identifier: vm.scheduleStatus?.timezone ?? "") ?? .current
+            let format = Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)
+            return "Resumes at \(Date(timeIntervalSince1970: expiry).formatted(format))"
+        }
+        return paused ? "Using your current mode" : "Override until the next scheduled change"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: paused ? "calendar.badge.minus" : "calendar.badge.clock")
+                    .font(.title3).foregroundStyle(paused ? Color.orange : Color.blue)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(paused ? "Schedule paused" : "Schedule on").font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier("home-schedule-status")
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button(action: toggle) {
+                    if updating { ProgressView().controlSize(.small) }
+                    else { Text(paused ? "Resume" : "Override").font(.subheadline.weight(.semibold)) }
+                }
+                .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.blue)
+                .frame(minHeight: 44).disabled(updating)
+                .accessibilityIdentifier("home-schedule-override")
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+                    .accessibilityIdentifier("home-schedule-error")
+            }
+        }
+        .padding(14).liquidGlass()
+    }
+
+    private func toggle() {
+        updating = true
+        errorMessage = nil
+        vm.setCurrentScheduleOverride(!paused) { result in
+            updating = false
+            if case .failure(let error) = result, !(error is CancellationError) { errorMessage = error.localizedDescription }
         }
     }
 }

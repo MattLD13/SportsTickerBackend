@@ -70,7 +70,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var weatherLocInput: String = "New York"
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
-    @Published var scheduleActive: Bool = false
+    @Published var scheduleStatus: TickerScheduleStatus?
+    var scheduleActive: Bool { scheduleStatus?.active ?? false }
     @Published var spotifyStatus: String = "Checking Spotify..."
     @Published var spotifyAccountName: String?
     @Published var spotifyAccounts: [SpotifyAccount] = []
@@ -104,6 +105,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var saveGate = TickerRequestGate()
     private var weatherGate = TickerRequestGate()
     private var spotifyGate = TickerRequestGate()
+    private var overrideGate = TickerRequestGate()
     private var selection: DeviceSelectionReducer
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
     private var wifiLocationManager: CLLocationManager?
@@ -142,11 +144,13 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
 
     private func invalidateRequests() {
+        scheduleStatus = nil
         displayGate.invalidate()
         saveGate.invalidate()
         deviceListGate.invalidate()
         weatherGate.invalidate()
         spotifyGate.invalidate()
+        overrideGate.invalidate()
         displayTask?.cancel()
         currentSaveTask?.cancel()
         deviceListTask?.cancel()
@@ -174,7 +178,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         games.removeAll()
         leagueOptions.removeAll()
         modeSymbols.removeAll()
-        scheduleActive = false
         isServerReachable = false
         fetchData()
         fetchLeagueOptions()
@@ -445,6 +448,38 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         )
     }
 
+    func setCurrentScheduleOverride(_ enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let tickerID = savedTickerID, let token = authorizationToken(for: tickerID) else {
+            completion(.failure(TickerScheduleRequestError.authorization))
+            return
+        }
+        let server = getBaseURL()
+        let identity = overrideGate.begin(tickerID: tickerID, authorizationToken: token, serverURL: server)
+        let isCurrent = {
+            self.overrideGate.accepts(identity, activeTickerID: self.savedTickerID,
+                activeAuthorizationToken: self.savedTickerID.flatMap(self.authorizationToken), activeServerURL: self.getBaseURL())
+        }
+        setScheduleOverride(tickerID: tickerID, enabled: enabled) { result in
+            guard isCurrent() else { completion(.failure(CancellationError())); return }
+            switch result {
+            case .failure(let error): completion(.failure(error))
+            case .success:
+                self.displayTask?.cancel()
+                self.displayTask = nil
+                self.displayGate.invalidate()
+                self.startBurstPolling()
+                self.fetchData()
+                self.fetchSchedule(for: tickerID) { result in
+                    guard isCurrent() else { completion(.failure(CancellationError())); return }
+                    switch result {
+                    case .success(let value): self.scheduleStatus = value.effective; completion(.success(()))
+                    case .failure(let error): completion(.failure(error))
+                    }
+                }
+            }
+        }
+    }
+
     override convenience init() {
         self.init(httpClient: TickerHTTPClient())
     }
@@ -610,8 +645,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     let display = try TickerDisplayResponse(data: data)
                     let decoded = display.response
                     self.isServerReachable = true
-                    let source = decoded.meta.schedule?.source ?? "base"
-                    self.scheduleActive = source == "time" || source == "condition"
+                    self.scheduleStatus = decoded.meta.schedule
                     if !self.isEditing {
                         let pins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
                         self.pinnedGameIDs = pins
