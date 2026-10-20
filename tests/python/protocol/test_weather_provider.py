@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers import HybridWeatherProvider, WeatherLocationResolver
@@ -67,6 +67,7 @@ NEW YORK             NY     5       PHILADELPHIA         PA     6
             return {
                 "properties": {
                     "temperature": {"value": 20, "unitCode": "wmoUnit:degC"},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "textDescription": "Light Rain",
                     "windSpeed": {"value": 10, "unitCode": "wmoUnit:m_s-1"},
                     "relativeHumidity": {"value": 56},
@@ -120,6 +121,25 @@ def test_hybrid_weather_uses_nws_for_us_coordinates() -> None:
     assert data["forecast"][0]["day"] == "TODAY"
     assert any(url.startswith("https://api.weather.gov/points/") for url in client.urls)
     assert not any(url.endswith("/v1/forecast") for url in client.urls)
+
+
+def test_hybrid_weather_uses_open_meteo_current_when_nws_observation_is_stale() -> None:
+    class StaleObservationClient(FakeJsonClient):
+        def get_json(self, url: str, *, timeout: float):
+            payload = super().get_json(url, timeout=timeout)
+            if url.endswith("/observations/latest"):
+                payload["properties"]["timestamp"] = (
+                    datetime.now(timezone.utc) - timedelta(hours=2)
+                ).isoformat()
+            return payload
+
+    client = StaleObservationClient(nws=True)
+    result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(40.7, -74.0))
+
+    data = result.content[0].data
+    assert data["temperature"] == 68
+    assert data["icon"] == "cloud"
+    assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
 
 
 def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> None:
@@ -190,6 +210,9 @@ def test_hybrid_weather_uses_hourly_forecast_when_station_observation_is_missing
             if url.endswith("/observations/latest"):
                 self.urls.append(url)
                 return {"properties": {"temperature": {"value": None}}}
+            if "api.open-meteo.com/v1/forecast" in url:
+                self.urls.append(url)
+                raise JsonHttpError("Open-Meteo current conditions unavailable")
             if url.endswith("/forecast/hourly"):
                 self.urls.append(url)
                 return {
