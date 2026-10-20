@@ -30,9 +30,10 @@ class FakeJsonClient:
         if url == "https://api.weather.gov/products/types/UVI":
             return {"@graph": [{"id": "uvi-test"}]}
         if url == "https://api.weather.gov/products/uvi-test":
+            valid_date = datetime.now(timezone.utc).strftime("%b %d %Y").upper()
             return {
-                "productText": """
-VALID AUG 24 2026 AT SOLAR NOON
+                "productText": f"""
+VALID {valid_date} AT SOLAR NOON
 CITY               STATE  UVI       CITY               STATE  UVI
 NEW YORK             NY     5       PHILADELPHIA         PA     6
 """
