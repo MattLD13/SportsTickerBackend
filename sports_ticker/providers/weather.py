@@ -344,12 +344,11 @@ class HybridWeatherProvider:
         observation = self._nws_observation(stations_url)
         hourly_payload = None
         current_fallback = None
-        if not _nws_observation_is_fresh(observation):
-            try:
-                current_fallback = self._open_meteo.fetch_current(settings)
-            except Exception:
-                if hourly_url:
-                    hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
+        try:
+            current_fallback = self._open_meteo.fetch_current(settings)
+        except Exception:
+            if not _nws_observation_is_fresh(observation) and hourly_url:
+                hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
         aqi = self._open_meteo.fetch_aqi(settings)
         supplemental_error = None
         try:
@@ -510,7 +509,7 @@ def _nws_content_item(
     hourly_period = _mapping(hourly_periods[0]) if isinstance(hourly_periods, Sequence) and not isinstance(hourly_periods, (str, bytes)) and hourly_periods else {}
     current_properties = observation_properties if _nws_observation_is_fresh(observation) else {}
     fallback_data = current_fallback.data if current_fallback is not None else {}
-    use_meteo_current = not current_properties and bool(fallback_data)
+    use_meteo_current = bool(fallback_data)
     supplemental = supplemental or {}
     if not current_properties and not hourly_period and not use_meteo_current:
         raise ValueError("NWS has no current observation or hourly forecast")
