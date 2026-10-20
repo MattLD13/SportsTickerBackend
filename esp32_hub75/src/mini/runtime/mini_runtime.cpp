@@ -23,6 +23,7 @@
 #include "../platform/config.h"
 #include "../platform/tls.h"
 #include "../platform/matrix_driver.h"
+#include "../platform/device_sensors.h"
 #include "../assets/logo_sources.h"
 #include "../rendering/sports_pane.h"
 #include "../rendering/utility_panels.h"
@@ -40,6 +41,7 @@
 #include "../platform/device_credentials.h"
 
 DevicePayload payload;
+MiniDeviceSensors deviceSensors;
 uint32_t rotationSignature = 0;
 uint32_t logoWorkingSetSignature = 0;
 uint32_t lastFetchAt = 0;

@@ -19,6 +19,7 @@ class MiniMatrix : public MatrixPanel_I2S_DMA {
   bool baseFrameReady = false;
   bool restoreBaseFrame();
   void retainBaseFrame();
+  void setOrientation(uint8_t rotation);
 };
 
 extern MiniMatrix* matrix;

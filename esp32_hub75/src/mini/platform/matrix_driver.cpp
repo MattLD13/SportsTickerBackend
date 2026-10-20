@@ -13,12 +13,12 @@ static uint64_t frameStartedUs = 0;
 
 void MiniMatrix::drawPixel(int16_t x, int16_t y, uint16_t ink) {
   uint8_t r, g, b; color565to888(ink, r, g, b);
-  mirror.pixel(x, y, r, g, b);
+  mirror.pixel(x, y, r, g, b, getRotation());
   MatrixPanel_I2S_DMA::drawPixel(x, y, ink);
 }
 
 void MiniMatrix::drawPixelRGB888(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b) {
-  mirror.pixel(x, y, r, g, b);
+  mirror.pixel(x, y, r, g, b, getRotation());
   MatrixPanel_I2S_DMA::drawPixelRGB888(x, y, r, g, b);
 }
 
@@ -30,19 +30,19 @@ void MiniMatrix::fillScreen(uint16_t ink) {
 
 void MiniMatrix::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t ink) {
   uint8_t r, g, b; color565to888(ink, r, g, b);
-  mirror.rect(x, y, w, h, r, g, b);
+  mirror.rect(x, y, w, h, r, g, b, getRotation());
   MatrixPanel_I2S_DMA::fillRect(x, y, w, h, ink);
 }
 
 void MiniMatrix::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t ink) {
   uint8_t r, g, b; color565to888(ink, r, g, b);
-  mirror.rect(x, y, w, 1, r, g, b);
+  mirror.rect(x, y, w, 1, r, g, b, getRotation());
   MatrixPanel_I2S_DMA::drawFastHLine(x, y, w, ink);
 }
 
 void MiniMatrix::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t ink) {
   uint8_t r, g, b; color565to888(ink, r, g, b);
-  mirror.rect(x, y, 1, h, r, g, b);
+  mirror.rect(x, y, 1, h, r, g, b, getRotation());
   MatrixPanel_I2S_DMA::drawFastVLine(x, y, h, ink);
 }
 
@@ -60,10 +60,13 @@ uint16_t color(uint8_t red, uint8_t green, uint8_t blue) {
 
 bool MiniMatrix::restoreBaseFrame() {
   if (!baseFrameReady || !baseFrame) return false;
+  const uint8_t savedRotation = getRotation();
+  setRotation(0);
   for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
     const size_t offset = (y * 64 + x) * 3;
     drawPixelRGB888(x, y, baseFrame[offset], baseFrame[offset + 1], baseFrame[offset + 2]);
   }
+  setRotation(savedRotation);
   return true;
 }
 
@@ -71,6 +74,12 @@ void MiniMatrix::retainBaseFrame() {
   if (!baseFrame || !mirror.drawing()) return;
   memcpy(baseFrame, mirror.drawing(), mini_display::FRAME_BYTES);
   baseFrameReady = true;
+}
+
+void MiniMatrix::setOrientation(uint8_t rotation) {
+  if ((rotation != 0 && rotation != 2) || rotation == getRotation()) return;
+  if (baseFrameReady && baseFrame) mini_display::rotateFrame180(baseFrame);
+  setRotation(rotation);
 }
 
 void presentFrame() {

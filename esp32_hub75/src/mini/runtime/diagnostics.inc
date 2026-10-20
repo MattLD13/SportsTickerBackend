@@ -23,6 +23,14 @@ void populateDisplayMetrics(JsonObject out, bool history) {
   out["loop_gap_max_us"] = displayMetrics.loopMaxUs;
   out["capture_available"] = matrix->mirror.ready();
   out["panel_refresh_hz"] = matrix->calculated_refresh_rate;
+  if (std::isfinite(deviceSensors.temperatureC())) out["temperature_c"] = deviceSensors.temperatureC();
+  else out["temperature_c"] = nullptr;
+  out["rotation_degrees"] = matrix->getRotation() * 90;
+  JsonObject motion = out["accelerometer"].to<JsonObject>();
+  motion["available"] = deviceSensors.accelerometerReady();
+  motion["x_g"] = deviceSensors.x();
+  motion["y_g"] = deviceSensors.y();
+  motion["z_g"] = deviceSensors.z();
   out["heap_free"] = ESP.getFreeHeap();
   out["heap_min"] = ESP.getMinFreeHeap();
   out["heap_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -161,6 +169,7 @@ void startFrameCapture(Stream& output) {
   header["uptime_us"] = started;
   header["width"] = 64;
   header["height"] = 32;
+  header["rotation_degrees"] = matrix->getRotation() * 90;
   header["format"] = "rgb888";
   header["stage"] = "before_gamma_and_brightness";
   header["bytes"] = mini_display::FRAME_BYTES;

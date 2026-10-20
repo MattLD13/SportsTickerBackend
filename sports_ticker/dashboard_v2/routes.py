@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 import os
 import hashlib
+from math import isfinite
 from pathlib import Path
 from time import monotonic, time
 from concurrent.futures import wait
@@ -17,7 +18,10 @@ from flask import abort, current_app, render_template, request, send_file
 from PIL import Image
 
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.leagues import LEAGUES
+from sports_ticker.markets import selected_market_groups
 from sports_ticker.projections import project_data_v2, select_display_content
+from sports_ticker.providers.http import JsonHttpError
 
 from . import dashboard_v2
 from .preview import PreviewRenderer, case_items, layout_case, layout_library
@@ -35,7 +39,7 @@ def public_index():
     snapshot = application.get_snapshot(ticker.ticker_id) if ticker is not None else None
     content = snapshot.content if snapshot is not None else ()
     active_sports = settings.active_sports if settings is not None else {}
-    sports = _league_rows(active_sports, content, "sports")
+    sports = _league_rows(active_sports, content, "sports", _coverage_catalog(application))
     utilities = _utility_rows(content)
     markets = _league_rows(active_sports, content, "stock")
     fleet = _fleet_rows(tickers)
@@ -195,25 +199,38 @@ def _fleet_rows(tickers) -> list[dict[str, object]]:
             "mode": ("pairing" if not ticker.pairing.paired else ticker.display_settings.mode).replace("_", " "),
             "last_poll": "never" if age is None else f"{age}s ago",
             "uptime": _duration(metadata.get("uptime_seconds")),
-            "temp": f"{float(temperature):.0f}C" if isinstance(temperature, (int, float)) else "-",
+            "temp": f"{temperature:.0f}C" if type(temperature) in (int, float) and isfinite(temperature) else "-",
             "build": str(metadata.get("build") or "-"),
             "dark_reason": "" if age is not None and age < 90 else "No recent heartbeat",
         })
     return rows
 
 
-def _league_rows(active_sports, content, family: str) -> list[dict[str, str]]:
-    """Build complete original coverage chips from V2 configuration."""
+def _coverage_catalog(application):
+    """Use the shared catalog for league and conference names."""
+    if application.catalog is not None:
+        try:
+            return application.catalog.leagues()
+        except JsonHttpError:
+            current_app.logger.warning("Conference coverage catalog is unavailable")
+    return tuple({"id": league.id, "label": league.label, "type": "sport"} for league in LEAGUES)
 
-    records = {str(item.data.get("sport", item.family)).lower() for item in content if item.family == family}
-    available = (
-        "nfl", "mlb", "nhl", "nba", "ncf_fbs", "ncf_fcs", "march_madness",
-        "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
-    ) if family == "sports" else ("stock",) if family == "stock" else ()
-    names = tuple(dict.fromkeys((*available, *(str(value).lower() for value in active_sports), *records)))
+
+def _league_rows(active_sports, content, family: str, catalog=()) -> list[dict[str, str]]:
+    """Keep sports and market coverage within their catalog boundaries."""
+    field = "market_group" if family == "stock" else "sport"
+    records = {str(item.data.get(field, "")).lower() for item in content if item.family == family}
+    if family == "stock":
+        entries = ({"id": group.id, "label": group.label} for group in selected_market_groups(active_sports))
+    else:
+        entries = (
+            entry for entry in catalog
+            if entry["type"] == "sport" and active_sports.get(entry["id"], True)
+            and active_sports.get(entry.get("conference_parent", entry["id"]), True)
+        )
     return [
-        {"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in records else "on"}
-        for name in names if active_sports.get(name, True)
+        {"id": entry["id"], "label": entry["label"], "state": "live" if entry["id"] in records else "on"}
+        for entry in entries
     ]
 
 
@@ -226,6 +243,7 @@ def _utility_rows(content) -> list[dict[str, str]]:
 def _display_modes() -> list[dict[str, str]]:
     return [
         {"id": "sports", "name": "Sports", "desc": "Scores, golf, and racing", "group": "Sports"},
+        {"id": "stock", "name": "Stocks", "desc": "Stock prices and market changes", "group": "Data"},
         {"id": "weather", "name": "Weather", "desc": "Current local conditions", "group": "Data"},
         {"id": "music", "name": "Music", "desc": "Connected Spotify playback", "group": "Data"},
         {"id": "flights", "name": "Flights", "desc": "Tracked visitor flight", "group": "Flight"},

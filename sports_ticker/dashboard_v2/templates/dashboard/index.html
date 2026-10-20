@@ -204,7 +204,7 @@
     <div class="grid grid-3">
       {% for m in display_modes %}
       <div class="cell mode{% if m.id == global_mode %} is-current{% endif %}">
-        <div class="mode-key" data-led data-led-color="{% if m.id == global_mode %}amber{% else %}dim{% endif %}" data-led-fit>{{ m.id }}</div>
+        <div class="mode-key" data-led data-led-color="{% if m.id == global_mode %}amber{% else %}dim{% endif %}" data-led-fit>{{ m.name }}</div>
         <div class="mode-body">
           <p class="mode-desc">{{ m.desc }}</p>
           {% if m.id == global_mode %}<span class="mode-flag">On air</span>{% endif %}

@@ -29,6 +29,8 @@ bool fetchData() {
     heartbeat["metadata"]["capabilities"][index] = modes[index];
   }
   heartbeat["metadata"]["uptime_seconds"] = millis() / 1000;
+  if (std::isfinite(deviceSensors.temperatureC())) heartbeat["metadata"]["temperature_c"] = deviceSensors.temperatureC();
+  else heartbeat["metadata"]["temperature_c"] = nullptr;
   heartbeat["metadata"]["mini_sprite_protocol"] = 1;
   heartbeat["metadata"]["wifi_available"] = WiFi.status() == WL_CONNECTED;
   heartbeat["metadata"]["wifi_setup_active"] = wifiPairingMode;
@@ -156,6 +158,8 @@ void miniSetup() {
   loadWifiCredentials();
   firmwareUpdater.initialize();
   setupMatrix();
+  deviceSensors.begin();
+  deviceSensors.tick(millis());
   deviceCredentials.load();
   drawSystemNotice(deviceCredentials.ready() ? ticker_ui::SystemKind::Startup : ticker_ui::SystemKind::DeviceKey, deviceCredentials.ready() ? "PLEASE WAIT" : "AUTH REQUIRED");
   logoWorkMutex = xSemaphoreCreateMutex();
@@ -349,10 +353,15 @@ void pollMiniSerial() {
 
 void miniTick() {
   displayMetrics.loop(esp_timer_get_time());
+  deviceSensors.tick(millis());
   pollMiniSerial();
   if (logoWorkbenchMode) {
     delay(1);
     return;
+  }
+  if (matrix->getRotation() != deviceSensors.rotation()) {
+    matrix->setOrientation(deviceSensors.rotation());
+    renderCurrent();
   }
   pollNetworkResults();
   const uint32_t now = millis();

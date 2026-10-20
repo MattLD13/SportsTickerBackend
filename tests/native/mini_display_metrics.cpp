@@ -1,4 +1,5 @@
 #include "display_metrics.h"
+#include "display_orientation.h"
 #include "network_recovery.h"
 #include <cassert>
 #include <cstdio>
@@ -42,6 +43,42 @@ int main() {
   assert(mirror.front()[6] == 0 && mirror.front()[2 * WIDTH * 3] == 0);
   mirror.present();
   assert(checksum(mirror.front(), FRAME_BYTES) == first);
+
+  mirror.rect(0, 0, WIDTH, HEIGHT, 0, 0, 0);
+  mirror.rect(-1, -1, 3, 3, 40, 50, 60, 2);
+  mirror.pixel(63, 31, 1, 2, 3, 2);
+  mirror.pixel(-1, 0, 255, 255, 255, 2);
+  mirror.present();
+  assert(mirror.front()[0] == 1 && mirror.front()[2] == 3);
+  assert(mirror.front()[FRAME_BYTES - 1] == 60);
+  assert(mirror.front()[FRAME_BYTES - 7] == 0);
+  std::vector<uint8_t> retained(mirror.front(), mirror.front() + FRAME_BYTES);
+  const auto retainedHash = checksum(retained.data(), FRAME_BYTES);
+  rotateFrame180(retained.data());
+  assert(retained[0] == 40 && retained[2] == 60);
+  assert(retained[FRAME_BYTES - 3] == 1 && retained[FRAME_BYTES - 1] == 3);
+  rotateFrame180(retained.data());
+  assert(checksum(retained.data(), FRAME_BYTES) == retainedHash);
+
+  Orientation orientation;
+  assert(!orientation.observe(0, 1, 0, 0));
+  assert(!orientation.observe(0, -1, 0, 100));
+  assert(!orientation.observe(0, -1, 0, 899));
+  assert(orientation.observe(0, -1, 0, 900));
+  assert(orientation.rotation() == 2);
+  assert(!orientation.observe(1, 0, 0, 1000));
+  assert(!orientation.observe(0, 0, 1, 2000));
+  assert(!orientation.observe(0, 1, 0, 3000));
+  assert(!orientation.observe(0, 2, 0, 3900));
+  assert(!orientation.observe(0, 1, 0, 4000));
+  assert(!orientation.observe(NAN, 1, 0, 4500));
+  assert(!orientation.observe(0, 1, 0, 4600));
+  orientation.unavailable();
+  assert(!orientation.observe(0, 1, 0, 5400));
+  assert(orientation.observe(0, 1, 0, 6200));
+  assert(orientation.rotation() == 0);
+  assert(!orientation.observe(0, -1, 0, UINT32_MAX - 400));
+  assert(orientation.observe(0, -1, 0, 399));
 
   Metrics metrics;
   Pane firstPane;

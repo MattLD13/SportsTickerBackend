@@ -30,6 +30,82 @@ def _close(app):
     app.extensions["sports_ticker.backend_application"].close()
 
 
+def test_public_coverage_separates_markets_and_uses_conference_names(tmp_path, monkeypatch) -> None:
+    from types import SimpleNamespace
+    from sports_ticker.dashboard_v2.routes import _league_rows
+
+    catalog = (
+        {"id": "nfl", "label": "NFL", "type": "sport"},
+        {"id": "ncf_fbs", "label": "NCAA (FBS)", "type": "sport"},
+        {"id": "ncf_fbs:1", "label": "ACC", "type": "sport", "conference_parent": "ncf_fbs"},
+        {"id": "ncf_fcs", "label": "NCAA (FCS)", "type": "sport"},
+        {"id": "ncf_fcs:20", "label": "Big Sky", "type": "sport", "conference_parent": "ncf_fcs"},
+        {"id": "stock_finance", "label": "Financial Stocks", "type": "stock"},
+    )
+    active = {entry["id"]: True for entry in catalog}
+    active["obsolete"] = True
+    content = (
+        SimpleNamespace(family="sports", data={"sport": "nfl"}),
+        SimpleNamespace(family="stock", data={"market_group": "stock_finance", "sport": "nfl"}),
+    )
+    markets = _league_rows(active, content, "stock", catalog)
+    assert markets == [{"id": "stock_finance", "label": "Financial Stocks", "state": "live"}]
+    sports = _league_rows(active, content, "sports", catalog)
+    assert [row["label"] for row in sports] == ["NFL", "NCAA (FBS)", "ACC", "NCAA (FCS)", "Big Sky"]
+    assert sports[0]["state"] == "live"
+    active["ncf_fbs"] = False
+    assert "ncf_fbs:1" not in {row["id"] for row in _league_rows(active, content, "sports", catalog)}
+    assert {row["id"] for row in _league_rows({}, (), "stock")} == {"stock_tech_ai"}
+    assert _league_rows({"stock_finance": False}, (), "stock") == []
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        backend = app.extensions["sports_ticker.backend_application"]
+        monkeypatch.setattr(backend, "catalog", SimpleNamespace(leagues=lambda: catalog))
+        page = app.test_client().get("/").get_data(as_text=True)
+        assert "7 ways to fill" in page
+        assert ">Stocks</div>" in page
+        coverage = page.split('id="coverage"', 1)[1].split('id="hardware"', 1)[0]
+        assert ">ACC</span>" in coverage
+        assert ">Big Sky</span>" in coverage
+        assert "NCF FBS:1" not in coverage
+        assert "NCF FCS:20" not in coverage
+    finally:
+        _close(app)
+
+
+def test_public_fleet_reports_finite_chip_temperature() -> None:
+    from types import SimpleNamespace
+    from sports_ticker.dashboard_v2.routes import _fleet_rows
+
+    for value, expected in ((48.3, "48C"), (None, "-"), (float("nan"), "-"), (float("inf"), "-"), (False, "-")):
+        ticker = SimpleNamespace(
+            name="Mini", ticker_id="mini-temperature", pairing=SimpleNamespace(paired=True),
+            display_settings=SimpleNamespace(mode="weather"),
+            device=SimpleNamespace(last_seen_at=1, metadata={"temperature_c": value}),
+        )
+        assert _fleet_rows([ticker])[0]["temp"] == expected
+
+
+def test_public_page_survives_conference_provider_outage(tmp_path, monkeypatch) -> None:
+    from types import SimpleNamespace
+    from sports_ticker.providers.http import JsonHttpError
+
+    def unavailable():
+        raise JsonHttpError("Conference provider is unavailable")
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        backend = app.extensions["sports_ticker.backend_application"]
+        monkeypatch.setattr(backend, "catalog", SimpleNamespace(leagues=unavailable))
+        response = app.test_client().get("/")
+        assert response.status_code == 200
+        assert b">NFL</span>" in response.data
+        assert b">Tech / AI</span>" in response.data
+    finally:
+        _close(app)
+
+
 def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monkeypatch) -> None:
     """Prove that web frames use live renderers instead of stored main images."""
     from copy import deepcopy
