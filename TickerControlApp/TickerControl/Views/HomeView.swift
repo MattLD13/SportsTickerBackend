@@ -54,7 +54,8 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Ticker Dashboard").font(.system(size: 34, weight: .bold, design: .rounded)).foregroundColor(.white)
-                    Button { showTickerSwitcher = true } label: {
+                    HStack(spacing: 12) {
+                      Button { showTickerSwitcher = true } label: {
                         HStack(spacing: 8) {
                             Circle().fill(vm.statusColor).frame(width: 8, height: 8)
                             VStack(alignment: .leading, spacing: 2) {
@@ -66,12 +67,14 @@ struct HomeView: View {
                             Image(systemName: "arrow.left.arrow.right.circle").foregroundColor(.blue.opacity(0.8))
                         }
                     }
-                    .buttonStyle(.plain)
+                      .buttonStyle(.plain)
+                      .accessibilityIdentifier("home-ticker-switcher")
+                      .frame(maxWidth: .infinity, alignment: .leading)
+                      if vm.scheduleStatus != nil {
+                          HomeScheduleControl(vm: vm).id(vm.activeTicker?.id).fixedSize(horizontal: true, vertical: false)
+                      }
+                    }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.top, 60)
-
-                if vm.scheduleStatus != nil {
-                    HomeScheduleControl(vm: vm).id(vm.activeTicker?.id).padding(.horizontal)
-                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
@@ -151,30 +154,25 @@ struct HomeScheduleControl: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Image(systemName: paused ? "calendar.badge.minus" : "calendar.badge.clock")
-                    .font(.title3).foregroundStyle(paused ? Color.orange : Color.blue)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(paused ? "Schedule paused" : "Schedule on").font(.subheadline.weight(.semibold))
-                        .accessibilityIdentifier("home-schedule-status")
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Button(action: toggle) {
-                    if updating { ProgressView().controlSize(.small) }
-                    else { Text(paused ? "Resume" : "Override").font(.subheadline.weight(.semibold)) }
-                }
-                .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.blue)
-                .frame(minHeight: 44).disabled(updating)
-                .accessibilityIdentifier("home-schedule-override")
-            }
-            if let errorMessage {
-                Text(errorMessage).font(.caption).foregroundStyle(.red)
-                    .accessibilityIdentifier("home-schedule-error")
+        Button(action: toggle) {
+            if updating { ProgressView().controlSize(.mini) }
+            else {
+                Label(paused ? "Resume" : "Override", systemImage: paused ? "play.fill" : "pause.fill")
+                    .font(.caption.weight(.semibold))
             }
         }
-        .padding(14).liquidGlass()
+        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).tint(.blue)
+        .frame(minHeight: 44).disabled(updating)
+        .accessibilityLabel(paused ? "Resume" : "Override")
+        .accessibilityValue(paused ? "Schedule paused" : "Schedule on")
+        .accessibilityHint(detail).accessibilityIdentifier("home-schedule-override")
+        .alert("Schedule update failed", isPresented: Binding(
+            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func toggle() {

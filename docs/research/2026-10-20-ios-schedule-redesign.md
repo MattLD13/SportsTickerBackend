@@ -24,10 +24,11 @@ Its default comparison is More than. The user can also select At least.
 The rule uses the existing V2 sports condition and runs while Sports mode is active.
 Pinned games retain priority.
 
-The Home screen has a compact schedule control inside the existing glass style.
+The Home screen places a small Override or Resume button beside the Connected ticker menu.
+It uses the existing blue accent and native capsule style without adding another card.
 Override pauses the schedule until the server's next scheduled change. Resume restores automatic scheduling immediately.
-The paused control shows the server's resume time in the ticker's time zone.
-Failed requests retain the confirmed state and show an inline error.
+Its accessibility hint gives the server's resume time in the ticker's time zone.
+Failed requests retain the confirmed state and show a native error alert.
 
 ## Apple controls
 
@@ -105,4 +106,5 @@ The production Release simulator build passed.
 The signed iPhone Release build passed strict code-signature verification.
 The repository suite passed 1,088 tests, with ten skips.
 The critical suite passed 738 tests, with ten skips and 350 deselected tests.
-The combined simulator run repeats all 15 interaction checks before device installation.
+The combined simulator run passed all 15 interaction checks.
+After the Home control moved beside Connected, its position, size, pause, resume, and failure checks passed again.

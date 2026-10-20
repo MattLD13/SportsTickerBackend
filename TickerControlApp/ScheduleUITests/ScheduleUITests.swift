@@ -42,16 +42,21 @@ final class ScheduleUITests: XCTestCase {
 
     func testHomeOverrideAndResume() {
         launch(["-scheduleHomePreview"])
-        let status = app.staticTexts["home-schedule-status"]
-        XCTAssertEqual(status.label, "Schedule on")
+        let status = button("home-schedule-override")
+        XCTAssertEqual(status.value as? String, "Schedule on")
+        let connected = button("home-ticker-switcher")
+        XCTAssertGreaterThan(status.frame.minX, connected.frame.maxX - 1)
+        XCTAssertLessThan(abs(status.frame.midY - connected.frame.midY), 2)
+        XCTAssertLessThanOrEqual(status.frame.height, 46)
+        XCTAssertLessThan(status.frame.width, 130)
         capture("home-schedule-on")
         button("home-schedule-override").tap()
-        expectation(for: NSPredicate(format: "label == %@", "Schedule paused"), evaluatedWith: status)
+        expectation(for: NSPredicate(format: "value == %@", "Schedule paused"), evaluatedWith: status)
         waitForExpectations(timeout: 8)
         capture("home-schedule-paused")
         XCTAssertEqual(button("home-schedule-override").label, "Resume")
         button("home-schedule-override").tap()
-        expectation(for: NSPredicate(format: "label == %@", "Schedule on"), evaluatedWith: status)
+        expectation(for: NSPredicate(format: "value == %@", "Schedule on"), evaluatedWith: status)
         waitForExpectations(timeout: 8)
         XCTAssertEqual(button("home-schedule-override").label, "Override")
     }
@@ -59,10 +64,13 @@ final class ScheduleUITests: XCTestCase {
     func testHomeOverrideFailureKeepsScheduleEnabled() {
         launch(["-scheduleHomePreview", "-homeOverrideFailure"])
         button("home-schedule-override").tap()
-        wait(app.staticTexts["home-schedule-error"])
-        XCTAssertEqual(app.staticTexts["home-schedule-status"].label, "Schedule on")
-        XCTAssertTrue(button("home-schedule-override").isEnabled)
+        let alert = app.alerts["Schedule update failed"]
+        wait(alert)
+        XCTAssertTrue(alert.staticTexts["The server could not change the schedule."].exists)
         capture("home-schedule-error")
+        alert.buttons["OK"].tap()
+        XCTAssertEqual(button("home-schedule-override").value as? String, "Schedule on")
+        XCTAssertTrue(button("home-schedule-override").isEnabled)
     }
 
     private func showGroup(_ label: String) {
