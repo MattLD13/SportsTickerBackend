@@ -9,7 +9,7 @@ final class ScheduleUITests: XCTestCase {
         app.launchArguments = ["-schedulePreview"] + arguments
         app.launch()
         if arguments.contains("-scheduleHomePreview") {
-            wait(button("home-schedule-override"))
+            wait(button("home-ticker-switcher"))
             return
         }
         wait(app.segmentedControls["schedule-scope-picker"])
@@ -39,6 +39,27 @@ final class ScheduleUITests: XCTestCase {
     }
 
     private func openBlock(_ element: XCUIElement) { element.tap() }
+
+    func testEmptyScheduleHidesHomeOverride() {
+        launch(["-scheduleHomePreview", "-emptySchedulePreview"])
+        XCTAssertFalse(button("home-schedule-override").exists)
+        capture("home-no-schedule")
+    }
+
+    func testEmptyCalendarHidesPauseUntilAnEnabledRuleIsSaved() {
+        launch(["-emptySchedulePreview"])
+        XCTAssertFalse(button("schedule-override").exists)
+        button("schedule-add").tap()
+        wait(button("schedule-editor-save"))
+        button("schedule-editor-save").tap()
+        wait(button("schedule-override"))
+        openBlock(button("schedule-edit-new-1"))
+        wait(button("schedule-editor-save"))
+        app.switches["schedule-editor-enabled"].coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        button("schedule-editor-save").tap()
+        wait(button("schedule-add"))
+        XCTAssertFalse(button("schedule-override").exists)
+    }
 
     func testHomeOverrideAndResume() {
         launch(["-scheduleHomePreview"])
@@ -277,19 +298,17 @@ final class ScheduleUITests: XCTestCase {
         launch(["-emptySchedulePreview"])
         wait(button("schedule-rules"))
         button("schedule-rules").tap()
-        wait(button("schedule-condition-add"))
-        button("schedule-condition-add").tap()
         wait(button("schedule-condition-save"))
+        XCTAssertTrue(app.staticTexts["schedule-live-count"].label.contains("3 live games on this ticker"))
         XCTAssertTrue(app.segmentedControls["schedule-condition-comparison"].buttons["More than"].isSelected)
         app.buttons["schedule-condition-threshold-Increment"].tap()
         capture("schedule-live-rule")
         button("schedule-condition-save").tap()
         wait(button("schedule-rules"))
         button("schedule-rules").tap()
-        wait(button("schedule-condition-new-1"))
-        XCTAssertTrue(button("schedule-condition-new-1").label.contains("More than 6 games live"))
-        button("schedule-condition-new-1").tap()
         wait(button("schedule-condition-save"))
+        XCTAssertTrue(app.segmentedControls["schedule-condition-comparison"].buttons["More than"].isSelected)
+        XCTAssertTrue(app.steppers["schedule-condition-threshold"].label.contains("6 games"))
         app.buttons["Cancel"].firstMatch.tap()
         let manual = button("schedule-override")
         if !manual.isHittable { app.swipeUp() }

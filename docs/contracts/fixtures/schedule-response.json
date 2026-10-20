@@ -129,7 +129,8 @@
     "source": "base",
     "sports_filter": "all",
     "sports_presentation": "rotation",
-    "timezone": "Eastern Daylight Time"
+    "timezone": "Eastern Daylight Time",
+    "has_enabled_rules": true
   },
   "live_games": 0,
   "ticker_id": "mini-contract",

@@ -53,7 +53,8 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
     private var mutationNumber = 0
     private var effective: [String: Any] {
         let expiry: Any = manual ? (Date().timeIntervalSince1970 + 3600) as Any : NSNull()
-        return ["active": !manual, "override": manual, "source": manual ? "app_override" : "time",
+        return ["has_enabled_rules": blocks.contains { $0["enabled"] as? Bool == true } || conditions.contains { $0["enabled"] as? Bool == true },
+         "active": !manual, "override": manual, "source": manual ? "app_override" : "time",
          "override_expires_at": expiry,
          "timezone": "America/New_York"]
     }

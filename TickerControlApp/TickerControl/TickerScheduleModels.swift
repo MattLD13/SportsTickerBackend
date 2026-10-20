@@ -183,6 +183,7 @@ struct TickerScheduleDay: Codable, Hashable, Sendable {
 }
 
 struct TickerScheduleStatus: Codable, Hashable, Sendable {
+    let has_enabled_rules: Bool
     let active: Bool
     let override: Bool
     let override_expires_at: Double?
@@ -201,13 +202,14 @@ struct TickerScheduleStatus: Codable, Hashable, Sendable {
     let scheduled_sports_filter: String?
 
     enum CodingKeys: String, CodingKey {
-        case active, override, override_expires_at, source, mode, sports_filter
+        case has_enabled_rules, active, override, override_expires_at, source, mode, sports_filter
         case sports_presentation, live_games, timezone, local_day, day_of_week, local_time
         case rule_id, condition_id, scheduled_mode, scheduled_sports_filter
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        has_enabled_rules = try container.decodeIfPresent(Bool.self, forKey: .has_enabled_rules) ?? false
         active = try container.decodeIfPresent(Bool.self, forKey: .active) ?? false
         override = try container.decodeIfPresent(Bool.self, forKey: .override) ?? false
         override_expires_at = try container.decodeIfPresent(Double.self, forKey: .override_expires_at)

@@ -34,6 +34,7 @@ final class ContractModelsTests: XCTestCase {
     func testScheduleContractRoundTrip() throws {
         let decoder = JSONDecoder()
         let response = try decoder.decode(TickerScheduleResponse.self, from: fixture("schedule-response"))
+        XCTAssertTrue(response.effective.has_enabled_rules)
         let encoded = try JSONEncoder().encode(response)
         XCTAssertEqual(try decoder.decode(TickerScheduleResponse.self, from: encoded), response)
     }
@@ -41,6 +42,7 @@ final class ContractModelsTests: XCTestCase {
     func testScheduleStatusContractRoundTrip() throws {
         let decoder = JSONDecoder()
         let status = try decoder.decode(TickerScheduleStatus.self, from: fixture("schedule-status-response"))
+        XCTAssertFalse(status.has_enabled_rules)
         XCTAssertEqual(try decoder.decode(TickerScheduleStatus.self, from: JSONEncoder().encode(status)), status)
     }
 }

@@ -13,6 +13,76 @@ from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 pytestmark = pytest.mark.critical
 
 
+def test_live_rule_counts_only_its_ticker_and_reverts_below_threshold(tmp_path) -> None:
+    """Exclude other tickers, duplicates, hidden records, and stale snapshots."""
+    now = [datetime(2026, 10, 20, 20, tzinfo=timezone.utc).timestamp()]
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None, clock=lambda: now[0])
+    try:
+        client = app.test_client()
+        token = _register_and_exchange(client, "one-live")
+        _register_and_exchange(client, "other-games")
+        backend = app.extensions["sports_ticker.backend_application"]
+        backend.update_ticker("one-live", display_settings={"mode": "sports", "sports_filter": "all"})
+        backend.create_schedule_condition("one-live", kind="live_games", threshold=1, operator="gt",
+                                          when_mode="sports", action_sports_filter="live", ignore_pinned=True)
+
+        def publish(identifier, items, offset=0):
+            backend.snapshot_store.replace(TickerSnapshot(ticker_id=identifier, revision=0,
+                observed_at=datetime.fromtimestamp(now[0] + offset, tz=timezone.utc), content=tuple(items),
+                alerts=(), news=(), effective_settings=DisplaySettings()))
+
+        def game(identifier, *, state="in", shown=True, family="sports"):
+            return ContentItem(id=identifier, family=family, kind="scoreboard", is_shown=shown,
+                               data={"sport": "nba", "state": state})
+
+        publish("one-live", [game("own"), game("own"), game("hidden", shown=False),
+                             game("pregame", state="pre"), game("weather", family="weather")])
+        publish("other-games", [game(str(i)) for i in range(10)])
+        status = backend.schedule_status("one-live")
+        assert status["live_games"] == 1
+        assert status["sports_filter"] == "all"
+        assert status["source"] == "base"
+        document = client.get("/api/v2/tickers/one-live/schedule", headers={"Authorization": f"Bearer {token}"}).get_json()
+        assert document["live_games"] == document["effective"]["live_games"] == 1
+        publish("one-live", [game("own"), game("second", state="half")])
+        assert backend.schedule_status("one-live")["source"] == "condition"
+        assert backend.schedule_status("one-live")["sports_filter"] == "live"
+        publish("one-live", [game("own"), game("second", state="post")])
+        assert backend.schedule_status("one-live")["sports_filter"] == "all"
+        for age in [-121, 1]:
+            publish("one-live", [game("own"), game("second")], offset=age)
+            assert backend.schedule_status("one-live")["live_games"] == 0
+        assert backend.schedule_service.live_game_count("missing") == 0
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
+def test_schedule_presence_uses_only_enabled_rules_for_this_ticker(tmp_path) -> None:
+    """Keep empty and disabled schedules distinct from inactive enabled schedules."""
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        _register_and_exchange(client, "empty")
+        _register_and_exchange(client, "configured")
+        backend = app.extensions["sports_ticker.backend_application"]
+        assert backend.schedule_status("empty")["has_enabled_rules"] is False
+        block = backend.create_schedule_block("configured", days_of_week=[0], start_minute=1, end_minute=2,
+                                               mode="weather", enabled=False)
+        assert backend.schedule_status("configured")["has_enabled_rules"] is False
+        backend.update_schedule_block("configured", block.id, enabled=True)
+        assert backend.schedule_status("configured")["has_enabled_rules"] is True
+        assert backend.schedule_status("empty")["has_enabled_rules"] is False
+        backend.delete_schedule_block("configured", block.id)
+        condition = backend.create_schedule_condition("configured", kind="live_games", threshold=5, enabled=False)
+        assert backend.schedule_status("configured")["has_enabled_rules"] is False
+        backend.update_schedule_condition("configured", condition.id, enabled=True)
+        assert backend.schedule_status("configured")["has_enabled_rules"] is True
+        backend.delete_schedule_condition("configured", condition.id)
+        assert backend.schedule_status("configured")["has_enabled_rules"] is False
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
 def _register_and_exchange(client, ticker_id: str) -> str:
     """Register one ticker and return its controller token."""
 

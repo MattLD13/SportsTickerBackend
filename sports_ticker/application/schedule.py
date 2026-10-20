@@ -54,6 +54,7 @@ class ScheduleService:
         blocks = self._repository.list_ticker_schedule_blocks(identifier)
         conditions = self._repository.list_ticker_schedule_conditions(identifier)
         block_values = [block_to_mapping(block) for block in blocks]
+        status = self.status(identifier, settings, allowed_modes=allowed_modes)
         return {
             "api_version": "v2",
             "ticker_id": identifier,
@@ -70,12 +71,8 @@ class ScheduleService:
             ],
             "blocks": block_values,
             "conditions": [condition_to_mapping(condition) for condition in conditions],
-            "live_games": self.live_game_count(),
-            "effective": self.status(
-                identifier,
-                settings,
-                allowed_modes=allowed_modes,
-            ),
+            "live_games": status["live_games"],
+            "effective": status,
         }
 
     def create_block(
@@ -277,7 +274,7 @@ class ScheduleService:
             not supported or block.mode in supported
         )
         scheduled = _with_block(settings, block) if block_supported and block else settings
-        live_games = self.live_game_count()
+        live_games = self.live_game_count(identifier)
         condition = self._active_condition(identifier, live_games, scheduled)
         override_expires_at = self._repository.schedule_override_expires_at(
             identifier,
@@ -298,6 +295,13 @@ class ScheduleService:
             source = "base"
 
         status: dict[str, object] = {
+            "has_enabled_rules": any(
+                rule.enabled and (not supported or rule.mode in supported)
+                for rule in self._repository.list_ticker_schedule_blocks(identifier)
+            ) or (
+                (not supported or "sports" in supported)
+                and any(rule.enabled for rule in self._repository.list_ticker_schedule_conditions(identifier))
+            ),
             "active": source in {"time", "condition"},
             "override": override,
             "override_expires_at": override_expires_at,
@@ -374,19 +378,17 @@ class ScheduleService:
             cursor = _utc_datetime(transition + 0.001)
         return frozenset(modes)
 
-    def live_game_count(self) -> int:
-        """Count fresh live games once across all provider snapshots."""
+    def live_game_count(self, ticker_id: str) -> int:
+        """Count fresh visible live games from this ticker's snapshot only."""
 
         now = _utc_datetime(self._clock())
-        identifiers: set[str] = set()
-        for snapshot in self._snapshots.list_snapshots():
-            observed_at = _utc_datetime(snapshot.observed_at)
-            if (now - observed_at).total_seconds() > _LIVE_GAME_FRESHNESS_SECONDS:
-                continue
-            for item in snapshot.content:
-                if _is_live_game(item):
-                    identifiers.add(item.id)
-        return len(identifiers)
+        snapshot = self._snapshots.get(ticker_id)
+        if snapshot is None:
+            return 0
+        age = (now - _utc_datetime(snapshot.observed_at)).total_seconds()
+        if age < 0 or age > _LIVE_GAME_FRESHNESS_SECONDS:
+            return 0
+        return len({item.id for item in snapshot.content if item.is_shown and _is_live_game(item)})
 
     def _require_ticker(self, ticker_id: str) -> str:
         """Require one existing ticker and return its normalized identifier."""

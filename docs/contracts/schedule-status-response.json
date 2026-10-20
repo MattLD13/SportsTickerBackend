@@ -97,6 +97,10 @@
         "my_teams",
         null
       ]
+    },
+    "has_enabled_rules": {
+      "type": "boolean",
+      "description": "True when this ticker has an enabled schedule block or live sports rule."
     }
   },
   "required": [
@@ -115,7 +119,8 @@
     "rule_id",
     "condition_id",
     "scheduled_mode",
-    "scheduled_sports_filter"
+    "scheduled_sports_filter",
+    "has_enabled_rules"
   ],
   "additionalProperties": false
 }

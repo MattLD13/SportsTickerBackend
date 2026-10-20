@@ -33,6 +33,11 @@ Pairing is an effective output state. A pinned game uses `sports_presentation: p
 Alerts, news, connection loss, and updates use overlays.
 Clients consume projected domain facts and explicit family and kind values.
 
+`meta.schedule.live_games` counts fresh visible live sports records in this ticker's snapshot.
+It excludes other tickers and deduplicates game identifiers.
+`meta.schedule.has_enabled_rules` identifies enabled schedule blocks or live-sports conditions for this ticker's supported modes.
+Controller schedule override actions use this field. An inactive time window does not mean the schedule is empty.
+
 ## Source definitions
 
 | Boundary | Source |

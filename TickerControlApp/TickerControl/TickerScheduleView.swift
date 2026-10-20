@@ -72,6 +72,7 @@ struct TickerScheduleView: View {
             }
             .sheet(item: $conditionEditor) { selection in
                 ScheduleConditionEditor(vm: vm, tickerID: device.id, condition: selection.condition,
+                    liveGames: schedule?.live_games ?? 0,
                     isPresented: Binding(get: { conditionEditor != nil },
                         set: { if !$0 { conditionEditor = nil } }), onSaved: scheduleChanged)
                     .id(selection.id)
@@ -215,26 +216,35 @@ struct TickerScheduleView: View {
 
     private var calendarControls: some View {
         HStack {
-            Menu {
-                ForEach(schedule?.conditions ?? []) { condition in
-                    Button(condition.label) { conditionEditor = ScheduleConditionSelection(condition: condition) }
-                        .accessibilityIdentifier("schedule-condition-\(condition.id)")
-                }
-                if schedule?.conditions.isEmpty ?? true {
-                    Button("Add live sports rule") { conditionEditor = ScheduleConditionSelection(condition: nil) }
-                        .accessibilityIdentifier("schedule-condition-add")
-                }
-            } label: {
-                Label("Live sports rule", systemImage: "bolt.fill").font(.subheadline.weight(.medium)).frame(minHeight: 44)
-            }.accessibilityIdentifier("schedule-rules")
+            liveRuleControl
             Spacer(minLength: 0)
-            Button { setOverride(!(schedule?.effective.override ?? false)) } label: {
+            if schedule?.effective.has_enabled_rules == true {
+              Button { setOverride(!(schedule?.effective.override ?? false)) } label: {
                 Label(schedule?.effective.override == true ? "Resume schedule" : "Pause schedule",
                       systemImage: schedule?.effective.override == true ? "play.circle" : "pause.circle")
                     .font(.subheadline.weight(.medium)).frame(minHeight: 44)
             }.tint(.orange).disabled(updatingOverride).accessibilityIdentifier("schedule-override")
+            }
         }
         .padding(.horizontal, 20).padding(.vertical, 5).background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder private var liveRuleControl: some View {
+        if let conditions = schedule?.conditions, conditions.count > 1 {
+            Menu {
+                ForEach(conditions) { condition in
+                    Button(condition.label) { conditionEditor = ScheduleConditionSelection(condition: condition) }
+                }
+            } label: { liveRuleLabel }.accessibilityIdentifier("schedule-rules")
+        } else {
+            Button {
+                conditionEditor = ScheduleConditionSelection(condition: schedule?.conditions.first)
+            } label: { liveRuleLabel }.accessibilityIdentifier("schedule-rules")
+        }
+    }
+
+    private var liveRuleLabel: some View {
+        Label("Live sports rule", systemImage: "bolt.fill").font(.subheadline.weight(.medium)).frame(minHeight: 44)
     }
 
     private var scheduleBackground: some View {
@@ -616,6 +626,7 @@ private struct ScheduleConditionEditor: View {
     @ObservedObject var vm: TickerViewModel
     let tickerID: String
     let condition: TickerScheduleCondition?
+    let liveGames: Int
     @Binding var isPresented: Bool
     let onSaved: () -> Void
     @State private var threshold: Int
@@ -625,9 +636,10 @@ private struct ScheduleConditionEditor: View {
     @State private var isSaving = false
     @State private var confirmingDelete = false
 
-    init(vm: TickerViewModel, tickerID: String, condition: TickerScheduleCondition?,
+    init(vm: TickerViewModel, tickerID: String, condition: TickerScheduleCondition?, liveGames: Int,
          isPresented: Binding<Bool>, onSaved: @escaping () -> Void) {
         self.vm = vm; self.tickerID = tickerID; self.condition = condition; self.onSaved = onSaved
+        self.liveGames = liveGames
         _isPresented = isPresented
         _threshold = State(initialValue: condition?.threshold ?? 5)
         _comparison = State(initialValue: condition?.operator ?? "gt")
@@ -641,6 +653,9 @@ private struct ScheduleConditionEditor: View {
                     Label("Show only live games", systemImage: "sportscourt.fill").font(.headline)
                     Text("Your ticker switches its sports feed when enough games are live.")
                         .font(.subheadline).foregroundStyle(.secondary)
+                    Text("\(liveGames) live \(liveGames == 1 ? "game" : "games") on this ticker")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("schedule-live-count")
                 }
                 Section("When games are live") {
                     Picker("Number of games", selection: $comparison) {

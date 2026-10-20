@@ -70,7 +70,7 @@ struct HomeView: View {
                       .buttonStyle(.plain)
                       .accessibilityIdentifier("home-ticker-switcher")
                       .frame(maxWidth: .infinity, alignment: .leading)
-                      if vm.scheduleStatus != nil {
+                      if vm.scheduleStatus?.has_enabled_rules == true {
                           HomeScheduleControl(vm: vm).id(vm.activeTicker?.id).fixedSize(horizontal: true, vertical: false)
                       }
                     }

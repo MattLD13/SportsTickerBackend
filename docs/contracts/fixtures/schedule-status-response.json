@@ -14,5 +14,6 @@
   "source": "base",
   "sports_filter": "all",
   "sports_presentation": "rotation",
-  "timezone": "Eastern Daylight Time"
+  "timezone": "Eastern Daylight Time",
+  "has_enabled_rules": false
 }
