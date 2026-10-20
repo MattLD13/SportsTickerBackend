@@ -39,12 +39,13 @@ NEW YORK             NY     5       PHILADELPHIA         PA     6
 """
             }
         if url.endswith("/forecast"):
+            today = date.today().isoformat()
             return {
                 "properties": {
                     "periods": [
                         {
                             "name": "Today",
-                            "startTime": "2026-08-24T08:00:00-04:00",
+                            "startTime": f"{today}T08:00:00-04:00",
                             "isDaytime": True,
                             "temperature": 75,
                             "temperatureUnit": "F",
@@ -53,7 +54,7 @@ NEW YORK             NY     5       PHILADELPHIA         PA     6
                         },
                         {
                             "name": "Tonight",
-                            "startTime": "2026-08-24T18:00:00-04:00",
+                            "startTime": f"{today}T18:00:00-04:00",
                             "isDaytime": False,
                             "temperature": 60,
                             "temperatureUnit": "F",
