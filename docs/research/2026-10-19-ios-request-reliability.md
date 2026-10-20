@@ -77,3 +77,16 @@ Live public health, mode-catalog, and NFL-team-catalog requests returned HTTP 20
 The returned team records include explicit identifiers such as `nfl:ARI` and `nfl:ATL`.
 
 Simulator checks use controlled data. Live Bluetooth provisioning and Spotify account authorization require their external devices and services.
+
+## Integrated college tiles
+
+`ModesView` now places every league group in catalog order within the same adaptive grid.
+This removes the separate bottom section for FBS and FCS.
+Each division has a single bordered tile with an integrated 44-point disclosure button.
+The name area controls the division flag. The arrow controls local disclosure state.
+The full name area has an explicit rectangular hit shape.
+
+All five conference interaction checks passed with the integrated layout.
+The additional layout check passed after the explicit name-area hit shape was added.
+It verifies catalog placement, arrow alignment, and full control dimensions.
+The updated signed app was installed and launched on Matt's iPhone 17 Pro Max.

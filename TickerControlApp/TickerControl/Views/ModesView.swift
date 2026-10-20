@@ -40,7 +40,7 @@ struct ModesView: View {
         vm.leagueOptions.filter { $0.type == "stock" }
     }
 
-    private func leagueButton(_ option: LeagueOption, isConference: Bool = false) -> some View {
+    private func leagueButton(_ option: LeagueOption, isConference: Bool = false, embedded: Bool = false) -> some View {
         let isActive = vm.state.active_sports[option.id] ?? true
         return Button {
             EnabledLeagueControls.toggle(option, in: &vm.state.active_sports)
@@ -49,14 +49,15 @@ struct ModesView: View {
             Text(option.label)
                 .font(.subheadline).bold()
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, embedded ? 8 : 12)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.vertical, 4)
-                .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+                .background(embedded ? Color.clear : (isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05)))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+                    .stroke(embedded ? Color.clear : (isActive ? Color.green : Color.white.opacity(0.1)), lineWidth: 1))
                 .foregroundColor(.white)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("\(isConference ? "conference" : "league")-\(option.id)")
@@ -67,42 +68,41 @@ struct ModesView: View {
 
     private func conferenceGroup(_ group: EnabledLeagueGroup) -> some View {
         let isExpanded = leagueControls.expandedParents.contains(group.id)
+        let isActive = vm.state.active_sports[group.id] ?? true
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                leagueButton(group.league)
+            HStack(spacing: 0) {
+                leagueButton(group.league, embedded: true)
+                Rectangle().fill(Color.white.opacity(0.25)).frame(width: 1, height: 24)
                 Button {
                     leagueControls.toggleDisclosure(for: group.id)
                 } label: {
-                    HStack(spacing: 8) {
-                        Text("Conferences").font(.subheadline).bold()
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption).bold()
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    .foregroundColor(.white)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.bold())
+                        .frame(width: 44, height: 52)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("conferences-\(group.id)")
                 .accessibilityLabel("\(group.league.label) conferences")
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             }
+            .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+            .foregroundColor(.white)
             if isExpanded {
                 if group.conferences.isEmpty {
                     Text("No conferences available.")
                         .font(.subheadline).foregroundStyle(.secondary)
                         .padding(.vertical, 8)
                 } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                    VStack(spacing: 10) {
                         ForEach(group.conferences) { conference in
                             leagueButton(conference, isConference: true)
                         }
                     }
+                    .padding(.leading, 8)
                 }
             }
         }
@@ -470,13 +470,17 @@ struct ModesView: View {
                     } else {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                                ForEach(leagueGroups.filter { !$0.hasConferenceDisclosure }) { group in
-                                    leagueButton(group.league)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .top)], spacing: 12) {
+                                ForEach(leagueGroups) { group in
+                                    Group {
+                                        if group.hasConferenceDisclosure {
+                                            conferenceGroup(group)
+                                        } else {
+                                            leagueButton(group.league)
+                                        }
+                                    }
+                                    .frame(maxHeight: .infinity, alignment: .top)
                                 }
-                            }
-                            ForEach(leagueGroups.filter { $0.hasConferenceDisclosure }) { group in
-                                conferenceGroup(group)
                             }
                         }
                     }
