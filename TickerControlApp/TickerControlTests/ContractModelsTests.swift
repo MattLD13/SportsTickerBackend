@@ -15,6 +15,15 @@ final class ContractModelsTests: XCTestCase {
         XCTAssertEqual(response.games.count, 0)
     }
 
+    func testStockAutocompleteDecodesSymbolAndCompanyName() throws {
+        let data = Data(#"{"stocks":[{"symbol":"NVDA","name":"NVIDIA Corp"},{"symbol":"BRK.B","name":"Berkshire Hathaway"}]}"#.utf8)
+        let response = try JSONDecoder().decode(StockSymbolSearchResponse.self, from: data)
+        XCTAssertEqual(response.stocks.map(\.id), ["NVDA", "BRK.B"])
+        XCTAssertEqual(response.stocks[0].name, "NVIDIA Corp")
+        let encoded = try JSONEncoder().encode(response.stocks[0])
+        XCTAssertEqual(try JSONDecoder().decode(StockSymbolOption.self, from: encoded), response.stocks[0])
+    }
+
     func testCustomStockListRoundTripKeepsOrder() throws {
         let data = Data(#"{"mode":"stock","active_sports":{"stock_custom":true},"custom_stock_symbols":["NVDA","BRK.B","AAPL"]}"#.utf8)
         let state = try JSONDecoder().decode(TickerState.self, from: data)

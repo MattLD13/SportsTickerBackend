@@ -73,13 +73,8 @@ void drawAirport(JsonObjectConst airport) {
 }
 
 void drawStock(JsonObjectConst stock) {
-  class StockCanvas : public MiniCanvas {
-   public:
-    explicit StockCanvas(const String& value) : token(value) {}
-    bool logo(ticker_ui::Side, int x, int y) { return drawLogoAsset(token, x, y); }
-   private:
-    String token;
-  } canvas(miniSpriteToken(stock, "home_logo_asset"));
+  prepareSelectedGameLogoSources(stock);
+  MiniSportsCanvas canvas(preparedGameLogos);
   ticker_ui::renderStock(canvas, ticker_ui::stockPane(stock));
   presentContentFrame();
 }

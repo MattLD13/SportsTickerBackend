@@ -142,6 +142,11 @@ void prepareMusicArtwork() {
 }
 
 void prepareLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
+  if (logoWorkMutex == nullptr || !spriteAssets.ready()) {
+    assetsLoading = false;
+    sportsFrameReady = true;
+    return;
+  }
   if (!rotatingMode() || pairingMode) {
     assetsLoading = false;
     return;
@@ -149,6 +154,14 @@ void prepareLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
 
   const uint16_t gameCount = countShownPages();
   if (gameCount == 0) {
+    xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+    ++logoPlanGeneration;
+    logoWorkCount = logoForegroundCount = 0;
+    logoWorkerPending = logoPlanDisplayPending = false;
+    assetsLoading = false;
+    sportsFrameReady = true;
+    spriteAssets.pinWindow(logoWorkPrimary, 0);
+    xSemaphoreGive(logoWorkMutex);
     return;
   }
   const uint16_t targetPage = requestedPage == 0xFFFF ? pageIndex : requestedPage % gameCount;

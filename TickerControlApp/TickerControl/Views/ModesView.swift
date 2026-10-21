@@ -500,7 +500,7 @@ struct ModesView: View {
             }
         }
         .sheet(isPresented: $showingCustomStocks) {
-            CustomStockListEditor(symbols: vm.state.custom_stock_symbols) { symbols in
+            CustomStockListEditor(symbols: vm.state.custom_stock_symbols, search: vm.searchStockSymbols) { symbols in
                 guard vm.activeTicker?.id == customStocksTickerID,
                       vm.state.ticker_id == customStocksTickerID else { return }
                 vm.state.custom_stock_symbols = symbols
@@ -541,49 +541,93 @@ private struct CustomStockListEditor: View {
     @State private var symbols: [String]
     @State private var input = ""
     @State private var inputError: String?
+    @State private var suggestions: [StockSymbolOption] = []
+    @State private var isSearching = false
+    let search: (String) async throws -> [StockSymbolOption]
     let onSave: ([String]) -> Void
 
-    init(symbols: [String], onSave: @escaping ([String]) -> Void) {
+    init(symbols: [String], search: @escaping (String) async throws -> [StockSymbolOption], onSave: @escaping ([String]) -> Void) {
         _symbols = State(initialValue: symbols)
         self.onSave = onSave
+        self.search = search
     }
 
-    private func addSymbols() {
-        let additions = input.uppercased().split { $0.isWhitespace || $0 == "," }.map(String.init)
-        guard !additions.isEmpty else { return }
-        guard additions.allSatisfy({ $0.range(of: #"^[A-Z][A-Z0-9]{0,9}(?:[.-][A-Z0-9]{1,3})?$"#, options: .regularExpression) != nil }) else {
-            inputError = "Enter stock symbols, such as AAPL, NVDA, or BRK.B."
+    private var exactMatch: StockSymbolOption? {
+        suggestions.first { $0.symbol == input.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+    }
+
+    private func add(_ stock: StockSymbolOption) {
+        guard !symbols.contains(stock.symbol) else {
+            inputError = "This stock is already in your list."
             return
         }
-        var updated = symbols
-        for symbol in additions where !updated.contains(symbol) { updated.append(symbol) }
-        guard updated.count <= 30 else {
+        guard symbols.count < 30 else {
             inputError = "A custom list can contain up to 30 stocks."
             return
         }
-        symbols = updated
+        withAnimation(.snappy(duration: 0.15)) { symbols.append(stock.symbol) }
         input = ""
+        suggestions = []
         inputError = nil
+    }
+
+    private func searchInput() async {
+        let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        suggestions = []
+        inputError = nil
+        guard !query.isEmpty else { isSearching = false; return }
+        isSearching = true
+        do {
+            try await Task.sleep(for: .milliseconds(120))
+            let results = try await search(query)
+            try Task.checkCancellation()
+            suggestions = results
+            isSearching = false
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            inputError = "Stock search is unavailable. Try again before adding this stock."
+            isSearching = false
+        }
     }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    Text("Create one list for this ticker. Add symbols, remove stocks, or drag to change their order.")
+                    Text("Search by company name or symbol. Tap a result to add it, or edit your list below.")
                         .font(.subheadline).foregroundStyle(.secondary)
                     HStack {
-                        TextField("AAPL, NVDA, MSFT", text: $input)
+                        TextField("Company or symbol", text: $input)
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
                             .submitLabel(.done)
-                            .onSubmit { addSymbols() }
+                            .onSubmit { if let stock = exactMatch { add(stock) } }
                             .accessibilityIdentifier("custom-stock-input")
-                        Button("Add") { addSymbols() }
-                            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Add") { if let stock = exactMatch { add(stock) } }
+                            .disabled(exactMatch == nil)
+                    }
+                    if isSearching { ProgressView("Searching stocks...") }
+                    ForEach(suggestions) { stock in
+                        Button { add(stock) } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(stock.symbol).bold()
+                                    Text(stock.name).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: symbols.contains(stock.symbol) ? "checkmark.circle.fill" : "plus.circle.fill")
+                            }
+                        }
+                        .disabled(symbols.contains(stock.symbol))
+                        .accessibilityIdentifier("stock-result-\(stock.symbol)")
+                    }
+                    if !isSearching && !input.isEmpty && suggestions.isEmpty && inputError == nil {
+                        Text("No matching stocks. Try the company name or another symbol.").font(.caption)
                     }
                     if let inputError { Text(inputError).foregroundStyle(.red) }
-                } header: { Text("Add or paste stock symbols") }
+                } header: { Text("Find a stock") }
                 Section {
                     if symbols.isEmpty {
                         Text("Your custom list is empty.").foregroundStyle(.secondary)
@@ -598,11 +642,12 @@ private struct CustomStockListEditor: View {
                         ShareLink(item: symbols.joined(separator: ", ")) {
                             Label("Share stock symbols", systemImage: "square.and.arrow.up")
                         }
-                        Text("Paste shared symbols into Custom on another ticker to copy the list.")
+                        Text("Share these symbols, then search and add them on another ticker.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
+            .task(id: input) { await searchInput() }
             .navigationTitle("Custom Stocks")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

@@ -34,7 +34,7 @@ _INTERVALS: Final = {
     "weather": 300.0,
     "golf": 30.0,
     "racing": 15.0,
-    "stock": 30.0,
+    "stock": 2.0,
     "flights": 30.0,
     "music": 0.6,
     "clock": 3600.0,

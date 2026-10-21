@@ -231,6 +231,16 @@ struct TeamData: Decodable, Identifiable, Hashable, Sendable {
     let abbr: String
     let logo: String?
 }
+struct StockSymbolOption: Codable, Identifiable, Equatable, Sendable {
+    let symbol: String
+    let name: String
+    var id: String { symbol }
+}
+
+struct StockSymbolSearchResponse: Decodable, Sendable {
+    let stocks: [StockSymbolOption]
+}
+
 struct TickerState: Codable, Sendable {
     var active_sports: [String: Bool]
     var custom_stock_symbols: [String] = []

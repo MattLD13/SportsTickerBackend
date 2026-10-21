@@ -60,3 +60,18 @@ Controller schedule override actions use this field. An inactive time window doe
 The HTTP snapshot route remains the Pi boot path. The main Pi uses Device Stream V1 for sequenced updates.
 Snapshot revisions do not define stream ordering or replay. Provider WebSockets do not define the device stream contract.
 Read [Device Stream V1](device-stream-v1.md) for its envelope and recovery rules.
+
+
+## Stock symbol search
+
+`GET /api/v2/catalog/stocks?q=<company-or-symbol>` returns confirmed US symbol matches.
+The response contains `stocks`, with `symbol` and `name` for each match.
+An empty query returns an empty list. Queries contain at most 60 characters.
+The server returns at most 12 matches, with an exact symbol match first.
+The server caches search results for one hour and keeps provider keys on the server.
+An unavailable search returns HTTP 503 with `stock_search_unavailable`.
+The controller adds a stock only after the user selects a returned symbol.
+The controller shows the selected symbol immediately and preserves manual list order.
+New custom quotes interrupt the market sweep. Each completed quote becomes available immediately.
+The stock snapshot job reads the shared quote cache every two seconds.
+The source retains its existing upstream quote cadence and request pacing.

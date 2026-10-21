@@ -144,9 +144,8 @@ void applyPendingWifiCredentials(uint32_t now) {
 void miniSetup() {
   Serial.begin(115200);
   Serial0.begin(115200);
-  delay(5000);
   const uint32_t serialWaitStartedAt = millis();
-  while (!Serial && millis() - serialWaitStartedAt < 5000) delay(10);
+  while (!Serial && millis() - serialWaitStartedAt < 250) delay(1);
   Serial.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   Serial0.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
@@ -158,10 +157,12 @@ void miniSetup() {
   loadWifiCredentials();
   firmwareUpdater.initialize();
   setupMatrix();
+  Serial.println("Boot stage: matrix ready");
   deviceSensors.begin();
   deviceSensors.tick(millis());
   deviceCredentials.load();
   drawSystemNotice(deviceCredentials.ready() ? ticker_ui::SystemKind::Startup : ticker_ui::SystemKind::DeviceKey, deviceCredentials.ready() ? "PLEASE WAIT" : "AUTH REQUIRED");
+  Serial.println("Boot stage: first frame ready");
   logoWorkMutex = xSemaphoreCreateMutex();
   networkWorker.begin();
   if (!spriteAssets.ready() || logoWorkMutex == nullptr || !networkGate.ready()) {

@@ -817,6 +817,29 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     // --- STANDARD HELPERS ---
 
+    func searchStockSymbols(_ query: String) async throws -> [StockSymbolOption] {
+        guard var components = URLComponents(string: getBaseURL() + "/api/v2/catalog/stocks") else {
+            throw URLError(.badURL)
+        }
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        guard let url = components.url else { throw URLError(.badURL) }
+        return try await withCheckedThrowingContinuation { continuation in
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            httpClient.dataTask(with: request) { data, response, error in
+                if let message = TickerHTTPClient.failureMessage(data: data, response: response, error: error) {
+                    continuation.resume(throwing: NSError(domain: "StockSearch", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: message]))
+                    return
+                }
+                do {
+                    let result = try JSONDecoder().decode(StockSymbolSearchResponse.self, from: data ?? Data())
+                    continuation.resume(returning: result.stocks)
+                } catch { continuation.resume(throwing: error) }
+            }.resume()
+        }
+    }
+
     func fetchLeagueOptions() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/v2/catalog/leagues") else { return }

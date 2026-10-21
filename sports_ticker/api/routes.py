@@ -20,6 +20,7 @@ from sports_ticker.domain import DisplaySettings
 from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyIntegrationError
 from sports_ticker.application.schedule import block_to_mapping, condition_to_mapping
+from sports_ticker.providers.stock_catalog import StockSymbolCatalog
 
 
 class ApiError(Exception):
@@ -149,6 +150,18 @@ def register_routes(
                 },
             }
         )
+
+    stock_catalog = StockSymbolCatalog()
+    app.extensions["sports_ticker.stock_catalog"] = stock_catalog
+
+    @app.get("/api/v2/catalog/stocks")
+    def catalog_stocks():
+        try:
+            return jsonify({"stocks": app.extensions["sports_ticker.stock_catalog"].search(request.args.get("q", ""))})
+        except ValueError as error:
+            raise ApiError(str(error), 400, "invalid_request") from error
+        except RuntimeError as error:
+            raise ApiError(str(error), 503, "stock_search_unavailable") from error
 
     @app.get("/api/v2/catalog/leagues")
     def catalog_leagues():

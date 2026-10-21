@@ -264,6 +264,8 @@ class FinnhubStockSource:
         self._quote_lock = Lock()
         self._refreshing = False
         self._custom_requests: dict[tuple[str, ...], float] = {}
+        self._urgent_symbols: list[str] = []
+        self._custom_attempts: dict[str, float] = {}
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         with self._refresh_lock:
@@ -271,6 +273,11 @@ class FinnhubStockSource:
             self._custom_requests = {symbols: seen for symbols, seen in self._custom_requests.items() if now - seen < 300}
             if settings.custom_stock_symbols:
                 self._custom_requests[settings.custom_stock_symbols] = now
+                with self._quote_lock:
+                    for symbol in settings.custom_stock_symbols:
+                        if symbol not in self._quotes and now - self._custom_attempts.get(symbol, float("-inf")) >= 30:
+                            if symbol not in self._urgent_symbols:
+                                self._urgent_symbols.append(symbol)
         self._start_all_market_refresh()
         records: list[dict[str, object]] = []
         for group in MARKET_GROUPS:
@@ -289,7 +296,7 @@ class FinnhubStockSource:
                 missing_custom = any(symbol not in self._quotes for symbol in custom_symbols)
             if not market.open and (market.closed_session is None or (market.closed_session == self._closed_session and not missing_custom)):
                 return
-            if self._refreshing or now - self._last_refresh < self._refresh_seconds:
+            if self._refreshing or (not self._urgent_symbols and now - self._last_refresh < self._refresh_seconds):
                 return
             self._last_refresh = now
             self._refreshing = True
@@ -306,11 +313,25 @@ class FinnhubStockSource:
         updates = {}
         try:
             smart_symbols = tuple(dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols))
-            symbols = tuple(dict.fromkeys((*smart_symbols, *custom_symbols)))
-            for symbol in symbols:
+            symbols = list(dict.fromkeys((*custom_symbols, *smart_symbols)))
+            visited = set()
+            while symbols:
+                with self._refresh_lock:
+                    urgent = [symbol for symbol in self._urgent_symbols if symbol not in visited]
+                    self._urgent_symbols.clear()
+                if urgent:
+                    symbols = list(dict.fromkeys((*urgent, *symbols)))
+                symbol = symbols.pop(0)
+                if symbol in visited:
+                    continue
+                visited.add(symbol)
+                with self._refresh_lock:
+                    self._custom_attempts[symbol] = self._monotonic()
                 quote = self._fetch_quote(symbol) if self._keys else None
                 if quote is not None:
                     updates[symbol] = quote
+                    with self._quote_lock:
+                        self._quotes[symbol] = quote
                     changed = True
             complete = all(symbol in updates for symbol in smart_symbols)
             if closed_session is not None and complete:

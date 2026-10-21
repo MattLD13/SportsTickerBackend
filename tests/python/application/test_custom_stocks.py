@@ -132,3 +132,29 @@ def test_custom_projection_keeps_more_than_ten_stocks_in_saved_order():
     from sports_ticker.projections.device_data import project_device_data
     mini = project_device_data({**payload, "content": selected}, mini=True)
     assert [item["data"]["symbol"] for item in mini["content"]["stock"]] == list(symbols)
+
+
+def test_new_custom_quote_interrupts_market_sweep_and_is_published_before_sweep_finishes(tmp_path, monkeypatch):
+    monkeypatch.setattr(live_sources, "MARKET_GROUPS", (SimpleNamespace(id="stock_tech_ai", label="Tech", symbols=("AAA", "BBB")),))
+    monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
+    calls = []
+    source = None
+    custom = DisplaySettings(mode="stock", custom_stock_symbols=("ZZZ",), active_sports={"stock_custom": True})
+    class Thread:
+        def __init__(self, target, args, **kwargs): self.target, self.args = target, args
+        def start(self): self.target(*self.args)
+    class Client:
+        def get_json(self, url, *, timeout):
+            symbol = parse_qs(urlparse(url).query)["symbol"][0]
+            calls.append(symbol)
+            if symbol == "AAA": source.fetch(custom)
+            if symbol == "BBB":
+                assert source._quotes["ZZZ"]["price"] == "100.00"
+                records = source.fetch(custom)["content"]
+                assert any(row["symbol"] == "ZZZ" and row["market_group"] == "stock_custom" for row in records)
+            return {"c": 100, "dp": 2, "d": 2, "t": 1000}
+    monkeypatch.setattr(live_sources, "Thread", Thread)
+    source = live_sources.FinnhubStockSource(Client(), cache_path=tmp_path / "stocks.json", clock=lambda: 1000,
+        monotonic_clock=lambda: 1000, sleeper=lambda _: None, market_session=lambda _: MarketSession(True, None))
+    source.fetch(DisplaySettings(mode="stock"))
+    assert calls == ["AAA", "ZZZ", "BBB"]
