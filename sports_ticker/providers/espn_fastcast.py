@@ -14,6 +14,8 @@ from typing import Any, Protocol
 from urllib.parse import parse_qs, quote, urlsplit
 from urllib.request import Request, urlopen
 
+from sports_ticker.tls import verified_https_context
+
 
 _DISCOVERY_URL = "https://fastcast.semfs.engsvc.go.com/public/websockethost"
 _PROFILE_ID = 12000
@@ -623,7 +625,7 @@ def _read_json(url: str, *, timeout: float) -> Any:
         str(url),
         headers={"Accept": "application/json", "User-Agent": _USER_AGENT},
     )
-    with urlopen(request, timeout=timeout) as response:
+    with urlopen(request, timeout=timeout, context=verified_https_context()) as response:
         return json.loads(response.read().decode("utf-8"))
 
 

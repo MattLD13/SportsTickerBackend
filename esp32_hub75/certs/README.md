@@ -3,10 +3,12 @@
 `backend.pem` contains Mozilla roots for the backend edge certificate authorities.
 The adjacent JSON records the source version, selected organizations, and checksums.
 The generator selects Google Trust Services, Let's Encrypt, SSL.com, and Sectigo roots.
+It excludes the compromised emSign ECC G3 root and AAA cross-sign root.
 Every Mini HTTPS client verifies the server name and certificate chain with the same store.
 Standard PEM validation accepts trusted roots within cross-signed server chains.
 The SDK compressed bundle fails this check for the current backend chain.
 
+Backend HTTPS requests use Certifi 2026.10.19 or newer, which distrusts both affected anchors.
 To refresh the store, install a reviewed Certifi version and run:
 
 ```powershell

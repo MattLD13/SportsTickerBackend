@@ -10,6 +10,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
+from sports_ticker.tls import verified_https_context
+
 from .incidents import atomic_json
 from .reporting import RuntimeReport
 
@@ -28,7 +30,7 @@ class GitHub:
             "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json", "User-Agent": "SportsTickerRuntimeReporter",
         })
         try:
-            with urlopen(request, timeout=15) as response:
+            with urlopen(request, timeout=15, context=verified_https_context()) as response:
                 return json.load(response)
         except HTTPError as error:
             raise RuntimeError(f"GitHub reporting failed with HTTP {error.code}") from None

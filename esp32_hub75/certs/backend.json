@@ -1,9 +1,9 @@
 {
   "source": "https://github.com/certifi/python-certifi",
-  "certifi_version": "2025.11.12",
-  "source_sha256": "a1ad5d643e21c43b5bed74c7e0891dcdb58f6af51c8ace1e4f020d654aa52a16",
-  "store_sha256": "c6dc4bf86e5a7d4799f5ba8058df68c55c770439e4456ea190974333628fc810",
-  "certificates": 19,
+  "certifi_version": "2026.10.19",
+  "source_sha256": "50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785",
+  "store_sha256": "919c1110373465e455fcf433a3dda146f0d8143725e0a14a015cc634efe738d3",
+  "certificates": 17,
   "organizations": [
     "COMODO CA Limited",
     "Google Trust Services LLC",

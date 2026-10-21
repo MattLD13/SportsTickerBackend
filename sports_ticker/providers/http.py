@@ -8,6 +8,8 @@ from typing import Any, Protocol, runtime_checkable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from sports_ticker.tls import verified_https_context
+
 
 class JsonHttpError(RuntimeError):
     """Describe an HTTP, decoding, or JSON response failure."""
@@ -50,7 +52,7 @@ class UrllibJsonHttpClient:
             headers={"Accept": "application/json", "User-Agent": self._user_agent},
         )
         try:
-            with urlopen(request, timeout=request_timeout) as response:
+            with urlopen(request, timeout=request_timeout, context=verified_https_context()) as response:
                 body = response.read()
                 status = getattr(response, "status", None)
                 if status is not None and not 200 <= int(status) < 300:
@@ -98,7 +100,7 @@ class UrllibTextHttpClient:
             headers={"Accept": "text/html", "User-Agent": self._user_agent},
         )
         try:
-            with urlopen(request, timeout=request_timeout) as response:
+            with urlopen(request, timeout=request_timeout, context=verified_https_context()) as response:
                 body = response.read()
                 status = getattr(response, "status", None)
                 if status is not None and not 200 <= int(status) < 300:

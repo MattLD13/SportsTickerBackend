@@ -1,6 +1,7 @@
 flask
 waitress
 requests
+certifi>=2026.10.19
 python-dotenv
 tzdata
 FlightRadarAPI==1.5.1

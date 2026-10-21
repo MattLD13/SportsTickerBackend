@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 10297)
+Total output lines: 1026
+
 """Server-owned Spotify OAuth and per-ticker music source."""
 
 from __future__ import annotations
@@ -15,6 +18,8 @@ from typing import Any, Callable, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+
+from sports_ticker.tls import verified_https_context
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -199,7 +204,7 @@ class UrllibSpotifyHttpClient:
     @staticmethod
     def _json(request: Request) -> Mapping[str, Any]:
         try:
-            with urlopen(request, timeout=8) as response:
+            with urlopen(request, timeout=8, context=verified_https_context()) as response:
                 body = response.read()
                 status = getattr(response, "status", 200)
         except HTTPError as error:
@@ -465,28 +470,7 @@ class SpotifyIntegrationService:
                     SpotifyConnection(
                         ticker_id=group_id,
                         spotify_account_id=connection.spotify_account_id,
-                        display_name=connection.display_name,
-                        scopes=connection.scopes,
-                        refresh_token_ciphertext=self._encrypt(next_refresh),
-                        status="connected",
-                        priority=connection.priority,
-                        connected_at=connection.connected_at,
-                        updated_at=float(self._clock()),
-                    )
-                )
-            playback = self._http.get_playback(access_token)
-            with self._playback_lock:
-                self._rate_limit_backoff_seconds = SPOTIFY_RATE_LIMIT_INITIAL_BACKOFF_SECONDS
-            record = self._windowed_playback(connection, playback, access_token)
-            record["fetch_ts"] = float(self._clock())
-            record["spotify_account_id"] = connection.spotify_account_id
-            record["connection_name"] = connection.display_name
-            record["priority"] = connection.priority
-            cadence = _playback_refresh_seconds(playback)
-            with self._playback_lock:
-                self._playback_failures.pop(window_key, None)
-                self._next_playback_poll_at[window_key] = float(self._clock()) + cadence
-            return record
+                        display_name=connectio…297 tokens truncated…record
         except SpotifyIntegrationError as error:
             self._remember_api_cooldown(error)
             if error.status_code != 429:

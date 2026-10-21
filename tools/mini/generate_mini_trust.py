@@ -18,14 +18,20 @@ TRUSTED_CA_ORGANIZATIONS = frozenset({
     "Google Trust Services LLC", "Internet Security Research Group",
     "SSL Corporation", "Sectigo Limited", "COMODO CA Limited", "The USERTRUST Network",
 })
+BLOCKED_ROOT_COMMON_NAMES = frozenset({
+    "AAA Certificate Services",
+    "emSign ECC Root CA - G3",
+})
 
 
 def build_trust_store(pem: bytes) -> bytes:
     """Select Mozilla roots for the backend edge certificate authorities."""
     certificates = x509.load_pem_x509_certificates(pem)
-    selected = [certificate for certificate in certificates if any(
-        item.value in TRUSTED_CA_ORGANIZATIONS
-        for item in certificate.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
+    selected = [certificate for certificate in certificates if (
+        any(item.value in TRUSTED_CA_ORGANIZATIONS
+            for item in certificate.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME))
+        and not any(item.value in BLOCKED_ROOT_COMMON_NAMES
+                    for item in certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME))
     )]
     if not selected:
         raise ValueError("no backend certificate authorities in source trust store")
