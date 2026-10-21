@@ -1,4 +1,4 @@
-"""Decide specialty-provider demand from fleet presence and schedule ownership."""
+"""Decide specialty-provider demand from each ticker's effective schedule."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .schedule import ScheduleService
 
 
 class ProviderDemand:
-    """Prefetch scheduled specialty modes for devices seen within ninety seconds."""
+    """Prefetch scheduled specialty modes for every configured ticker."""
 
     def __init__(self, repository: TickerRepository, schedules: ScheduleService, *, horizon_seconds: float = 600) -> None:
         self.repository = repository
@@ -22,12 +22,6 @@ class ProviderDemand:
             return True
         ticker = self.repository.get_ticker(ticker_id)
         if ticker is None:
-            return False
-        app_override = self.schedules.schedule_override(ticker_id)
-        if not app_override and (
-            ticker.device.last_seen_at is None
-            or now.timestamp() - ticker.device.last_seen_at > 90
-        ):
             return False
         modes = self.schedules.modes_within(ticker_id, ticker.display_settings, now=now,
                                           horizon_seconds=self.horizon_seconds,

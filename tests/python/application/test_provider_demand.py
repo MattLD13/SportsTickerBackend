@@ -8,32 +8,35 @@ from sports_ticker.application.schedule import ScheduleService
 from sports_ticker.application.scheduler import RefreshScheduler
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.fleet import DeviceMetadata, TickerRepository
+from sports_ticker.fleet import TickerRepository
 from sports_ticker.providers.market_sessions import us_equity_session
 from sports_ticker.providers import live_sources
 
 pytestmark = pytest.mark.critical
 
 
-def test_demand_uses_presence_and_exact_schedule_transitions(tmp_path):
+def test_demand_uses_schedule_horizon_without_device_presence(tmp_path):
     now = datetime(2026, 5, 5, 3, 55, tzinfo=timezone.utc)
     settings = DisplaySettings(mode="weather", timezone="America/New_York")
     with TickerRepository(tmp_path / "fleet.sqlite3") as repository:
-        repository.create_ticker("mini", settings, device=DeviceMetadata(last_seen_at=now.timestamp()))
+        repository.create_ticker("mini", settings)
         schedules = ScheduleService(repository, SnapshotStore(), clock=lambda: now.timestamp())
         schedules.create_block("mini", days_of_week=[1], start_minute=3, end_minute=4, mode="flights")
         demand = ProviderDemand(repository, schedules)
         assert demand("flights", "mini", settings, now)
         assert not demand("stock", "mini", settings, now)
         assert not demand("golf", "mini", settings, now)
-        assert not demand("flights", "mini", settings, now + timedelta(seconds=91))
+        assert demand("flights", "mini", settings, now + timedelta(seconds=91))
         assert demand("espn", "mini", settings, now + timedelta(days=1))
-        schedules.set_schedule_override("mini", True, settings=settings)
-        assert demand("flights", "mini", settings, now)
 
 
-@pytest.mark.parametrize(("mode", "provider"), [("stock", "stock"), ("airports", "flights")])
-def test_app_mode_override_keeps_provider_demand_without_device_presence(tmp_path, mode, provider):
+@pytest.mark.parametrize(("mode", "provider", "other_provider"), [
+    ("stock", "stock", "flights"),
+    ("airports", "flights", "stock"),
+])
+def test_app_mode_override_keeps_selected_provider_demand_without_device_presence(
+    tmp_path, mode, provider, other_provider
+):
     now = datetime(2026, 5, 5, 3, 55, tzinfo=timezone.utc)
     settings = DisplaySettings(mode=mode, timezone="America/New_York")
     with TickerRepository(tmp_path / f"{mode}.sqlite3") as repository:
@@ -43,6 +46,7 @@ def test_app_mode_override_keeps_provider_demand_without_device_presence(tmp_pat
         demand = ProviderDemand(repository, schedules)
 
         assert demand(provider, "mini", settings, now)
+        assert not demand(other_provider, "mini", settings, now)
 
 
 def test_paused_refreshes_keep_data_and_resume_before_the_next_interval():
