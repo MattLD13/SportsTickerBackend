@@ -35,3 +35,14 @@ Reference: https://github.com/Finnhub-Stock-API/finnhub-go/blob/master/api/opena
 The full suite passes 1,134 tests, with ten skips.
 The critical suite passes 783 tests, with ten skips and 351 deselected tests.
 The signed Release phone build passes on the Mac.
+
+
+## Live OTA result and rotation correction
+
+The Mini installed mini-1.3.38 through OTA and passed boot validation.
+It downloaded 16 checked logos with no invalid sprite files and retained continued heartbeats.
+The hardware visit history exposed a separate rotation defect.
+Stock pages supplied a three-second dwell, but the shared due check accepted only sports pages.
+The timer now accepts sports and stock pages. Other modes retain their existing policy.
+Native tests verify both modes, the exact deadline, refreshed quotes, page changes, and single-item lists.
+The correction uses mini-1.3.39 and requires another OTA verification.

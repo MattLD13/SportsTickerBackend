@@ -82,7 +82,7 @@ class Metrics {
   uint32_t late = 0;
   std::array<Visit, HISTORY> history{};
   bool rotationDue(uint64_t now) const {
-    return frames && std::strcmp(current.kind, "sports") == 0 && current.count > 1 &&
+    return frames && (std::strcmp(current.kind, "sports") == 0 || std::strcmp(current.kind, "stock") == 0) && current.count > 1 &&
            current.targetMs > 0 && now - startedUs >= uint64_t(current.targetMs) * 1000;
   }
   bool prefetchDue(uint64_t now, uint32_t leadMs) const {

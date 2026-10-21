@@ -22,6 +22,31 @@ int main() {
   assert(!recovery.observe(true, false, 31000));
   assert(!recovery.observe(true, false, 32000));
   assert(recovery.observe(true, false, 33000));
+  for (const char* kind : {"sports", "stock"}) {
+    mini_display::Metrics rotation;
+    mini_display::Pane page;
+    std::strcpy(page.kind, kind);
+    std::strcpy(page.item, "first");
+    page.count = 6;
+    page.targetMs = 3000;
+    rotation.present(page, 1000000, 10);
+    assert(!rotation.rotationDue(3999999));
+    assert(rotation.rotationDue(4000000));
+    rotation.present(page, 3500000, 10);
+    assert(rotation.rotationDue(4000000));
+    std::strcpy(page.item, "second");
+    page.index = 1;
+    rotation.present(page, 4000000, 10);
+    assert(!rotation.rotationDue(6999999));
+    assert(rotation.rotationDue(7000000));
+    page.count = 1;
+    rotation.present(page, 7000000, 10);
+    assert(!rotation.rotationDue(10000000));
+    std::strcpy(page.kind, "weather");
+    page.count = 6;
+    rotation.present(page, 11000000, 10);
+    assert(!rotation.rotationDue(20000000));
+  }
   using namespace mini_display;
   std::vector<uint8_t> bytes(FRAME_BYTES * 2, 0);
   FrameMirror mirror;
