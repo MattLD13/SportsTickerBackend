@@ -21,7 +21,13 @@ class ProviderDemand:
         if provider not in {"golf", "stock", "flights"}:
             return True
         ticker = self.repository.get_ticker(ticker_id)
-        if ticker is None or ticker.device.last_seen_at is None or now.timestamp() - ticker.device.last_seen_at > 90:
+        if ticker is None:
+            return False
+        app_override = self.schedules.schedule_override(ticker_id)
+        if not app_override and (
+            ticker.device.last_seen_at is None
+            or now.timestamp() - ticker.device.last_seen_at > 90
+        ):
             return False
         modes = self.schedules.modes_within(ticker_id, ticker.display_settings, now=now,
                                           horizon_seconds=self.horizon_seconds,

@@ -32,6 +32,19 @@ def test_demand_uses_presence_and_exact_schedule_transitions(tmp_path):
         assert demand("flights", "mini", settings, now)
 
 
+@pytest.mark.parametrize(("mode", "provider"), [("stock", "stock"), ("airports", "flights")])
+def test_app_mode_override_keeps_provider_demand_without_device_presence(tmp_path, mode, provider):
+    now = datetime(2026, 5, 5, 3, 55, tzinfo=timezone.utc)
+    settings = DisplaySettings(mode=mode, timezone="America/New_York")
+    with TickerRepository(tmp_path / f"{mode}.sqlite3") as repository:
+        repository.create_ticker("mini", settings)
+        schedules = ScheduleService(repository, SnapshotStore(), clock=lambda: now.timestamp())
+        schedules.set_schedule_override("mini", True, settings=settings)
+        demand = ProviderDemand(repository, schedules)
+
+        assert demand(provider, "mini", settings, now)
+
+
 def test_paused_refreshes_keep_data_and_resume_before_the_next_interval():
     now = datetime(2026, 5, 4, 16, tzinfo=timezone.utc)
     enabled = [True]
