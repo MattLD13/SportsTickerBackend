@@ -72,6 +72,8 @@ def source_owners(before, after):
 
 
 def owners(path, *, before=None, after=None):
+    if path == "sports_ticker/tls.py":
+        return set(ALL)
     if path == "sports_ticker/providers/live_sources.py":
         return source_owners(before or "", after or "")
     if path.startswith(("sports_ticker/integrations/", "sports_ticker/fleet/")):
@@ -127,7 +129,8 @@ def package(root, output, components):
             path.relative_to(root).as_posix().startswith(("backend_ops/", "sports_ticker/providers/", "sports_ticker/domain/",
                                                          "sports_ticker/fleet/", "sports_ticker/integrations/"))
             or path.relative_to(root).as_posix() in ("sports_ticker/__init__.py", "sports_ticker/leagues.py", "sports_ticker/markets.py",
-                                                    "requirements.txt", "requirements-backend.txt", "VERSION", "RELEASE_SHA")]
+                                                    "sports_ticker/tls.py", "requirements.txt", "requirements-backend.txt",
+                                                    "VERSION", "RELEASE_SHA")]
         with tarfile.open(output / (component + ".tar.gz"), "w:gz") as archive:
             for path in included:
                 archive.add(path, arcname=path.relative_to(root).as_posix(), recursive=False)

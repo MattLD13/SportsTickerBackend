@@ -2,10 +2,13 @@
 import copy
 import json
 from pathlib import Path
+import shutil
+import tarfile
+import subprocess
 
 import pytest
 
-from backend_ops.components import ALL, owners, source_owners
+from backend_ops.components import ALL, owners, package, source_owners
 from backend_ops.incidents import atomic_json
 from backend_ops.manager import Host as LinuxHost, Manager, read, switch
 
@@ -63,12 +66,42 @@ def test_deployment_selects_the_fact_owner_and_shared_dependencies():
     assert owners("sports_ticker/providers/music.py") == {"music"}
     assert owners("sports_ticker/api/routes.py") == {"core"}
     assert owners("sports_ticker/integrations/spotify.py") == {"core", "music"}
+    assert owners("sports_ticker/tls.py") == set(ALL)
     assert owners("sports_ticker/domain/models.py") == set(ALL)
     assert owners("tests/python/test_modes.py") == set()
     source = Path("sports_ticker/providers/live_sources.py").read_text()
     assert source_owners(source, source.replace('FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"',
                                               'FINNHUB_QUOTE_URL = "https://finnhub.io/api/v2/quote"')) == {"stock"}
     assert source_owners(source, source + "\nimport decimal\n") == {"golf", "stock", "flights", "news", "clock"}
+
+
+def test_deployment_packages_shared_tls_helper_for_each_process(tmp_path):
+    source = Path.cwd()
+    root = tmp_path / "repository"
+    required = (
+        "backend_ops/worker_contract.py",
+        "sports_ticker/domain/models.py",
+        "sports_ticker/providers/contracts.py",
+        "sports_ticker/tls.py",
+    )
+    for relative in required:
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / relative, target)
+    for directory in ("ticker_core", "backend_ops", "sports_ticker"):
+        (root / directory).mkdir(parents=True, exist_ok=True)
+    for filename in ("requirements.txt", "requirements-backend.txt", "VERSION", "RELEASE_SHA"):
+        (root / filename).write_text("test\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Deployment Test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "deployment@example.invalid"], cwd=root, check=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "Create package fixture"], cwd=root, check=True, capture_output=True)
+    output = tmp_path / "packages"
+    package(root, output, ["espn", "core"])
+    for component in ("espn", "core"):
+        with tarfile.open(output / f"{component}.tar.gz", "r:gz") as archive:
+            assert "sports_ticker/tls.py" in archive.getnames()
 
 
 def test_activation_restarts_only_the_changed_component(tmp_path):
