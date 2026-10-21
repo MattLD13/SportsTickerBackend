@@ -31,7 +31,6 @@ from .sports_display import (
     nhl_shootout_display,
     assign_active_team,
     baseball_player_stats,
-    basketball_on_court,
     display_situation,
     football_red_zone_for_play,
     football_name_matches,
@@ -77,7 +76,6 @@ _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 _LIVE_DETAIL_WORKERS = 8
 _FOOTBALL_LEAGUES = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
-_BASKETBALL_LEAGUES = frozenset(("nba", "march_madness"))
 _MLB_LIVE_DETAIL_CACHE_KEYS = frozenset(
     {
         "batter_name",
@@ -1212,8 +1210,6 @@ class EspnScoreboardProvider:
         )
         if league == "mlb":
             details = self._merge_mlb_live_details(item.id, update, details)
-        if league in _BASKETBALL_LEAGUES:
-            details["basketballOnCourt"] = basketball_on_court(_mapping(update))
         if not details:
             return item
         data = dict(item.data)
@@ -1315,7 +1311,6 @@ class EspnScoreboardProvider:
             and not (
                 suppressed_update_ids
                 and (str(item.data.get("sport") or ""), item.id) in suppressed_update_ids
-                and str(item.data.get("sport") or "") not in _BASKETBALL_LEAGUES
             )
             and not (
                 attempted_updates
@@ -1326,16 +1321,6 @@ class EspnScoreboardProvider:
         ]
         if not targets:
             return self._enrich_nhl_live_items(items)
-
-        def detail_update(item: ContentItem) -> Any:
-            """Read basketball summaries when the scoreboard lacks live player rows."""
-            key = (str(item.data.get("sport") or ""), item.id)
-            if key in provided_updates:
-                if key[0] in _BASKETBALL_LEAGUES and key not in attempted_updates and "boxscore" not in _mapping(provided_updates[key]):
-                    return None
-                return provided_updates[key]
-            return {} if key in attempted_updates else None
-
         enriched = list(items)
         workers = min(8, len(targets))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
@@ -1344,7 +1329,13 @@ class EspnScoreboardProvider:
                     self._enrich_live_item,
                     str(item.data.get("sport") or ""),
                     item,
-                    update=detail_update(item),
+                    update=(
+                        provided_updates[(str(item.data.get("sport") or ""), item.id)]
+                        if (str(item.data.get("sport") or ""), item.id) in provided_updates
+                        else {}
+                        if (str(item.data.get("sport") or ""), item.id) in attempted_updates
+                        else None
+                    ),
                 ): index
                 for index, item in targets
             }

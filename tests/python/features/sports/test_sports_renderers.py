@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from sports_ticker.providers.nhl_live import _game_events
-from sports_ticker.providers.sports_display import basketball_on_court, nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
+from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
 from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
@@ -764,103 +764,3 @@ def test_full_hockey_card_uses_empty_net_side(
         assert labels[0] < 192
 
 
-
-
-
-@pytest.mark.parametrize("sport", ["nba", "march_madness", "basketball"])
-def test_basketball_shows_all_complete_surnames_without_changing_scoreboard(sports, monkeypatch, sport):
-    fixture = Path(__file__).parents[3] / "fixtures/display/basketball_on_court_espn.json"
-    lineups = basketball_on_court(json.loads(fixture.read_text(encoding="utf-8")))
-    game = {"sport": sport, "state": "in", "game_phase": "playing", "status": "Q4 11:23",
-            "away_abbr": "CLE", "home_abbr": "NY", "away_score": 111, "home_score": 119,
-            "away_seed": "12", "home_seed": "5",
-            "sports_presentation": "pinned", "situation": {"basketballOnCourt": lineups}}
-    baseline = sports.render_full({**game, "situation": {}})
-    calls = []
-    original = sports._full.draw_outlined_text
-
-    def capture(draw, x, y, text, font, *args, **kwargs):
-        calls.append((x, y, text, font, kwargs.get("anchor", "mm")))
-        return original(draw, x, y, text, font, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture)
-    labels = []
-    original_label = sports._full._draw_basketball_player_label
-
-    def capture_label(draw, x, y, text, max_width):
-        width = original_label(draw, x, y, text, max_width)
-        labels.append((x, y, text, width))
-        return width
-
-    monkeypatch.setattr(sports._full, "_draw_basketball_player_label", capture_label)
-    scene = ContentScene(game, "sports")
-    frames, keys = [], []
-    for seconds in (0, 5, 10):
-        context = RenderContext(datetime.fromtimestamp(seconds, timezone.utc))
-        frames.append(sports.render(context, scene).image)
-        keys.append(sports.visual_key(context, scene))
-    assert keys[0] == keys[1] == keys[2]
-    assert frames[0].tobytes() == frames[1].tobytes() == frames[2].tobytes()
-    assert all(frame.size == (384, 32) for frame in frames)
-    assert len(labels) == 30
-    for side in ("away", "home"):
-        for player in lineups[side]:
-            surname = player["name"].split()[-1]
-            label = f"#{player['jerseyNumber']} {player['position']} {surname}"
-            assert sum(text == label for _, _, text, _ in labels) == 3
-    assert not any("COURT" in str(text) for _, _, text, _, _ in calls)
-    protected = []
-    draw = ImageDraw.Draw(frames[0])
-    for x, y, text, font, anchor in calls[:13]:
-        if str(text).startswith("#"):
-            continue
-        assert font.size == (28 if text in {"111", "119"} else 9 if text in {"12", "5"} else 14)
-        box = draw.textbbox((x, y), text, font=font, anchor=anchor)
-        protected.append((box[0] - 1, box[1] - 1, box[2] + 1, box[3] + 1))
-    for box in protected + [(0, 0, 96, 32), (288, 0, 384, 32)]:
-        assert frames[0].crop(box).tobytes() == baseline.crop(box).tobytes()
-    for x, y, text, width in labels:
-        box = (x, y, x + width, y + 5)
-        assert 0 <= box[0] < box[2] < 384 and 0 <= box[1] < box[3] <= 31
-        for px0, py0, px1, py1 in protected:
-            assert box[2] < px0 or box[0] > px1 or box[3] < py0 or box[1] > py1
-
-
-def test_basketball_keeps_long_surnames_suffixes_particles_and_double_zero(sports, monkeypatch):
-    names = ["Giannis Antetokounmpo", "Nickeil Alexander-Walker", "Karl-Anthony Towns",
-             "Gary Payton II", "Tristan da Silva"]
-    surnames = ["Antetokounmpo", "Alexander-Walker", "Towns", "Payton II", "da Silva"]
-    players = [{"name": name, "jerseyNumber": "00", "position": "G-F"} for name in names]
-    labels = []
-    original = sports._full._draw_basketball_player_label
-
-    def capture(draw, x, y, text, max_width):
-        labels.append(text)
-        width = original(draw, x, y, text, max_width)
-        assert width <= max_width
-        assert 96 <= x < x + width <= 190 and 0 <= y < y + 5 <= 31
-        return width
-
-    monkeypatch.setattr(sports._full, "_draw_basketball_player_label", capture)
-    sports.render_full({"sport": "nba", "state": "in", "status": "Q4 11:23", "away_score": 111, "home_score": 119,
-                        "situation": {"basketballOnCourt": {"away": players, "home": []}}})
-    assert set(labels) == {f"#00 G-F {surname}" for surname in surnames}
-
-
-def test_basketball_missing_lineup_and_finished_game_keep_original_scoreboard(sports, monkeypatch):
-    calls = []
-    original = sports._full.draw_outlined_text
-
-    def capture(draw, x, y, text, *args, **kwargs):
-        calls.append(str(text))
-        return original(draw, x, y, text, *args, **kwargs)
-
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture)
-    game = {"sport": "nba", "state": "in", "status": "Q1 1:00", "situation": {}}
-    sports.render_full(game)
-    assert calls == ["Q1-1:00", "", ""]
-    calls.clear()
-    game.update(state="post", game_phase="final", status="FINAL",
-                situation={"basketballOnCourt": {"away": [{"name": "Old Player", "jerseyNumber": "00", "position": "G"}]}})
-    sports.render_full(game)
-    assert calls == ["FINAL", "", ""]

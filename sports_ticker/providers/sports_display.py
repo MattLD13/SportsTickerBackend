@@ -260,42 +260,6 @@ def display_situation(
     return {"possession": possession}
 
 
-def basketball_on_court(summary: Mapping[str, Any]) -> dict[str, list[dict[str, str]]]:
-    """Project players with explicit live on-court flags and source team ownership."""
-    competition = _first_mapping(_mapping(summary.get("header")).get("competitions"))
-    sides = {
-        str(_mapping(team.get("team")).get("id") or ""): str(team.get("homeAway") or "")
-        for team in _sequence(competition.get("competitors")) if isinstance(team, Mapping)
-    }
-    result: dict[str, list[dict[str, str]]] = {"away": [], "home": []}
-    for group in _sequence(_mapping(summary.get("boxscore")).get("players")):
-        group = _mapping(group)
-        side = sides.get(str(_mapping(group.get("team")).get("id") or ""))
-        if side not in result:
-            continue
-        players: dict[str, dict[str, str]] = {}
-        for statistics in _sequence(group.get("statistics")):
-            for row in _sequence(_mapping(statistics).get("athletes")):
-                row = _mapping(row)
-                if row.get("active") is not True or row.get("didNotPlay") is True or row.get("ejected") is True:
-                    continue
-                athlete = _mapping(row.get("athlete"))
-                identifier = str(athlete.get("id") or "").strip()
-                name = str(athlete.get("displayName") or "").strip()
-                if not identifier or not name:
-                    continue
-                jersey = str(athlete.get("jersey") if athlete.get("jersey") is not None else "").strip()
-                position = str(_mapping(athlete.get("position")).get("abbreviation") or "").strip().upper()
-                players[identifier] = {
-                    "id": identifier, "name": name,
-                    "jerseyNumber": jersey if re.fullmatch(r"[0-9]{1,2}", jersey) else "",
-                    "position": position if position in {"PG", "SG", "SF", "PF", "C", "G", "F", "G-F", "F-G", "F-C", "C-F"} else "",
-                }
-        # Reject conflicting substitution snapshots instead of selecting five arbitrary players.
-        result[side] = sorted(players.values(), key=lambda player: (player["position"], player["name"], player["id"])) if len(players) <= 5 else []
-    return result
-
-
 def assign_active_team(
     league: str,
     state: str,
@@ -929,8 +893,6 @@ def project_sports_display(data: Mapping[str, Any]) -> dict[str, Any]:
     phase = sports_game_phase(result)
     result["game_phase"] = phase
     situation = dict(_mapping(result.get("situation")))
-    if family == "basketball" and phase != "playing":
-        situation.pop("basketballOnCourt", None)
     if phase != "playing":
         for key in _FOOTBALL_DOWN_KEYS | {"activeTeam", "possession"}:
             situation.pop(key, None)
