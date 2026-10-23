@@ -1,13 +1,14 @@
-"""Poll official live timing sources for F1 and IndyCar V2 content."""
+"""Poll live timing sources for F1, IndyCar, and NASCAR V2 content."""
 
 from __future__ import annotations
 
 import re
 import time
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import DisplaySettings
@@ -19,15 +20,14 @@ _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scor
 _INDYCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
 _NASCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard"
 _NASCAR_LIVE_URL = "https://cf.nascar.com/live/feeds/live-feed.json"
-_OPENF1_BASE = "https://api.openf1.org/v1"
-_JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+_F1_CORE_BASE = "https://sports.core.api.espn.com/v2/sports/racing"
 _INDYCAR_BLOB_BASE = "https://indycar.blob.core.windows.net/racecontrol"
 _IMS_LAT = 39.7950
 _IMS_LON = -86.2340
 
 _F1_SESSION_ORDER = (
-    ("FirstPractice", "Practice 1", True, 90),
-    ("SecondPractice", "Practice 2", True, 90),
+    ("FirstPractice", "Practice 1", True, 60),
+    ("SecondPractice", "Practice 2", True, 60),
     ("ThirdPractice", "Practice 3", True, 60),
     ("SprintQualifying", "Sprint Qualifying", False, 60),
     ("Sprint", "Sprint", False, 60),
@@ -43,6 +43,13 @@ _F1_ESPN_ABBREVIATIONS = {
     "QUAL": "Qualifying",
     "RACE": "Race",
 }
+_F1_EVENT_NAMES = (
+    "Australian", "Chinese", "Japanese", "Bahrain", "Saudi Arabian", "Miami",
+    "Canadian", "Monaco", "Barcelona-Catalunya", "Austrian", "British", "Belgian",
+    "Hungarian", "Dutch", "Italian", "Spanish", "Azerbaijan", "Singapore",
+    "United States", "Mexico City", "São Paulo", "Las Vegas", "Qatar", "Abu Dhabi",
+    "Emilia Romagna",
+)
 _F1_TEAM_SLUGS = {
     "mclaren": "mclaren",
     "mercedes": "mercedes",
@@ -121,7 +128,7 @@ _INDYCAR_SLUG_MAP = {
 
 
 class LiveRacingSource:
-    """Fetch F1 and IndyCar sessions from their authoritative timing feeds."""
+    """Fetch racing sessions from ESPN and series timing feeds."""
 
     def __init__(
         self,
@@ -141,7 +148,8 @@ class LiveRacingSource:
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._f1_schedule: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self._f1_games: dict[str, dict[str, Any]] = {}
-        self._f1_results: tuple[float, list[Mapping[str, Any]]] = (0.0, [])
+        self._f1_timing: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._f1_athletes: dict[str, tuple[float, Mapping[str, Any]]] = {}
         self._indy_schedule: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self._indy_games: dict[str, dict[str, Any]] = {}
         self._indy_timing: tuple[float, dict[str, Any] | None] = (0.0, None)
@@ -205,12 +213,13 @@ class LiveRacingSource:
         for identifier in tuple(self._f1_games):
             if identifier not in active_ids:
                 del self._f1_games[identifier]
+                self._f1_timing.pop(identifier, None)
         return games
 
     def _fetch_f1_schedule(self) -> list[dict[str, Any]]:
         now = self._clock()
         cached_at, cached = self._f1_schedule
-        if cached and now - cached_at < 3600:
+        if cached and now - cached_at < 300:
             return cached
         payload = self._client.get_json(_F1_ESPN_URL, timeout=self._timeout)
         events = _sequence(_mapping(payload).get("events"))
@@ -230,29 +239,24 @@ class LiveRacingSource:
         state: str,
         now: datetime,
         timezone_name: str,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, Any]:
         identifier = f"f1_{race['round']}_{session_key.lower()}"
         drivers: list[dict[str, Any]] = []
-        flag = "WHITE" if state == "pre" else "CHECKERED" if state == "post" else "GREEN"
-        ended = False
-        if state in {"in", "post"}:
-            drivers, ended, live_flag, lap, total_laps = self._fetch_openf1(start, state)
-            if state == "in" and ended and not practice:
-                state = "post"
-                flag = "CHECKERED"
-            elif live_flag:
-                flag = live_flag
+        flag = "WHITE"
+        updated_at = ""
+        if state != "pre" or (start - now).total_seconds() <= 900:
+            timing = self._fetch_f1_timing(
+                race, session_key, practice or "qual" in session_name.lower(),
+            )
+            drivers, state, flag = timing["drivers"], timing["state"], timing["flag"]
+            lap, total_laps, updated_at = timing["lap"], timing["total_laps"], timing["updated_at"]
         else:
             lap, total_laps = 0, 0
-        if not drivers and state == "post":
-            drivers = list(self._f1_games.get(identifier, {}).get("f1", {}).get("drivers", ()))
-        if not drivers and state == "post" and session_key == "Race":
-            drivers = self._f1_result_drivers()
 
         if state == "post":
             status = "FINAL"
         elif state == "in":
-            status = f"Lap {lap}/{total_laps}" if lap and total_laps else flag
+            status = f"Lap {lap}/{total_laps}" if lap and total_laps else flag or session_name
         else:
             status = _format_local_time(start, timezone_name)
         event_name = _f1_short_event(str(race.get("race_name") or "Formula 1"))
@@ -285,224 +289,104 @@ class LiveRacingSource:
                     if state == "in" and practice
                     else 0
                 ),
-                "caution": flag in {"YELLOW", "SAFETY CAR", "VSC", "RED FLAG"},
+                "caution": flag in _CAUTION_FLAGS,
                 "flag": flag,
                 "drivers": drivers,
+                "updated_at": updated_at,
                 "weather": {},
             },
         }
 
-    def _fetch_openf1(
-        self,
-        start: datetime,
-        state: str,
-    ) -> tuple[list[dict[str, Any]], bool, str, int, int]:
-        session = self._openf1_session(start, state)
-        if session is None:
-            return [], False, "", 0, 0
-        session_key = session.get("session_key")
-        if session_key is None:
-            return [], False, "", 0, 0
-        ended = _session_ended(session, self._now().astimezone(timezone.utc))
-        drivers_raw = _sequence(
-            self._client.get_json(
-                f"{_OPENF1_BASE}/drivers?session_key={session_key}",
-                timeout=self._timeout,
-            )
+    def _fetch_f1_timing(
+        self, race: Mapping[str, Any], session_key: str, timed: bool,
+    ) -> dict[str, Any]:
+        identifier = f"f1_{race['round']}_{session_key.lower()}"
+        cached_at, cached = self._f1_timing.get(identifier, (0.0, {}))
+        cache_seconds = 300 if cached.get("state") == "post" else 15
+        if cached and self._clock() - cached_at < cache_seconds:
+            return cached
+        competition_id = _mapping(race.get("competition_ids"))[session_key]
+        base = (
+            f"{_F1_CORE_BASE}/leagues/f1/events/{quote(str(race['round']), safe='')}"
+            f"/competitions/{quote(str(competition_id), safe='')}"
         )
-        driver_info = {
-            str(item.get("driver_number")): item
-            for item in drivers_raw
-            if _mapping(item).get("driver_number") is not None
+        competition = _mapping(self._client.get_json(base, timeout=self._timeout))
+        with ThreadPoolExecutor(max_workers=8, thread_name_prefix="f1-timing") as pool:
+            status_future = pool.submit(self._client.get_json, f"{base}/status", timeout=self._timeout)
+            stats_future = pool.submit(self._client.get_json, f"{base}/statistics", timeout=self._timeout)
+            futures = [
+                pool.submit(self._fetch_f1_driver, base, entry, timed)
+                for entry in _sequence(competition.get("competitors"))
+            ]
+            status = _mapping(status_future.result())
+            stats = _f1_statistics(stats_future.result())
+            drivers = [future.result() for future in futures]
+        state = str(_mapping(status.get("type")).get("state") or "")
+        if state not in {"pre", "in", "post"}:
+            raise ValueError("F1 session status must identify pre, in, or post")
+        flag = (
+            "CHECKERED" if state == "post"
+            else "WHITE" if state == "pre"
+            else _normalize_racing_flag(status["flag"]) if status.get("flag")
+            else ""
+        )
+        drivers.sort(key=lambda driver: driver["pos"])
+        lap = max((driver["laps_completed"] for driver in drivers), default=0)
+        total_laps = _integer(_mapping(stats.get("laps")).get("value"))
+        updated_at = max((driver["updated_at"] for driver in drivers), default="")
+        timing = {
+            "drivers": drivers, "state": state, "flag": flag,
+            "lap": lap, "total_laps": total_laps, "updated_at": updated_at,
         }
-        positions_raw = _sequence(
-            self._client.get_json(
-                f"{_OPENF1_BASE}/position?session_key={session_key}",
-                timeout=self._timeout,
-            )
-        )
-        latest_positions: dict[str, Mapping[str, Any]] = {}
-        for position in positions_raw:
-            key = str(position.get("driver_number") or "")
-            if key and (
-                key not in latest_positions
-                or str(position.get("date", "")) > str(latest_positions[key].get("date", ""))
-            ):
-                latest_positions[key] = position
-        session_name = str(session.get("session_name") or "").lower()
-        qualifying = "qual" in session_name
-        best_laps: dict[str, float] = {}
-        latest_laps: dict[str, int] = {}
-        lap_rows = _sequence(
-            self._client.get_json(
-                f"{_OPENF1_BASE}/laps?session_key={session_key}",
-                timeout=self._timeout,
-            )
-        )
-        for lap in lap_rows:
-            key = str(lap.get("driver_number") or "")
-            duration = _number(lap.get("lap_duration"))
-            if duration and (key not in best_laps or duration < best_laps[key]):
-                best_laps[key] = duration
-            lap_number = _integer(lap.get("lap_number"))
-            if key and lap_number > latest_laps.get(key, 0):
-                latest_laps[key] = lap_number
-        intervals: dict[str, Mapping[str, Any]] = {}
-        if not qualifying:
-            interval_rows = _sequence(
-                self._client.get_json(
-                    f"{_OPENF1_BASE}/intervals?session_key={session_key}",
-                    timeout=self._timeout,
-                )
-            )
-            for interval in interval_rows:
-                key = str(interval.get("driver_number") or "")
-                if key and (
-                    key not in intervals
-                    or str(interval.get("date", "")) > str(intervals[key].get("date", ""))
-                ):
-                    intervals[key] = interval
-        positions = sorted(
-            latest_positions.values(),
-            key=lambda value: _integer(value.get("position"), 999),
-        )
-        leader_lap = (
-            best_laps.get(str(positions[0].get("driver_number")))
-            if positions and qualifying
-            else None
-        )
-        previous_gap = 0.0
-        computed_intervals: dict[str, float] = {}
-        for position in positions:
-            key = str(position.get("driver_number") or "")
-            raw_gap = _number(intervals.get(key, {}).get("gap_to_leader"))
-            if not qualifying and raw_gap is not None:
-                computed_intervals[key] = raw_gap - previous_gap
-                previous_gap = raw_gap
-        drivers: list[dict[str, Any]] = []
-        for position in positions:
-            key = str(position.get("driver_number") or "")
-            info = driver_info.get(key, {})
-            pos = _integer(position.get("position"), 999)
-            team = str(info.get("team_name") or "")
-            gap = ""
-            if qualifying:
-                best = best_laps.get(key)
-                if best:
-                    gap = (
-                        _format_qualifying_time(best)
-                        if pos == 1 or leader_lap is None
-                        else f"+{best - leader_lap:.3f}"
-                    )
-            elif pos == 1:
-                gap = "Leader"
-            else:
-                interval = intervals.get(key, {}).get("interval_to_position_ahead")
-                interval_value = _number(interval)
-                if interval_value is None:
-                    interval_value = computed_intervals.get(key)
-                if interval_value is not None:
-                    gap = f"+{abs(interval_value):.3f}s"
-            drivers.append({
-                "pos": pos,
-                "name": str(info.get("full_name") or f"Driver {key}").title(),
-                "abbr": str(info.get("name_acronym") or key)[:3].upper(),
-                "car": key,
-                "team": team,
-                "team_logo": "",
-                "car_illustration": _f1_car_url(team),
-                "livery_primary": _f1_team_color(team),
-                "livery_secondary": "#111111",
-                "gap": gap,
-                "speed": "",
-                "status": "Active",
-                "on_track": True,
-            })
-        flag = self._openf1_flag(session_key) if state == "in" else ""
-        lap = max(latest_laps.values(), default=0)
-        total_laps = _integer(session.get("total_laps"))
-        return drivers, ended, flag, lap, total_laps
+        self._f1_timing[identifier] = (self._clock(), timing)
+        return timing
 
-    def _openf1_session(self, start: datetime, state: str) -> Mapping[str, Any] | None:
-        if state == "in":
-            values = _sequence(
-                self._client.get_json(
-                    f"{_OPENF1_BASE}/sessions?session_key=latest",
-                    timeout=self._timeout,
-                )
-            )
-        else:
-            begin = (start - timedelta(minutes=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            end = (start + timedelta(minutes=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            query = urlencode({"date_start>": begin, "date_start<": end})
-            values = _sequence(
-                self._client.get_json(
-                    f"{_OPENF1_BASE}/sessions?{query}",
-                    timeout=self._timeout,
-                )
-            )
-        if not values:
-            return None
-        return min(
-            values,
-            key=lambda value: abs(
-                ((_parse_datetime(value.get("date_start")) or start) - start).total_seconds()
-            ),
-        )
-
-    def _openf1_flag(self, session_key: object) -> str:
-        try:
-            rows = _sequence(
-                self._client.get_json(
-                    f"{_OPENF1_BASE}/race_control?session_key={session_key}",
-                    timeout=self._timeout,
-                )
-            )
-        except Exception:
-            return "GREEN"
-        for row in reversed(rows):
-            message = str(row.get("message") or row.get("flag") or "").upper()
-            flag = _normalize_racing_flag(message)
-            if flag != "GREEN":
-                return flag
-        return "GREEN"
-
-    def _f1_result_drivers(self) -> list[dict[str, Any]]:
-        now = self._clock()
-        cached_at, cached = self._f1_results
-        if not cached or now - cached_at >= 1800:
-            try:
-                payload = self._client.get_json(
-                    f"{_JOLPICA_BASE}/current/last/results.json",
-                    timeout=self._timeout,
-                )
-                races = _sequence(_mapping(_mapping(payload).get("MRData")).get("RaceTable"))
-                cached = [_mapping(value) for value in _sequence(races[0].get("Results"))] if races else []
-                self._f1_results = (now, cached)
-            except Exception:
-                cached = cached or []
-        drivers: list[dict[str, Any]] = []
-        for result in cached:
-            driver = _mapping(result.get("Driver"))
-            constructor = _mapping(result.get("Constructor"))
-            pos = _integer(result.get("position"), 999)
-            value = _mapping(result.get("Time")).get("time") or result.get("status")
-            drivers.append({
-                "pos": pos,
-                "name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip().title() or "Driver",
-                "abbr": str(driver.get("code") or "")[:3].upper(),
-                "car": str(driver.get("permanentNumber") or result.get("number") or ""),
-                "team": str(constructor.get("name") or ""),
-                "team_logo": "",
-                "car_illustration": _f1_car_url(constructor.get("name")),
-                "livery_primary": _f1_team_color(constructor.get("name")),
-                "livery_secondary": "#111111",
-                "gap": "Leader" if pos == 1 else str(value or "")[:12],
-                "speed": "",
-                "status": "Active",
-                "on_track": True,
-            })
-        return sorted(drivers, key=lambda value: value["pos"])
+    def _fetch_f1_driver(
+        self, base: str, entry: Mapping[str, Any], timed: bool,
+    ) -> dict[str, Any]:
+        identifier = str(entry["id"])
+        cached_at, athlete = self._f1_athletes.get(identifier, (0.0, {}))
+        if not athlete or self._clock() - cached_at >= 86400:
+            athlete = _mapping(self._client.get_json(
+                f"{_F1_CORE_BASE}/athletes/{quote(identifier, safe='')}", timeout=self._timeout,
+            ))
+            self._f1_athletes[identifier] = (self._clock(), athlete)
+        driver_base = f"{base}/competitors/{quote(identifier, safe='')}"
+        stats = _f1_statistics(self._client.get_json(f"{driver_base}/statistics", timeout=self._timeout))
+        status = _mapping(self._client.get_json(f"{driver_base}/status", timeout=self._timeout))
+        # Live position supersedes entry order and starting place.
+        position = _integer(_mapping(stats.get("position")).get("value"))
+        if not position:
+            position = _integer(_mapping(stats.get("place")).get("value"), _integer(entry.get("order"), 999))
+        team = str(_mapping(entry.get("vehicle")).get("manufacturer") or "")
+        best_time = ""
+        for name in ("qual3TimeMS", "qual2TimeMS", "qual1TimeMS", "bestLapTimeMS"):
+            milliseconds = _number(_mapping(stats.get(name)).get("value"))
+            if milliseconds and milliseconds > 0:
+                best_time = _format_qualifying_time(milliseconds / 1000)
+                break
+        gap = str(_mapping(stats.get("gapToLeader")).get("displayValue") or "")
+        if position == 1:
+            gap = best_time if timed and best_time else "Leader"
+        status_type = _mapping(status.get("type"))
+        return {
+            "pos": position,
+            "name": str(athlete.get("displayName") or athlete.get("fullName") or ""),
+            "abbr": str(athlete.get("abbreviation") or athlete.get("lastName") or "")[:3].upper(),
+            "car": str(_mapping(entry.get("vehicle")).get("number") or ""),
+            "team": team,
+            "team_logo": "",
+            "car_illustration": _f1_car_url(team),
+            "livery_primary": _f1_team_color(team),
+            "livery_secondary": "#111111",
+            "gap": gap,
+            "best_time": best_time,
+            "speed": "",
+            "status": str(status.get("displayValue") or status_type.get("description") or ""),
+            "on_track": status_type.get("name") == "STATUS_ON_TRACK",
+            "laps_completed": _integer(_mapping(stats.get("lapsCompleted")).get("value")),
+            "updated_at": str(_mapping(stats.get("lastUpdated")).get("displayValue") or ""),
+        }
 
     def _fetch_indycar(self, settings: DisplaySettings) -> list[dict[str, Any]]:
         now = self._now().astimezone(timezone.utc)
@@ -899,10 +783,21 @@ class LiveRacingSource:
         }
 
 
+def _f1_statistics(value: object) -> dict[str, Mapping[str, Any]]:
+    payload = _mapping(value)
+    splits = _mapping(payload.get("splits")) or payload
+    return {
+        str(stat.get("name")): stat
+        for category in _sequence(splits.get("categories"))
+        for stat in _sequence(category.get("stats"))
+    }
+
+
 def _f1_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
     circuit = _mapping(event.get("circuit"))
     address = _mapping(circuit.get("address"))
     sessions: dict[str, tuple[datetime, int, str, bool]] = {}
+    competition_ids: dict[str, str] = {}
     for competition in _sequence(event.get("competitions")):
         type_info = _mapping(competition.get("type"))
         abbreviation = str(type_info.get("abbreviation") or "").upper()
@@ -917,7 +812,8 @@ def _f1_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
                 None,
             )
         start = _parse_datetime(competition.get("startDate") or competition.get("date"))
-        if key and start is not None:
+        if key and start is not None and competition.get("id"):
+            competition_ids[key] = str(competition["id"])
             duration = next(
                 duration
                 for candidate, _label, _practice, duration in _F1_SESSION_ORDER
@@ -940,6 +836,7 @@ def _f1_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
             )
     return {
         "round": str(event.get("id") or "event"),
+        "competition_ids": competition_ids,
         "race_name": str(event.get("name") or "Formula 1"),
         "track": str(circuit.get("fullName") or address.get("city") or ""),
         "location": str(address.get("city") or ""),
@@ -977,9 +874,13 @@ def _f1_relevant_sessions(
 
 
 def _f1_short_event(value: str) -> str:
-    text = re.sub(r"^.*?\s+([A-Za-zÀ-ÿ -]+?)\s+Grand Prix.*$", r"\1 GP", value, flags=re.IGNORECASE)
-    text = text.replace("FORMULA 1", "").strip()
-    return " ".join(text.split()).title() or "Formula 1"
+    """Keep the event location and remove sponsors from known Grand Prix names."""
+    text = " ".join(value.split())
+    for name in _F1_EVENT_NAMES:
+        if re.search(rf"\b{re.escape(name)}\s+(?:Grand Prix|GP)\b", text, flags=re.IGNORECASE):
+            return f"{name} GP"
+    text = re.sub(r"^FORMULA\s+1\s+", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\bGrand Prix\b.*$", "GP", text, flags=re.IGNORECASE).strip() or "Formula 1"
 
 
 def _f1_team_match(value: object) -> str:
@@ -1456,11 +1357,6 @@ def _format_duration(seconds: float) -> str:
 def _format_qualifying_time(value: float) -> str:
     minutes, seconds = divmod(value, 60)
     return f"{int(minutes)}:{seconds:06.3f}" if minutes else f"{seconds:.3f}"
-
-
-def _session_ended(value: Mapping[str, Any], now: datetime | None = None) -> bool:
-    end = _parse_datetime(value.get("date_end"))
-    return end is not None and end < (now or datetime.now(timezone.utc))
 
 
 def _parse_datetime(value: object) -> datetime | None:

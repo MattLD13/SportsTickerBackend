@@ -35,64 +35,6 @@ def _settings(**active_sports: bool) -> DisplaySettings:
     return DisplaySettings(active_sports=active_sports, timezone="America/New_York")
 
 
-def test_f1_polls_openf1_positions_for_the_current_session() -> None:
-    now = datetime(2026, 8, 15, 15, 0, tzinfo=timezone.utc)
-    client = JsonFixture(
-        {
-            "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard": {
-                "events": [
-                    {
-                        "id": "f1-event",
-                        "name": "Sponsor Canadian Grand Prix",
-                        "circuit": {"fullName": "Test Circuit", "address": {"city": "Montreal"}},
-                        "competitions": [
-                            {
-                                "type": {"abbreviation": "Race"},
-                                "startDate": "2026-08-15T14:00:00Z",
-                            }
-                        ],
-                    }
-                ]
-            },
-            "https://api.openf1.org/v1/sessions?session_key=latest": [
-                {
-                    "session_key": 99,
-                    "session_name": "Race",
-                    "date_start": "2026-08-15T14:00:00Z",
-                    "date_end": "2026-08-15T17:00:00Z",
-                }
-            ],
-            "https://api.openf1.org/v1/drivers?session_key=99": [
-                {"driver_number": 1, "full_name": "Leader Driver", "name_acronym": "LED", "team_name": "Test Team"},
-                {"driver_number": 2, "full_name": "Second Driver", "name_acronym": "SEC", "team_name": "Test Team"},
-            ],
-            "https://api.openf1.org/v1/position?session_key=99": [
-                {"driver_number": 1, "position": 1, "date": "2026-08-15T15:00:00Z"},
-                {"driver_number": 2, "position": 2, "date": "2026-08-15T15:00:00Z"},
-            ],
-            "https://api.openf1.org/v1/laps?session_key=99": [
-                {"driver_number": 1, "lap_number": 12, "lap_duration": 80.0},
-                {"driver_number": 2, "lap_number": 12, "lap_duration": 81.0},
-            ],
-            "https://api.openf1.org/v1/intervals?session_key=99": [
-                {"driver_number": 1, "gap_to_leader": 0.0, "date": "2026-08-15T15:00:00Z"},
-                {"driver_number": 2, "gap_to_leader": 1.234, "date": "2026-08-15T15:00:00Z"},
-            ],
-            "https://api.openf1.org/v1/race_control?session_key=99": [],
-        }
-    )
-    source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
-
-    result = source.fetch(_settings(f1=True, indycar=False))
-
-    game = result["content"][0]
-    assert game["sport"] == "f1"
-    assert game["state"] == "in"
-    assert game["f1"]["lap"] == 12
-    assert game["f1"]["drivers"][1]["gap"] == "+1.234s"
-    assert any("api.openf1.org/v1/position" in url for url in client.urls)
-
-
 def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
     now = datetime(2026, 8, 15, 15, 0, tzinfo=timezone.utc)
     client = JsonFixture(

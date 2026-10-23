@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any
 
 from sports_ticker.domain import DisplaySettings
@@ -21,16 +20,10 @@ class RacingProvider(_FeatureProvider):
         super().__init__(source)
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
-        """Fetch and normalize IndyCar and NASCAR while F1 live timing is disabled."""
-
-        # TEMPORARY: disable the F1/OpenF1 path until the live timing endpoint
-        # is reliable again. Leave IndyCar and NASCAR settings untouched.
-        active_sports = dict(settings.active_sports)
-        active_sports["f1"] = False
-        safe_settings = replace(settings, active_sports=active_sports)
+        """Fetch and normalize each enabled racing series."""
 
         return self._fetch_normalized(
-            safe_settings,
+            settings,
             lambda payload: _content_payload(payload, self.family, _racing_kind),
         )
 
