@@ -205,27 +205,34 @@ class AssetCoordinator(AssetView):
         # sees already prepared memory images.
         if self.long_term.prepared.contains(request):
             return self.long_term.prepared.get(request)
-        raw = self.long_term.originals.load(request.url)
-        if raw is None:
+        processor = self._processors.get(request.processor)
+        if processor is None:
+            self.long_term.prepared.put(request, None)
+            return None
+
+        def decode(raw: bytes | None) -> Image.Image | None:
+            if not raw:
+                return None
             try:
-                raw = self._fetch(request.url)
+                return processor(raw, request.size)
+            except (OSError, ValueError):
+                return None
+
+        raw = self.long_term.originals.load(request.url)
+        image = decode(raw)
+        if image is None:
+            try:
+                downloaded = self._fetch(request.url)
             except Exception:
-                raw = None
-            if raw:
+                downloaded = None
+            image = decode(downloaded)
+            if image is not None and downloaded:
                 try:
-                    self.long_term.originals.store(request.url, raw)
+                    self.long_term.originals.store(request.url, downloaded)
                 except OSError:
                     pass
             else:
-                raw = self.long_term.originals.load(request.url, ignore_expiry=True)
-        processor = self._processors.get(request.processor)
-        if not raw or processor is None:
-            self.long_term.prepared.put(request, None)
-            return None
-        try:
-            image = processor(raw, request.size)
-        except (OSError, ValueError):
-            image = None
+                image = decode(self.long_term.originals.load(request.url, ignore_expiry=True))
         self.long_term.prepared.put(request, image)
         return image
 
@@ -234,6 +241,12 @@ def _fetch_with_requests(url: str) -> bytes | None:
     """Fetch bytes with requests only when the coordinator needs them."""
     import requests
 
+    Image.init()
+    accepted_types = ",".join(
+        Image.MIME[format_name]
+        for format_name in ("AVIF", "WEBP", "PNG", "JPEG", "GIF", "ICO", "BMP")
+        if format_name in Image.OPEN and format_name in Image.MIME
+    )
     referer = (
         "https://www.nascar.com/"
         if "nascar.com" in url
@@ -245,7 +258,7 @@ def _fetch_with_requests(url: str) -> bytes | None:
     )
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Accept": accepted_types,
         "Referer": referer,
     }
     try:

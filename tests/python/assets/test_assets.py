@@ -4,8 +4,10 @@ import io
 from pathlib import Path
 from concurrent.futures import Future
 from threading import Event, Thread
+from types import SimpleNamespace
 
 from PIL import Image
+import pytest
 
 from ticker_core.assets import AssetPlanner, AssetRequest, LogoAssetView, PreparedAssetStore, ShortTermContentCache
 from ticker_core.platform import AssetCoordinator, LongTermAssetCache
@@ -58,6 +60,56 @@ def test_coordinator_reuses_persistent_original_bytes(tmp_path) -> None:
         reader.close()
 
     assert calls == [request.url]
+
+
+@pytest.mark.critical
+def test_asset_fetch_only_advertises_installed_image_decoders(monkeypatch) -> None:
+    from ticker_core.platform.assets import _fetch_with_requests
+
+    Image.init()
+    monkeypatch.delitem(Image.OPEN, "AVIF", raising=False)
+    raw = _png()
+
+    def get(url, *, headers: dict, timeout):
+        assert url == "https://media.formula1.com/car.webp"
+        assert timeout > 0
+        assert "image/avif" not in headers["Accept"]
+        assert "image/*" not in headers["Accept"]
+        assert "image/png" in headers["Accept"]
+        return SimpleNamespace(status_code=200, content=raw)
+
+    monkeypatch.setattr("requests.get", get)
+    assert _fetch_with_requests("https://media.formula1.com/car.webp") == raw
+
+
+@pytest.mark.critical
+def test_undecodable_original_is_replaced_with_a_verified_download(tmp_path) -> None:
+    request = AssetRequest("https://media.formula1.com/car.webp", "car", (130, 20))
+    raw = _png()
+    calls = []
+    coordinator = AssetCoordinator(tmp_path, fetch=lambda url: calls.append(url) or raw)
+    coordinator.long_term.originals.store(request.url, b"cached image from an unavailable decoder")
+    try:
+        assert coordinator.prefetch((request,))[0].result() is not None
+        assert coordinator.long_term.originals.load(request.url) == raw
+        assert coordinator.image(request.url, request.processor, request.size) is not None
+        assert calls == [request.url]
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.critical
+def test_undecodable_download_does_not_replace_a_valid_expired_original(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("ticker_core.platform.assets.time.time", lambda: 301 * 86400.0)
+    request = AssetRequest("https://media.formula1.com/car.webp", "car", (130, 20))
+    raw = _png()
+    coordinator = AssetCoordinator(tmp_path, fetch=lambda _url: b"unsupported image response")
+    coordinator.long_term.originals.store(request.url, raw, now=1.0)
+    try:
+        assert coordinator.prefetch((request,))[0].result() is not None
+        assert coordinator.long_term.originals.load(request.url, ignore_expiry=True) == raw
+    finally:
+        coordinator.close()
 
 
 def test_series_aware_ttl_caching(tmp_path) -> None:
