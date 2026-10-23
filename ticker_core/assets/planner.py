@@ -64,8 +64,15 @@ class AssetPlanner:
                 _add_team_logo(requests, driver, "team_logo", (18, 18))
                 _add_team_logo(requests, driver, "team_logo", (21, 21))
                 car = driver.get("car_illustration")
-                processor = "nascar_car" if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar" else ("imsa_car" if "imsa.com" in str(car or "") or sport == "imsa" or kind == "imsa" else "image")
-                _add(requests, car, processor, (130, 20) if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar" else (120, 19))
+                if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar":
+                    processor, size = "nascar_car", (130, 20)
+                elif "imsa.com" in str(car or "") or sport == "imsa" or kind == "imsa":
+                    processor, size = "imsa_car", (120, 19)
+                elif sport == "f1" or kind == "f1":
+                    processor, size = "car", (130, 20)
+                else:
+                    processor, size = "image", (120, 19)
+                _add(requests, car, processor, size)
             return
         for key in ("home_logo", "away_logo"):
             for size in ((16, 16), (22, 22), (24, 24)):

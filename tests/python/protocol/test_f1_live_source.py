@@ -21,8 +21,8 @@ _SETTINGS = DisplaySettings(active_sports={"f1": True, "indycar": False, "nascar
 
 
 class CapturedTiming:
-    def __init__(self) -> None:
-        path = Path(__file__).resolve().parents[2] / "fixtures/providers/f1_austin_practice_2026.json"
+    def __init__(self, filename: str = "f1_austin_practice_2026.json") -> None:
+        path = Path(__file__).resolve().parents[2] / "fixtures/providers" / filename
         self.values = json.loads(path.read_text(encoding="utf-8"))
         self.urls: list[str] = []
 
@@ -59,6 +59,9 @@ def test_f1_survives_the_adapter_snapshot_and_v2_projection() -> None:
     assert [(driver["pos"], driver["abbr"]) for driver in game["f1"]["drivers"]] == [(1, "VER"), (2, "RUS")]
     assert game["f1"]["drivers"][1]["gap"] == "+0.207"
     assert game["f1"]["updated_at"] == "2026-10-23T21:07:33Z"
+    assert game["f1"]["weather"]["air_temp"] == "84"
+    assert game["f1"]["weather"]["wind_mph"] == "11"
+    assert game["f1"]["weather"]["wind_dir"] == "146"
     assert all("openf1" not in url for url in client.urls)
 
 
@@ -174,3 +177,45 @@ def test_f1_qualifying_formats_the_latest_completed_segment_time() -> None:
     game = LiveRacingSource(client, now=lambda: _NOW).fetch(_SETTINGS)["content"][0]
     assert game["f1"]["drivers"][0]["best_time"] == "1:32.012"
     assert game["f1"]["drivers"][0]["gap"] == "1:32.012"
+
+
+def test_completed_f1_practice_keeps_official_times_gaps_and_session_weather() -> None:
+    client = CapturedTiming("f1_austin_practice1_2026.json")
+    result = RacingProvider(LiveRacingSource(client, now=lambda: _NOW)).fetch(_SETTINGS)
+    assert result.health.healthy, result.health.error
+    game = result.content[0].data
+    assert game["state"] == "post"
+    drivers = game["f1"]["drivers"]
+    assert [(driver["abbr"], driver["gap"]) for driver in drivers] == [("LEC", "1:36.052"), ("VER", "+0.084")]
+    assert drivers[1]["best_time"] == "1:36.136"
+    weather = game["f1"]["weather"]
+    assert weather["observed_at"] == "2026-10-23T18:00"
+    assert weather["air_temp"] == "82"
+    assert weather["wind_mph"] == "7"
+    assert weather["wind_dir"] == "155"
+
+
+def test_f1_weather_caches_circuit_location_and_conditions() -> None:
+    client = CapturedTiming()
+    now = [_NOW]
+    source = LiveRacingSource(client, now=lambda: now[0], clock=lambda: now[0].timestamp())
+    source.fetch(_SETTINGS)
+    now[0] += timedelta(seconds=16)
+    source.fetch(_SETTINGS)
+    assert sum("open-meteo.com" in url for url in client.urls) == 1
+    now[0] += timedelta(seconds=300)
+    source.fetch(_SETTINGS)
+    assert sum("open-meteo.com" in url for url in client.urls) == 2
+    assert sum("api.jolpi.ca" in url for url in client.urls) == 1
+
+
+def test_f1_weather_outage_keeps_timing_and_reports_unavailable_conditions() -> None:
+    client = CapturedTiming()
+    weather_url = next(url for url in client.values if "open-meteo.com" in url)
+    del client.values[weather_url]
+    result = RacingProvider(LiveRacingSource(client, now=lambda: _NOW)).fetch(_SETTINGS)
+    assert result.health.healthy, result.health.error
+    game = result.content[0].data
+    assert game["f1"]["drivers"][1]["gap"] == "+0.207"
+    assert game["f1"]["weather"]["available"] is False
+    assert game["f1"]["weather"]["error"]

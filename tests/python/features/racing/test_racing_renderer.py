@@ -36,3 +36,27 @@ def test_each_racing_series_renders_a_panel_frame() -> None:
         assert scroll.height == full.height == 32
         assert scroll.width >= 128
         assert full.size == (384, 32)
+
+
+def test_completed_f1_cards_show_leader_time_and_following_gaps(monkeypatch) -> None:
+    import ticker_core.features.racing.renderer as rendering
+
+    drawn = []
+    original = rendering.draw_tiny_text
+
+    def record(draw, x, y, text, color):
+        drawn.append(str(text))
+        return original(draw, x, y, text, color)
+
+    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    item = _item("f1")
+    item.update(state="post", sports_presentation="pinned")
+    item["f1"].update(session_type="Practice 1", drivers=[
+        {"pos": 1, "abbr": "LEC", "name": "Charles Leclerc", "gap": "1:36.052", "best_time": "1:36.052"},
+        {"pos": 2, "abbr": "VER", "name": "Max Verstappen", "gap": "+0.084", "best_time": "1:36.136"},
+    ])
+    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    renderer.render(RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
+    assert "1:36.052" in drawn
+    assert "+0.084" in drawn
+    assert "1:36.136" not in drawn

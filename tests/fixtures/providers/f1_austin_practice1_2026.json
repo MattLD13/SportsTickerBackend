@@ -1,0 +1,1239 @@
+{
+  "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard": {
+    "events": [
+      {
+        "id": "600057446",
+        "name": "MSC Cruises United States Grand Prix",
+        "date": "2026-10-23T17:30Z",
+        "circuit": {
+          "id": "609",
+          "fullName": "Circuit of the Americas",
+          "address": {
+            "city": "Austin",
+            "state": "TX",
+            "country": "USA"
+          }
+        },
+        "competitions": [
+          {
+            "id": "401839118",
+            "uid": "s:2000~l:2030~e:600057446~c:401839118",
+            "date": "2026-10-23T17:30Z",
+            "type": {
+              "id": "1",
+              "abbreviation": "FP1"
+            },
+            "timeValid": true,
+            "recent": true,
+            "competitors": [
+              {
+                "id": "5498",
+                "uid": "s:2000~a:5498",
+                "type": "athlete",
+                "order": 1,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Charles Leclerc",
+                  "displayName": "Charles Leclerc",
+                  "shortName": "C. Leclerc",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/mon.png",
+                    "alt": "Monaco",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "4665",
+                "uid": "s:2000~a:4665",
+                "type": "athlete",
+                "order": 2,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Max Verstappen",
+                  "displayName": "Max Verstappen",
+                  "shortName": "M. Verstappen",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/ned.png",
+                    "alt": "Netherlands",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5579",
+                "uid": "s:2000~a:5579",
+                "type": "athlete",
+                "order": 3,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Lando Norris",
+                  "displayName": "Lando Norris",
+                  "shortName": "L. Norris",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/gbr.png",
+                    "alt": "Britain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5503",
+                "uid": "s:2000~a:5503",
+                "type": "athlete",
+                "order": 4,
+                "winner": false,
+                "athlete": {
+                  "fullName": "George Russell",
+                  "displayName": "George Russell",
+                  "shortName": "G. Russell",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/gbr.png",
+                    "alt": "Britain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5829",
+                "uid": "s:2000~a:5829",
+                "type": "athlete",
+                "order": 5,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Kimi Antonelli",
+                  "displayName": "Kimi Antonelli",
+                  "shortName": "K. Antonelli",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/ita.png",
+                    "alt": "Italy",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "868",
+                "uid": "s:2000~a:868",
+                "type": "athlete",
+                "order": 6,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Lewis Hamilton",
+                  "displayName": "Lewis Hamilton",
+                  "shortName": "L. Hamilton",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/gbr.png",
+                    "alt": "Britain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5752",
+                "uid": "s:2000~a:5752",
+                "type": "athlete",
+                "order": 7,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Oscar Piastri",
+                  "displayName": "Oscar Piastri",
+                  "shortName": "O. Piastri",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/aus.png",
+                    "alt": "Australia",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5835",
+                "uid": "s:2000~a:5835",
+                "type": "athlete",
+                "order": 8,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Gabriel Bortoleto",
+                  "displayName": "Gabriel Bortoleto",
+                  "shortName": "G. Bortoleto",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/bra.png",
+                    "alt": "Brazil",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5855",
+                "uid": "s:2000~a:5855",
+                "type": "athlete",
+                "order": 9,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Arvid Lindblad",
+                  "displayName": "Arvid Lindblad",
+                  "shortName": "A. Lindblad",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/gbr.png",
+                    "alt": "Britain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5741",
+                "uid": "s:2000~a:5741",
+                "type": "athlete",
+                "order": 10,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Liam Lawson",
+                  "displayName": "Liam Lawson",
+                  "shortName": "L. Lawson",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/nzl.png",
+                    "alt": "New Zealand",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5789",
+                "uid": "s:2000~a:5789",
+                "type": "athlete",
+                "order": 11,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Oliver Bearman",
+                  "displayName": "Oliver Bearman",
+                  "shortName": "O. Bearman",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/gbr.png",
+                    "alt": "Britain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "348",
+                "uid": "s:2000~a:348",
+                "type": "athlete",
+                "order": 12,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Fernando Alonso",
+                  "displayName": "Fernando Alonso",
+                  "shortName": "F. Alonso",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/esp.png",
+                    "alt": "Spain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "4775",
+                "uid": "s:2000~a:4775",
+                "type": "athlete",
+                "order": 13,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Lance Stroll",
+                  "displayName": "Lance Stroll",
+                  "shortName": "L. Stroll",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/can.png",
+                    "alt": "Canada",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5790",
+                "uid": "s:2000~a:5790",
+                "type": "athlete",
+                "order": 14,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Isack Hadjar",
+                  "displayName": "Isack Hadjar",
+                  "shortName": "I. Hadjar",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/fra.png",
+                    "alt": "France",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5501",
+                "uid": "s:2000~a:5501",
+                "type": "athlete",
+                "order": 15,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Pierre Gasly",
+                  "displayName": "Pierre Gasly",
+                  "shortName": "P. Gasly",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/fra.png",
+                    "alt": "France",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "4678",
+                "uid": "s:2000~a:4678",
+                "type": "athlete",
+                "order": 16,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Esteban Ocon",
+                  "displayName": "Esteban Ocon",
+                  "shortName": "E. Ocon",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/fra.png",
+                    "alt": "France",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5823",
+                "uid": "s:2000~a:5823",
+                "type": "athlete",
+                "order": 17,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Franco Colapinto",
+                  "displayName": "Franco Colapinto",
+                  "shortName": "F. Colapinto",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/arg.png",
+                    "alt": "Argentina",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "4396",
+                "uid": "s:2000~a:4396",
+                "type": "athlete",
+                "order": 18,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Nico H\u00fclkenberg",
+                  "displayName": "Nico H\u00fclkenberg",
+                  "shortName": "N. H\u00fclkenberg",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png",
+                    "alt": "Germany",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "4686",
+                "uid": "s:2000~a:4686",
+                "type": "athlete",
+                "order": 19,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Carlos Sainz",
+                  "displayName": "Carlos Sainz",
+                  "shortName": "C. Sainz",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/esp.png",
+                    "alt": "Spain",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "4520",
+                "uid": "s:2000~a:4520",
+                "type": "athlete",
+                "order": 20,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Valtteri Bottas",
+                  "displayName": "Valtteri Bottas",
+                  "shortName": "V. Bottas",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/fin.png",
+                    "alt": "Finland",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5892",
+                "uid": "s:2000~a:5892",
+                "type": "athlete",
+                "order": 21,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Colton Herta",
+                  "displayName": "Colton Herta",
+                  "shortName": "C. Herta",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png",
+                    "alt": "USA",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              },
+              {
+                "id": "5592",
+                "uid": "s:2000~a:5592",
+                "type": "athlete",
+                "order": 22,
+                "winner": false,
+                "athlete": {
+                  "fullName": "Alexander Albon",
+                  "displayName": "Alexander Albon",
+                  "shortName": "A. Albon",
+                  "flag": {
+                    "href": "https://a.espncdn.com/i/teamlogos/countries/500/tha.png",
+                    "alt": "Thailand",
+                    "rel": [
+                      "country-flag"
+                    ]
+                  }
+                },
+                "statistics": []
+              }
+            ],
+            "notes": [],
+            "status": {
+              "clock": 0.0,
+              "displayClock": "0:00",
+              "period": 26,
+              "type": {
+                "id": "3",
+                "name": "STATUS_FINAL",
+                "state": "post",
+                "completed": true,
+                "description": "Final",
+                "detail": "Final",
+                "shortDetail": "Final"
+              }
+            },
+            "broadcasts": [
+              {
+                "market": "national",
+                "names": [
+                  "Apple TV"
+                ]
+              }
+            ],
+            "startDate": "2026-10-23T17:30Z",
+            "broadcast": "Apple TV",
+            "geoBroadcasts": [
+              {
+                "type": {
+                  "id": "4",
+                  "shortName": "Streaming"
+                },
+                "market": {
+                  "id": "1",
+                  "type": "National"
+                },
+                "media": {
+                  "shortName": "Apple TV"
+                },
+                "lang": "en",
+                "region": "us"
+              }
+            ],
+            "highlights": []
+          }
+        ]
+      }
+    ]
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118?lang=en&region=us",
+    "id": "401839118",
+    "guid": "ed5e87b4-3a26-3128-b776-fb7c6f32db24",
+    "uid": "s:2000~l:2030~e:600057446~c:401839118",
+    "date": "2026-10-23T17:30Z",
+    "type": {
+      "id": "1",
+      "text": "Free Practice",
+      "abbreviation": "FP1"
+    },
+    "timeValid": true,
+    "previewAvailable": false,
+    "recapAvailable": false,
+    "conversationAvailable": false,
+    "commentaryAvailable": false,
+    "summaryAvailable": true,
+    "liveAvailable": false,
+    "ticketsAvailable": false,
+    "onWatchESPN": false,
+    "recent": true,
+    "bracketAvailable": false,
+    "wallclockAvailable": false,
+    "highlightsAvailable": false,
+    "gameSource": {
+      "id": "3",
+      "description": "scrubbed",
+      "state": "full"
+    },
+    "competitors": [
+      {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498?lang=en&region=us",
+        "id": "5498",
+        "uid": "s:2000~a:5498",
+        "type": "athlete",
+        "order": 1,
+        "winner": false,
+        "athlete": {
+          "$ref": "http://sports.core.api.espn.com/v2/sports/racing/athletes/5498?lang=en&region=us"
+        },
+        "status": {
+          "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498/status?lang=en&region=us"
+        },
+        "statistics": {
+          "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498/statistics?lang=en&region=us"
+        },
+        "vehicle": {
+          "number": "16",
+          "manufacturer": "Ferrari",
+          "teamColor": "DC0000"
+        }
+      },
+      {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665?lang=en&region=us",
+        "id": "4665",
+        "uid": "s:2000~a:4665",
+        "type": "athlete",
+        "order": 2,
+        "winner": false,
+        "athlete": {
+          "$ref": "http://sports.core.api.espn.com/v2/sports/racing/athletes/4665?lang=en&region=us"
+        },
+        "status": {
+          "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665/status?lang=en&region=us"
+        },
+        "statistics": {
+          "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665/statistics?lang=en&region=us"
+        },
+        "vehicle": {
+          "number": "3",
+          "manufacturer": "Red Bull",
+          "teamColor": "00327D"
+        }
+      }
+    ],
+    "notes": [
+      {
+        "type": "event",
+        "text": "MSC Cruises United States Grand Prix Practice 1"
+      }
+    ],
+    "status": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/status?lang=en&region=us"
+    },
+    "broadcasts": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/broadcasts?lang=en&region=us"
+    },
+    "statistics": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/statistics?lang=en&region=us"
+    },
+    "session": 1
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/status": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/status?lang=en&region=us",
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 26,
+    "type": {
+      "id": "3",
+      "name": "STATUS_FINAL",
+      "state": "post",
+      "completed": true,
+      "description": "Final",
+      "detail": "Final",
+      "shortDetail": "Final"
+    },
+    "flag": "CHECKER"
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/statistics": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/statistics?lang=en&region=us",
+    "id": "0",
+    "name": "All Splits",
+    "abbreviation": "TOT",
+    "categories": [
+      {
+        "name": "general",
+        "displayName": "General",
+        "shortDisplayName": "General",
+        "abbreviation": "gen",
+        "summary": "",
+        "stats": [
+          {
+            "name": "laps",
+            "displayName": "Laps",
+            "shortDisplayName": "Laps",
+            "description": "Total race laps",
+            "abbreviation": "LP",
+            "value": 0.0,
+            "displayValue": "0"
+          },
+          {
+            "name": "length",
+            "displayName": "Length",
+            "shortDisplayName": "Length",
+            "description": "Total race length",
+            "abbreviation": "L",
+            "value": 0.0,
+            "displayValue": "0"
+          },
+          {
+            "name": "avgSpeed",
+            "displayName": "Average Speed",
+            "shortDisplayName": "Avg Speed",
+            "description": "Average car speed",
+            "abbreviation": "AVGSP",
+            "value": 0.0,
+            "displayValue": ".000"
+          },
+          {
+            "name": "victoryMargin",
+            "displayName": "Victory Margin",
+            "shortDisplayName": "Victory Margin",
+            "description": "Margin of victory",
+            "abbreviation": "VM",
+            "value": 0.0,
+            "displayValue": ".000"
+          },
+          {
+            "name": "poleSpeed",
+            "displayName": "Pole Speed",
+            "shortDisplayName": "Pole Speed",
+            "description": "Pole Speed",
+            "abbreviation": "PS",
+            "value": 0.0,
+            "displayValue": ".000"
+          },
+          {
+            "name": "poleTime",
+            "displayName": "Pole Time",
+            "shortDisplayName": "Pole Time",
+            "description": "Pole Time",
+            "abbreviation": "PT",
+            "value": 0.0,
+            "displayValue": ".000"
+          }
+        ]
+      }
+    ]
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498/statistics": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498/statistics/0?lang=en&region=us",
+    "competition": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118?lang=en&region=us"
+    },
+    "splits": {
+      "id": "0",
+      "name": "All Splits",
+      "abbreviation": "TOT",
+      "type": "total",
+      "categories": [
+        {
+          "name": "general",
+          "displayName": "General",
+          "shortDisplayName": "General",
+          "abbreviation": "gen",
+          "summary": "",
+          "stats": [
+            {
+              "name": "lapsCompleted",
+              "displayName": "Laps Completed",
+              "shortDisplayName": "Laps Completed",
+              "description": "Total laps completed in the race",
+              "abbreviation": "LC",
+              "value": 26.0,
+              "displayValue": "26"
+            },
+            {
+              "name": "championshipPts",
+              "displayName": "Championship Points",
+              "shortDisplayName": "Championship Points",
+              "description": "Championship points earned for the race",
+              "abbreviation": "CP",
+              "value": 0.0,
+              "displayValue": "0"
+            },
+            {
+              "name": "bonus",
+              "displayName": "Bonus Points",
+              "shortDisplayName": "Bonus",
+              "description": "Bonus points earned for the race",
+              "abbreviation": "B",
+              "value": 0.0,
+              "displayValue": "0"
+            },
+            {
+              "name": "penaltyPts",
+              "displayName": "Penalty Points",
+              "shortDisplayName": "Penalty Points",
+              "description": "Penalty points earned for the race",
+              "abbreviation": "PP",
+              "value": 0.0,
+              "displayValue": "0"
+            },
+            {
+              "name": "place",
+              "displayName": "Place",
+              "shortDisplayName": "Place",
+              "description": "Place",
+              "abbreviation": "P",
+              "value": 1.0,
+              "displayValue": "1"
+            },
+            {
+              "name": "totalTime",
+              "displayName": "Total Race Time",
+              "shortDisplayName": "Total Race Time",
+              "description": "Total Race Time",
+              "abbreviation": "TOT",
+              "value": 96052.0,
+              "displayValue": "1:36.052"
+            },
+            {
+              "name": "qual1TimeMS",
+              "displayName": "Q1 Race Time",
+              "shortDisplayName": "Q1 Race Time",
+              "description": "Time for the first qualifying run",
+              "abbreviation": "Q1",
+              "value": 0.0,
+              "displayValue": "0.000"
+            },
+            {
+              "name": "qual2TimeMS",
+              "displayName": "Q2 Race Time",
+              "shortDisplayName": "Q2 Race Time",
+              "description": "Time for the first qualifying run",
+              "abbreviation": "Q2",
+              "value": 0.0,
+              "displayValue": "0.000"
+            },
+            {
+              "name": "qual3TimeMS",
+              "displayName": "Q3 Race Time",
+              "shortDisplayName": "Q3 Race Time",
+              "description": "Time for the first qualifying run",
+              "abbreviation": "Q3",
+              "value": 0.0,
+              "displayValue": "0.000"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498/status": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/5498/status?lang=en&region=us",
+    "period": 26,
+    "type": {
+      "id": "12",
+      "name": "STATUS_CLASSIFIED",
+      "state": "post",
+      "completed": true,
+      "description": "Classified",
+      "detail": "Classified",
+      "shortDetail": "Classified"
+    },
+    "displayValue": "Classified"
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/athletes/5498": {
+    "id": "5498",
+    "fullName": "Charles Leclerc",
+    "displayName": "Charles Leclerc",
+    "firstName": "Charles",
+    "lastName": "Leclerc",
+    "abbreviation": "LEC"
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665/statistics": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665/statistics/0?lang=en&region=us",
+    "competition": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118?lang=en&region=us"
+    },
+    "splits": {
+      "id": "0",
+      "name": "All Splits",
+      "abbreviation": "TOT",
+      "type": "total",
+      "categories": [
+        {
+          "name": "general",
+          "displayName": "General",
+          "shortDisplayName": "General",
+          "abbreviation": "gen",
+          "summary": "",
+          "stats": [
+            {
+              "name": "lapsCompleted",
+              "displayName": "Laps Completed",
+              "shortDisplayName": "Laps Completed",
+              "description": "Total laps completed in the race",
+              "abbreviation": "LC",
+              "value": 25.0,
+              "displayValue": "25"
+            },
+            {
+              "name": "behindTime",
+              "displayName": "Time Behind",
+              "shortDisplayName": "Time Behind",
+              "description": "Total time behind the field in the race",
+              "abbreviation": "TB",
+              "value": 84.0,
+              "displayValue": "+0.084"
+            },
+            {
+              "name": "championshipPts",
+              "displayName": "Championship Points",
+              "shortDisplayName": "Championship Points",
+              "description": "Championship points earned for the race",
+              "abbreviation": "CP",
+              "value": 0.0,
+              "displayValue": "0"
+            },
+            {
+              "name": "bonus",
+              "displayName": "Bonus Points",
+              "shortDisplayName": "Bonus",
+              "description": "Bonus points earned for the race",
+              "abbreviation": "B",
+              "value": 0.0,
+              "displayValue": "0"
+            },
+            {
+              "name": "penaltyPts",
+              "displayName": "Penalty Points",
+              "shortDisplayName": "Penalty Points",
+              "description": "Penalty points earned for the race",
+              "abbreviation": "PP",
+              "value": 0.0,
+              "displayValue": "0"
+            },
+            {
+              "name": "place",
+              "displayName": "Place",
+              "shortDisplayName": "Place",
+              "description": "Place",
+              "abbreviation": "P",
+              "value": 2.0,
+              "displayValue": "2"
+            },
+            {
+              "name": "totalTime",
+              "displayName": "Total Race Time",
+              "shortDisplayName": "Total Race Time",
+              "description": "Total Race Time",
+              "abbreviation": "TOT",
+              "value": 96136.0,
+              "displayValue": "1:36.136"
+            },
+            {
+              "name": "qual1TimeMS",
+              "displayName": "Q1 Race Time",
+              "shortDisplayName": "Q1 Race Time",
+              "description": "Time for the first qualifying run",
+              "abbreviation": "Q1",
+              "value": 0.0,
+              "displayValue": "0.000"
+            },
+            {
+              "name": "qual2TimeMS",
+              "displayName": "Q2 Race Time",
+              "shortDisplayName": "Q2 Race Time",
+              "description": "Time for the first qualifying run",
+              "abbreviation": "Q2",
+              "value": 0.0,
+              "displayValue": "0.000"
+            },
+            {
+              "name": "qual3TimeMS",
+              "displayName": "Q3 Race Time",
+              "shortDisplayName": "Q3 Race Time",
+              "description": "Time for the first qualifying run",
+              "abbreviation": "Q3",
+              "value": 0.0,
+              "displayValue": "0.000"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665/status": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839118/competitors/4665/status?lang=en&region=us",
+    "period": 25,
+    "type": {
+      "id": "12",
+      "name": "STATUS_CLASSIFIED",
+      "state": "post",
+      "completed": true,
+      "description": "Classified",
+      "detail": "Classified",
+      "shortDetail": "Classified"
+    },
+    "displayValue": "Classified"
+  },
+  "https://sports.core.api.espn.com/v2/sports/racing/athletes/4665": {
+    "id": "4665",
+    "fullName": "Max Verstappen",
+    "displayName": "Max Verstappen",
+    "firstName": "Max",
+    "lastName": "Verstappen",
+    "abbreviation": "VER"
+  },
+  "https://api.jolpi.ca/ergast/f1/2026.json": {
+    "MRData": {
+      "xmlns": "",
+      "series": "f1",
+      "url": "https://api.jolpi.ca/ergast/f1/2026.json",
+      "limit": "30",
+      "offset": "0",
+      "total": "23",
+      "RaceTable": {
+        "season": "2026",
+        "Races": [
+          {
+            "season": "2026",
+            "round": "18",
+            "url": "https://en.wikipedia.org/wiki/2026_United_States_Grand_Prix",
+            "raceName": "United States Grand Prix",
+            "Circuit": {
+              "circuitId": "americas",
+              "url": "https://en.wikipedia.org/wiki/Circuit_of_the_Americas",
+              "circuitName": "Circuit of the Americas",
+              "Location": {
+                "lat": "30.1328",
+                "long": "-97.6411",
+                "locality": "Austin",
+                "country": "USA"
+              }
+            },
+            "date": "2026-10-25",
+            "time": "20:00:00Z",
+            "FirstPractice": {
+              "date": "2026-10-23",
+              "time": "17:30:00Z"
+            },
+            "SecondPractice": {
+              "date": "2026-10-23",
+              "time": "21:00:00Z"
+            },
+            "ThirdPractice": {
+              "date": "2026-10-24",
+              "time": "17:30:00Z"
+            },
+            "Qualifying": {
+              "date": "2026-10-24",
+              "time": "21:00:00Z"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "https://api.open-meteo.com/v1/forecast?latitude=30.1328&longitude=-97.6411&current=temperature_2m%2Cwind_speed_10m%2Cwind_direction_10m&hourly=temperature_2m%2Cwind_speed_10m%2Cwind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=UTC&past_days=1&forecast_days=1": {
+    "latitude": 30.135836,
+    "longitude": -97.629456,
+    "generationtime_ms": 0.12981891632080078,
+    "utc_offset_seconds": 0,
+    "timezone": "GMT",
+    "timezone_abbreviation": "GMT",
+    "elevation": 154.0,
+    "current_units": {
+      "time": "iso8601",
+      "interval": "seconds",
+      "temperature_2m": "\u00b0F",
+      "wind_speed_10m": "mp/h",
+      "wind_direction_10m": "\u00b0"
+    },
+    "current": {
+      "time": "2026-10-23T21:15",
+      "interval": 900,
+      "temperature_2m": 84.0,
+      "wind_speed_10m": 11.3,
+      "wind_direction_10m": 146
+    },
+    "hourly_units": {
+      "time": "iso8601",
+      "temperature_2m": "\u00b0F",
+      "wind_speed_10m": "mp/h",
+      "wind_direction_10m": "\u00b0"
+    },
+    "hourly": {
+      "time": [
+        "2026-10-22T00:00",
+        "2026-10-22T01:00",
+        "2026-10-22T02:00",
+        "2026-10-22T03:00",
+        "2026-10-22T04:00",
+        "2026-10-22T05:00",
+        "2026-10-22T06:00",
+        "2026-10-22T07:00",
+        "2026-10-22T08:00",
+        "2026-10-22T09:00",
+        "2026-10-22T10:00",
+        "2026-10-22T11:00",
+        "2026-10-22T12:00",
+        "2026-10-22T13:00",
+        "2026-10-22T14:00",
+        "2026-10-22T15:00",
+        "2026-10-22T16:00",
+        "2026-10-22T17:00",
+        "2026-10-22T18:00",
+        "2026-10-22T19:00",
+        "2026-10-22T20:00",
+        "2026-10-22T21:00",
+        "2026-10-22T22:00",
+        "2026-10-22T23:00",
+        "2026-10-23T00:00",
+        "2026-10-23T01:00",
+        "2026-10-23T02:00",
+        "2026-10-23T03:00",
+        "2026-10-23T04:00",
+        "2026-10-23T05:00",
+        "2026-10-23T06:00",
+        "2026-10-23T07:00",
+        "2026-10-23T08:00",
+        "2026-10-23T09:00",
+        "2026-10-23T10:00",
+        "2026-10-23T11:00",
+        "2026-10-23T12:00",
+        "2026-10-23T13:00",
+        "2026-10-23T14:00",
+        "2026-10-23T15:00",
+        "2026-10-23T16:00",
+        "2026-10-23T17:00",
+        "2026-10-23T18:00",
+        "2026-10-23T19:00",
+        "2026-10-23T20:00",
+        "2026-10-23T21:00",
+        "2026-10-23T22:00",
+        "2026-10-23T23:00"
+      ],
+      "temperature_2m": [
+        76.7,
+        71.2,
+        68.6,
+        65.6,
+        63.9,
+        61.2,
+        59.5,
+        58.3,
+        58.0,
+        57.8,
+        57.3,
+        55.8,
+        55.6,
+        56.0,
+        60.9,
+        68.2,
+        73.7,
+        77.8,
+        80.2,
+        83.0,
+        84.3,
+        84.8,
+        84.2,
+        82.8,
+        78.6,
+        73.8,
+        71.2,
+        69.0,
+        67.4,
+        66.5,
+        64.7,
+        64.2,
+        62.0,
+        61.7,
+        60.0,
+        58.3,
+        57.4,
+        56.7,
+        61.1,
+        68.6,
+        76.5,
+        79.2,
+        81.9,
+        84.0,
+        84.7,
+        84.2,
+        83.2,
+        80.3
+      ],
+      "wind_speed_10m": [
+        3.2,
+        3.3,
+        5.6,
+        2.5,
+        1.8,
+        1.4,
+        4.1,
+        0.7,
+        1.2,
+        2.4,
+        1.7,
+        2.6,
+        1.3,
+        1.1,
+        2.6,
+        2.4,
+        1.8,
+        5.3,
+        3.7,
+        6.2,
+        4.9,
+        4.3,
+        5.1,
+        4.1,
+        3.5,
+        5.7,
+        4.2,
+        3.3,
+        3.6,
+        6.5,
+        4.0,
+        4.5,
+        3.8,
+        4.7,
+        2.3,
+        1.1,
+        0.5,
+        0.6,
+        0.8,
+        2.1,
+        2.0,
+        6.1,
+        7.4,
+        7.8,
+        10.8,
+        11.2,
+        10.7,
+        9.3
+      ],
+      "wind_direction_10m": [
+        51,
+        16,
+        353,
+        100,
+        173,
+        341,
+        282,
+        288,
+        248,
+        236,
+        337,
+        340,
+        360,
+        323,
+        340,
+        49,
+        14,
+        22,
+        37,
+        49,
+        16,
+        55,
+        56,
+        49,
+        125,
+        120,
+        115,
+        138,
+        183,
+        180,
+        214,
+        273,
+        225,
+        183,
+        197,
+        217,
+        333,
+        45,
+        326,
+        12,
+        116,
+        147,
+        155,
+        153,
+        158,
+        149,
+        144,
+        145
+      ]
+    }
+  }
+}

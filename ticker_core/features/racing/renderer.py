@@ -335,6 +335,8 @@ class RacingRenderer:
             right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
         elif qualifying and not f1 and metric == "time":
             right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+        elif qualifying and f1:
+            right = str(driver.get("gap") or driver.get("best_time") or "")[:8]
         elif qualifying:
             right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:8]
         else:
@@ -551,7 +553,7 @@ def _driver_position(driver: Mapping[str, Any]) -> int:
 
 def _driver_key(driver: Mapping[str, Any]) -> tuple[str, ...]:
     """Return rendering fields used to cache driver cards."""
-    return tuple(str(driver.get(key) or "") for key in ("pos", "name", "abbr", "car", "team_logo", "car_illustration", "gap", "speed", "livery_primary", "livery_secondary"))
+    return tuple(str(driver.get(key) or "") for key in ("pos", "name", "abbr", "car", "team_logo", "car_illustration", "gap", "best_time", "interval", "speed", "livery_primary", "livery_secondary"))
 
 
 def _hex(value: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:

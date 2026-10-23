@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from concurrent.futures import Future
 from threading import Event, Thread
 
@@ -310,6 +311,43 @@ def test_planner_reads_team_logos_from_v2_content_envelopes() -> None:
     assert (jets_logo, "logo", (24, 24)) in {
         (request.url, request.processor, request.size) for request in plan.requests
     }
+
+
+def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) -> None:
+    from datetime import datetime, timezone
+    from sports_ticker.providers.racing_live import _f1_car_url
+    from ticker_core.context import RenderContext
+    from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
+    from ticker_core.protocol import TickerResponse
+    from ticker_core.rendering import ContentScene, load_default_font_set
+
+    url = _f1_car_url("Mercedes")
+    raw = (Path(__file__).resolve().parents[2] / "fixtures/assets/f1_mercedes_2026.webp").read_bytes()
+    data = {"type": "racing", "sport": "f1", "state": "in", "sports_presentation": "pinned", "f1": {
+        "short_name": "United States GP", "session_type": "Practice 2", "drivers": [{
+            "pos": 1, "name": "George Russell", "abbr": "RUS", "team": "Mercedes", "car_illustration": url,
+        }],
+    }}
+    payload = {"api_version": "v2", "snapshot": {"ticker_id": "f1-six"}, "content": {"racing": [{
+        "id": "f1-fp2", "family": "racing", "kind": "f1", "data": data,
+    }]}}
+    response = TickerResponse.from_payload(payload)
+    plan = AssetPlanner().plan(response)
+    assert AssetRequest(url, "car", (130, 20)) in plan.requests
+    coordinator = AssetCoordinator(tmp_path, fetch=lambda _url: raw)
+    try:
+        for future in coordinator.prefetch_payload(response):
+            assert future.result() is not None
+        assert coordinator.image(url, "car", (130, 20)) is not None
+        context = RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc))
+        scene = ContentScene(data, "sports")
+        fonts = load_default_font_set()
+        photo = RacingRenderer(fonts, coordinator).render(context, scene).image
+        placeholder = RacingRenderer(fonts, MemoryRacingAssets()).render(context, scene).image
+        assert photo.size == (384, 32)
+        assert photo.tobytes() != placeholder.tobytes()
+    finally:
+        coordinator.close()
 
 
 def _png() -> bytes:

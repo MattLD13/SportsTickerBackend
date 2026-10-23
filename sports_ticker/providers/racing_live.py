@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import DisplaySettings
 
-from .http import JsonHttpClient, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
+from .http import JsonHttpClient, JsonHttpError, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
 
 
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
@@ -150,6 +150,8 @@ class LiveRacingSource:
         self._f1_games: dict[str, dict[str, Any]] = {}
         self._f1_timing: dict[str, tuple[float, dict[str, Any]]] = {}
         self._f1_athletes: dict[str, tuple[float, Mapping[str, Any]]] = {}
+        self._f1_circuits: dict[int, tuple[float, tuple[Mapping[str, Any], ...]]] = {}
+        self._f1_weather: dict[tuple[float, float], tuple[float, Mapping[str, Any]]] = {}
         self._indy_schedule: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self._indy_games: dict[str, dict[str, Any]] = {}
         self._indy_timing: tuple[float, dict[str, Any] | None] = (0.0, None)
@@ -293,7 +295,7 @@ class LiveRacingSource:
                 "flag": flag,
                 "drivers": drivers,
                 "updated_at": updated_at,
-                "weather": {},
+                "weather": self._fetch_f1_weather(race, end, state),
             },
         }
 
@@ -360,12 +362,15 @@ class LiveRacingSource:
             position = _integer(_mapping(stats.get("place")).get("value"), _integer(entry.get("order"), 999))
         team = str(_mapping(entry.get("vehicle")).get("manufacturer") or "")
         best_time = ""
-        for name in ("qual3TimeMS", "qual2TimeMS", "qual1TimeMS", "bestLapTimeMS"):
+        for name in ("qual3TimeMS", "qual2TimeMS", "qual1TimeMS", "bestLapTimeMS", "totalTime") if timed else ():
             milliseconds = _number(_mapping(stats.get(name)).get("value"))
             if milliseconds and milliseconds > 0:
                 best_time = _format_qualifying_time(milliseconds / 1000)
                 break
-        gap = str(_mapping(stats.get("gapToLeader")).get("displayValue") or "")
+        gap = str(
+            _mapping(stats.get("gapToLeader")).get("displayValue")
+            or _mapping(stats.get("behindTime")).get("displayValue") or ""
+        )
         if position == 1:
             gap = best_time if timed and best_time else "Leader"
         status_type = _mapping(status.get("type"))
@@ -387,6 +392,60 @@ class LiveRacingSource:
             "laps_completed": _integer(_mapping(stats.get("lapsCompleted")).get("value")),
             "updated_at": str(_mapping(stats.get("lastUpdated")).get("displayValue") or ""),
         }
+
+    def _fetch_f1_weather(self, race: Mapping[str, Any], end: datetime, state: str) -> dict[str, Any]:
+        """Read circuit conditions and retain the session hour for completed sessions."""
+        try:
+            year = end.year
+            cached_at, races = self._f1_circuits.get(year, (0.0, ()))
+            if not races or self._clock() - cached_at >= 86400:
+                payload = self._client.get_json(f"https://api.jolpi.ca/ergast/f1/{year}.json", timeout=self._timeout)
+                races = _sequence(_mapping(_mapping(_mapping(payload).get("MRData")).get("RaceTable")).get("Races"))
+                self._f1_circuits[year] = (self._clock(), races)
+            name = _f1_short_event(str(race.get("race_name") or ""))
+            circuit = next((
+                _mapping(item.get("Circuit")) for item in races
+                if _f1_short_event(str(item.get("raceName") or "")) == name
+            ), {})
+            location = _mapping(circuit.get("Location"))
+            coordinates = (float(location["lat"]), float(location["long"]))
+            cached_at, forecast = self._f1_weather.get(coordinates, (0.0, {}))
+            if not forecast or self._clock() - cached_at >= 300:
+                query = urlencode({
+                    "latitude": coordinates[0], "longitude": coordinates[1],
+                    "current": "temperature_2m,wind_speed_10m,wind_direction_10m",
+                    "hourly": "temperature_2m,wind_speed_10m,wind_direction_10m",
+                    "temperature_unit": "fahrenheit", "wind_speed_unit": "mph",
+                    "timezone": "UTC", "past_days": 1, "forecast_days": 1,
+                })
+                forecast = _mapping(self._client.get_json(
+                    f"https://api.open-meteo.com/v1/forecast?{query}", timeout=self._timeout,
+                ))
+                self._f1_weather[coordinates] = (self._clock(), forecast)
+            conditions = _mapping(forecast.get("current"))
+            if state == "post":
+                hourly = _mapping(forecast.get("hourly"))
+                times = hourly.get("time", ())
+                indices = [index for index, value in enumerate(times) if (_parse_datetime(value) or end + timedelta(hours=1)) <= end]
+                if not indices:
+                    raise ValueError("F1 session weather hour is unavailable")
+                index = indices[-1]
+                conditions = {key: hourly[key][index] for key in (
+                    "time", "temperature_2m", "wind_speed_10m", "wind_direction_10m",
+                )}
+            if any(_number(conditions.get(key)) is None for key in (
+                "temperature_2m", "wind_speed_10m", "wind_direction_10m",
+            )):
+                raise ValueError("F1 circuit weather values are unavailable")
+            return {
+                "air_temp": _rounded(conditions.get("temperature_2m")),
+                "wind_mph": _rounded(conditions.get("wind_speed_10m")),
+                "wind_dir": _rounded(conditions.get("wind_direction_10m")),
+                "observed_at": str(conditions.get("time") or ""),
+                "source": "open-meteo", "available": True,
+            }
+        except (JsonHttpError, ValueError, KeyError, TypeError, IndexError) as error:
+            return {"available": False, "error": str(error)}
 
     def _fetch_indycar(self, settings: DisplaySettings) -> list[dict[str, Any]]:
         now = self._now().astimezone(timezone.utc)
