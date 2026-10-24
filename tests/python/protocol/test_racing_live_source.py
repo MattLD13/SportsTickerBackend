@@ -32,7 +32,7 @@ class TextFixture:
 
 
 def _settings(**active_sports: bool) -> DisplaySettings:
-    return DisplaySettings(active_sports={**dict.fromkeys(("f1", "indycar", "nascar", "wec", "imsa", "nbr24"), False), **active_sports}, timezone="America/New_York")
+    return DisplaySettings(active_sports={**dict.fromkeys(("f1", "indycar", "nascar", "wec", "imsa"), False), **active_sports}, timezone="America/New_York")
 
 
 class NoCircuitWeather:

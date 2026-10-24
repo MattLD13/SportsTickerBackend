@@ -336,7 +336,6 @@ inline const char* sportFamily(const char* league) {
   if (strcmp(league, "mlb") == 0) return "baseball";
   if (strcmp(league, "nascar") == 0) return "nascar";
   if (strcmp(league, "nba") == 0) return "basketball";
-  if (strcmp(league, "nbr24") == 0) return "nbr24";
   if (strcmp(league, "ncf_fbs") == 0) return "football";
   if (strcmp(league, "ncf_fcs") == 0) return "football";
   if (strcmp(league, "nfl") == 0) return "football";

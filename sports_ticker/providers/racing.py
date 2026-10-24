@@ -25,7 +25,7 @@ class RacingProvider(_FeatureProvider):
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
-        series = ("f1", "indycar", "nascar", "wec", "imsa", "nbr24")
+        series = ("f1", "indycar", "nascar", "wec", "imsa")
         results = []
         failures = []
         health = {}
@@ -69,7 +69,7 @@ def _racing_kind(record: dict[str, Any], group: str | None) -> str:
             return "indycar"
         if value in {"nascar"} or "nascar" in record:
             return "nascar"
-        for series in ("wec", "imsa", "nbr24"):
+        for series in ("wec", "imsa"):
             if value == series or series in record:
                 return series
     raise ValueError("racing record must identify a supported series")

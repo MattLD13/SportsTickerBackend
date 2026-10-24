@@ -43,7 +43,7 @@ Finals gold takes priority where two scrolling panes share a boundary.
 | Premier League, Championship, MLS, Champions League, and FA Cup | FotMob tournament rounds. All FA Cup rounds use knockout rules. |
 | PGA golf | FedEx St. Jude and BMW Championship use `1`. TOUR Championship uses `2`. Other events use `0`. |
 | NASCAR Cup | The official `playoff_round` flag selects `1`. The championship race selects `2`. |
-| F1, IndyCar, IMSA, WEC, and Nürburgring 24h | `0`. These series do not use a playoff bracket. |
+| F1, IndyCar, IMSA, and WEC | `0`. These series do not use a playoff bracket. |
 
 An ordinary tournament's final round or race completion does not select stage `2`.
 

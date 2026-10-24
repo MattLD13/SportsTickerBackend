@@ -17,7 +17,7 @@ from sports_ticker.providers.racing_live import LiveRacingSource
 
 pytestmark = pytest.mark.critical
 ROOT = Path(__file__).resolve().parents[2] / "fixtures/providers/racing"
-SERIES = ("f1", "indycar", "nascar", "wec", "imsa", "nbr24")
+SERIES = ("f1", "indycar", "nascar", "wec", "imsa")
 
 
 def settings(sport: str) -> DisplaySettings:
@@ -71,23 +71,6 @@ class ImsaSocket:
         self.closed = True
 
 
-class NbrSocket:
-    def __init__(self, messages):
-        self.pending = deque(messages)
-        self.closed = False
-
-    def send(self, value):
-        request = json.loads(value)
-        assert request["eventId"] == 50
-        assert request["eventPid"] == [0, 4]
-
-    def recv(self):
-        return json.dumps(self.pending.popleft())
-
-    def close(self):
-        self.closed = True
-
-
 def source(client, now, socket=None):
     return LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp(),
                             weather_source=NoWeather(),
@@ -102,8 +85,22 @@ def projected(provider, sport, now):
     return project_data_v2(snapshot, result.health, {})["content"]["racing"]
 
 
-def test_all_six_racing_series_are_selectable():
+def test_supported_racing_series_are_selectable():
     assert set(SERIES) <= LEAGUE_BY_ID.keys()
+
+
+def test_removed_series_is_not_selectable_or_polled_from_a_saved_setting():
+    assert "nbr24" not in LEAGUE_BY_ID
+
+    class NoReads:
+        def get_json(self, url, *, timeout):
+            raise AssertionError("A removed series must not read a source")
+
+    now = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    config = DisplaySettings(active_sports={**dict.fromkeys(SERIES, False), "nbr24": True})
+    result = RacingProvider(source(NoReads(), now)).fetch(config)
+    assert result.health.healthy
+    assert not result.content
 
 
 def test_cup_uses_the_race_specific_feed_and_retains_all_37_cars():
@@ -194,48 +191,6 @@ def test_imsa_does_not_reload_or_show_old_standings():
     assert result["content"] == []
     assert [m.get("name") for m in socket.sent if m["msg"] == "sub"] == ["livetimingFeed", "sessionInfo"]
     assert socket.closed
-
-
-def nbr_protocol_example(now, *, flag="GREEN", remaining=None):
-    """Use field names published by the official page; this is not a race capture."""
-    return [
-        {"PID": 0, "EXPORTID": 2026, "SESSION": 1, "CUP": "ADAC 24h Nürburgring",
-         "HEAT": "Race", "HEATTYPE": "R", "TRACKNAME": "Nürburgring Nordschleife", "RESULT": [
-             {"STNR": "1", "RANK": 1, "CLASSRANK": 1, "CLASSNAME": "SP9", "NAME": "ROWE", "CAR": "BMW M4 GT3", "GAP": "Leader"},
-             {"STNR": "3", "RANK": 2, "CLASSRANK": 2, "CLASSNAME": "SP9", "NAME": "Falken", "CAR": "Porsche 911 GT3", "GAP": "+10.123"},
-         ]},
-        {"PID": 4, "TRACKSTATE": flag, "TIMESTATE": 0 if remaining else 1,
-         "ENDTIME": remaining or int((now + timedelta(hours=2)).timestamp() * 1000)},
-    ]
-
-
-def test_nbr_off_air_channel_returns_healthy_empty_content():
-    now = datetime(2026, 10, 23, tzinfo=timezone.utc)
-    socket = NbrSocket([{"PID": "LTS_TIMESYNC", "serverLocalTime": int(now.timestamp() * 1000)}, {"PID": "LTS_NOT_FOUND"}])
-    result = RacingProvider(source(JsonResponses("cup-phoenix-2026.json"), now, socket)).fetch(settings("nbr24"))
-    assert result.health.healthy
-    assert not result.content
-    assert socket.closed
-
-
-@pytest.mark.parametrize("flag,expected", [("GREEN", "GREEN"), ("RED", "RED FLAG"), ("2", "UNKNOWN"), ("COLD", "UNKNOWN")])
-def test_nbr_protocol_keeps_class_positions_images_and_explicit_flags(flag, expected):
-    now = datetime(2026, 5, 17, 10, tzinfo=timezone.utc)
-    socket = NbrSocket(nbr_protocol_example(now, flag=flag))
-    game = projected(RacingProvider(source(JsonResponses("cup-phoenix-2026.json"), now, socket)), "nbr24", now)[0]["data"]
-    assert game["state"] == "in"
-    assert game["nbr24"]["flag"] == expected
-    assert [d["car"] for d in game["nbr24"]["drivers"]] == ["1", "3"]
-    assert game["nbr24"]["drivers"][0]["car_illustration"].endswith("/small/1.jpg")
-
-
-def test_nbr_paused_relative_clock_does_not_invent_a_wall_clock_start():
-    now = datetime(2026, 5, 17, 10, tzinfo=timezone.utc)
-    socket = NbrSocket(nbr_protocol_example(now, remaining=3600000))
-    game = source(JsonResponses("cup-phoenix-2026.json"), now, socket).fetch(settings("nbr24"))["content"][0]
-    assert "startTimeUTC" not in game
-    assert game["nbr24"]["session_clock_paused"]
-    assert game["nbr24"]["time_to_go"] == "1:00:00"
 
 
 def test_car_catalog_preserves_leading_zero_identity_and_rejects_wrong_number():

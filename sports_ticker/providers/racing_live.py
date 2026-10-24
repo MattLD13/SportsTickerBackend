@@ -177,7 +177,6 @@ class LiveRacingSource:
             ("f1", self._fetch_f1), ("indycar", self._fetch_indycar), ("nascar", self._cup_source.fetch),
             ("wec", lambda settings: self._endurance_source.fetch("wec", settings)),
             ("imsa", lambda settings: self._endurance_source.fetch("imsa", settings)),
-            ("nbr24", lambda settings: self._endurance_source.fetch("nbr24", settings)),
         ):
             if not settings.active_sports.get(series, True):
                 continue

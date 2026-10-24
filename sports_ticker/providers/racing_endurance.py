@@ -1,4 +1,4 @@
-"""Adapt official WEC, IMSA, and Nürburgring timing into racing records."""
+"""Adapt official WEC and IMSA timing into racing records."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .racing_live import (
     _mapping, _sequence, _parse_datetime, _integer, _format_duration, _format_qualifying_time,
     _session_lifecycle_state, _format_local_time, _normalize_racing_flag, _CAUTION_FLAGS,
 )
-from .racing_sockets import AlkamelSnapshot, open_timing_socket, read_nbr24_snapshot
+from .racing_sockets import AlkamelSnapshot, open_timing_socket
 
 
 _WEC = "https://insights.griiip.com"
@@ -61,8 +61,6 @@ class RacingImageCatalog:
     def image(self, sport: str, car: str, class_name: str, year: int) -> str:
         if year != 2026:
             return ""
-        if sport == "nbr24":
-            return f"https://www.24h-rennen.de/wp-content/uploads/teilnehmer_26h/small/{car}.jpg" if re.fullmatch(r"\d{1,4}", car) else ""
         group = _CLASS_KEYS.get(class_name.replace(" ", "").upper(), "")
         url = str(self.entries.get(sport, {}).get(group, {}).get(car, ""))
         if sport == "wec":
@@ -95,8 +93,6 @@ class EnduranceRacingSource:
             return self.fetch_wec(settings)
         if sport == "imsa":
             return self.fetch_imsa(settings)
-        if sport == "nbr24":
-            return self.fetch_nbr24(settings)
         raise ValueError("Unknown endurance series")
 
     def record(self, sport, identifier, event, track, session, state, start, end, drivers, flag, settings,
@@ -109,19 +105,19 @@ class EnduranceRacingSource:
         for members in grouped.values():
             for index, driver in enumerate(members, 1):
                 driver["class_pos"] = index
-                driver["car_illustration"] = self.images.image(sport, driver["car"], driver.get("class", ""), (start or now).year)
-        short = ("WEC " if sport == "wec" else "IMSA " if sport == "imsa" else "") + event
-        status = "FINAL" if state == "post" else (_format_local_time(start, settings.timezone) if start else "WAITING") if state == "pre" else flag or "LIVE"
+                driver["car_illustration"] = self.images.image(sport, driver["car"], driver.get("class", ""), start.year)
+        short = f"{sport.upper()} {event}"
+        status = "FINAL" if state == "post" else _format_local_time(start, settings.timezone) if state == "pre" else flag or "LIVE"
         return {
             "id": f"{sport}_{identifier}", "type": "racing", "sport": sport, "state": state,
-            "status": status, "is_shown": True, **({"startTimeUTC": start.isoformat()} if start else {}),
+            "status": status, "is_shown": True, "startTimeUTC": start.isoformat(),
             "away_abbr": short, "home_abbr": session, "away_score": "", "home_score": "",
             sport: {
                 "event_name": short, "short_name": short, "track_name": track,
                 "session_type": session, "session_name": session,
                 "qualifying_metric": "time" if timed else "", "position_scope": "overall",
                 "lap": lap, "total_laps": total, "laps_remaining": max(0, total - lap),
-                "time_to_go": _format_duration((end - now).total_seconds()) if state == "in" and end else "",
+                "time_to_go": _format_duration((end - now).total_seconds()) if state == "in" else "",
                 "flag": "CHECKERED" if state == "post" else "WHITE" if state == "pre" else flag,
                 "caution": state == "in" and flag in _CAUTION_FLAGS,
                 "drivers": sorted(drivers, key=lambda item: item["pos"]),
@@ -222,51 +218,6 @@ class EnduranceRacingSource:
                             str(info.get("name") or "Race"), state, start, end, drivers, flag, settings,
                             lap=_integer(status.get("elapsedLaps")), total=_integer(status.get("finalLaps")))]
 
-    def fetch_nbr24(self, settings) -> list[dict[str, Any]]:
-        at, data = self.cache.get("nbr24", (0, None))
-        if data is None or self.clock() - at >= 15:
-            data = read_nbr24_snapshot(self.socket_factory, timeout=self.timeout)
-            self.cache["nbr24"] = self.clock(), data
-        if not data:
-            return []
-        header, track = _mapping(data.get("results")), _mapping(data.get("track"))
-        cup = str(header.get("CUP") or "")
-        if "24" not in cup or not any(term in str(header.get("TRACKNAME", "")).lower() for term in ("nürburgring", "nuerburgring", "nurburgring", "nordschleife")):
-            return []
-        now = self.now().astimezone(timezone.utc)
-        value = track.get("ENDTIME")
-        if isinstance(value, Mapping):
-            value = value.get("value")
-        end = _epoch(value) if value and float(value) > 100000000000 else None
-        label = str(header.get("HEAT") or "Race")
-        duration = timedelta(hours=24 if str(header.get("HEATTYPE")).upper() == "R" else 2)
-        start = end - duration if end else None
-        flag = str(track.get("TRACKSTATE") or "").strip().upper()
-        flag = _normalize_racing_flag(flag) if flag in {
-            "GREEN", "RED", "RED FLAG", "YELLOW", "CHECKERED", "CHEQUERED",
-            "SAFETY CAR", "SC", "CODE60", "CODE 60", "WHITE", "FCY",
-        } else "UNKNOWN"
-        if flag == "CHECKERED" and end is None:
-            return []
-        state = _state(start, end, now, settings.timezone) if start and end else "in"
-        if state is None:
-            return []
-        drivers = [{
-            "pos": _integer(row.get("RANK") or row.get("POSITION"), 999),
-            "car": str(row.get("STNR")), "name": str(row.get("NAME") or ""),
-            "team": str(row.get("TEAM") or ""), "manufacturer": str(row.get("CAR") or ""),
-            "display_name": f"#{row.get('STNR')} {row.get('CAR') or row.get('TEAM') or ''}",
-            "class": str(row.get("CLASSNAME") or ""), "class_pos": _integer(row.get("CLASSRANK")),
-            "gap": str(row.get("GAP") or ""), "best_time": str(row.get("FASTESTLAP") or ""),
-        } for row in _sequence(header.get("RESULT"))]
-        if not drivers:
-            state = "pre"
-        record = self.record("nbr24", f"{header.get('EXPORTID')}_{header.get('SESSION')}", "Nürburgring 24h",
-                             str(header.get("TRACKNAME")), label, state, start, end, drivers, flag, settings, country="de")
-        if str(track.get("TIMESTATE")) == "0" and value:
-            record["nbr24"]["time_to_go"] = _format_duration(float(value) / 1000)
-            record["nbr24"]["session_clock_paused"] = True
-        return [record]
 
 
 def wec_drivers(data: Mapping[str, Any], *, timed: bool, official: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:

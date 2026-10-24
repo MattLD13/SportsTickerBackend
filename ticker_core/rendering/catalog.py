@@ -34,7 +34,7 @@ def content_family(item: Mapping[str, Any], mode: str) -> str:
         return "empty"
     if sport == "clock" or sport.startswith("clock"):
         return "clock"
-    if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa", "nbr24"}:
+    if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa"}:
         return "racing"
     if item_type in {"golf", "masters"} or sport in {"golf", "masters"}:
         return "golf"

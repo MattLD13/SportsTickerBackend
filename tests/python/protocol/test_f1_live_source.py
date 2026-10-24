@@ -17,7 +17,7 @@ pytestmark = pytest.mark.critical
 _BASE = "https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/600057446/competitions/401839119"
 _SCOREBOARD = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
 _NOW = datetime(2026, 10, 23, 21, 10, tzinfo=timezone.utc)
-_SETTINGS = DisplaySettings(active_sports={"f1": True, "indycar": False, "nascar": False, "wec": False, "imsa": False, "nbr24": False})
+_SETTINGS = DisplaySettings(active_sports={"f1": True, "indycar": False, "nascar": False, "wec": False, "imsa": False})
 
 
 class CapturedTiming:
@@ -152,7 +152,7 @@ def test_f1_failure_reports_stale_data_and_respects_the_disabled_setting() -> No
     assert failed.content == first.content
     assert "stale:" in failed.health.error
     count = len(client.urls)
-    disabled = provider.fetch(DisplaySettings(active_sports={"f1": False, "indycar": False, "nascar": False, "wec": False, "imsa": False, "nbr24": False}))
+    disabled = provider.fetch(DisplaySettings(active_sports={"f1": False, "indycar": False, "nascar": False, "wec": False, "imsa": False}))
     assert disabled.health.healthy
     assert disabled.content == ()
     assert len(client.urls) == count

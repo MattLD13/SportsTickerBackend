@@ -56,28 +56,3 @@ class AlkamelSnapshot:
 
     def close(self) -> None:
         self.socket.close()
-
-
-def read_nbr24_snapshot(socket_factory: Callable = open_timing_socket, *, timeout: float = 10) -> dict[str, Any]:
-    """Read the results and track state for the organizer's event 50 channel."""
-    connection = socket_factory("wss://livetiming.azurewebsites.net/", timeout=timeout)
-    try:
-        connection.send(json.dumps({"eventId": 50, "eventPid": [0, 4], "clientLocalTime": int(time.time() * 1000)}))
-        deadline = time.monotonic() + timeout
-        result: dict[str, Any] = {}
-        while time.monotonic() < deadline:
-            message = json.loads(connection.recv())
-            pid = str(message.get("PID", ""))
-            if pid == "LTS_NOT_FOUND":
-                return {}
-            if pid == "LTS_TIMESYNC":
-                result["server_time"] = message.get("serverLocalTime")
-            elif pid == "0":
-                result["results"] = message
-            elif pid == "4":
-                result["track"] = message
-            if "results" in result and "track" in result:
-                return result
-        raise TimeoutError("Nürburgring timing did not provide a complete snapshot")
-    finally:
-        connection.close()

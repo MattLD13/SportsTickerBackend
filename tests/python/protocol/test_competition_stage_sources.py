@@ -22,7 +22,7 @@ from ticker_core.protocol import TickerResponse
 
 FIXTURES = Path(__file__).parents[2] / "fixtures/providers"
 SOURCES = json.loads((FIXTURES / "competition_stage_sources.json").read_text(encoding="utf-8"))
-REGULAR_SERIES = {"f1", "indycar", "imsa", "wec", "nbr24"}
+REGULAR_SERIES = {"f1", "indycar", "imsa", "wec"}
 pytestmark = pytest.mark.critical
 
 

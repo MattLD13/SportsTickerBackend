@@ -120,7 +120,7 @@ class RacingRenderer:
             _draw_empty_or_session(draw, payload, item, width)
             return image
         draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
-        draw_tiny_text(draw, 10, 8, "CAR" if sport in {"wec", "imsa", "nbr24"} else "DRIVER", (70, 90, 140))
+        draw_tiny_text(draw, 10, 8, "CAR" if sport in {"wec", "imsa"} else "DRIVER", (70, 90, 140))
         label = "MPH" if is_mph else "TIME" if timed and (sport == "f1" or metric == "time") else "INTERVAL" if sport == "nascar" else "GAP"
         draw_tiny_text(draw, 90, 8, label, (70, 90, 140))
         for index, driver in enumerate(drivers[:3]):
@@ -156,7 +156,7 @@ class RacingRenderer:
             draw_tiny_text(draw, start, y, number, _brighten_if_dark(primary))
             right_x = min(82, width - len(right) * 4 - 2) if right else width - 2
             avail_width = max(10, right_x - (start + number_width + 3))
-            if sport in {"wec", "imsa", "nbr24"}:
+            if sport in {"wec", "imsa"}:
                 # In LMP2 all cars are Oreca chassis, so prioritize team name over manufacturer
                 is_lmp2 = "lmp2" in session or str(driver.get("class") or "").lower() == "lmp2" or str(driver.get("manufacturer") or "").upper() == "ORECA"
                 raw_name = str((driver.get("team") or driver.get("team_abbr")) if is_lmp2 else (driver.get("manufacturer") or driver.get("team") or driver.get("abbr") or "???")).upper()
