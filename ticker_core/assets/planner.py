@@ -56,8 +56,8 @@ class AssetPlanner:
                     _add(requests, record.get(key), "logo", (24, 24))
                 _add(requests, _flight_logo_url(record), "logo", (22, 22))
             return
-        if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar", "wec", "imsa"}:
-            series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar")) or _mapping(item.get("wec")) or _mapping(item.get("imsa"))
+        if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa", "nbr24"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar", "wec", "imsa", "nbr24"}:
+            series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar")) or _mapping(item.get("wec")) or _mapping(item.get("imsa")) or _mapping(item.get("nbr24"))
             for driver in series.get("drivers", ()):
                 if not isinstance(driver, Mapping):
                     continue
@@ -69,6 +69,8 @@ class AssetPlanner:
                 elif "imsa.com" in str(car or "") or sport == "imsa" or kind == "imsa":
                     processor, size = "imsa_car", (120, 19)
                 elif sport == "f1" or kind == "f1":
+                    processor, size = "car", (130, 20)
+                elif sport in {"wec", "nbr24"} or kind in {"wec", "nbr24"}:
                     processor, size = "car", (130, 20)
                 else:
                     processor, size = "image", (120, 19)

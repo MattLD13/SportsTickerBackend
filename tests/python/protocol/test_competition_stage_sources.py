@@ -14,9 +14,9 @@ from sports_ticker.projections.device_data import project_device_data
 from sports_ticker.providers.fotmob import _content_item as soccer_item
 from sports_ticker.providers.golf import GolfProvider
 from sports_ticker.providers.live_sources import EspnGolfSource
-from sports_ticker.providers.sports_display import project_sports_display
 from sports_ticker.providers.racing import RacingProvider
-from sports_ticker.providers.racing_live import LiveRacingSource
+from sports_ticker.providers.racing_cup import CupRacingSource
+from sports_ticker.providers.sports_display import project_sports_display
 from ticker_core.protocol import TickerResponse
 
 
@@ -70,20 +70,20 @@ def test_recorded_cup_schedule_metadata_reaches_the_device_contract(case):
     start = datetime.fromisoformat(race["date_scheduled"]).replace(tzinfo=timezone.utc)
     now = start.replace(hour=0, minute=0, second=0)
     race["schedule"] = [{"run_type": 3, "start_time_utc": start.isoformat()}]
+    client = RecordedClient(case["source"], {"series_1": [race]})
 
-    class Client:
-        def get_json(self, url, *, timeout):
-            if url == case["source"]:
-                return {"series_1": [race]}
-            if "nascar-premier/scoreboard" in url:
-                return {"events": [{"id": str(race["race_id"]), "name": race["race_name"],
-                    "date": start.isoformat(), "competitions": [{"venue": {"fullName": race["track_name"]}}]}]}
-            if "live-feed.json" in url:
-                return {}
-            raise AssertionError(url)
+    class Weather:
+        def fetch(self, track):
+            return {"available": False}
 
-    settings = DisplaySettings(timezone="UTC", active_sports={**dict.fromkeys((league.id for league in LEAGUES), False), "nascar": True})
-    result = RacingProvider(LiveRacingSource(client=Client(), now=lambda: now, clock=lambda: 1)).fetch(settings)
+    cup = CupRacingSource(client, Weather(), now=lambda: now, clock=lambda: 1)
+
+    class Source:
+        def fetch(self, settings):
+            return {"content": cup.fetch(settings)}
+
+    settings = DisplaySettings(timezone="UTC", active_sports={league.id: league.id == "nascar" for league in LEAGUES})
+    result = RacingProvider(Source()).fetch(settings)
     assert result.health.healthy, result.health.error
     assert len(result.content) == 1
     assert_stage_at_device_boundary(result.content[0], case["expected"])

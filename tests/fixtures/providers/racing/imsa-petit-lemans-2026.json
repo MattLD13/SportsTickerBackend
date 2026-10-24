@@ -1,0 +1,979 @@
+{
+  "standings": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "standings": {
+      "displayDrivers": true,
+      "hasClasses": true,
+      "standings": {
+        "1": {
+          "data": "1;6;CLASSIFIED;1;368;15;0;1791079898701;TRACK;369;",
+          "class": "GTP",
+          "bestLapTime": 72179,
+          "elapsedTime": 36050625,
+          "lastLapTime": 74743
+        },
+        "2": {
+          "data": "2;24;CLASSIFIED;2;368;14;0;1791079899906;BOX;369;",
+          "class": "GTP",
+          "bestLapTime": 72220,
+          "elapsedTime": 36051830,
+          "lastLapTime": 74429
+        },
+        "3": {
+          "data": "3;40;CLASSIFIED;3;368;15;0;1791079907331;BOX;369;",
+          "class": "GTP",
+          "bestLapTime": 72592,
+          "elapsedTime": 36059255,
+          "lastLapTime": 75343
+        },
+        "4": {
+          "data": "4;10;CLASSIFIED;4;368;13;0;1791079907967;BOX;369;",
+          "class": "GTP",
+          "bestLapTime": 72188,
+          "elapsedTime": 36059891,
+          "lastLapTime": 75578
+        },
+        "5": {
+          "data": "5;23;CLASSIFIED;5;368;16;0;1791079930167;BOX;369;",
+          "class": "GTP",
+          "bestLapTime": 71897,
+          "elapsedTime": 36082091,
+          "lastLapTime": 74869
+        },
+        "6": {
+          "data": "6;60;CLASSIFIED;6;368;17;0;1791079940783;BOX;369;",
+          "class": "GTP",
+          "bestLapTime": 72142,
+          "elapsedTime": 36092707,
+          "lastLapTime": 101139
+        },
+        "7": {
+          "data": "7;04;CLASSIFIED;1;362;17;0;1791079918217;TRACK;363;",
+          "class": "LMP2",
+          "bestLapTime": 73773,
+          "elapsedTime": 36070141,
+          "lastLapTime": 77425
+        },
+        "8": {
+          "data": "8;43;CLASSIFIED;2;362;21;0;1791079918883;TRACK;363;",
+          "class": "LMP2",
+          "bestLapTime": 73451,
+          "elapsedTime": 36070807,
+          "lastLapTime": 75927
+        },
+        "9": {
+          "data": "9;18;CLASSIFIED;3;362;20;0;1791079922816;BOX;363;",
+          "class": "LMP2",
+          "bestLapTime": 74383,
+          "elapsedTime": 36074740,
+          "lastLapTime": 75400
+        },
+        "10": {
+          "data": "10;8;CLASSIFIED;4;362;19;0;1791079927062;BOX;363;",
+          "class": "LMP2",
+          "bestLapTime": 74062,
+          "elapsedTime": 36078986,
+          "lastLapTime": 75971
+        },
+        "11": {
+          "data": "11;73;CLASSIFIED;5;362;17;0;1791079935135;BOX;363;",
+          "class": "LMP2",
+          "bestLapTime": 74237,
+          "elapsedTime": 36087059,
+          "lastLapTime": 77298
+        },
+        "12": {
+          "data": "12;22;CLASSIFIED;6;361;17;0;1791079866820;BOX;362;",
+          "class": "LMP2",
+          "bestLapTime": 74004,
+          "elapsedTime": 36018744,
+          "lastLapTime": 99521
+        },
+        "13": {
+          "data": "13;37;CLASSIFIED;7;360;20;0;1791079927401;BOX;361;",
+          "class": "LMP2",
+          "bestLapTime": 74443,
+          "elapsedTime": 36079325,
+          "lastLapTime": 75521
+        },
+        "14": {
+          "data": "14;52;CLASSIFIED;8;360;20;0;1791079937218;BOX;361;",
+          "class": "LMP2",
+          "bestLapTime": 73997,
+          "elapsedTime": 36089142,
+          "lastLapTime": 76984
+        },
+        "15": {
+          "data": "15;2;CLASSIFIED;9;359;20;0;1791079935805;BOX;360;",
+          "class": "LMP2",
+          "bestLapTime": 73938,
+          "elapsedTime": 36087729,
+          "lastLapTime": 77334
+        },
+        "16": {
+          "data": "16;31;CLASSIFIED;7;356;15;0;1791078993748;BOX;357;",
+          "class": "GTP",
+          "bestLapTime": 72631,
+          "elapsedTime": 35145672,
+          "lastLapTime": 304316
+        },
+        "17": {
+          "data": "17;68;CLASSIFIED;1;349;13;0;1791079903995;TRACK;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80147,
+          "elapsedTime": 36055919,
+          "lastLapTime": 82105
+        },
+        "18": {
+          "data": "18;77;CLASSIFIED;2;349;12;0;1791079905502;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80473,
+          "elapsedTime": 36057426,
+          "lastLapTime": 81702
+        },
+        "19": {
+          "data": "19;1;CLASSIFIED;3;349;13;0;1791079906715;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80574,
+          "elapsedTime": 36058639,
+          "lastLapTime": 82192
+        },
+        "20": {
+          "data": "20;9;CLASSIFIED;4;349;12;0;1791079906981;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80314,
+          "elapsedTime": 36058905,
+          "lastLapTime": 81645
+        },
+        "21": {
+          "data": "21;62;CLASSIFIED;5;349;13;0;1791079911171;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80614,
+          "elapsedTime": 36063095,
+          "lastLapTime": 82268
+        },
+        "22": {
+          "data": "22;74;CLASSIFIED;6;349;12;0;1791079912137;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80453,
+          "elapsedTime": 36064061,
+          "lastLapTime": 82315
+        },
+        "23": {
+          "data": "23;911;CLASSIFIED;7;349;15;0;1791079924990;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80511,
+          "elapsedTime": 36076914,
+          "lastLapTime": 102309
+        },
+        "24": {
+          "data": "24;3;CLASSIFIED;8;349;15;0;1791079933667;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80379,
+          "elapsedTime": 36085591,
+          "lastLapTime": 81424
+        },
+        "25": {
+          "data": "25;64;CLASSIFIED;9;349;17;0;1791079942610;BOX;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80544,
+          "elapsedTime": 36094534,
+          "lastLapTime": 82712
+        },
+        "26": {
+          "data": "26;14;CLASSIFIED;10;349;14;0;1791079949071;TRACK;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 79992,
+          "elapsedTime": 36100995,
+          "lastLapTime": 114376
+        },
+        "27": {
+          "data": "27;65;CLASSIFIED;11;349;17;0;1791079976562;TRACK;350;",
+          "class": "GTDPRO",
+          "bestLapTime": 80186,
+          "elapsedTime": 36128486,
+          "lastLapTime": 83853
+        },
+        "28": {
+          "data": "28;4;CLASSIFIED;12;348;13;0;1791079955659;TRACK;349;",
+          "class": "GTDPRO",
+          "bestLapTime": 79881,
+          "elapsedTime": 36107583,
+          "lastLapTime": 83637
+        },
+        "29": {
+          "data": "29;57;CLASSIFIED;1;346;12;0;1791079913701;TRACK;347;",
+          "class": "GTD",
+          "bestLapTime": 80761,
+          "elapsedTime": 36065625,
+          "lastLapTime": 82563
+        },
+        "30": {
+          "data": "30;912;CLASSIFIED;2;346;12;0;1791079914434;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80622,
+          "elapsedTime": 36066358,
+          "lastLapTime": 82351
+        },
+        "31": {
+          "data": "31;36;CLASSIFIED;3;346;18;0;1791079916035;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80695,
+          "elapsedTime": 36067959,
+          "lastLapTime": 81890
+        },
+        "32": {
+          "data": "32;80;CLASSIFIED;4;346;13;0;1791079917195;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80660,
+          "elapsedTime": 36069119,
+          "lastLapTime": 82260
+        },
+        "33": {
+          "data": "33;44;CLASSIFIED;5;346;12;0;1791079917849;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80682,
+          "elapsedTime": 36069773,
+          "lastLapTime": 82516
+        },
+        "34": {
+          "data": "34;21;CLASSIFIED;6;346;14;0;1791079918775;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80322,
+          "elapsedTime": 36070699,
+          "lastLapTime": 81419
+        },
+        "35": {
+          "data": "35;120;CLASSIFIED;7;346;17;0;1791079919326;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80584,
+          "elapsedTime": 36071250,
+          "lastLapTime": 81633
+        },
+        "36": {
+          "data": "36;70;CLASSIFIED;8;346;13;0;1791079920547;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80657,
+          "elapsedTime": 36072471,
+          "lastLapTime": 82419
+        },
+        "37": {
+          "data": "37;023;CLASSIFIED;9;346;12;0;1791079920852;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80571,
+          "elapsedTime": 36072776,
+          "lastLapTime": 82288
+        },
+        "38": {
+          "data": "38;13;CLASSIFIED;10;346;15;0;1791079922479;BOX;347;",
+          "class": "GTD",
+          "bestLapTime": 80669,
+          "elapsedTime": 36074403,
+          "lastLapTime": 83189
+        },
+        "39": {
+          "data": "39;99;CLASSIFIED;10;341;17;0;1791079934318;BOX;342;",
+          "class": "LMP2",
+          "bestLapTime": 73568,
+          "elapsedTime": 36086242,
+          "lastLapTime": 77638
+        },
+        "40": {
+          "data": "40;12;CLASSIFIED;11;339;14;0;1791079937609;TRACK;340;",
+          "class": "GTD",
+          "bestLapTime": 80155,
+          "elapsedTime": 36089533,
+          "lastLapTime": 83458
+        },
+        "41": {
+          "data": "41;7;CLASSIFIED;8;308;12;0;1791074399203;STOPPED;309;",
+          "class": "GTP",
+          "bestLapTime": 72068,
+          "elapsedTime": 30551127,
+          "lastLapTime": 74143
+        },
+        "42": {
+          "data": "42;28;CLASSIFIED;12;293;14;0;1791074970540;BOX;294;",
+          "class": "GTD",
+          "bestLapTime": 80624,
+          "elapsedTime": 31122464,
+          "lastLapTime": 288980
+        },
+        "43": {
+          "data": "43;5;CLASSIFIED;9;290;11;0;1791072475126;STOPPED;291;",
+          "class": "GTP",
+          "bestLapTime": 72885,
+          "elapsedTime": 28627050,
+          "lastLapTime": 73859
+        },
+        "44": {
+          "data": "44;93;CLASSIFIED;10;257;14;0;1791069327202;STOPPED;258;",
+          "class": "GTP",
+          "bestLapTime": 71949,
+          "elapsedTime": 25479126,
+          "lastLapTime": 147667
+        },
+        "45": {
+          "data": "45;34;CLASSIFIED;13;256;10;0;1791070810294;STOPPED;257;",
+          "class": "GTD",
+          "bestLapTime": 80128,
+          "elapsedTime": 26962218,
+          "lastLapTime": 81487
+        },
+        "46": {
+          "data": "46;033;CLASSIFIED;13;251;11;0;1791070561447;BOX;252;",
+          "class": "GTDPRO",
+          "bestLapTime": 80618,
+          "elapsedTime": 26713371,
+          "lastLapTime": 655759
+        },
+        "47": {
+          "data": "47;59;CLASSIFIED;14;181;11;0;1791064598301;BOX;182;",
+          "class": "GTDPRO",
+          "bestLapTime": 80678,
+          "elapsedTime": 20750225,
+          "lastLapTime": 378190
+        },
+        "48": {
+          "data": "48;25;CLASSIFIED;11;161;8;0;1791060371127;STOPPED;162;",
+          "class": "GTP",
+          "bestLapTime": 72857,
+          "elapsedTime": 16523051,
+          "lastLapTime": 75759
+        },
+        "49": {
+          "data": "49;16;CLASSIFIED;14;159;8;0;1791061566158;BOX;160;",
+          "class": "GTD",
+          "bestLapTime": 80952,
+          "elapsedTime": 17718082,
+          "lastLapTime": 139947
+        },
+        "50": {
+          "data": "50;66;CLASSIFIED;15;159;7;0;1791061570324;STOPPED;160;",
+          "class": "GTD",
+          "bestLapTime": 81091,
+          "elapsedTime": 17722248,
+          "lastLapTime": 137749
+        },
+        "51": {
+          "data": "51;11;CLASSIFIED;11;153;13;0;1791061308195;BOX;154;",
+          "class": "LMP2",
+          "bestLapTime": 75359,
+          "elapsedTime": 17460119,
+          "lastLapTime": 142195
+        },
+        "52": {
+          "data": "52;45;CLASSIFIED;16;110;6;0;1791054568120;BOX;111;",
+          "class": "GTD",
+          "bestLapTime": 81127,
+          "elapsedTime": 10720044,
+          "lastLapTime": 436114
+        },
+        "53": {
+          "data": "53;27;CLASSIFIED;17;37;3;0;1791053435796;BOX;38;",
+          "class": "GTD",
+          "bestLapTime": 81150,
+          "elapsedTime": 9587720,
+          "lastLapTime": 90488
+        },
+        "54": {
+          "data": "54;96;CLASSIFIED;18;18;2;0;1791045517271;BOX;19;",
+          "class": "GTD",
+          "bestLapTime": 82196,
+          "elapsedTime": 1669195,
+          "lastLapTime": 103700
+        }
+      }
+    }
+  },
+  "session_entry": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "entry": {
+      "1": {
+        "class": "GTDPRO",
+        "firstname": "Neil",
+        "lastname": "Verhagen",
+        "name": "N. VERHAGEN",
+        "team": "Paul Miller Racing",
+        "vehicle": "BMW M4 GT3 EVO"
+      },
+      "2": {
+        "class": "LMP2",
+        "firstname": "Hunter",
+        "lastname": "McElrea",
+        "name": "H. MCELREA",
+        "team": "United Autosports USA",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "3": {
+        "class": "GTDPRO",
+        "firstname": "Alexander",
+        "lastname": "Sims",
+        "name": "A. SIMS",
+        "team": "Corvette Racing by Pratt Miller Motorsports",
+        "vehicle": "CHEVROLET CORVETTE Z06 GT3.R"
+      },
+      "4": {
+        "class": "GTDPRO",
+        "firstname": "Nicky",
+        "lastname": "Catsburg",
+        "name": "N. CATSBURG",
+        "team": "Corvette Racing by Pratt Miller Motorsports",
+        "vehicle": "CHEVROLET CORVETTE Z06 GT3.R"
+      },
+      "5": {
+        "class": "GTP",
+        "firstname": "Tijmen",
+        "lastname": "van der Helm",
+        "name": "T. VAN DER HELM",
+        "team": "JDC-Miller MotorSports",
+        "vehicle": "PORSCHE 963"
+      },
+      "6": {
+        "class": "GTP",
+        "firstname": "Laurens",
+        "lastname": "Vanthoor",
+        "name": "L. VANTHOOR",
+        "team": "Porsche Penske Motorsport",
+        "vehicle": "PORSCHE 963"
+      },
+      "7": {
+        "class": "GTP",
+        "firstname": "Felipe",
+        "lastname": "Nasr",
+        "name": "F. NASR",
+        "team": "Porsche Penske Motorsport",
+        "vehicle": "PORSCHE 963"
+      },
+      "8": {
+        "class": "LMP2",
+        "firstname": "Tristan",
+        "lastname": "Vautier",
+        "name": "T. VAUTIER",
+        "team": "Tower Motorsports",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "9": {
+        "class": "GTDPRO",
+        "firstname": "Andrea",
+        "lastname": "Caldarelli",
+        "name": "A. CALDARELLI",
+        "team": "Pfaff Motorsports",
+        "vehicle": "LAMBORGHINI TEMERARIO GT3"
+      },
+      "10": {
+        "class": "GTP",
+        "firstname": "Filipe",
+        "lastname": "Albuquerque",
+        "name": "F. ALBUQUERQUE",
+        "team": "Cadillac Wayne Taylor Racing",
+        "vehicle": "CADILLAC V-SERIES.R"
+      },
+      "11": {
+        "class": "LMP2",
+        "firstname": "Mathias",
+        "lastname": "Beche",
+        "name": "M. BECHE",
+        "team": "TDS Racing",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "12": {
+        "class": "GTD",
+        "firstname": "Aaron",
+        "lastname": "Telitz",
+        "name": "A. TELITZ",
+        "team": "Vasser Sullivan Racing",
+        "vehicle": "LEXUS RC F GT3"
+      },
+      "13": {
+        "class": "GTD",
+        "firstname": "Matthew",
+        "lastname": "Bell",
+        "name": "M. BELL",
+        "team": "13 Autosport",
+        "vehicle": "CHEVROLET CORVETTE Z06 GT3.R"
+      },
+      "14": {
+        "class": "GTDPRO",
+        "firstname": "Ben",
+        "lastname": "Barnicoat",
+        "name": "B. BARNICOAT",
+        "team": "Vasser Sullivan Racing",
+        "vehicle": "LEXUS RC F GT3"
+      },
+      "16": {
+        "class": "GTD",
+        "firstname": "Felipe",
+        "lastname": "Fraga",
+        "name": "F. FRAGA",
+        "team": "Myers Riley Motorsports",
+        "vehicle": "FORD MUSTANG GT3"
+      },
+      "18": {
+        "class": "LMP2",
+        "firstname": "Ferdinand",
+        "lastname": "Habsburg",
+        "name": "F. HABSBURG",
+        "team": "Era Motorsport",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "21": {
+        "class": "GTD",
+        "firstname": "Antonio",
+        "lastname": "Fuoco",
+        "name": "A. FUOCO",
+        "team": "Af Corse Usa",
+        "vehicle": "FERRARI 296 GT3 EVO"
+      },
+      "22": {
+        "class": "LMP2",
+        "firstname": "Paul",
+        "lastname": "Di Resta",
+        "name": "P. DI RESTA",
+        "team": "United Autosports USA",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "23": {
+        "class": "GTP",
+        "firstname": "Roman",
+        "lastname": "De Angelis",
+        "name": "R. DE ANGELIS",
+        "team": "ASTON MARTIN THOR Team",
+        "vehicle": "ASTON MARTIN VALKYRIE"
+      },
+      "24": {
+        "class": "GTP",
+        "firstname": "Sheldon",
+        "lastname": "van der Linde",
+        "name": "S. VAN DER LINDE",
+        "team": "BMW M Team WRT",
+        "vehicle": "BMW M HYBRID V8"
+      },
+      "25": {
+        "class": "GTP",
+        "firstname": "Kevin",
+        "lastname": "Magnussen",
+        "name": "K. MAGNUSSEN",
+        "team": "BMW M Team WRT",
+        "vehicle": "BMW M HYBRID V8"
+      },
+      "27": {
+        "class": "GTD",
+        "firstname": "Zacharie",
+        "lastname": "Robichon",
+        "name": "Z. ROBICHON",
+        "team": "Heart of Racing Team",
+        "vehicle": "ASTON MARTIN VANTAGE GT3 EVO"
+      },
+      "28": {
+        "class": "GTD",
+        "firstname": "Jan",
+        "lastname": "Heylen",
+        "name": "J. HEYLEN",
+        "team": "Rs1",
+        "vehicle": "PORSCHE 911 GT3 R (992)"
+      },
+      "31": {
+        "class": "GTP",
+        "firstname": "Earl",
+        "lastname": "Bamber",
+        "name": "E. BAMBER",
+        "team": "Cadillac Whelen",
+        "vehicle": "CADILLAC V-SERIES.R"
+      },
+      "34": {
+        "class": "GTD",
+        "firstname": "Lorenzo",
+        "lastname": "Patrese",
+        "name": "L. PATRESE",
+        "team": "Conquest Racing",
+        "vehicle": "FERRARI 296 GT3 EVO"
+      },
+      "36": {
+        "class": "GTD",
+        "firstname": "Charlie",
+        "lastname": "Eastwood",
+        "name": "C. EASTWOOD",
+        "team": "DXDT Racing",
+        "vehicle": "CHEVROLET CORVETTE Z06 GT3.R"
+      },
+      "37": {
+        "class": "LMP2",
+        "firstname": "Oliver",
+        "lastname": "Jarvis",
+        "name": "O. JARVIS",
+        "team": "Intersport Racing",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "40": {
+        "class": "GTP",
+        "firstname": "Louis",
+        "lastname": "Deletraz",
+        "name": "L. DELETRAZ",
+        "team": "Cadillac Wayne Taylor Racing",
+        "vehicle": "CADILLAC V-SERIES.R"
+      },
+      "43": {
+        "class": "LMP2",
+        "firstname": "Tom",
+        "lastname": "Dillmann",
+        "name": "T. DILLMANN",
+        "team": "Inter Europol Competition",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "44": {
+        "class": "GTD",
+        "firstname": "Mario",
+        "lastname": "Farnbacher",
+        "name": "M. FARNBACHER",
+        "team": "Magnus Racing",
+        "vehicle": "ASTON MARTIN VANTAGE GT3 EVO"
+      },
+      "45": {
+        "class": "GTD",
+        "firstname": "Danny",
+        "lastname": "Formal",
+        "name": "D. FORMAL",
+        "team": "Wayne Taylor Racing",
+        "vehicle": "LAMBORGHINI HURACAN GT3 EVO2"
+      },
+      "52": {
+        "class": "LMP2",
+        "firstname": "Harry",
+        "lastname": "Tincknell",
+        "name": "H. TINCKNELL",
+        "team": "Bryan Herta Autosport with PR1/Mathiasen",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "57": {
+        "class": "GTD",
+        "firstname": "Philip",
+        "lastname": "Ellis",
+        "name": "P. ELLIS",
+        "team": "Winward Racing",
+        "vehicle": "MERCEDES-AMG GT3"
+      },
+      "59": {
+        "class": "GTDPRO",
+        "firstname": "Benji",
+        "lastname": "Goethe",
+        "name": "B. GOETHE",
+        "team": "RLL Team McLaren",
+        "vehicle": "MCLAREN 720S GT3 EVO"
+      },
+      "60": {
+        "class": "GTP",
+        "firstname": "Tom",
+        "lastname": "Blomqvist",
+        "name": "T. BLOMQVIST",
+        "team": "Acura Meyer Shank Racing w/Curb Agajanian",
+        "vehicle": "ACURA ARX-06"
+      },
+      "62": {
+        "class": "GTDPRO",
+        "firstname": "Daniel",
+        "lastname": "Serra",
+        "name": "D. SERRA",
+        "team": "Risi Competizione",
+        "vehicle": "FERRARI 296 GT3 EVO"
+      },
+      "64": {
+        "class": "GTDPRO",
+        "firstname": "Dennis",
+        "lastname": "Olsen",
+        "name": "D. OLSEN",
+        "team": "Ford Racing",
+        "vehicle": "FORD MUSTANG GT3"
+      },
+      "65": {
+        "class": "GTDPRO",
+        "firstname": "Frederic",
+        "lastname": "Vervisch",
+        "name": "F. VERVISCH",
+        "team": "Ford Racing",
+        "vehicle": "FORD MUSTANG GT3"
+      },
+      "66": {
+        "class": "GTD",
+        "firstname": "Jake",
+        "lastname": "Walker",
+        "name": "J. WALKER",
+        "team": "Gradient Racing",
+        "vehicle": "FORD MUSTANG GT3"
+      },
+      "68": {
+        "class": "GTDPRO",
+        "firstname": "Mattia",
+        "lastname": "Drudi",
+        "name": "M. DRUDI",
+        "team": "Car Blanche",
+        "vehicle": "ASTON MARTIN VANTAGE GT3 EVO"
+      },
+      "70": {
+        "class": "GTD",
+        "firstname": "Frederik",
+        "lastname": "Schandorff",
+        "name": "F. SCHANDORFF",
+        "team": "Inception Racing",
+        "vehicle": "FERRARI 296 GT3 EVO"
+      },
+      "73": {
+        "class": "LMP2",
+        "firstname": "Pietro",
+        "lastname": "Fittipaldi",
+        "name": "P. FITTIPALDI",
+        "team": "Pratt Miller Motorsports",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "74": {
+        "class": "GTDPRO",
+        "firstname": "Sebastien",
+        "lastname": "Bourdais",
+        "name": "S. BOURDAIS",
+        "team": "DragonSpeed",
+        "vehicle": "CHEVROLET CORVETTE Z06 GT3.R"
+      },
+      "77": {
+        "class": "GTDPRO",
+        "firstname": "Harry",
+        "lastname": "King",
+        "name": "H. KING",
+        "team": "AO Racing",
+        "vehicle": "PORSCHE 911 GT3 R (992)"
+      },
+      "80": {
+        "class": "GTD",
+        "firstname": "Luca",
+        "lastname": "Stolz",
+        "name": "L. STOLZ",
+        "team": "Lone Star Racing",
+        "vehicle": "MERCEDES-AMG GT3"
+      },
+      "93": {
+        "class": "GTP",
+        "firstname": "Nick",
+        "lastname": "Yelloly",
+        "name": "N. YELLOLY",
+        "team": "Acura Meyer Shank Racing w/Curb Agajanian",
+        "vehicle": "ACURA ARX-06"
+      },
+      "96": {
+        "class": "GTD",
+        "firstname": "Francis",
+        "lastname": "Selldorff",
+        "name": "F. SELLDORFF",
+        "team": "Turner Motorsport",
+        "vehicle": "BMW M4 GT3 EVO"
+      },
+      "99": {
+        "class": "LMP2",
+        "firstname": "Dane",
+        "lastname": "Cameron",
+        "name": "D. CAMERON",
+        "team": "AO Racing",
+        "vehicle": "ORECA LMP2 07"
+      },
+      "120": {
+        "class": "GTD",
+        "firstname": "Tom",
+        "lastname": "Sargent",
+        "name": "T. SARGENT",
+        "team": "Wright Motorsports",
+        "vehicle": "PORSCHE 911 GT3 R (992)"
+      },
+      "911": {
+        "class": "GTDPRO",
+        "firstname": "Thomas",
+        "lastname": "Preining",
+        "name": "T. PREINING",
+        "team": "Manthey",
+        "vehicle": "PORSCHE 911 GT3 R (992)"
+      },
+      "912": {
+        "class": "GTD",
+        "firstname": "Riccardo",
+        "lastname": "Pera",
+        "name": "R. PERA",
+        "team": "Manthey 1St Phorm",
+        "vehicle": "PORSCHE 911 GT3 R (992)"
+      },
+      "023": {
+        "class": "GTD",
+        "firstname": "Kenton",
+        "lastname": "Koch",
+        "name": "K. KOCH",
+        "team": "Triarsi Competizione",
+        "vehicle": "FERRARI 296 GT3 EVO"
+      },
+      "033": {
+        "class": "GTDPRO",
+        "firstname": "Miguel",
+        "lastname": "Molina",
+        "name": "M. MOLINA",
+        "team": "Triarsi Competizione",
+        "vehicle": "FERRARI 296 GT3 EVO"
+      },
+      "04": {
+        "class": "LMP2",
+        "firstname": "Alex",
+        "lastname": "Quinn",
+        "name": "A. QUINN",
+        "team": "Crowdstrike Racing by APR",
+        "vehicle": "ORECA LMP2 07"
+      }
+    }
+  },
+  "weather": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "weather": {
+      "ambientTemperature": 24,
+      "humidity": 91,
+      "trackTemperature": 23,
+      "windSpeed": 0
+    }
+  },
+  "session_status": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "status": {
+      "currentFlag": "GF",
+      "currentLap": 369,
+      "elapsedLaps": 368,
+      "elapsedLapsAfterTimeFinish": 0,
+      "extraTime": 0,
+      "extraTimeHappenedTime": 0,
+      "finalAddedLaps": 0,
+      "finalLaps": 0,
+      "finalTime": 36000,
+      "finalType": "BY_TIME",
+      "hasExtraTime": false,
+      "isClosed": true,
+      "isFinished": true,
+      "isForcedByTime": false,
+      "isForcedLastLap": false,
+      "isSessionRunning": true,
+      "isTimeFinished": false,
+      "startTime": 1791043848,
+      "stopTime": 0,
+      "stoppedSeconds": 0,
+      "utcOffset": 0
+    }
+  },
+  "session_classes": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "classes": {
+      "classes": {
+        "GTD": {
+          "background": "#008040",
+          "foreground": "#ffffff",
+          "lightBackground": "#ffff80",
+          "lightForeground": "#008040",
+          "name": "GTD",
+          "order": 4,
+          "shortName": "GTD"
+        },
+        "GTDPRO": {
+          "background": "#ff0000",
+          "foreground": "#ffffff",
+          "lightBackground": "#ffff80",
+          "lightForeground": "#ff0000",
+          "name": "GTDPRO",
+          "order": 3,
+          "shortName": "GTDPRO"
+        },
+        "GTP": {
+          "background": "#808080",
+          "foreground": "#ffffff",
+          "lightBackground": "#ffff80",
+          "lightForeground": "#000000",
+          "name": "GTP",
+          "order": 1,
+          "shortName": "GTP"
+        },
+        "LMP2": {
+          "background": "#0000ff",
+          "foreground": "#ffffff",
+          "lightBackground": "#ffff80",
+          "lightForeground": "#0000ff",
+          "name": "LMP2",
+          "order": 2,
+          "shortName": "LMP2"
+        }
+      },
+      "fieldToUseAsClass": "class"
+    }
+  },
+  "race_control": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "raceControlMessages": {
+      "currentMessages": {
+        "0": {
+          "message": "CHECKERED FLAG"
+        },
+        "1": {
+          "message": "ENERGY USAGE AT END OF RACE UNDER REVIEW"
+        },
+        "2": {
+          "message": "IMPOUND CARS: 6, 24, 40, 10, 04, 43, 18, 8, 68, 77, 1, 9, 57, 912, 36, 80"
+        }
+      }
+    }
+  },
+  "feeds": {
+    "name": "imsa",
+    "running": false,
+    "sessions": [
+      {
+        "$type": "oid",
+        "$value": "6ab6b2b9c4c0a71728151ed1"
+      }
+    ]
+  },
+  "session_info": {
+    "session": {
+      "$type": "oid",
+      "$value": "6ab6b2b9c4c0a71728151ed1"
+    },
+    "info": {
+      "champBestPersonalColor": 65535,
+      "champBestSessionColor": 16711935,
+      "champName": "IMSA WeatherTech SportsCar Championship",
+      "champShortName": "WEATHERTECH CHAMPIONSHIP",
+      "closed": true,
+      "date": 1791043800000,
+      "eventName": "29th Annual Motul Petit Le Mans",
+      "eventShortName": "ROAD ATLANTA",
+      "groupGap": 1500,
+      "isBikeAndRiders": false,
+      "isExtremeE": false,
+      "isLapZero": false,
+      "isSuperSpecial": false,
+      "lastSessionTime": 1791080013473,
+      "name": "RACE",
+      "qualifyingPercentage": "",
+      "round": "",
+      "season": "",
+      "type": "RACE",
+      "unitOfMeasure": "US",
+      "utcOffset": -4,
+      "vehicleType": "CAR"
+    }
+  }
+}

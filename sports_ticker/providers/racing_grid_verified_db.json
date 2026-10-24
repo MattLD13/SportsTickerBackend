@@ -5,12 +5,12 @@
       "40": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_GTP_40_WTR_CADILLAC_V_LMDH.png",
       "31": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_GTP_31_AX_CADILLAC_V_LMDH.png",
       "6": "https://www.imsa.com/wp-content/uploads/sites/32/2019/07/30/26_WT_GTP_6_PENSKE_PORSCHE_963_RAm-443x113.png",
-      "7": "https://www.imsa.com/wp-content/uploads/sites/32/2019/07/30/26_WT_GTP_6_PENSKE_PORSCHE_963_RAm-443x113.png",
+      "7": "https://www.imsa.com/wp-content/uploads/sites/32/2019/09/17/2026_IWSC_PorschePenskeMotorsport_7_988x252-922x235.png",
       "5": "https://www.imsa.com/wp-content/uploads/sites/32/2019/09/18/26_WT_GTP_5_JDC_MILLER_PORSCHE_963_SEBRING-443x113.png",
       "85": "https://www.imsa.com/wp-content/uploads/sites/32/2019/09/18/26_WT_GTP_5_JDC_MILLER_PORSCHE_963_SEBRING-443x113.png",
-      "24": "https://www.imsa.com/wp-content/uploads/sites/32/2023/01/21/2023_BMWM_No24_TeamRLL_988x252.png",
-      "25": "https://www.imsa.com/wp-content/uploads/sites/32/2023/01/21/2023_BMWM_No24_TeamRLL_988x252.png",
-      "60": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/17/2026_IWSC_AcuraMeyerShankRacing_93_988x252-443x113.png",
+      "24": "https://www.imsa.com/wp-content/uploads/sites/32/2019/09/17/2026_IWSC_BMWMTeamWRT_24_988x252-922x235.png",
+      "25": "https://www.imsa.com/wp-content/uploads/sites/32/2019/09/17/2026_IWSC_BMWMTeamWRT_25_988x252-922x235.png",
+      "60": "https://www.imsa.com/wp-content/uploads/sites/32/2019/09/18/26_WT_GTP_60_MSR_ACURA_ARX06-INDY_Petit-922x235.png",
       "93": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/17/2026_IWSC_AcuraMeyerShankRacing_93_988x252-443x113.png",
       "23": "https://www.imsa.com/wp-content/uploads/sites/32/2025/03/17/2026_IWSC_AstonMartinThorTeam_23_988x252-443x113.png",
       "63": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_GTP_63_RILEY_LAMBO_SC63.png"
@@ -25,7 +25,11 @@
       "65": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTDPRO_65_MULTIMATIC_MUSTANG_GT3.png",
       "1": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_GTDPRO_1_PAUL_MILLER_BMW_M4_GT3_EVO.png",
       "9": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTDPRO_9_PFAFF_LAMBORGHINI_HURACAN_EVO2.png",
-      "19": "https://www.imsa.com/wp-content/uploads/sites/32/2023/01/22/2023_IWSC_IronLynx_988x252.png"
+      "19": "https://www.imsa.com/wp-content/uploads/sites/32/2023/01/22/2023_IWSC_IronLynx_988x252.png",
+      "68": "https://www.imsa.com/wp-content/uploads/sites/32/2026/06/20/26_WT_GTDPRO_68_CAR_BLANCHE_ASTON_VANTAGE_EVO_GT3_EVO_VIR_onwards-922x235.png",
+      "59": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/18/2026_IWSC_RLLTeamMcLaren_59_988x252-922x235.png",
+      "911": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/30/26_WT_GTDPRO_911_MANTHEY_PORSCHE_992_GT3R_26_PLM-922x235.png",
+      "033": "https://www.imsa.com/wp-content/uploads/sites/32/2023/01/18/2026_IWSC_TriarsiCompetizione_033_988x252-922x235.png"
     },
     "gtd": {
       "12": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTD_12_VASSER_SULLY_LEXUS_RCF_GT3.png",
@@ -42,7 +46,12 @@
       "83": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTD_83_IRONDAMES_PORSCHE_992_GT3R.png",
       "96": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTD_96_TURNER_BMW_M4_GT3_EVO_LIQUIMOLY.png",
       "120": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTD_120_WRIGHT_PORSCHE_992_GT3R.png",
-      "023": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTD_023_TRIARSI_FERRARI_296_GT3.png"
+      "023": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/19/25_WT_GTD_023_TRIARSI_FERRARI_296_GT3.png",
+      "912": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/18/2026_IWSC_Manthey_912_988x252-922x235.png",
+      "21": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/18/2026_IWSC_AFCorseUSA_21_988x252-922x235.png",
+      "13": "https://www.imsa.com/wp-content/uploads/sites/32/2019/10/08/26_WT_GTD_13_13AUTOSPORT_CORVETTE_GT3_CTMP-922x235.png",
+      "28": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/18/2026_IWSC_RS1_28_988x252-922x235.png",
+      "16": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/18/2026_IWSC_MyersRileyMotorsports_16_988x252-922x235.png"
     },
     "lmp2": {
       "04": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_P2_04_CROWDSTRIKE_APR_ORECA.png",
@@ -53,7 +62,11 @@
       "2": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_P2_2_UNITED_ORECA.png",
       "22": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_P2_22_UNITED_ORECA.png",
       "74": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_P2_74_RILEY_ORECA.png",
-      "88": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_P2_88_PECOM_ORECA.png"
+      "88": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_P2_88_PECOM_ORECA.png",
+      "43": "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/17/2026_IWSC_InterEuropolCompetition_43_988x252-922x235.png",
+      "8": "https://www.imsa.com/wp-content/uploads/sites/32/2020/01/17/2026_IWSC_TowerMotorsports_8_988x252-922x235.png",
+      "37": "https://www.imsa.com/wp-content/uploads/sites/32/2026/01/08/26_WT_P2_37_INTERSPORT_ORECA_CTMP-922x235.png",
+      "99": "https://www.imsa.com/wp-content/uploads/sites/32/2024/01/30/26_WT_P2_99_AO_ORECA_PLM-922x235.png"
     }
   },
   "wec": {

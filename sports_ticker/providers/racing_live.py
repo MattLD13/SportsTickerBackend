@@ -1,4 +1,4 @@
-"""Poll live timing sources for F1, IndyCar, and NASCAR V2 content."""
+"""Poll official racing timing feeds for V2 content."""
 
 from __future__ import annotations
 
@@ -14,17 +14,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
-from .sports_display import espn_competition_stage, nascar_competition_stage, normalize_competition_stage
 
 
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
 _INDYCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
-_NASCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard"
-_NASCAR_LIVE_URL = "https://cf.nascar.com/live/feeds/live-feed.json"
 _F1_CORE_BASE = "https://sports.core.api.espn.com/v2/sports/racing"
 _INDYCAR_BLOB_BASE = "https://indycar.blob.core.windows.net/racecontrol"
-_IMS_LAT = 39.7950
-_IMS_LON = -86.2340
 
 _F1_SESSION_ORDER = (
     ("FirstPractice", "Practice 1", True, 60),
@@ -139,6 +134,8 @@ class LiveRacingSource:
         timeout: float = 10.0,
         clock: Callable[[], float] = time.time,
         now: Callable[[], datetime] | None = None,
+        socket_factory: Callable | None = None,
+        weather_source: object | None = None,
     ) -> None:
         self._client = client or UrllibJsonHttpClient()
         self._text_client = text_client or UrllibTextHttpClient()
@@ -158,35 +155,36 @@ class LiveRacingSource:
         self._indy_timing: tuple[float, dict[str, Any] | None] = (0.0, None)
         self._indy_drivers: tuple[float, dict[str, Mapping[str, Any]]] = (0.0, {})
         self._indy_event_pages: dict[str, tuple[float, dict[str, tuple[datetime, int, str, bool]]]] = {}
-        self._nascar_schedule: tuple[float, list[dict[str, Any]]] = (0.0, [])
-        self._nascar_games: dict[str, dict[str, Any]] = {}
-        self._nascar_timing: tuple[float, dict[str, Any] | None] = (0.0, None)
+        from .racing_weather import CircuitWeatherSource
+        from .racing_cup import CupRacingSource
+        from .racing_endurance import EnduranceRacingSource
+
+        self._circuit_weather = weather_source or CircuitWeatherSource(self._client, timeout=self._timeout, clock=clock)
+        self._cup_source = CupRacingSource(self._client, self._circuit_weather, now=self._now, clock=clock, timeout=self._timeout)
+        self._endurance_source = EnduranceRacingSource(
+            self._client, self._circuit_weather, now=self._now, clock=clock, timeout=self._timeout,
+            **({"socket_factory": socket_factory} if socket_factory is not None else {}),
+        )
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        """Return current F1, IndyCar, and NASCAR content for one ticker settings view."""
+        """Return current sessions for the enabled racing series."""
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
         records: list[dict[str, Any]] = []
         failures: list[str] = []
-        if settings.active_sports.get("f1", True):
+        for series, fetch in (
+            ("f1", self._fetch_f1), ("indycar", self._fetch_indycar), ("nascar", self._cup_source.fetch),
+            ("wec", lambda settings: self._endurance_source.fetch("wec", settings)),
+            ("imsa", lambda settings: self._endurance_source.fetch("imsa", settings)),
+            ("nbr24", lambda settings: self._endurance_source.fetch("nbr24", settings)),
+        ):
+            if not settings.active_sports.get(series, True):
+                continue
             try:
-                records.extend(self._fetch_f1(settings))
+                records.extend(fetch(settings))
             except Exception as error:
-                failures.append(f"f1: {error}")
-                records.extend(self._f1_games.values())
-        if settings.active_sports.get("indycar", True):
-            try:
-                records.extend(self._fetch_indycar(settings))
-            except Exception as error:
-                failures.append(f"indycar: {error}")
-                records.extend(self._indy_games.values())
-        if settings.active_sports.get("nascar", False):
-            try:
-                records.extend(self._fetch_nascar(settings))
-            except Exception as error:
-                failures.append(f"nascar: {error}")
-                records.extend(self._nascar_games.values())
+                failures.append(f"{series}: {error}")
         result: dict[str, object] = {"content": records}
         if failures:
             result["health"] = {
@@ -201,7 +199,7 @@ class LiveRacingSource:
         races = self._fetch_f1_schedule()
         sessions = _f1_relevant_sessions(races, now, settings.timezone)
         if not sessions:
-            return list(self._f1_games.values()) if not races else []
+            return []
         games: list[dict[str, Any]] = []
         active_ids: set[str] = set()
         for race, key, name, practice, start, end, state in sessions:
@@ -460,13 +458,14 @@ class LiveRacingSource:
                 if heartbeat:
                     series = str(heartbeat.get("Series") or "").strip().upper()
                     session_status = str(heartbeat.get("SessionStatus") or "").upper()
-                    flag = _normalize_racing_flag(heartbeat.get("currentFlag") or heartbeat.get("SessionStatus"))
-                    is_live = session_status in {"LIVE", "RUNNING", "OPEN", "GREEN", "YELLOW", "RED", "CHECKERED"} or flag in {"GREEN", "YELLOW", "RED", "CHECKERED", "SAFETY CAR", "VSC"}
-                    if is_live and (not series or series == "I"):
+                    is_live = session_status in {"LIVE", "RUNNING", "OPEN", "GREEN", "YELLOW", "RED"}
+                    source_start = _indycar_session_time(heartbeat, latest=False)
+                    recent = source_start is not None and _in_reset_window(source_start, now, settings.timezone)
+                    if is_live and series == "I" and recent:
                         session_name = str(heartbeat.get("SessionName") or heartbeat.get("EventSessionLabel") or "Race").strip()
                         event_name = str(heartbeat.get("eventName") or "IndyCar").strip()
                         track_name = str(heartbeat.get("trackName") or "").strip()
-                        start = _parse_datetime(_first_text(heartbeat, "startTimeUTC", "StartTimeUTC")) or now
+                        start = source_start
                         race = {
                             "round": str(heartbeat.get("EventID") or heartbeat.get("EventSessionID") or "event"),
                             "race_name": event_name,
@@ -481,7 +480,7 @@ class LiveRacingSource:
                         )
                         if game is not None:
                             return [game]
-            return list(self._indy_games.values()) if not races else []
+            return []
         games: list[dict[str, Any]] = []
         active_ids: set[str] = set()
         for race, key, name, practice, start, end, state in sessions:
@@ -571,22 +570,33 @@ class LiveRacingSource:
         timing_payload = self._fetch_indycar_timing()
         timing = _mapping(_mapping(timing_payload).get("timing_results")) if timing_payload else {}
         heartbeat = _mapping(timing.get("heartbeat")) if timing else {}
-        is_live_on_feed = self._indycar_timing_matches_session(heartbeat, session_key, session_name)
+        is_live_on_feed = self._indycar_timing_matches_session(heartbeat, session_key, session_name, start, end)
         flag = "WHITE" if state == "pre" else "CHECKERED" if state == "post" else "GREEN"
         items: tuple[Mapping[str, Any], ...] = ()
         total_laps = 0
         current_lap = 0
         time_to_go = ""
         track_type = str(heartbeat.get("trackType") or heartbeat.get("TrackType") or "").strip().upper()
-        qualifying_metric = "mph" if track_type == "O" else "time"
+        qualifying_metric = ("mph" if track_type == "O" else "time") if _is_timed_session(session_name) else ""
         if is_live_on_feed:
             flag = _normalize_racing_flag(heartbeat.get("currentFlag") or heartbeat.get("SessionStatus"))
             items = _sequence(timing.get("Item"))
             total_laps = _integer(heartbeat.get("totalLaps") or heartbeat.get("TotalLaps") or heartbeat.get("lapsInEvent"))
             current_lap = max((_integer(item.get("laps")) for item in items), default=0)
             time_to_go = str(heartbeat.get("overallTimeToGo") or "").strip()
+            feed_status = str(heartbeat.get("SessionStatus") or "").upper()
+            if items and feed_status in {"COLD", "FINAL", "OFFICIAL", "FINISHED"}:
+                state, flag = "post", "CHECKERED"
+            elif feed_status in {"LIVE", "RUNNING", "OPEN"}:
+                state = "in"
+        elif state == "in":
+            raise ValueError("IndyCar timing does not match the scheduled active session")
         drivers = [_indycar_driver(item, drivers_index, session_key, track_type) for item in items]
         drivers = sorted((driver for driver in drivers if driver is not None), key=lambda value: value["pos"] or 999)
+        if state == "post" and not drivers:
+            drivers = list(self._indy_games.get(identifier, {}).get("indycar", {}).get("drivers", ()))
+        if state == "post":
+            flag = "CHECKERED"
 
         if state == "post":
             status = "FINAL"
@@ -625,7 +635,7 @@ class LiveRacingSource:
                 "caution": flag in _CAUTION_FLAGS,
                 "flag": flag,
                 "drivers": drivers,
-                "weather": self._fetch_indycar_weather(),
+                "weather": self._circuit_weather.fetch(track_name),
             },
         }
 
@@ -650,11 +660,16 @@ class LiveRacingSource:
         heartbeat: Mapping[str, Any],
         session_key: str,
         session_name: str,
+        start: datetime,
+        end: datetime,
     ) -> bool:
         if not heartbeat:
             return False
         series = str(heartbeat.get("Series") or "").strip().upper()
-        if series and series != "I":
+        if series != "I":
+            return False
+        observed = _indycar_session_time(heartbeat, latest=True)
+        if observed is None or not start - timedelta(minutes=30) <= observed <= end + timedelta(hours=6):
             return False
         feed_type = str(heartbeat.get("SessionType") or "").strip().upper()
         feed_name = str(heartbeat.get("SessionName") or heartbeat.get("EventSessionLabel") or "").strip().lower()
@@ -665,10 +680,12 @@ class LiveRacingSource:
         if "qual" in key_lower and ("qual" in feed_name or feed_type in {"Q", "QUAL"}):
             return True
         if "practice" in key_lower and ("practice" in feed_name or feed_type in {"P", "PRACTICE"}):
-            return True
+            expected_number = re.findall(r"\d+", session_name)
+            feed_number = re.findall(r"\d+", feed_name)
+            return not expected_number or expected_number == feed_number
         if "warm" in key_lower and "warm" in feed_name:
             return True
-        return feed_name in name_lower or name_lower in feed_name
+        return bool(feed_name) and (feed_name in name_lower or name_lower in feed_name)
 
     def _fetch_indycar_drivers(self) -> dict[str, Mapping[str, Any]]:
         now = self._clock()
@@ -687,176 +704,6 @@ class LiveRacingSource:
         except Exception:
             return {}
 
-    def _fetch_indycar_weather(self) -> dict[str, str]:
-        url = f"https://api.open-meteo.com/v1/forecast?{urlencode({'latitude': _IMS_LAT, 'longitude': _IMS_LON, 'current': 'temperature_2m,wind_speed_10m,wind_direction_10m', 'temperature_unit': 'fahrenheit', 'wind_speed_unit': 'mph', 'timezone': 'auto'})}"
-        try:
-            current = _mapping(_mapping(self._client.get_json(url, timeout=self._timeout)).get("current"))
-            return {
-                "air_temp": _rounded(current.get("temperature_2m")),
-                "wind_mph": _rounded(current.get("wind_speed_10m")),
-                "wind_dir": _rounded(current.get("wind_direction_10m")),
-            }
-        except Exception:
-            return {}
-
-    def _fetch_nascar(self, settings: DisplaySettings) -> list[dict[str, Any]]:
-        now = self._now().astimezone(timezone.utc)
-        races = self._fetch_nascar_schedule()
-        sessions = _nascar_relevant_sessions(races, now, settings.timezone)
-        if not sessions:
-            if not races:
-                timing_payload = self._fetch_nascar_timing()
-                if timing_payload:
-                    flag_state = _integer(timing_payload.get("flag_state"))
-                    is_live = flag_state in {1, 2, 3}
-                    if is_live:
-                        event_name = str(timing_payload.get("run_name") or "NASCAR").strip()
-                        track_name = str(timing_payload.get("track_name") or "").strip()
-                        start = now
-                        race = {
-                            "round": str(timing_payload.get("race_id") or "event"),
-                            "race_name": event_name,
-                            "track": track_name,
-                            "location": track_name,
-                            "sessions": {"Race": (start, 240, "Race", False)},
-                        }
-                        game = self._build_nascar_game(
-                            race, "Race", "Race", False, start, start + timedelta(minutes=240), "in", now, settings.timezone
-                        )
-                        if game is not None:
-                            return [game]
-            return list(self._nascar_games.values()) if not races else []
-        games: list[dict[str, Any]] = []
-        active_ids: set[str] = set()
-        for race, key, name, practice, start, end, state in sessions:
-            identifier = f"nascar_{race['round']}_{key.lower()}"
-            active_ids.add(identifier)
-            game = self._build_nascar_game(
-                race, key, name, practice, start, end, state, now, settings.timezone
-            )
-            if game is not None:
-                self._nascar_games[identifier] = game
-                games.append(game)
-        for identifier in tuple(self._nascar_games):
-            if identifier not in active_ids:
-                del self._nascar_games[identifier]
-        return games
-
-    def _fetch_nascar_schedule(self) -> list[dict[str, Any]]:
-        now_ts = self._clock()
-        cached_at, cached = self._nascar_schedule
-        if cached and now_ts - cached_at < 3600:
-            return cached
-        try:
-            payload = self._client.get_json(
-                f"{_NASCAR_ESPN_URL}?dates={self._now().year}",
-                timeout=self._timeout,
-            )
-            events = _sequence(_mapping(payload).get("events"))
-            races = [_nascar_event_to_race(event) for event in events if _mapping(event)]
-        except Exception:
-            return []
-        races = [race for race in races if race.get("sessions")]
-        stage_by_date = {}
-        try:
-            metadata = self._client.get_json(
-                f"https://cf.nascar.com/cacher/{self._now().year}/race_list_basic.json", timeout=self._timeout,
-            )
-            for entry in _sequence(_mapping(metadata).get("series_1")):
-                scheduled = _parse_datetime(entry.get("date_scheduled"))
-                if scheduled is not None:
-                    stage_by_date[scheduled.date()] = nascar_competition_stage(entry)
-        except (JsonHttpError, OSError, ValueError, TypeError):
-            stage_by_date = {}
-        for race in races:
-            start = race["sessions"]["Race"][0]
-            day = start.astimezone(ZoneInfo("America/New_York")).date()
-            race["competition_stage"] = max(race["competition_stage"], stage_by_date.get(day, 0))
-        self._nascar_schedule = (now_ts, races)
-        return races
-
-    def _fetch_nascar_timing(self) -> dict[str, Any] | None:
-        now = self._clock()
-        cached_at, cached = self._nascar_timing
-        if cached is not None and now - cached_at < 8:
-            return cached
-        try:
-            payload = self._client.get_json(
-                f"{_NASCAR_LIVE_URL}?{urlencode({'_': int(now * 1000)})}",
-                timeout=self._timeout,
-            )
-            data = _mapping(payload)
-            self._nascar_timing = (now, data if data else None)
-            return data
-        except Exception:
-            return None
-
-    def _build_nascar_game(
-        self,
-        race: Mapping[str, Any],
-        session_key: str,
-        session_name: str,
-        practice: bool,
-        start: datetime,
-        end: datetime,
-        state: str,
-        now: datetime,
-        timezone_name: str,
-    ) -> dict[str, Any] | None:
-        identifier = f"nascar_{race['round']}_{session_key.lower()}"
-        event_name = str(race.get("race_name") or "NASCAR")
-        track_name = str(race.get("track") or "")
-        short_event = _nascar_short_event(event_name, track_name)
-        timing = self._fetch_nascar_timing() or {}
-        flag_num = _integer(timing.get("flag_state"))
-        flag = _NASCAR_FLAGS.get(flag_num, "GREEN")
-        is_live_on_feed = flag_num in {1, 2, 3}
-        total_laps = _integer(timing.get("laps_in_race"))
-        current_lap = _integer(timing.get("lap_number"))
-        vehicles = _sequence(timing.get("vehicles")) if is_live_on_feed or state == "post" else ()
-        drivers = [_nascar_driver(v) for v in vehicles]
-        drivers = sorted((d for d in drivers if d is not None), key=lambda value: value["pos"] or 999)
-
-        if state == "post":
-            status = "FINAL"
-        elif state == "in":
-            status = f"Lap {current_lap}/{total_laps}" if current_lap and total_laps else flag
-        else:
-            status = _format_local_time(start, timezone_name)
-
-        stage_info = _mapping(timing.get("stage"))
-        stage_num = _integer(stage_info.get("stage_num"))
-
-        return {
-            "id": identifier,
-            "type": "racing",
-            "sport": "nascar",
-            "competition_stage": normalize_competition_stage(race.get("competition_stage")),
-            "state": state,
-            "status": status,
-            "is_shown": True,
-            "startTimeUTC": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "away_abbr": short_event,
-            "home_abbr": session_name,
-            "away_score": "",
-            "home_score": "",
-            "nascar": {
-                "event_name": short_event,
-                "short_name": short_event,
-                "raw_event_name": event_name,
-                "raw_session_name": session_name,
-                "track_name": track_name,
-                "session_type": session_name,
-                "session_name": session_name,
-                "lap": current_lap,
-                "total_laps": total_laps,
-                "laps_remaining": max(0, total_laps - current_lap),
-                "stage": f"Stage {stage_num}" if stage_num else "",
-                "caution": flag in _CAUTION_FLAGS,
-                "flag": flag,
-                "drivers": drivers,
-            },
-        }
 
 
 def _f1_statistics(value: object) -> dict[str, Mapping[str, Any]]:
@@ -1165,6 +1012,16 @@ def _indycar_driver(
     }
 
 
+def _indycar_session_time(heartbeat: Mapping[str, Any], *, latest: bool) -> datetime | None:
+    """Read timing identity from dated session fields and race-control timestamps."""
+    values = [_parse_datetime(heartbeat.get(key)) for key in ("startTimeUTC", "StartTimeUTC")]
+    for dates in _mapping(heartbeat.get("flagCounts")).values():
+        if isinstance(dates, (tuple, list)):
+            values.extend(_parse_datetime(value) for value in dates)
+    dates = [value for value in values if value is not None]
+    return (max(dates) if latest else min(dates)) if dates else None
+
+
 def _team_livery(value: object) -> tuple[str, str]:
     lower = str(value or "").lower()
     return next((colors for key, colors in _INDYCAR_LIVERIES.items() if key in lower), ("#888888", "#333333"))
@@ -1214,6 +1071,8 @@ _FLAG_MAP = {
     "VSC": "VSC",
     "FCY": "FCY",
     "SC": "SAFETY CAR",
+    "CODE60": "CODE60",
+    "CODE 60": "CODE60",
     "RED": "RED FLAG",
 }
 _SORTED_FLAG_KEYS = sorted(_FLAG_MAP.keys(), key=len, reverse=True)
@@ -1224,6 +1083,7 @@ _CAUTION_FLAGS = {
     "SAFETY CAR",
     "VSC",
     "FCY",
+    "CODE60",
     "RED",
     "RED FLAG",
     "SC ENDING",
@@ -1232,7 +1092,7 @@ _CAUTION_FLAGS = {
 
 
 def _normalize_racing_flag(flag: object, status: object = None) -> str:
-    raw = str(flag or status or "").strip().upper()
+    raw = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(flag or status or "").strip()).upper()
     if not raw:
         return "GREEN"
     if raw in _FLAG_MAP:
@@ -1259,57 +1119,6 @@ _NASCAR_FLAGS = {
     8: "WARMUP",
     9: "COLD",
 }
-
-
-def _nascar_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
-    competitions = _sequence(event.get("competitions"))
-    venue = _mapping(competitions[0].get("venue")) if competitions else {}
-    address = _mapping(venue.get("address"))
-    start = _parse_datetime(event.get("date") or (competitions[0].get("date") if competitions else None))
-    sessions: dict[str, tuple[datetime, int, str, bool]] = {}
-    if start is not None:
-        sessions["Race"] = (start, 240, "Race", False)
-    race_name = str(event.get("name") or "NASCAR")
-    track = str(venue.get("fullName") or address.get("city") or race_name)
-    location = str(address.get("city") or "")
-    round_id = str(event.get("id") or "event")
-    return {
-        "round": round_id,
-        "competition_stage": espn_competition_stage(event),
-        "race_name": race_name,
-        "track": track,
-        "location": location,
-        "sessions": sessions,
-    }
-
-
-def _nascar_relevant_sessions(
-    races: Sequence[Mapping[str, Any]],
-    now: datetime,
-    timezone_name: str,
-) -> list[tuple[Mapping[str, Any], str, str, bool, datetime, datetime, str]]:
-    for race in sorted(
-        races,
-        key=lambda item: min(
-            (value[0] for value in _mapping(item.get("sessions")).values()),
-            default=datetime.max.replace(tzinfo=timezone.utc),
-        ),
-    ):
-        sessions = []
-        for key, start_data in _mapping(race.get("sessions")).items():
-            start, duration, label, practice = start_data
-            end = start + timedelta(minutes=duration)
-            sessions.append((key, label, practice, start, end))
-        if not sessions:
-            continue
-        relevant = []
-        for key, label, practice, start, end in sessions:
-            state = _session_lifecycle_state(start, end, now, timezone_name)
-            if state:
-                relevant.append((race, key, label, practice, start, end, state))
-        if relevant:
-            return sorted(relevant, key=lambda value: value[4])
-    return []
 
 
 def _nascar_short_event(event_name: str, track_name: str) -> str:
@@ -1354,8 +1163,11 @@ def _nascar_driver(vehicle: Mapping[str, Any]) -> dict[str, Any] | None:
         return None
     driver = _mapping(vehicle.get("driver"))
     name = str(driver.get("full_name") or f"{driver.get('first_name', '')} {driver.get('last_name', '')}").strip()
+    name = re.sub(r"\s*\([A-Za-z]+\)$", "", name)
     first = str(driver.get("first_name") or "")
-    last = str(driver.get("last_name") or "")
+    last = re.sub(r"\s*\([A-Za-z]+\)$", "", str(driver.get("last_name") or ""))
+    if not last and name:
+        first, _, last = name.rpartition(" ")
     car = str(vehicle.get("vehicle_number") or "").strip()
     sponsor = str(vehicle.get("sponsor_name") or "").strip()
     mfr = str(vehicle.get("vehicle_manufacturer") or "").strip()

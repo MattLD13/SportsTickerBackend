@@ -32,7 +32,16 @@ class TextFixture:
 
 
 def _settings(**active_sports: bool) -> DisplaySettings:
-    return DisplaySettings(active_sports=active_sports, timezone="America/New_York")
+    return DisplaySettings(active_sports={**dict.fromkeys(("f1", "indycar", "nascar", "wec", "imsa", "nbr24"), False), **active_sports}, timezone="America/New_York")
+
+
+class NoCircuitWeather:
+    def fetch(self, track, country=""):
+        return {"available": False}
+
+
+def _source(client, *args, **kwargs):
+    return LiveRacingSource(client, *args, weather_source=NoCircuitWeather(), **kwargs)
 
 
 def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
@@ -65,7 +74,7 @@ def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
             "https://api.open-meteo.com/v1/forecast": {"current": {"temperature_2m": 72, "wind_speed_10m": 4, "wind_direction_10m": 180}},
         }
     )
-    source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
+    source = _source(client, now=lambda: now, clock=lambda: now.timestamp())
 
     result = source.fetch(_settings(f1=False, indycar=True))
 
@@ -167,7 +176,7 @@ def test_indycar_expired_post_session_clears_after_3am() -> None:
             "https://api.open-meteo.com/v1/forecast": {"current": {"temperature_2m": 72, "wind_speed_10m": 4, "wind_direction_10m": 180}},
         }
     )
-    source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
+    source = _source(client, now=lambda: now, clock=lambda: now.timestamp())
 
     result = source.fetch(_settings(f1=False, indycar=True))
 
@@ -212,7 +221,7 @@ def test_indycar_session_lifecycle_and_3am_rollover() -> None:
             "https://api.open-meteo.com/v1/forecast": {"current": {"temperature_2m": 72, "wind_speed_10m": 4, "wind_direction_10m": 180}},
         }
     )
-    source_post = LiveRacingSource(client_post, now=lambda: now_same_day, clock=lambda: now_same_day.timestamp())
+    source_post = _source(client_post, now=lambda: now_same_day, clock=lambda: now_same_day.timestamp())
     result_post = source_post.fetch(_settings(f1=False, indycar=True))
     assert len(result_post["content"]) >= 1
     race_game = next(g for g in result_post["content"] if g["home_abbr"] == "Race")
@@ -236,7 +245,7 @@ def test_indycar_session_lifecycle_and_3am_rollover() -> None:
         "https://indycar.blob.core.windows.net/racecontrol/driversfeed.json": {"drivers": {"driver": []}},
         "https://api.open-meteo.com/v1/forecast": {"current": {}},
     }
-    source_early = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_early, clock=lambda: now_early.timestamp())
+    source_early = _source(JsonFixture(data_upcoming), now=lambda: now_early, clock=lambda: now_early.timestamp())
     assert len(source_early.fetch(_settings(f1=False, indycar=True))["content"]) == 0
 
     weekend_page = """
@@ -250,7 +259,7 @@ def test_indycar_session_lifecycle_and_3am_rollover() -> None:
         <div class="schedule-description">NTT INDYCAR SERIES - Qualifying</div>
     </div>
     """
-    source_sat = LiveRacingSource(
+    source_sat = _source(
         JsonFixture(data_upcoming),
         text_client=TextFixture(weekend_page),
         now=lambda: now_sat,
@@ -302,116 +311,6 @@ def test_indycar_weekend_session_html_parser() -> None:
     assert p1_dur == 90
     assert p1_practice is True
     assert p1_start == datetime(2026, 8, 22, 13, 0, tzinfo=timezone.utc)
-
-
-def test_nascar_polls_official_live_feed() -> None:
-    now = datetime(2026, 8, 16, 20, 0, tzinfo=timezone.utc)
-    client = JsonFixture(
-        {
-            "https://cf.nascar.com/live/feeds/live-feed.json": {
-                "race_id": 5622,
-                "run_name": "Cook Out 400",
-                "track_name": "Richmond Raceway",
-                "lap_number": 250,
-                "laps_in_race": 400,
-                "flag_state": 1,
-                "stage": {"stage_num": 2},
-                "vehicles": [
-                    {
-                        "running_position": 1,
-                        "vehicle_number": "22",
-                        "sponsor_name": "Shell Pennzoil",
-                        "is_on_track": True,
-                        "delta": 0.0,
-                        "driver": {"first_name": "Joey", "last_name": "Logano", "full_name": "Joey Logano"},
-                    },
-                    {
-                        "running_position": 2,
-                        "vehicle_number": "19",
-                        "sponsor_name": "Bass Pro Shops",
-                        "is_on_track": True,
-                        "delta": 0.425,
-                        "driver": {"first_name": "Chase", "last_name": "Briscoe", "full_name": "Chase Briscoe"},
-                    },
-                ],
-            },
-            "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
-                "events": [
-                    {"id": "5622", "name": "Cook Out 400", "date": "2026-08-16T19:00Z"},
-                ]
-            },
-        }
-    )
-    client.values["https://cf.nascar.com/cacher/2026/race_list_basic.json"] = {"series_1": []}
-    source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
-    result = source.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))
-
-    assert len(result["content"]) == 1
-    game = result["content"][0]
-    assert game["sport"] == "nascar"
-    assert game["state"] == "in"
-    assert game["status"] == "Lap 250/400"
-    assert game["nascar"]["event_name"] == "Cook Out 400"
-    assert game["nascar"]["stage"] == "Stage 2"
-    assert game["nascar"]["drivers"][0]["name"] == "Joey Logano"
-    assert game["nascar"]["drivers"][0]["car"] == "22"
-    assert game["nascar"]["drivers"][0]["gap"] == "Leader"
-    assert game["nascar"]["drivers"][1]["gap"] == "+0.425s"
-
-    normalized = RacingProvider(source).fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))
-    assert normalized.content[0].family == "racing"
-    assert normalized.content[0].kind == "nascar"
-    assert normalized.content[0].data["sport"] == "nascar"
-
-
-def test_nascar_session_lifecycle_and_3am_rollover() -> None:
-    # 1. Race finished Sunday Aug 16: Tuesday Aug 18 is past Monday 3 AM reset -> cleared
-    now_past = datetime(2026, 8, 18, 17, 0, tzinfo=timezone.utc)
-    client_past = JsonFixture(
-        {
-            "https://cf.nascar.com/live/feeds/live-feed.json": {
-                "race_id": 5622,
-                "run_name": "Cook Out 400",
-                "track_name": "Richmond Raceway",
-                "lap_number": 400,
-                "laps_in_race": 400,
-                "flag_state": 9,
-                "vehicles": [],
-            },
-            "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
-                "events": [
-                    {"id": "5622", "name": "Cook Out 400", "date": "2026-08-16T19:00Z"},
-                    {"id": "5623", "name": "Coke Zero Sugar 400", "date": "2026-08-22T23:30Z"},
-                ]
-            },
-        }
-    )
-    client_past.values["https://cf.nascar.com/cacher/2026/race_list_basic.json"] = {"series_1": []}
-    source_past = LiveRacingSource(client_past, now=lambda: now_past, clock=lambda: now_past.timestamp())
-    assert len(source_past.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))["content"]) == 0
-
-    # 2. Upcoming Race: Saturday Aug 22 at 23:30 UTC -> Hidden on Aug 19, Shown on Aug 22
-    now_early = datetime(2026, 8, 19, 14, 0, tzinfo=timezone.utc)
-    now_race_day = datetime(2026, 8, 22, 14, 0, tzinfo=timezone.utc)
-    data_upcoming = {
-        "https://cf.nascar.com/cacher/2026/race_list_basic.json": {"series_1": []},
-        "https://cf.nascar.com/live/feeds/live-feed.json": {},
-        "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
-            "events": [
-                {"id": "5623", "name": "Coke Zero Sugar 400", "date": "2026-08-22T23:30Z"},
-            ]
-        },
-    }
-    source_early = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_early, clock=lambda: now_early.timestamp())
-    assert len(source_early.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))["content"]) == 0
-
-    source_race_day = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_race_day, clock=lambda: now_race_day.timestamp())
-    result_race_day = source_race_day.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))
-    assert len(result_race_day["content"]) == 1
-    game = result_race_day["content"][0]
-    assert game["sport"] == "nascar"
-    assert game["state"] == "pre"
-    assert game["status"] == "7:30 PM"
 
 
 def test_racing_standardized_flags() -> None:

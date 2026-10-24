@@ -1,0 +1,515 @@
+{
+  "session": {
+    "championship_name": "IMSA WeatherTech SportsCar Championship",
+    "event_name": "29th Annual Motul Petit Le Mans",
+    "session_name": "Race",
+    "report_mark": "Official",
+    "revised_mark": "",
+    "report_message": "",
+    "session_type": "Race",
+    "session_date": "03-10-2026 12:10",
+    "creation_date": "09-10-2026 09:11:43",
+    "circuit": {
+      "name": "Road Atlanta",
+      "length": 4087.724,
+      "country": "United States"
+    },
+    "weather": {
+      "air_temperature": "24.30 \u00baC",
+      "track_temperature": "23.00 \u00baC",
+      "track_status": "Wet"
+    },
+    "finalize_type": {
+      "type": "By Time",
+      "time_in_seconds": 36000
+    }
+  },
+  "classification": [
+    {
+      "position": 1,
+      "number": "6",
+      "gap_first": "-",
+      "laps": "368",
+      "class": "GTP",
+      "manufacturer": "Porsche",
+      "team": "Porsche Penske Motorsport"
+    },
+    {
+      "position": 2,
+      "number": "24",
+      "gap_first": "+1.205",
+      "laps": "368",
+      "class": "GTP",
+      "manufacturer": "BMW",
+      "team": "BMW M Team WRT"
+    },
+    {
+      "position": 3,
+      "number": "40",
+      "gap_first": "+8.630",
+      "laps": "368",
+      "class": "GTP",
+      "manufacturer": "Cadillac",
+      "team": "Cadillac Wayne Taylor Racing"
+    },
+    {
+      "position": 4,
+      "number": "10",
+      "gap_first": "+9.266",
+      "laps": "368",
+      "class": "GTP",
+      "manufacturer": "Cadillac",
+      "team": "Cadillac Wayne Taylor Racing"
+    },
+    {
+      "position": 5,
+      "number": "23",
+      "gap_first": "+31.466",
+      "laps": "368",
+      "class": "GTP",
+      "manufacturer": "Aston Martin",
+      "team": "ASTON MARTIN THOR Team"
+    },
+    {
+      "position": 6,
+      "number": "60",
+      "gap_first": "+42.082",
+      "laps": "368",
+      "class": "GTP",
+      "manufacturer": "Acura",
+      "team": "Acura Meyer Shank Racing w/Curb Agajanian"
+    },
+    {
+      "position": 7,
+      "number": "04",
+      "gap_first": "6 Laps",
+      "laps": "362",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Crowdstrike Racing by APR"
+    },
+    {
+      "position": 8,
+      "number": "43",
+      "gap_first": "6 Laps",
+      "laps": "362",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Inter Europol Competition"
+    },
+    {
+      "position": 9,
+      "number": "18",
+      "gap_first": "6 Laps",
+      "laps": "362",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Era Motorsport"
+    },
+    {
+      "position": 10,
+      "number": "8",
+      "gap_first": "6 Laps",
+      "laps": "362",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Tower Motorsports"
+    },
+    {
+      "position": 11,
+      "number": "73",
+      "gap_first": "6 Laps",
+      "laps": "362",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Pratt Miller Motorsports"
+    },
+    {
+      "position": 12,
+      "number": "22",
+      "gap_first": "7 Laps",
+      "laps": "361",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "United Autosports USA"
+    },
+    {
+      "position": 13,
+      "number": "37",
+      "gap_first": "8 Laps",
+      "laps": "360",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Intersport Racing"
+    },
+    {
+      "position": 14,
+      "number": "52",
+      "gap_first": "8 Laps",
+      "laps": "360",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "Bryan Herta Autosport with PR1/Mathiasen"
+    },
+    {
+      "position": 15,
+      "number": "2",
+      "gap_first": "9 Laps",
+      "laps": "359",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "United Autosports USA"
+    },
+    {
+      "position": 16,
+      "number": "31",
+      "gap_first": "12 Laps",
+      "laps": "356",
+      "class": "GTP",
+      "manufacturer": "Cadillac",
+      "team": "Cadillac Whelen"
+    },
+    {
+      "position": 17,
+      "number": "68",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Aston Martin",
+      "team": "Car Blanche"
+    },
+    {
+      "position": 18,
+      "number": "77",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Porsche",
+      "team": "AO Racing"
+    },
+    {
+      "position": 19,
+      "number": "1",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "BMW",
+      "team": "Paul Miller Racing"
+    },
+    {
+      "position": 20,
+      "number": "9",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Lamborghini",
+      "team": "Pfaff Motorsports"
+    },
+    {
+      "position": 21,
+      "number": "62",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Ferrari",
+      "team": "Risi Competizione"
+    },
+    {
+      "position": 22,
+      "number": "74",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Chevrolet",
+      "team": "DragonSpeed"
+    },
+    {
+      "position": 23,
+      "number": "911",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Porsche",
+      "team": "Manthey"
+    },
+    {
+      "position": 24,
+      "number": "3",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Chevrolet",
+      "team": "Corvette Racing by Pratt Miller Motorsports"
+    },
+    {
+      "position": 25,
+      "number": "64",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Ford",
+      "team": "Ford Racing"
+    },
+    {
+      "position": 26,
+      "number": "14",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Lexus",
+      "team": "Vasser Sullivan Racing"
+    },
+    {
+      "position": 27,
+      "number": "65",
+      "gap_first": "19 Laps",
+      "laps": "349",
+      "class": "GTDPRO",
+      "manufacturer": "Ford",
+      "team": "Ford Racing"
+    },
+    {
+      "position": 28,
+      "number": "4",
+      "gap_first": "20 Laps",
+      "laps": "348",
+      "class": "GTDPRO",
+      "manufacturer": "Chevrolet",
+      "team": "Corvette Racing by Pratt Miller Motorsports"
+    },
+    {
+      "position": 29,
+      "number": "57",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Mercedes-AMG",
+      "team": "Winward Racing"
+    },
+    {
+      "position": 30,
+      "number": "912",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Porsche",
+      "team": "Manthey 1St Phorm"
+    },
+    {
+      "position": 31,
+      "number": "36",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Chevrolet",
+      "team": "DXDT Racing"
+    },
+    {
+      "position": 32,
+      "number": "80",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Mercedes-AMG",
+      "team": "Lone Star Racing"
+    },
+    {
+      "position": 33,
+      "number": "44",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Aston Martin",
+      "team": "Magnus Racing"
+    },
+    {
+      "position": 34,
+      "number": "21",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Ferrari",
+      "team": "Af Corse Usa"
+    },
+    {
+      "position": 35,
+      "number": "120",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Porsche",
+      "team": "Wright Motorsports"
+    },
+    {
+      "position": 36,
+      "number": "70",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Ferrari",
+      "team": "Inception Racing"
+    },
+    {
+      "position": 37,
+      "number": "023",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Ferrari",
+      "team": "Triarsi Competizione"
+    },
+    {
+      "position": 38,
+      "number": "13",
+      "gap_first": "22 Laps",
+      "laps": "346",
+      "class": "GTD",
+      "manufacturer": "Chevrolet",
+      "team": "13 Autosport"
+    },
+    {
+      "position": 39,
+      "number": "99",
+      "gap_first": "27 Laps",
+      "laps": "341",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "AO Racing"
+    },
+    {
+      "position": 40,
+      "number": "12",
+      "gap_first": "29 Laps",
+      "laps": "339",
+      "class": "GTD",
+      "manufacturer": "Lexus",
+      "team": "Vasser Sullivan Racing"
+    },
+    {
+      "position": 41,
+      "number": "7",
+      "gap_first": "60 Laps",
+      "laps": "308",
+      "class": "GTP",
+      "manufacturer": "Porsche",
+      "team": "Porsche Penske Motorsport"
+    },
+    {
+      "position": 42,
+      "number": "28",
+      "gap_first": "75 Laps",
+      "laps": "293",
+      "class": "GTD",
+      "manufacturer": "Porsche",
+      "team": "Rs1"
+    },
+    {
+      "position": 43,
+      "number": "5",
+      "gap_first": "78 Laps",
+      "laps": "290",
+      "class": "GTP",
+      "manufacturer": "Porsche",
+      "team": "JDC-Miller MotorSports"
+    },
+    {
+      "position": 44,
+      "number": "93",
+      "gap_first": "111 Laps",
+      "laps": "257",
+      "class": "GTP",
+      "manufacturer": "Acura",
+      "team": "Acura Meyer Shank Racing w/Curb Agajanian"
+    },
+    {
+      "position": 45,
+      "number": "34",
+      "gap_first": "112 Laps",
+      "laps": "256",
+      "class": "GTD",
+      "manufacturer": "Ferrari",
+      "team": "Conquest Racing"
+    },
+    {
+      "position": 46,
+      "number": "033",
+      "gap_first": "117 Laps",
+      "laps": "251",
+      "class": "GTDPRO",
+      "manufacturer": "Ferrari",
+      "team": "Triarsi Competizione"
+    },
+    {
+      "position": 47,
+      "number": "59",
+      "gap_first": "187 Laps",
+      "laps": "181",
+      "class": "GTDPRO",
+      "manufacturer": "McLaren",
+      "team": "RLL Team McLaren"
+    },
+    {
+      "position": 48,
+      "number": "25",
+      "gap_first": "207 Laps",
+      "laps": "161",
+      "class": "GTP",
+      "manufacturer": "BMW",
+      "team": "BMW M Team WRT"
+    },
+    {
+      "position": 49,
+      "number": "16",
+      "gap_first": "209 Laps",
+      "laps": "159",
+      "class": "GTD",
+      "manufacturer": "Ford",
+      "team": "Myers Riley Motorsports"
+    },
+    {
+      "position": 50,
+      "number": "66",
+      "gap_first": "209 Laps",
+      "laps": "159",
+      "class": "GTD",
+      "manufacturer": "Ford",
+      "team": "Gradient Racing"
+    },
+    {
+      "position": 51,
+      "number": "11",
+      "gap_first": "215 Laps",
+      "laps": "153",
+      "class": "LMP2",
+      "manufacturer": "Gibson",
+      "team": "TDS Racing"
+    },
+    {
+      "position": 52,
+      "number": "45",
+      "gap_first": "258 Laps",
+      "laps": "110",
+      "class": "GTD",
+      "manufacturer": "Lamborghini",
+      "team": "Wayne Taylor Racing"
+    },
+    {
+      "position": 53,
+      "number": "27",
+      "gap_first": "331 Laps",
+      "laps": "37",
+      "class": "GTD",
+      "manufacturer": "Aston Martin",
+      "team": "Heart of Racing Team"
+    },
+    {
+      "position": 54,
+      "number": "96",
+      "gap_first": "350 Laps",
+      "laps": "18",
+      "class": "GTD",
+      "manufacturer": "BMW",
+      "team": "Turner Motorsport"
+    }
+  ]
+}

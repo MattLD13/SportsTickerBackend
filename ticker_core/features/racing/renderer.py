@@ -1,4 +1,4 @@
-"""Independent IndyCar, F1, and NASCAR content renderer."""
+"""Render racing sessions and complete classifications from explicit data."""
 
 from __future__ import annotations
 
@@ -220,7 +220,7 @@ class RacingRenderer:
     def _draw_driver_panel(self, image: Image.Image, payload: Mapping[str, Any], item: Mapping[str, Any], x_offset: int, elapsed: float) -> None:
         panel_width = PANEL_WIDTH - x_offset
         panel = Image.new("RGBA", (panel_width, PANEL_HEIGHT), (0, 0, 0, 0))
-        drivers = sorted(_drivers(payload), key=_driver_position)[:10]
+        drivers = sorted(_drivers(payload), key=_driver_position)
         if not drivers:
             label = _header_label(payload)
             draw_tiny_text(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(label)) // 2), 10, label, (180, 210, 255))
@@ -232,7 +232,7 @@ class RacingRenderer:
             image.paste(panel, (x_offset, 0), panel)
             return
         session = str(payload.get("session_name") or payload.get("session_type") or "").lower()
-        metric = str(payload.get("qualifying_metric") or "time").lower()
+        metric = str(payload.get("qualifying_metric") or "").lower()
         timed = _is_timed_session(session) or metric in {"mph", "time"}
         f1 = str(item.get("sport") or "").lower() == "f1"
         key = (tuple(_driver_key(driver) for driver in drivers), timed, f1, metric, self.assets.revision)
@@ -272,9 +272,11 @@ class RacingRenderer:
 
     def _driver_card(self, driver: Mapping[str, Any], qualifying: bool, f1: bool, metric: str) -> Image.Image:
         position = str(driver.get("pos") or "")
-        name = str(driver.get("name") or driver.get("abbr") or "???").strip()
+        name = str(driver.get("display_name") or driver.get("name") or driver.get("abbr") or "???").strip()
         car_number = str(driver.get("car") or "").strip()
         place = _ordinal(position)
+        if driver.get("class") and driver.get("class_pos"):
+            place = f"{driver['class']} P{driver['class_pos']}"
         name_font = self.fonts.normal
         name_width = _text_width(name_font, name)
         if name_width > 72:
@@ -553,7 +555,7 @@ def _driver_position(driver: Mapping[str, Any]) -> int:
 
 def _driver_key(driver: Mapping[str, Any]) -> tuple[str, ...]:
     """Return rendering fields used to cache driver cards."""
-    return tuple(str(driver.get(key) or "") for key in ("pos", "name", "abbr", "car", "team_logo", "car_illustration", "gap", "best_time", "interval", "speed", "livery_primary", "livery_secondary"))
+    return tuple(str(driver.get(key) or "") for key in ("pos", "name", "display_name", "class", "class_pos", "abbr", "car", "team_logo", "car_illustration", "gap", "best_time", "interval", "speed", "livery_primary", "livery_secondary"))
 
 
 def _hex(value: str, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
