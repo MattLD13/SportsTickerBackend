@@ -19,6 +19,7 @@ from PIL import Image
 from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentRendererCatalog, ContentScene
 from ticker_core.rendering.strip import compose_pane_strip
+from ticker_core.rendering.style import pane_divider_colors
 from ticker_core.runtime import Content, StripLayout, StripSegment
 
 
@@ -423,6 +424,10 @@ def _compose_tiled_strip(
     pane_strip = compose_pane_strip(
         ((surfaces[segment.item_id].image if segment.item_id in surfaces else None, segment.width) for segment in layout.segments),
         height,
+        divider_colors=pane_divider_colors(
+            surfaces[segment.item_id].scene.get("competition_stage") if segment.item_id in surfaces else None
+            for segment in layout.segments
+        ),
     )
     repeat_count = (384 + layout.width - 1) // layout.width + 1
     tiled = Image.new("RGB", (layout.width * repeat_count, height), "black")

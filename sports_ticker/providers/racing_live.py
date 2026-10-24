@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
+from .sports_display import espn_competition_stage, nascar_competition_stage, normalize_competition_stage
 
 
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
@@ -756,6 +757,21 @@ class LiveRacingSource:
         except Exception:
             return []
         races = [race for race in races if race.get("sessions")]
+        stage_by_date = {}
+        try:
+            metadata = self._client.get_json(
+                f"https://cf.nascar.com/cacher/{self._now().year}/race_list_basic.json", timeout=self._timeout,
+            )
+            for entry in _sequence(_mapping(metadata).get("series_1")):
+                scheduled = _parse_datetime(entry.get("date_scheduled"))
+                if scheduled is not None:
+                    stage_by_date[scheduled.date()] = nascar_competition_stage(entry)
+        except (JsonHttpError, OSError, ValueError, TypeError):
+            stage_by_date = {}
+        for race in races:
+            start = race["sessions"]["Race"][0]
+            day = start.astimezone(ZoneInfo("America/New_York")).date()
+            race["competition_stage"] = max(race["competition_stage"], stage_by_date.get(day, 0))
         self._nascar_schedule = (now_ts, races)
         return races
 
@@ -815,6 +831,7 @@ class LiveRacingSource:
             "id": identifier,
             "type": "racing",
             "sport": "nascar",
+            "competition_stage": normalize_competition_stage(race.get("competition_stage")),
             "state": state,
             "status": status,
             "is_shown": True,
@@ -1258,6 +1275,7 @@ def _nascar_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
     round_id = str(event.get("id") or "event")
     return {
         "round": round_id,
+        "competition_stage": espn_competition_stage(event),
         "race_name": race_name,
         "track": track,
         "location": location,

@@ -1,6 +1,7 @@
 """Own Mini wire fields shared by backend projection and generated C++ filtering."""
 
 SPORTS_FIELDS = {'sport': True,
+ 'competition_stage': True,
  'league': True,
  'away_logo_asset': True,
  'home_logo_asset': True,

@@ -19,6 +19,7 @@ from ticker_core.context import RenderContext
 from ticker_core.platform.wifi import HotspotDetails, WiFiSetupState
 from ticker_core.rendering import ContentScene
 from ticker_core.rendering.strip import compose_pane_strip
+from ticker_core.rendering.style import pane_divider_colors
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
@@ -140,7 +141,10 @@ class PreviewRenderer:
             context = RenderContext(now)
             if presentation == "rotation" and items:
                 cards = [catalog.render(context, ContentScene(deepcopy(item), mode)).image for item in items[:60]]
-                image = compose_pane_strip((card, card.width + 1) for card in cards)
+                image = compose_pane_strip(
+                    ((card, card.width + 1) for card in cards),
+                    divider_colors=pane_divider_colors(item.get("competition_stage") for item in items[:60]),
+                )
             else:
                 kind = FrameKind.STATIC if items else FrameKind.EMPTY
                 game = deepcopy(items[0]) if items else {}

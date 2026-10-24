@@ -40,6 +40,7 @@
         "is_shown": true,
         "data": {
           "sport": "nfl",
+          "competition_stage": 0,
           "state": "in",
           "home_abbr": "NYG",
           "away_abbr": "DAL",

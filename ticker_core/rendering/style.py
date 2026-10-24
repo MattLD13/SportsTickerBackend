@@ -1,7 +1,11 @@
 """Own shared LED colors for the main ticker and generated Mini drawing data."""
 
+from collections.abc import Iterable
+
 BACKGROUND = (0, 0, 0)
 HEADER_RULE = (55, 76, 130)
+PLAYOFF_RULE = (192, 192, 192)
+FINALS_RULE = (255, 215, 0)
 STATUS_TEXT = (255, 240, 150)
 SCORE_TEXT = (255, 255, 255)
 PLAY_TEXT = (0, 200, 60)
@@ -24,3 +28,21 @@ STOCK_GAIN = (0, 255, 0)
 STOCK_LOSS = (255, 0, 0)
 
 MINI_LOGO_SIZE = 16
+
+
+def sports_rule_color(stage: object, default=HEADER_RULE):
+    """Return the shared rule color for an explicit competition stage."""
+    if type(stage) is not int:
+        return default
+    return FINALS_RULE if stage == 2 else PLAYOFF_RULE if stage == 1 else default
+
+
+def pane_divider_colors(stages: Iterable[object]) -> list[tuple[int, int, int]]:
+    """Color both pane boundaries and give finals priority at a shared boundary."""
+    stages = tuple(stages)
+    colors = []
+    for index, stage in enumerate(stages):
+        adjacent = (stages[index - 1], stage)
+        selected = max(value if type(value) is int and value in (0, 1, 2) else 0 for value in adjacent)
+        colors.append(sports_rule_color(selected, INACTIVE))
+    return colors

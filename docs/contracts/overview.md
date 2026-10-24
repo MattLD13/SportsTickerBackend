@@ -26,6 +26,27 @@ Each content item contains `id`, `family`, `kind`, `is_shown`, and `data`.
 Each overlay contains `event_id`, `kind`, and `payload`.
 Family data varies with the content kind. Read the projector and provider definitions before changing those fields.
 
+Scoreboard data includes integer `competition_stage`: `0` for regular season, `1` for playoffs, and `2` for finals.
+The sports display projector resolves this field from provider season and tournament round metadata.
+Game status and completion do not determine the tournament round.
+All playoff rules use this field. Values `1` and `2` both select postseason rules.
+The NHL live feed supplies its normalized stage before the shared projection applies overtime rules.
+When NHL omits standard-strength counts, stage `0` uses three skaters in overtime. Stages `1` and `2` use five.
+Explicit live manpower counts take priority over standard-strength counts.
+Six and Mini use silver rules for `1` and gold rules for `2`.
+Six applies these colors to scrolling pane boundaries. Pinned scoreboards retain their normal appearance.
+Finals gold takes priority where two scrolling panes share a boundary.
+
+| Sports | Stage source |
+|---|---|
+| NFL, MLB, NHL, NBA, FBS, FCS, and college basketball | ESPN season and competition round metadata. |
+| Premier League, Championship, MLS, Champions League, and FA Cup | FotMob tournament rounds. All FA Cup rounds use knockout rules. |
+| PGA golf | FedEx St. Jude and BMW Championship use `1`. TOUR Championship uses `2`. Other events use `0`. |
+| NASCAR Cup | The official `playoff_round` flag selects `1`. The championship race selects `2`. |
+| F1, IndyCar, IMSA, WEC, and Nürburgring 24h | `0`. These series do not use a playoff bracket. |
+
+An ordinary tournament's final round or race completion does not select stage `2`.
+
 ## Settings and presentation
 
 Stored selectable modes are `sports`, `stock`, `weather`, `music`, `flights`, `airports`, and `clock`.

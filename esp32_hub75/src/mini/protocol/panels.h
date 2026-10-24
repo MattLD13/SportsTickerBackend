@@ -46,6 +46,8 @@ inline SportsPane sportsPane(JsonObjectConst game) {
   else if (family == "hockey") view.sport = Sport::Hockey;
   else if (family == "soccer") view.sport = Sport::Soccer;
   view.status = label(game["status"], "UPCOMING", 12);
+  const int stage = game["competition_stage"] | 0;
+  view.ruleColor = stage == 2 ? FINALS_RULE : stage == 1 ? PLAYOFF_RULE : HEADER_RULE;
   view.awayScore = label(game["away_score"], "-", 3);
   view.homeScore = label(game["home_score"], "-", 3);
   const std::string state = label(game["state"]);

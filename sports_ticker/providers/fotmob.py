@@ -17,7 +17,7 @@ from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .stale_cache import SettingsResultCache
-from .sports_display import normalize_soccer_clock, soccer_event
+from .sports_display import fotmob_competition_stage, normalize_soccer_clock, soccer_event
 
 
 _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
@@ -536,6 +536,7 @@ def _content_item(
     data = {
         "type": "scoreboard",
         "sport": identifier,
+        "competition_stage": fotmob_competition_stage(match, detail, league=identifier),
         "state": state,
         "status": status,
         "startTimeUTC": str(_mapping(match.get("status")).get("utcTime") or ""),

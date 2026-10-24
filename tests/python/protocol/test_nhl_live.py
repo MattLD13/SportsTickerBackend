@@ -191,6 +191,52 @@ def test_current_nhl_phase_controls_standard_counts_and_visibility() -> None:
         assert result["powerPlay"] is False
 
 
+@pytest.mark.parametrize("stage,game_type,effective,skaters", (
+    (0, 2, 0, 3), (0, 3, 1, 5), (1, 2, 1, 5),
+    (1, 3, 1, 5), (2, 2, 2, 5), (2, 3, 2, 5),
+))
+def test_shared_competition_stage_controls_nhl_overtime_through_both_devices(stage, game_type, effective, skaters):
+    client = NhlClient()
+    client.game.pop("situation")
+    client.game["gameType"] = game_type
+    client.game["periodDescriptor"]["periodType"] = "OT"
+    source = NhlLiveSituationSource(client=client, background=False, monotonic=lambda: 0.0)
+    facts = source.snapshot()[("COL", "DAL")]
+    assert facts["competition_stage"] == (1 if game_type == 3 else 0)
+    assert facts["situationCode"] == ""
+    assert facts["situationOmitted"] is True
+    item = ContentItem("nhl-ot", "sports", "scoreboard", True, {
+        "sport": "nhl", "state": "in", "status": "OT 12:34", "competition_stage": stage,
+        "away_abbr": "COL", "home_abbr": "DAL", "situation": {},
+    })
+    provider = EspnScoreboardProvider({}, nhl_situation_source=source)
+    enriched = provider._enrich_nhl_live_items((item,))[0]
+    store = SnapshotStore()
+    stored = store.replace(TickerSnapshot(
+        "overtime", 0, datetime(2026, 10, 23, tzinfo=timezone.utc),
+        (enriched,), (), (), DisplaySettings(),
+    ))
+    payload = project_data_v2(stored, ProviderHealth(), {})
+    data = TickerResponse.from_payload(payload).content[0].data
+    assert data["competition_stage"] == effective
+    assert data["situation"]["manpower"]["awaySkaters"] == skaters
+    assert data["situation"]["manpower"]["homeSkaters"] == skaters
+    from sports_ticker.projections.device_data import project_device_data
+    mini = project_device_data(payload, mini=True)["content"]["sports"][0]["data"]
+    assert mini["competition_stage"] == effective
+
+
+@pytest.mark.parametrize("stage", (0, 1, 2))
+def test_explicit_nhl_power_play_counts_take_priority_over_overtime_defaults(stage):
+    result = nhl_manpower_situation({
+        "phase": "overtime", "competition_stage": stage, "situationOmitted": False,
+        "situationCode": "1531", "awayPowerPlay": True, "homePowerPlay": False,
+    }, home_abbr="DAL", away_abbr="COL")
+    assert result["manpower"]["awaySkaters"] == 5
+    assert result["manpower"]["homeSkaters"] == 3
+    assert result["manpower"]["powerPlayLabel"] == "5v3"
+
+
 def test_nhl_shootout_rounds_align_across_live_sudden_death_and_completion() -> None:
     game = json.loads(_CAPTURE.with_name("nhl_shootout_ledger.json").read_text())
     shots = [play for play in game["plays"] if play.get("periodDescriptor", {}).get("periodType") == "SO" and play.get("typeDescKey") in {"goal", "shot-on-goal", "missed-shot", "failed-shot-attempt"}]

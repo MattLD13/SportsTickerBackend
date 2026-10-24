@@ -26,6 +26,7 @@ from .nhl_live import nhl_team_key
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .sports_display import (
     SportsDisplayProjector,
+    normalize_competition_stage,
     nhl_manpower_situation,
     nhl_goal_display,
     nhl_shootout_display,
@@ -1382,12 +1383,17 @@ class EspnScoreboardProvider:
                 facts = {}
             if str(data.get("status") or "") == "S/O":
                 facts = {**facts, "phase": "shootout"}
+            updated = dict(data)
+            updated["competition_stage"] = max(
+                normalize_competition_stage(data.get("competition_stage")),
+                normalize_competition_stage(facts.get("competition_stage")),
+            )
+            facts = {**facts, "competition_stage": updated["competition_stage"]}
             details = nhl_manpower_situation(
                 facts,
                 home_abbr=str(data.get("home_abbr") or ""),
                 away_abbr=str(data.get("away_abbr") or ""),
             )
-            updated = dict(data)
             situation = dict(_mapping(data.get("situation")))
             situation.update(details)
             if "goals" in facts:

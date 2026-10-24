@@ -53,6 +53,7 @@
             "data": {
               "type": "object",
               "properties": {
+                "competition_stage": {"type": "integer", "enum": [0, 1, 2]},
                 "baseball_inning": {"$ref": "baseball-inning.json"},
                 "away_logo_asset": {"$ref": "mini-sprite-asset.json"},
                 "home_logo_asset": {"$ref": "mini-sprite-asset.json"}

@@ -147,6 +147,10 @@ def _render_data(family: str, kind: str, data: Mapping[str, FrozenJson]) -> Mapp
     if isinstance(canonical, Mapping):
         for key, value in canonical.items():
             rendered[key] = value
+    if family == "sports" and "competition_stage" in rendered:
+        stage = rendered["competition_stage"]
+        if type(stage) is not int or stage not in (0, 1, 2):
+            raise PayloadValidationError("sports competition_stage must be 0, 1, or 2")
     rendered["family"] = family
     rendered["kind"] = kind
     rendered["type"] = _renderer_type(family, kind)

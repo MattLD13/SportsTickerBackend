@@ -52,6 +52,21 @@ final class ContractModelsTests: XCTestCase {
         }
     }
 
+    func testCompetitionStageUsesTheIntegerWireContract() throws {
+        let decoder = JSONDecoder()
+        for stage in [0, 1, 2] {
+            let data = Data("""
+            {"id":"nhl-ot","family":"sports","kind":"scoreboard","is_shown":true,
+             "data":{"sport":"nhl","status":"OT","competition_stage":\(stage)}}
+            """.utf8)
+            let item = try decoder.decode(V2ContentItem.self, from: data)
+            let game = try XCTUnwrap(Game(content: item))
+            XCTAssertEqual(game.competition_stage?.rawValue, stage)
+        }
+        XCTAssertThrowsError(try decoder.decode(CompetitionStage.self, from: Data("\"playoff\"".utf8)))
+        XCTAssertThrowsError(try decoder.decode(CompetitionStage.self, from: Data("3".utf8)))
+    }
+
     func testScheduleContractRoundTrip() throws {
         let decoder = JSONDecoder()
         let response = try decoder.decode(TickerScheduleResponse.self, from: fixture("schedule-response"))

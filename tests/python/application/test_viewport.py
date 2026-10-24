@@ -31,6 +31,33 @@ class Catalog:
         return RenderedContent(Image.new("RGB", (96, 32), color))
 
 
+def test_tournament_update_recolors_both_boundaries_and_the_repeat_seam():
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc))
+    regular = Content("regular", "scoreboard", "nba", {"competition_stage": 0})
+    playoff = Content("playoff", "scoreboard", "nhl", {"competition_stage": 1})
+    finals = Content("finals", "scoreboard", "mlb", {"competition_stage": 2})
+    try:
+        viewport.update((regular, playoff, finals), context, "sports")
+        _drain(viewport, catalog, 3)
+        layout = viewport.layout
+        assert layout is not None
+        frame = viewport.frame(0, width=layout.width)
+        expected = ((255, 215, 0), (192, 192, 192), (255, 215, 0))
+        start = 0
+        for segment, color in zip(layout.segments, expected):
+            assert frame.getpixel((start, 16)) == color
+            start += segment.width
+        updated = Content("playoff", "scoreboard", "nhl", {"competition_stage": 2})
+        viewport.update((regular, updated, finals), context, "sports")
+        _drain(viewport, catalog, 4)
+        frame = viewport.frame(0, width=layout.width)
+        assert frame.getpixel((layout.segments[0].width, 16)) == (255, 215, 0)
+    finally:
+        viewport.close()
+
+
 def test_viewport_renders_only_changed_card() -> None:
     catalog = Catalog()
     viewport = CardViewport(catalog)

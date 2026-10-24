@@ -22,6 +22,7 @@ from .espn import _display_timezone, _event_time
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .market_sessions import us_equity_session
 from .news_transactions import ConfirmedTransaction, TransactionConfirmationSource
+from .sports_display import golf_competition_stage
 
 
 ESPN_GOLF_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
@@ -207,6 +208,7 @@ class EspnGolfSource:
                             "id": f"golf:{event.get('id', 'pga')}",
                             "type": "golf",
                             "sport": "golf",
+                            "competition_stage": golf_competition_stage(event),
                             "state": status["state"],
                             "status": display_status,
                             "away_abbr": str(event.get("shortName") or event_name),

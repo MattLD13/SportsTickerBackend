@@ -28,6 +28,28 @@ class EmptyLogos:
         return None
 
 
+@pytest.mark.parametrize("sport", ("nfl", "ncf_fbs", "ncf_fcs", "mlb", "wbc", "nba", "nhl", "march_madness", "soccer_mls"))
+@pytest.mark.parametrize("stage,color", ((1, (192, 192, 192)), (2, (255, 215, 0))))
+def test_tournament_rules_color_compact_sports_and_preserve_pinned_layouts(sport, stage, color):
+    renderer = SportsRenderer(load_default_font_set(), EmptyLogos())
+    game = {"sport": sport, "competition_stage": stage, "state": "in", "status": "Q2 10:00",
+            "away_score": 2, "home_score": 1, "away_abbr": "AWY", "home_abbr": "HOM", "situation": {}}
+    if sport in {"mlb", "wbc"}:
+        game.update(status="TOP 5TH", baseball_inning={"number": 5, "half": "top", "phase": "playing"})
+    compact = renderer.render_card(game)
+    assert all(compact.getpixel((x, 7)) == color for x in range(compact.width))
+    full = renderer.render_full(game)
+    assert full.size == (384, 32)
+    regular = renderer.render_full({**game, "competition_stage": 0})
+    assert full.tobytes() == regular.tobytes()
+
+
+def test_regular_season_final_keeps_the_normal_status_rule(sports):
+    card = sports.render_card({"sport": "nba", "state": "post", "status": "FINAL",
+                               "competition_stage": 0, "home_score": 100, "away_score": 90})
+    assert card.getpixel((card.width // 2, 7)) == (55, 76, 130)
+
+
 @pytest.fixture
 def sports() -> SportsRenderer:
     """Create a renderer with deterministic resources."""

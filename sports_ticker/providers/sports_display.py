@@ -35,6 +35,7 @@ class SportsDisplayProjector:
 
         data = dict(item.data)
         competition = _first_mapping(event.get("competitions"))
+        data["competition_stage"] = espn_competition_stage(event)
         league = str(data.get("sport") or "").lower()
         state = str(data.get("state") or "pre").lower()
         prior = _mapping(data.get("situation"))
@@ -859,6 +860,78 @@ _BASEBALL_AT_BAT_KEYS = frozenset({
 })
 
 
+def normalize_competition_stage(value: object) -> int:
+    """Keep the integer V2 competition stage within its declared values."""
+    return value if type(value) is int and value in (0, 1, 2) else 0
+
+
+def _competition_stage(labels: Sequence[object], *, postseason: bool = False) -> int:
+    """Resolve the tournament round independently of the game clock and result."""
+    playoff = postseason
+    finals = False
+    earlier_round = False
+    for value in labels:
+        label = re.sub(r"[-_]", " ", str(value or "").casefold())
+        label = " ".join(label.split())
+        if not label:
+            continue
+        earlier_round = earlier_round or bool(re.search(
+            r"\b(?:semi\s?finals?|quarter\s?finals?|conference|division|divisional|afc|nfc|east|west|eastern|western|regional|final four|third place|bronze|(?:1st|2nd|first|second) round)\b",
+            label,
+        ))
+        if re.search(r"\b(?:finals?|super bowl|world series|national championship|fcs championship|championship (?:game|match))\b", label) or label == "championship":
+            finals = True
+        if earlier_round or re.search(r"\b(?:playoffs?|post\s?season|wild\s?card|knockout|round of \d+|sweet 16|elite (?:8|eight))\b", label):
+            playoff = True
+    return 1 if earlier_round else 2 if finals else 1 if playoff else 0
+
+
+def espn_competition_stage(event: Mapping[str, Any]) -> int:
+    """Read ESPN season and round metadata without using status text or recaps."""
+    competition = _first_mapping(event.get("competitions"))
+    season = _mapping(event.get("season"))
+    series = _mapping(competition.get("series"))
+    kind = _mapping(competition.get("type"))
+    labels = [
+        season.get("slug"), series.get("type"),
+        kind.get("text"), kind.get("name"), kind.get("abbreviation"),
+        *(_mapping(note).get("headline") for note in _sequence(competition.get("notes"))),
+    ]
+    return _competition_stage(labels, postseason=str(season.get("type")) == "3")
+
+
+def fotmob_competition_stage(
+    match: Mapping[str, Any], detail: Mapping[str, Any] | None = None, *, league: str = "",
+) -> int:
+    """Read FotMob tournament rounds from match and detail metadata."""
+    general = _mapping(_mapping(detail).get("general"))
+    labels = [match.get("tournamentStage"), general.get("matchRound"), general.get("leagueRoundName")]
+    knockout = any(re.fullmatch(r"1/(?:2|4|8|16|32|64)", str(value or "")) for value in labels)
+    return _competition_stage(labels, postseason=knockout or league == "soccer_fa_cup")
+
+
+def golf_competition_stage(event: Mapping[str, Any]) -> int:
+    """Identify FedExCup events without treating a final round as a season final."""
+    name = re.sub(r"[^a-z0-9]+", " ", str(event.get("name") or "").casefold()).strip()
+    if name in {"tour championship", "the tour championship"}:
+        return 2
+    return 1 if name in {"fedex st jude championship", "bmw championship"} else 0
+
+
+def nascar_competition_stage(race: Mapping[str, Any]) -> int:
+    """Read the official Cup postseason flag and championship race identity."""
+    round_number = _integer(race.get("playoff_round"))
+    if round_number <= 0:
+        return 0
+    championship = re.search(r"\bchampionship\b", str(race.get("race_name") or ""), re.IGNORECASE)
+    return 2 if round_number == 4 or championship else 1
+
+
+def nhl_competition_stage(game: Mapping[str, Any]) -> int:
+    """Normalize the NHL game type before applying tournament rules."""
+    return 1 if _integer(game.get("gameType")) == 3 else 0
+
+
 def sports_game_phase(data: Mapping[str, Any]) -> str:
     """Resolve display lifecycle without advancing a provider's game clock."""
     state = str(data.get("state") or "").lower()
@@ -890,6 +963,7 @@ def project_sports_display(data: Mapping[str, Any]) -> dict[str, Any]:
     """Remove stale live facts after every provider enrichment path."""
     family = sport_family(data.get("sport"))
     result = project_baseball_display(data) if family == "baseball" else dict(data)
+    result["competition_stage"] = normalize_competition_stage(result.get("competition_stage"))
     phase = sports_game_phase(result)
     result["game_phase"] = phase
     situation = dict(_mapping(result.get("situation")))
@@ -998,6 +1072,9 @@ def nhl_manpower_situation(
         return result
     manpower["state"] = "unavailable"
     code = str(source.get("situationCode") or "").strip()
+    if not code and source.get("situationOmitted") is True:
+        stage = normalize_competition_stage(source.get("competition_stage"))
+        code = "1331" if phase == "overtime" and stage == 0 else "1551"
     if not re.fullmatch(r"[01][3-6][3-6][01]", code):
         return result
     away_goalie, away_skaters, home_skaters, home_goalie = map(int, code)

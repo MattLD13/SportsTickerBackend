@@ -1,0 +1,829 @@
+[
+  {
+    "name": "nba-finals",
+    "sport": "nba",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20250622",
+    "expected": 2,
+    "event": {
+      "id": "401766128",
+      "name": "Indiana Pacers at Oklahoma City Thunder",
+      "date": "2025-06-23T00:00Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0.0",
+        "period": 4,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "17",
+            "abbreviation": "FINAL"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "NBA Finals - Game 7"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "25",
+              "homeAway": "home",
+              "score": "103",
+              "team": {
+                "id": "25",
+                "abbreviation": "OKC",
+                "displayName": "Oklahoma City Thunder",
+                "color": "007ac1",
+                "alternateColor": "ef3b24",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/okc.png"
+              }
+            },
+            {
+              "id": "11",
+              "homeAway": "away",
+              "score": "91",
+              "team": {
+                "id": "11",
+                "abbreviation": "IND",
+                "displayName": "Indiana Pacers",
+                "color": "002d62",
+                "alternateColor": "ffd520",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/ind.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "nhl-finals",
+    "sport": "nhl",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=20250617",
+    "expected": 2,
+    "event": {
+      "id": "401777460",
+      "name": "Edmonton Oilers at Florida Panthers",
+      "date": "2025-06-18T00:00Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0:00",
+        "period": 3,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "17",
+            "abbreviation": "FINAL"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "Stanley Cup Final - Game 6"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "26",
+              "homeAway": "home",
+              "score": "5",
+              "curatedRank": {
+                "current": 99
+              },
+              "team": {
+                "id": "26",
+                "abbreviation": "FLA",
+                "displayName": "Florida Panthers",
+                "color": "e51937",
+                "alternateColor": "002d62",
+                "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/fla.png"
+              }
+            },
+            {
+              "id": "6",
+              "homeAway": "away",
+              "score": "1",
+              "curatedRank": {
+                "current": 99
+              },
+              "team": {
+                "id": "6",
+                "abbreviation": "EDM",
+                "displayName": "Edmonton Oilers",
+                "color": "00205b",
+                "alternateColor": "ff4c00",
+                "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/edm.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "mlb-finals",
+    "sport": "mlb",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=20251027",
+    "expected": 2,
+    "event": {
+      "id": "401809299",
+      "name": "Toronto Blue Jays at Los Angeles Dodgers",
+      "date": "2025-10-28T00:00Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0:00",
+        "period": 18,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final/18",
+          "shortDetail": "Final/18",
+          "altDetail": "F/18"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "17",
+            "abbreviation": "FINAL"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "World Series - Game 3"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "19",
+              "homeAway": "home",
+              "score": "6",
+              "team": {
+                "id": "19",
+                "abbreviation": "LAD",
+                "displayName": "Los Angeles Dodgers",
+                "color": "005a9c",
+                "alternateColor": "ffffff",
+                "logo": "https://a.espncdn.com/i/teamlogos/mlb/500/scoreboard/lad.png"
+              }
+            },
+            {
+              "id": "14",
+              "homeAway": "away",
+              "score": "5",
+              "team": {
+                "id": "14",
+                "abbreviation": "TOR",
+                "displayName": "Toronto Blue Jays",
+                "color": "134a8e",
+                "alternateColor": "6cace5",
+                "logo": "https://a.espncdn.com/i/teamlogos/mlb/500/scoreboard/tor.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "nfl-finals",
+    "sport": "nfl",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20250209",
+    "expected": 2,
+    "event": {
+      "id": "401671889",
+      "name": "Kansas City Chiefs at Philadelphia Eagles",
+      "date": "2025-02-09T23:30Z",
+      "season": {
+        "year": 2024,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0:00",
+        "period": 4,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "1",
+            "abbreviation": "STD"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "Super Bowl LIX"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "21",
+              "homeAway": "home",
+              "score": "40",
+              "curatedRank": {
+                "current": 99
+              },
+              "team": {
+                "id": "21",
+                "abbreviation": "PHI",
+                "displayName": "Philadelphia Eagles",
+                "color": "06424d",
+                "alternateColor": "000000",
+                "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/phi.png"
+              }
+            },
+            {
+              "id": "12",
+              "homeAway": "away",
+              "score": "22",
+              "curatedRank": {
+                "current": 99
+              },
+              "team": {
+                "id": "12",
+                "abbreviation": "KC",
+                "displayName": "Kansas City Chiefs",
+                "color": "e31837",
+                "alternateColor": "ffb612",
+                "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/kc.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "nba-playoff",
+    "sport": "nba",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20250514",
+    "expected": 1,
+    "event": {
+      "id": "401769750",
+      "name": "New York Knicks at Boston Celtics",
+      "date": "2025-05-14T23:00Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0.0",
+        "period": 4,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "15",
+            "abbreviation": "QTR"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "East Semifinals - Game 5"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "2",
+              "homeAway": "home",
+              "score": "127",
+              "team": {
+                "id": "2",
+                "abbreviation": "BOS",
+                "displayName": "Boston Celtics",
+                "color": "008348",
+                "alternateColor": "ffffff",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/bos.png"
+              }
+            },
+            {
+              "id": "18",
+              "homeAway": "away",
+              "score": "102",
+              "team": {
+                "id": "18",
+                "abbreviation": "NY",
+                "displayName": "New York Knicks",
+                "color": "1d428a",
+                "alternateColor": "f58426",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/ny.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "college-final",
+    "sport": "ncf_fbs",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20250120",
+    "expected": 2,
+    "event": {
+      "id": "401677192",
+      "name": "Ohio State Buckeyes at Notre Dame Fighting Irish",
+      "date": "2025-01-21T00:30Z",
+      "season": {
+        "year": 2024,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0:00",
+        "period": 4,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "1",
+            "abbreviation": "STD"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "College Football Playoff National Championship Presented by AT&T"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "87",
+              "homeAway": "home",
+              "score": "23",
+              "curatedRank": {
+                "current": 7
+              },
+              "team": {
+                "id": "87",
+                "abbreviation": "ND",
+                "displayName": "Notre Dame Fighting Irish",
+                "color": "0c2340",
+                "alternateColor": "c99700",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/87.png"
+              }
+            },
+            {
+              "id": "194",
+              "homeAway": "away",
+              "score": "34",
+              "curatedRank": {
+                "current": 8
+              },
+              "team": {
+                "id": "194",
+                "abbreviation": "OSU",
+                "displayName": "Ohio State Buckeyes",
+                "color": "ce1141",
+                "alternateColor": "a8adb4",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "college-basketball-round",
+    "sport": "march_madness",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20250320&groups=100&limit=100",
+    "expected": 1,
+    "event": {
+      "id": "401745972",
+      "name": "SIU Edwardsville Cougars at Houston Cougars",
+      "date": "2025-03-20T18:00Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0:00",
+        "period": 2,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "6",
+            "abbreviation": "TRNMNT"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "Men's Basketball Championship - Midwest Region - 1st Round"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "248",
+              "homeAway": "home",
+              "score": "78",
+              "curatedRank": {
+                "current": 1
+              },
+              "team": {
+                "id": "248",
+                "abbreviation": "HOU",
+                "displayName": "Houston Cougars",
+                "color": "c8102e",
+                "alternateColor": "ffffff",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png"
+              }
+            },
+            {
+              "id": "2565",
+              "homeAway": "away",
+              "score": "40",
+              "curatedRank": {
+                "current": 16
+              },
+              "team": {
+                "id": "2565",
+                "abbreviation": "SIUE",
+                "displayName": "SIU Edwardsville Cougars",
+                "color": "eb1c23",
+                "alternateColor": "080808",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2565.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "college-basketball-final",
+    "sport": "march_madness",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20250407&groups=100&limit=100",
+    "expected": 2,
+    "event": {
+      "id": "401746082",
+      "name": "Florida Gators at Houston Cougars",
+      "date": "2025-04-08T00:50Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0:00",
+        "period": 2,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "6",
+            "abbreviation": "TRNMNT"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "Men's Basketball Championship - National Championship"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "248",
+              "homeAway": "home",
+              "score": "63",
+              "curatedRank": {
+                "current": 1
+              },
+              "team": {
+                "id": "248",
+                "abbreviation": "HOU",
+                "displayName": "Houston Cougars",
+                "color": "c8102e",
+                "alternateColor": "ffffff",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png"
+              }
+            },
+            {
+              "id": "57",
+              "homeAway": "away",
+              "score": "65",
+              "curatedRank": {
+                "current": 1
+              },
+              "team": {
+                "id": "57",
+                "abbreviation": "FLA",
+                "displayName": "Florida Gators",
+                "color": "0021a5",
+                "alternateColor": "fa4616",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/57.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "nba-conference-final",
+    "sport": "nba",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20250521",
+    "expected": 1,
+    "event": {
+      "id": "401772989",
+      "name": "Indiana Pacers at New York Knicks",
+      "date": "2025-05-22T00:00Z",
+      "season": {
+        "year": 2025,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "displayClock": "0.0",
+        "period": 5,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final/OT",
+          "shortDetail": "Final/OT",
+          "altDetail": "OT"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "16",
+            "abbreviation": "SEMI"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "East Finals - Game 1"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "18",
+              "homeAway": "home",
+              "score": "135",
+              "team": {
+                "id": "18",
+                "abbreviation": "NY",
+                "displayName": "New York Knicks",
+                "color": "1d428a",
+                "alternateColor": "f58426",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/ny.png"
+              }
+            },
+            {
+              "id": "11",
+              "homeAway": "away",
+              "score": "138",
+              "team": {
+                "id": "11",
+                "abbreviation": "IND",
+                "displayName": "Indiana Pacers",
+                "color": "002d62",
+                "alternateColor": "ffd520",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/ind.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "fcs-final",
+    "sport": "ncf_fcs",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20250106&groups=81&limit=100",
+    "expected": 2,
+    "event": {
+      "id": "401680057",
+      "name": "North Dakota State Bison at Montana State Bobcats",
+      "date": "2025-01-07T00:00Z",
+      "season": {
+        "year": 2024,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "clock": 0.0,
+        "displayClock": "0:00",
+        "period": 4,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "1",
+            "abbreviation": "STD"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "FCS Championship"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "147",
+              "homeAway": "home",
+              "team": {
+                "id": "147",
+                "abbreviation": "MTST",
+                "displayName": "Montana State Bobcats",
+                "color": "00205c",
+                "alternateColor": "bc955c",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/147.png"
+              },
+              "score": "32",
+              "curatedRank": {
+                "current": 99
+              }
+            },
+            {
+              "id": "2449",
+              "homeAway": "away",
+              "team": {
+                "id": "2449",
+                "abbreviation": "NDSU",
+                "displayName": "North Dakota State Bison",
+                "color": "01402A",
+                "alternateColor": "ffffff",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2449.png"
+              },
+              "score": "35",
+              "curatedRank": {
+                "current": 99
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "fcs-semifinal",
+    "sport": "ncf_fcs",
+    "source": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=20241221&groups=81&limit=100",
+    "expected": 1,
+    "event": {
+      "id": "401729786",
+      "name": "South Dakota State Jackrabbits at North Dakota State Bison",
+      "date": "2024-12-21T17:00Z",
+      "season": {
+        "year": 2024,
+        "type": 3,
+        "slug": "post-season"
+      },
+      "status": {
+        "clock": 0.0,
+        "displayClock": "0:00",
+        "period": 4,
+        "type": {
+          "id": "3",
+          "name": "STATUS_FINAL",
+          "state": "post",
+          "completed": true,
+          "description": "Final",
+          "detail": "Final",
+          "shortDetail": "Final"
+        }
+      },
+      "competitions": [
+        {
+          "type": {
+            "id": "1",
+            "abbreviation": "STD"
+          },
+          "notes": [
+            {
+              "type": "event",
+              "headline": "FCS Championship - Semifinals"
+            }
+          ],
+          "competitors": [
+            {
+              "id": "2449",
+              "homeAway": "home",
+              "team": {
+                "id": "2449",
+                "abbreviation": "NDSU",
+                "displayName": "North Dakota State Bison",
+                "color": "01402A",
+                "alternateColor": "ffffff",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2449.png"
+              },
+              "score": "28",
+              "curatedRank": {
+                "current": 99
+              }
+            },
+            {
+              "id": "2571",
+              "homeAway": "away",
+              "team": {
+                "id": "2571",
+                "abbreviation": "SDST",
+                "displayName": "South Dakota State Jackrabbits",
+                "color": "0033a0",
+                "alternateColor": "ffd100",
+                "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2571.png"
+              },
+              "score": "21",
+              "curatedRank": {
+                "current": 99
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

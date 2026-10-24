@@ -4,7 +4,7 @@
 from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP, PANE as PF
-from ticker_core.rendering.style import HEADER_RULE, STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED
+from ticker_core.rendering.style import STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED, sports_rule_color
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import SCROLLING_TEAM_LOGO_SIZE, get_prepared_team_logo, team_logo_layout
@@ -256,6 +256,7 @@ class StadiumRenderer:
         and compact playground field names (hs, as, ac, hc).
         """
         g = self._normalise(g)
+        rule_color = sports_rule_color(g.get('competition_stage'))
 
         CW = calc_card_width(g)
         img = Image.new('RGBA', (CW, H), (0, 0, 0, 255))
@@ -309,12 +310,12 @@ class StadiumRenderer:
 
         # ── Background + header line ──────────────────────────────────────────
         fi(d, 0, 0, CW, H,  0, 0, 0)
-        fi(d, 0, 7, CW, 1, *HEADER_RULE)
+        fi(d, 0, 7, CW, 1, *rule_color)
 
         st = status[:12]
         if not (is_mlb and show_inning):
             self._draw_header_text(img, CW, st)
-            fi(d, 0, 7, CW, 1, *HEADER_RULE)
+            fi(d, 0, 7, CW, 1, *rule_color)
 
         # ── Logos ─────────────────────────────────────────────────────────────
         a_logo_x = 1
@@ -432,7 +433,7 @@ class StadiumRenderer:
             is_bot = half == 'bottom'
 
             fi(d, 0, 0, CW, 8, 0, 0, 0)
-            fi(d, 0, 7, CW, 1, *HEADER_RULE)
+            fi(d, 0, 7, CW, 1, *rule_color)
 
             inn_num = str(inning['number']) if inning.get('number') else ''
             # Between halves there is no half to point at, so neither arrow is

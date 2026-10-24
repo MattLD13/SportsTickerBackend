@@ -342,6 +342,7 @@ def test_nascar_polls_official_live_feed() -> None:
             },
         }
     )
+    client.values["https://cf.nascar.com/cacher/2026/race_list_basic.json"] = {"series_1": []}
     source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
     result = source.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))
 
@@ -385,6 +386,7 @@ def test_nascar_session_lifecycle_and_3am_rollover() -> None:
             },
         }
     )
+    client_past.values["https://cf.nascar.com/cacher/2026/race_list_basic.json"] = {"series_1": []}
     source_past = LiveRacingSource(client_past, now=lambda: now_past, clock=lambda: now_past.timestamp())
     assert len(source_past.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))["content"]) == 0
 
@@ -392,6 +394,7 @@ def test_nascar_session_lifecycle_and_3am_rollover() -> None:
     now_early = datetime(2026, 8, 19, 14, 0, tzinfo=timezone.utc)
     now_race_day = datetime(2026, 8, 22, 14, 0, tzinfo=timezone.utc)
     data_upcoming = {
+        "https://cf.nascar.com/cacher/2026/race_list_basic.json": {"series_1": []},
         "https://cf.nascar.com/live/feeds/live-feed.json": {},
         "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
             "events": [

@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from .http import JsonHttpClient, UrllibJsonHttpClient
+from .sports_display import nhl_competition_stage
 
 
 _SCORE_URL = "https://api-web.nhle.com/v1/score/now"
@@ -131,20 +132,16 @@ class NhlLiveSituationSource:
             phase = "intermission"
         current = _mapping(game.get("situation"))
         code = str(current.get("situationCode") or "").strip()
-        if not current and phase in {"regulation", "overtime"}:
-            # The NHL omits situation during standard strength.
-            if phase == "regulation" or game.get("gameType") == 3:
-                code = "1551"
-            elif game.get("gameType") in {1, 2}:
-                code = "1331"
         away = _mapping(current.get("awayTeam"))
         home = _mapping(current.get("homeTeam"))
         ice = _mapping(_mapping(game.get("summary")).get("iceSurface"))
         return {
             "gameId": game_id,
+            "competition_stage": nhl_competition_stage(game),
             "startTimeUTC": str(game.get("startTimeUTC") or ""),
             "phase": phase,
             "situationCode": code,
+            "situationOmitted": not current,
             "awayPowerPlay": "PP" in _descriptions(away),
             "homePowerPlay": "PP" in _descriptions(home),
             "powerPlaySecondsRemaining": current.get("secondsRemaining"),

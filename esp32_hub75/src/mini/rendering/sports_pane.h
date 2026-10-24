@@ -24,6 +24,7 @@ struct SportsPane {
   std::string powerPlayLabel;
   std::string awaySeed, homeSeed;
   Rgb awayColor = {86, 104, 132}, homeColor = {86, 104, 132};
+  Rgb ruleColor = HEADER_RULE;
   Sport sport = Sport::Other;
   Side active = Side::None, powerPlay = Side::None, emptyNet = Side::None;
   bool live = false, redZone = false, baseballLive = false, shootout = false;
@@ -185,7 +186,7 @@ void badge(Canvas& canvas, int x, int y, Rgb fill, const std::string& label) {
 template<class Canvas>
 void renderSports(Canvas& canvas, const SportsPane& view) {
   canvas.rect(0, 0, 64, 32, BACKGROUND);
-  canvas.rect(0, 7, 64, 1, HEADER_RULE);
+  canvas.rect(0, 7, 64, 1, view.ruleColor);
   if (!canvas.logo(Side::Away, 1, LOGO_Y)) badge(canvas, 1, LOGO_Y, view.awayColor, view.awayLabel);
   if (!canvas.logo(Side::Home, HOME_LOGO_X, LOGO_Y)) badge(canvas, HOME_LOGO_X, LOGO_Y, view.homeColor, view.homeLabel);
   rank(canvas, view.awayRank, 2);

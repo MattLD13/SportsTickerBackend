@@ -94,11 +94,18 @@ struct Situation: Decodable, Hashable, Sendable {
         shootout = try? container.decode(ShootoutData.self, forKey: .shootout)
     }
 }
+enum CompetitionStage: Int, Decodable, Hashable, Sendable {
+    case regular = 0
+    case playoff = 1
+    case finals = 2
+}
+
 struct Game: Identifiable, Decodable, Hashable, Sendable {
     let id: String
     let sport: String
     let status: String
     let state: String?
+    let competition_stage: CompetitionStage?
     let home_abbr: String?
     let home_id: String?
     let home_score: String
@@ -148,6 +155,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayID: String { away_id ?? safeAwayAbbr }
 
     enum CodingKeys: String, CodingKey {
+        case competition_stage
         case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed, name, artist, cover, duration, feels, wind, humidity, airportWeather = "weather", arrivals, departures, forecast
     }
 
@@ -157,6 +165,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         sport = try c.decode(String.self, forKey: .sport)
         status = try c.decode(String.self, forKey: .status)
         state = try? c.decode(String.self, forKey: .state)
+        competition_stage = try c.decodeIfPresent(CompetitionStage.self, forKey: .competition_stage)
         home_abbr = try? c.decode(String.self, forKey: .home_abbr)
         home_logo = try? c.decode(String.self, forKey: .home_logo)
         home_color = try? c.decode(String.self, forKey: .home_color)

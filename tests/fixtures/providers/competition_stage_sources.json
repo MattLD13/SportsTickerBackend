@@ -1,0 +1,655 @@
+{
+  "soccer": [
+    {
+      "name": "fa-final",
+      "league": "soccer_fa_cup",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250517&timezone=UTC&ccode3=USA",
+      "expected": 2,
+      "match": {
+        "id": 4763853,
+        "leagueId": 894955,
+        "time": "17.05.2025 17:30",
+        "home": {
+          "id": 9826,
+          "score": 1,
+          "name": "Crystal Palace",
+          "longName": "Crystal Palace"
+        },
+        "away": {
+          "id": 8456,
+          "score": 0,
+          "name": "Manchester City",
+          "shortName": "Man City",
+          "longName": "Manchester City"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "final",
+        "status": {
+          "utcTime": "2025-05-17T15:30:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "17.05.2025 17:31:11",
+            "secondHalfStarted": "17.05.2025 18:35:32"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "1 - 0",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1747495800000
+      }
+    },
+    {
+      "name": "fa-early",
+      "league": "soccer_fa_cup",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250111&timezone=UTC&ccode3=USA",
+      "expected": 1,
+      "match": {
+        "id": 4684095,
+        "leagueId": 894955,
+        "time": "11.01.2025 13:00",
+        "home": {
+          "id": 8658,
+          "score": 2,
+          "name": "Birmingham City",
+          "shortName": "Birmingham",
+          "longName": "Birmingham City"
+        },
+        "away": {
+          "id": 8430,
+          "score": 1,
+          "name": "Lincoln City",
+          "shortName": "Lincoln",
+          "longName": "Lincoln City"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "3",
+        "status": {
+          "utcTime": "2025-01-11T12:00:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "11.01.2025 13:00:50",
+            "secondHalfStarted": "11.01.2025 14:01:19"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "2 - 1",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1736596800000
+      }
+    },
+    {
+      "name": "champ-final",
+      "league": "soccer_champ",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250524&timezone=UTC&ccode3=USA",
+      "expected": 2,
+      "match": {
+        "id": 4785697,
+        "leagueId": 899384,
+        "time": "24.05.2025 16:01",
+        "home": {
+          "id": 8657,
+          "score": 1,
+          "name": "Sheffield United",
+          "shortName": "Sheff Utd",
+          "longName": "Sheffield United"
+        },
+        "away": {
+          "id": 8472,
+          "score": 2,
+          "name": "Sunderland",
+          "longName": "Sunderland"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "final",
+        "status": {
+          "utcTime": "2025-05-24T14:01:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "24.05.2025 16:02:20",
+            "secondHalfStarted": "24.05.2025 17:11:10"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "1 - 2",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1748095260000
+      }
+    },
+    {
+      "name": "champ-semifinal",
+      "league": "soccer_champ",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250512&timezone=UTC&ccode3=USA",
+      "expected": 1,
+      "match": {
+        "id": 4783298,
+        "leagueId": 899384,
+        "time": "12.05.2025 21:00",
+        "home": {
+          "id": 8657,
+          "score": 3,
+          "name": "Sheffield United",
+          "shortName": "Sheff Utd",
+          "longName": "Sheffield United"
+        },
+        "away": {
+          "id": 8427,
+          "score": 0,
+          "name": "Bristol City",
+          "longName": "Bristol City"
+        },
+        "eliminatedTeamId": 8427,
+        "statusId": 6,
+        "tournamentStage": "1/2",
+        "status": {
+          "utcTime": "2025-05-12T19:00:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "12.05.2025 21:00:15",
+            "secondHalfStarted": "12.05.2025 22:03:15"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "3 - 0",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          },
+          "aggregatedStr": "6 - 0"
+        },
+        "timeTS": 1747076400000
+      }
+    },
+    {
+      "name": "mls-final",
+      "league": "soccer_mls",
+      "source": "https://www.fotmob.com/api/data/matches?date=20241207&timezone=UTC&ccode3=USA",
+      "expected": 2,
+      "match": {
+        "id": 4663702,
+        "leagueId": 895149,
+        "time": "07.12.2024 22:00",
+        "home": {
+          "id": 6637,
+          "score": 2,
+          "name": "LA Galaxy",
+          "shortName": "LA Galaxy",
+          "longName": "LA Galaxy"
+        },
+        "away": {
+          "id": 6514,
+          "score": 1,
+          "name": "Red Bull New York",
+          "shortName": "NY Red Bulls",
+          "longName": "Red Bull New York"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "final",
+        "status": {
+          "utcTime": "2024-12-07T21:00:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "07.12.2024 22:12:43",
+            "secondHalfStarted": "07.12.2024 23:19:12"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "2 - 1",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1733605200000
+      }
+    },
+    {
+      "name": "mls-round-one",
+      "league": "soccer_mls",
+      "source": "https://www.fotmob.com/api/data/matches?date=20241027&timezone=UTC&ccode3=USA",
+      "expected": 1,
+      "match": {
+        "id": 4662934,
+        "leagueId": 895149,
+        "time": "27.10.2024 04:00",
+        "home": {
+          "id": 6637,
+          "score": 5,
+          "name": "LA Galaxy",
+          "shortName": "LA Galaxy",
+          "longName": "LA Galaxy"
+        },
+        "away": {
+          "id": 8314,
+          "score": 0,
+          "name": "Colorado Rapids",
+          "shortName": "Colorado",
+          "longName": "Colorado Rapids"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "1/8",
+        "status": {
+          "utcTime": "2024-10-27T03:00:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "27.10.2024 04:10:52",
+            "secondHalfStarted": "27.10.2024 05:13:16"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "5 - 0",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1729998000000
+      }
+    },
+    {
+      "name": "ucl-round16",
+      "league": "soccer_champions_league",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250304&timezone=UTC&ccode3=USA",
+      "expected": 1,
+      "match": {
+        "id": 4737548,
+        "leagueId": 897488,
+        "time": "04.03.2025 18:45",
+        "home": {
+          "id": 8342,
+          "score": 1,
+          "name": "Club Brugge",
+          "longName": "Club Brugge"
+        },
+        "away": {
+          "id": 10252,
+          "score": 3,
+          "name": "Aston Villa",
+          "longName": "Aston Villa"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "1/8",
+        "status": {
+          "utcTime": "2025-03-04T17:45:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "04.03.2025 18:45:48",
+            "secondHalfStarted": "04.03.2025 19:47:09"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "1 - 3",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1741110300000
+      }
+    },
+    {
+      "name": "ucl-group",
+      "league": "soccer_champions_league",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250129&timezone=UTC&ccode3=USA",
+      "expected": 0,
+      "match": {
+        "id": 4621651,
+        "leagueId": 894202,
+        "time": "29.01.2025 21:00",
+        "home": {
+          "id": 10252,
+          "score": 4,
+          "name": "Aston Villa",
+          "longName": "Aston Villa"
+        },
+        "away": {
+          "id": 9925,
+          "score": 2,
+          "name": "Celtic",
+          "longName": "Celtic"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "8",
+        "status": {
+          "utcTime": "2025-01-29T20:00:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "29.01.2025 21:00:59",
+            "secondHalfStarted": "29.01.2025 22:06:36"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "4 - 2",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1738180800000
+      }
+    },
+    {
+      "name": "epl-regular",
+      "league": "soccer_epl",
+      "source": "https://www.fotmob.com/api/data/matches?date=20250525&timezone=UTC&ccode3=USA",
+      "expected": 0,
+      "match": {
+        "id": 4506593,
+        "leagueId": 47,
+        "time": "25.05.2025 17:00",
+        "home": {
+          "id": 8678,
+          "score": 2,
+          "name": "AFC Bournemouth",
+          "shortName": "Bournemouth",
+          "longName": "AFC Bournemouth"
+        },
+        "away": {
+          "id": 8197,
+          "score": 0,
+          "name": "Leicester City",
+          "shortName": "Leicester",
+          "longName": "Leicester City"
+        },
+        "eliminatedTeamId": null,
+        "statusId": 6,
+        "tournamentStage": "38",
+        "status": {
+          "utcTime": "2025-05-25T15:00:00.000Z",
+          "halfs": {
+            "firstHalfStarted": "25.05.2025 17:00:18",
+            "secondHalfStarted": "25.05.2025 18:04:22"
+          },
+          "periodLength": 45,
+          "finished": true,
+          "started": true,
+          "cancelled": false,
+          "awarded": false,
+          "scoreStr": "2 - 0",
+          "reason": {
+            "short": "FT",
+            "shortKey": "fulltime_short",
+            "long": "Full-Time",
+            "longKey": "finished"
+          }
+        },
+        "timeTS": 1748185200000
+      }
+    }
+  ],
+  "golf": [
+    {
+      "name": "golf-playoff-2026",
+      "source": "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=20260813",
+      "expected": 1,
+      "event": {
+        "id": "401811962",
+        "name": "FedEx St. Jude Championship",
+        "date": "2026-08-13T04:00Z",
+        "endDate": "2026-08-16T04:00Z",
+        "season": {
+          "year": 2026,
+          "type": 2,
+          "slug": "regular-season"
+        },
+        "status": {
+          "type": {
+            "id": "3",
+            "name": "STATUS_FINAL",
+            "state": "post",
+            "completed": true,
+            "description": "Final"
+          }
+        },
+        "competitions": [
+          {
+            "id": "401811962",
+            "date": "2026-08-13T04:00Z",
+            "endDate": "2026-08-16T04:00Z",
+            "status": {
+              "period": 4,
+              "type": {
+                "id": "3",
+                "name": "STATUS_FINAL",
+                "state": "post",
+                "completed": true,
+                "description": "Final",
+                "detail": "Final",
+                "shortDetail": "Complete"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "golf-bmw-2026",
+      "source": "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=20260820",
+      "expected": 1,
+      "event": {
+        "id": "401811963",
+        "name": "BMW Championship",
+        "date": "2026-08-20T04:00Z",
+        "endDate": "2026-08-23T04:00Z",
+        "season": {
+          "year": 2026,
+          "type": 2,
+          "slug": "regular-season"
+        },
+        "status": {
+          "type": {
+            "id": "3",
+            "name": "STATUS_FINAL",
+            "state": "post",
+            "completed": true,
+            "description": "Final"
+          }
+        },
+        "competitions": [
+          {
+            "id": "401811963",
+            "date": "2026-08-20T04:00Z",
+            "endDate": "2026-08-23T04:00Z",
+            "status": {
+              "period": 4,
+              "type": {
+                "id": "3",
+                "name": "STATUS_FINAL",
+                "state": "post",
+                "completed": true,
+                "description": "Final",
+                "detail": "Final",
+                "shortDetail": "Complete"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "golf-final-2026",
+      "source": "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=20260827",
+      "expected": 2,
+      "event": {
+        "id": "401811964",
+        "name": "TOUR Championship",
+        "date": "2026-08-27T04:00Z",
+        "endDate": "2026-08-30T04:00Z",
+        "season": {
+          "year": 2026,
+          "type": 2,
+          "slug": "regular-season"
+        },
+        "status": {
+          "type": {
+            "id": "3",
+            "name": "STATUS_FINAL",
+            "state": "post",
+            "completed": true,
+            "description": "Final"
+          }
+        },
+        "competitions": [
+          {
+            "id": "401811964",
+            "date": "2026-08-27T04:00Z",
+            "endDate": "2026-08-30T04:00Z",
+            "status": {
+              "period": 4,
+              "type": {
+                "id": "3",
+                "name": "STATUS_FINAL",
+                "state": "post",
+                "completed": true,
+                "description": "Final",
+                "detail": "Final",
+                "shortDetail": "Complete"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "golf-major-2026",
+      "source": "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=20260514",
+      "expected": 0,
+      "event": {
+        "id": "401811947",
+        "name": "PGA Championship",
+        "date": "2026-05-14T04:00Z",
+        "endDate": "2026-05-17T04:00Z",
+        "season": {
+          "year": 2026,
+          "type": 2,
+          "slug": "regular-season"
+        },
+        "status": {
+          "type": {
+            "id": "3",
+            "name": "STATUS_FINAL",
+            "state": "post",
+            "completed": true,
+            "description": "Final"
+          }
+        },
+        "competitions": [
+          {
+            "id": "401811947",
+            "date": "2026-05-14T04:00Z",
+            "endDate": "2026-05-17T04:00Z",
+            "status": {
+              "period": 4,
+              "type": {
+                "id": "3",
+                "name": "STATUS_FINAL",
+                "state": "post",
+                "completed": true,
+                "description": "Final",
+                "detail": "Final",
+                "shortDetail": "Complete"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "nascar": [
+    {
+      "name": "nascar-5596",
+      "source": "https://cf.nascar.com/cacher/2026/race_list_basic.json",
+      "expected": 0,
+      "race": {
+        "race_id": 5596,
+        "race_season": 2026,
+        "series_id": 1,
+        "race_name": "DAYTONA 500",
+        "track_name": "Daytona International Speedway",
+        "date_scheduled": "2026-02-15T13:30:00",
+        "scheduled_laps": 200,
+        "playoff_round": 0
+      }
+    },
+    {
+      "name": "nascar-5624",
+      "source": "https://cf.nascar.com/cacher/2026/race_list_basic.json",
+      "expected": 1,
+      "race": {
+        "race_id": 5624,
+        "race_season": 2026,
+        "series_id": 1,
+        "race_name": "Cook Out Southern 500",
+        "track_name": "Darlington Raceway",
+        "date_scheduled": "2026-09-06T17:00:00",
+        "scheduled_laps": 367,
+        "playoff_round": 1
+      }
+    },
+    {
+      "name": "nascar-5601",
+      "source": "https://cf.nascar.com/cacher/2026/race_list_basic.json",
+      "expected": 2,
+      "race": {
+        "race_id": 5601,
+        "race_season": 2026,
+        "series_id": 1,
+        "race_name": "NASCAR Championship Race",
+        "track_name": "Homestead-Miami Speedway",
+        "date_scheduled": "2026-11-08T15:00:00",
+        "scheduled_laps": 267,
+        "playoff_round": 1
+      }
+    }
+  ]
+}

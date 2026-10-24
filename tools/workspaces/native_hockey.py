@@ -30,9 +30,14 @@ def run(root: Path, compiler: str, include: Path | None = None) -> int:
             raise RuntimeError("The native ArduinoJson dependency differs from its recorded revision")
         include = dependency / "src"
     executable = output / ("hockey.exe" if sys.platform == "win32" else "hockey")
-    subprocess.run([compiler, "-std=c++17", "-O1", "-Iesp32_hub75/src/mini/protocol",
-                    f"-I{include.resolve()}", "tests/native/mini_hockey_panes.cpp", "-o", str(executable)],
-                   cwd=root, check=True)
+    if Path(compiler).stem.lower() == "cl":
+        arguments = ["/nologo", "/std:c++17", "/EHsc", "/O1", "/Iesp32_hub75/src/mini/protocol",
+                     f"/I{include.resolve()}", "tests/native/mini_hockey_panes.cpp",
+                     f"/Fe:{executable}", f"/Fo:{output / 'hockey.obj'}"]
+    else:
+        arguments = ["-std=c++17", "-O1", "-Iesp32_hub75/src/mini/protocol",
+                     f"-I{include.resolve()}", "tests/native/mini_hockey_panes.cpp", "-o", str(executable)]
+    subprocess.run([compiler, *arguments], cwd=root, check=True)
     return subprocess.call([str(executable), "tests/fixtures/display/mini_hockey_panes.json"], cwd=root)
 
 

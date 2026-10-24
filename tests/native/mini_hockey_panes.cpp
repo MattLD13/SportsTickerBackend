@@ -218,5 +218,22 @@ int main(int argc, char** argv) {
       assert(glyph.pixels[y * 64 + x].r == (lit ? 255 : 0));
     }
   }
-  std::cout << "Mini response growth, NHL rounds, next shooter, completed attempts, playoff overtime, football spacing, and hash glyph passed\n";
+  for (const char* league : {"nfl", "ncf_fbs", "ncf_fcs", "mlb", "wbc", "nba", "march_madness", "nhl", "soccer_mls"}) {
+    for (int stage : {0, 1, 2}) {
+      JsonDocument game;
+      game["sport"] = league;
+      game["status"] = "FINAL";
+      game["state"] = "post";
+      game["competition_stage"] = stage;
+      Canvas canvas;
+      ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game.as<JsonObjectConst>()));
+      const auto expectedRule = stage == 2 ? ticker_ui::FINALS_RULE :
+                                stage == 1 ? ticker_ui::PLAYOFF_RULE : ticker_ui::HEADER_RULE;
+      for (int x = 0; x < 64; ++x) {
+        const auto actual = canvas.pixels[7 * 64 + x];
+        assert(actual.r == expectedRule.r && actual.g == expectedRule.g && actual.b == expectedRule.b);
+      }
+    }
+  }
+  std::cout << "Mini hockey, football spacing, glyphs, and tournament rules passed\n";
 }

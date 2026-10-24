@@ -6,6 +6,8 @@ namespace ticker_ui {
 struct Rgb { uint8_t r, g, b; };
 static constexpr Rgb BACKGROUND = {0, 0, 0};
 static constexpr Rgb HEADER_RULE = {55, 76, 130};
+static constexpr Rgb PLAYOFF_RULE = {192, 192, 192};
+static constexpr Rgb FINALS_RULE = {255, 215, 0};
 static constexpr Rgb STATUS_TEXT = {255, 240, 150};
 static constexpr Rgb SCORE_TEXT = {255, 255, 255};
 static constexpr Rgb PLAY_TEXT = {0, 200, 60};
