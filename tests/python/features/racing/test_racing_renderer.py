@@ -99,3 +99,23 @@ def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
         RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
     assert "+1.234" in drawn
     assert "220.123" not in drawn
+
+
+def test_nurburgring_scroll_identifies_the_car_without_a_driver_abbreviation(monkeypatch):
+    import ticker_core.features.racing.renderer as rendering
+
+    drawn = []
+    original = rendering.draw_tiny_text
+
+    def record(draw, x, y, text, color):
+        drawn.append(str(text))
+        return original(draw, x, y, text, color)
+
+    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    item = _item("nbr24")
+    item["nbr24"]["drivers"] = [{"pos": 1, "car": "1", "name": "ROWE Racing", "manufacturer": "BMW M4 GT3", "gap": "Leader"}]
+    RacingRenderer(load_default_font_set(), MemoryRacingAssets()).render(
+        RenderContext(datetime(2026, 5, 17, tzinfo=timezone.utc)), ContentScene(item, "sports"))
+    assert "CAR" in drawn
+    assert "BMW M4 GT3" in drawn
+    assert "???" not in drawn
