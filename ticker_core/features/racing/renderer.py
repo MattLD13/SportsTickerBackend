@@ -15,11 +15,11 @@ from ticker_core.rendering.pixels import TINY as TINY_FONT_MAP
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
 from .assets import RacingAssetService
+from sports_ticker.providers.sports_display import racing_signal, racing_flag_pixel, racing_flag_code
 
 
 PANEL_WIDTH = 384
 PANEL_HEIGHT = 32
-_NON_FLAG_STATES = {"WARM", "COLD", "FINAL", "OFFICIAL", "UNOFFICIAL", "ENDED", "STANDBY"}
 
 
 def _is_timed_session(session: object) -> bool:
@@ -47,28 +47,8 @@ def _is_timed_session(session: object) -> bool:
 
 def racing_flag_color(value: object) -> tuple[int, int, int]:
     """Return the panel color for one race control state."""
-    name = str(value or "").strip().upper()
-    if name in {"GREEN", "CLEAR", "ROLLING START", "FORMATION LAP", "GWC", "FLAG TO FLAG", "FTF"}:
-        return (55, 190, 90)
-    if name in {"YELLOW", "DOUBLE YELLOW", "CAUTION", "DEBRIS", "FCY", "FULL COURSE YELLOW", "LOCAL YELLOW", "SLOW ZONE", "CODE 60", "CODE60", "WAVE AROUND", "LUCKY DOG"}:
-        return (255, 215, 0)
-    if name in {"SAFETY CAR", "SC", "PACE CAR", "PACE", "VSC", "VIRTUAL SAFETY CAR", "NEUTRALISED", "NEUTRALIZED"}:
-        return (255, 140, 0)
-    if name in {"VSC ENDING", "SC ENDING"}:
-        return (255, 185, 0)
-    if name in {"RED", "RED FLAG"}:
-        return (230, 70, 70)
-    if name in {"WHITE", "OIL FLAG"}:
-        return (230, 230, 230)
-    if name == "CHECKERED":
-        return (235, 235, 235)
-    if name == "BLUE":
-        return (60, 100, 235)
-    if name in {"BLACK", "MEATBALL"}:
-        return (30, 30, 30)
-    if name in {"BLACK AND WHITE", "BLACK WHITE"}:
-        return (130, 130, 130)
-    return (110, 115, 130)
+    return tuple(racing_signal(value, "")["color_rgb"])
+
 
 
 @dataclass(slots=True)
@@ -82,8 +62,8 @@ class RacingRenderer:
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render a racing scroll card or a full leaderboard."""
         if scene.item.get("sports_presentation") == "pinned":
-            return RenderedContent(self._render_full(scene.item, scene.elapsed))
-        return RenderedContent(self._render_scroll(scene.item))
+            return RenderedContent(self._render_full(scene.item, scene.elapsed, context.now.timestamp()))
+        return RenderedContent(self._render_scroll(scene.item, context.now.timestamp()))
 
     def _payload(self, item: Mapping[str, Any]) -> Mapping[str, Any]:
         sport = str(item.get("sport", "")).lower()
@@ -95,104 +75,75 @@ class RacingRenderer:
             return _mapping(item.get(sport))
         return _mapping(item.get("indycar"))
 
-    def _render_scroll(self, item: Mapping[str, Any]) -> Image.Image:
-        width = 128
-        image = Image.new("RGBA", (width, PANEL_HEIGHT), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
-        payload = self._payload(item)
-        drivers = _drivers(payload)
-        header = _header_label(payload)
-        draw_hybrid_text(draw, 2, 2, header, (8, 8, 8, 180))
-        draw_hybrid_text(draw, 1, 1, header, (255, 240, 150, 255))
-        flag = _display_flag(payload.get("flag"), item.get("state", "pre"))
-        _draw_mini_flag(draw, width - 12, 0, flag)
-        draw.line([(0, 7), (width - 1, 7)], fill=(55, 76, 130))
-        session = str(payload.get("session_name") or payload.get("session_type") or "Race").lower()
-        sport = str(item.get("sport", "")).lower()
-        metric = str(payload.get("qualifying_metric") or "").lower()
-        timed = _is_timed_session(session) or metric in {"mph", "time"}
-        is_mph = metric == "mph" or (timed and metric != "time" and sport == "indycar" and "mph" in str(payload.get("track_type") or "").lower())
-        state = str(item.get("state", "pre")).lower()
-        lap = int(payload.get("lap") or 0)
-        total_laps = int(payload.get("total_laps") or 0)
-        time_to_go = str(payload.get("time_to_go") or "").strip()
-        if not drivers:
-            _draw_empty_or_session(draw, payload, item, width)
-            return image
-        draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
-        draw_tiny_text(draw, 10, 8, "CAR" if sport in {"wec", "imsa"} else "DRIVER", (70, 90, 140))
-        label = "MPH" if is_mph else "TIME" if timed and (sport == "f1" or metric == "time") else "INTERVAL" if sport == "nascar" else "GAP"
-        draw_tiny_text(draw, 90, 8, label, (70, 90, 140))
-        for index, driver in enumerate(drivers[:3]):
-            y = (13, 20, 27)[index]
-            position = str(driver.get("pos") or index + 1)
-            abbreviation = str(driver.get("abbr") or "???").upper()[:3]
-            car = str(driver.get("car") or "").strip()
-            if is_mph:
-                right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
-            elif timed:
-                if sport == "f1":
-                    right = str(driver.get("interval") or driver.get("gap") or driver.get("best_time") or "")[:12]
-                elif metric == "time":
-                    right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:7]
-                else:
-                    right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:7]
-            elif position == "1":
-                if state == "post":
-                    right = "LEADER"
-                elif lap > 0 and total_laps > 0:
-                    right = f"{lap}/{total_laps}"
-                elif time_to_go and "00:00" not in time_to_go and time_to_go != "0":
-                    right = time_to_go
-                else:
-                    right = "LEADER"
+    def _render_scroll(self, item: Mapping[str, Any], elapsed: float = 0) -> Image.Image:
+        cards = _mapping(item.get("racing_display")).get("cards") or []
+        if not cards:
+            empty = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
+            draw_tiny_text(ImageDraw.Draw(empty), 5, 12, "NO TIMING", (180, 210, 255))
+            return empty
+        strip = Image.new("RGBA", (128 * len(cards) + 6 * (len(cards) - 1), PANEL_HEIGHT), (0, 0, 0, 255))
+        for index, card in enumerate(cards):
+            image = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
+            draw = ImageDraw.Draw(image)
+            signals = card.get("signals") or [racing_signal("UNKNOWN", "")]
+            signal = signals[int(max(0, elapsed) // 2) % len(signals)]
+            suffix = str(card.get("class_label") or "")
+            if signal["code"] not in {"GREEN", "NONE", "CHECKERED"}:
+                suffix += " " + str(signal["label"]) + str(signal.get("car") or signal.get("sector") or "")
+            name = str(card.get("race_name") or "RACING").upper()
+            while name and _tiny_width(name + " " + suffix) > 112:
+                name = name[:-1]
+            draw_tiny_text(draw, 1, 1, (name + " " + suffix).strip(), (255, 240, 150))
+            _draw_mini_flag(draw, 116, 0, _pulse_flag(signal, elapsed))
+            draw.line([(0, 7), (127, 7)], fill=(55, 76, 130))
+            rows = card.get("rows") or []
+            if not rows:
+                draw_tiny_text(draw, 3, 14, str(card.get("session") or "WAITING")[:28], (180, 210, 255))
+                draw_tiny_text(draw, 3, 24, str(card.get("status") or "WAIT")[:28], (200, 200, 200))
             else:
-                right = str(driver.get("interval") or driver.get("gap") or "")[:12]
-            draw_tiny_text(draw, 1, y, position, (255, 215, 0) if position == "1" else (200, 200, 200))
-            primary, _ = self._driver_colors(driver)
-            number = car or abbreviation
-            number_width = _tiny_width(number)
-            start = 10
-            draw_tiny_text(draw, start, y, number, _brighten_if_dark(primary))
-            right_x = min(82, width - len(right) * 4 - 2) if right else width - 2
-            avail_width = max(10, right_x - (start + number_width + 3))
-            if sport in {"wec", "imsa"}:
-                # In LMP2 all cars are Oreca chassis, so prioritize team name over manufacturer
-                is_lmp2 = "lmp2" in session or str(driver.get("class") or "").lower() == "lmp2" or str(driver.get("manufacturer") or "").upper() == "ORECA"
-                raw_name = str((driver.get("team") or driver.get("team_abbr")) if is_lmp2 else (driver.get("manufacturer") or driver.get("team") or driver.get("abbr") or "???")).upper()
-                if _tiny_width(raw_name) <= avail_width:
-                    display_name = raw_name
-                else:
-                    first_word = raw_name.split()[0]
-                    if _tiny_width(first_word) <= avail_width:
-                        display_name = first_word
-                    else:
-                        display_name = str(driver.get("abbr") or raw_name[:4]).upper()
-            else:
-                display_name = abbreviation
-            draw_tiny_text(draw, start + number_width + 3, y, display_name, (255, 255, 255))
-            if right:
-                draw_tiny_text(draw, right_x, y, right, (255, 215, 0) if position == "1" else (180, 210, 255))
-        return image
+                draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
+                draw_tiny_text(draw, 10, 8, "CAR", (70, 90, 140))
+                draw_tiny_text(draw, 90, 8, "MPH" if card.get("metric_type") == "mph" else "GAP", (70, 90, 140))
+                for position, row in enumerate(rows[:3]):
+                    y = 13 + position * 7
+                    draw_tiny_text(draw, 1, y, str(row["position"]), tuple(row["position_rgb"]))
+                    number = str(row["car"])
+                    style = _mapping(row.get("number_style"))
+                    draw_tiny_text(draw, 10, y, number, tuple(style.get("color_rgb") or (235, 235, 235)))
+                    draw_tiny_text(draw, 13 + _tiny_width(number), y, str(row["name"]), (255, 255, 255))
+                    metric = str(row.get("metric") or "")[:12]
+                    draw_tiny_text(draw, max(60, 126 - _tiny_width(metric)), y, metric, tuple(row["metric_rgb"]))
+            strip.paste(image, (index * 134, 0))
+        return strip
 
-    def _render_full(self, item: Mapping[str, Any], elapsed: float) -> Image.Image:
+    def _render_full(self, item: Mapping[str, Any], elapsed: float, signal_time: float) -> Image.Image:
         image = Image.new("RGBA", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
         info_width = 84
         for x in range(info_width):
             draw.line([(x, 0), (x, PANEL_HEIGHT)], fill=(0, 20, 60, int(30 + 20 * x / info_width)))
         payload = self._payload(item)
-        self._draw_info(draw, payload, item, info_width, elapsed)
+        self._draw_info(draw, payload, item, info_width, elapsed, signal_time)
         self._draw_driver_panel(image, payload, item, info_width, elapsed)
         return image
 
-    def _draw_info(self, draw: ImageDraw.ImageDraw, payload: Mapping[str, Any], item: Mapping[str, Any], width: int, elapsed: float) -> None:
+    def _draw_info(self, draw: ImageDraw.ImageDraw, payload: Mapping[str, Any], item: Mapping[str, Any], width: int, elapsed: float, signal_time: float) -> None:
         name = _info_name(payload)
         session = str(payload.get("session_type") or "RACE").upper()
         state = str(item.get("state", "pre")).lower()
         flag = _display_flag(payload.get("flag"), state)
+        signals = []
+        identities = set()
+        for card in _mapping(item.get("racing_display")).get("cards") or []:
+            for signal in card.get("signals") or []:
+                identity = (signal["code"], signal.get("scope"), signal.get("car"), signal.get("sector"))
+                if identity not in identities:
+                    identities.add(identity)
+                    signals.append(signal)
+        selected = signals[int(max(0, signal_time) // 2) % len(signals)] if signals else racing_signal(flag, str(item.get("sport") or ""))
+        flag = selected["code"]
         draw.rectangle([0, 0, 2, PANEL_HEIGHT], fill=racing_flag_color(flag))
-        _draw_flag(draw, width - 17, 1, flag)
+        _draw_flag(draw, width - 17, 1, _pulse_flag(selected, signal_time))
         available = width - 25
         if _tiny_width(name) <= available:
             draw_tiny_text(draw, 4, 1, name, (255, 240, 150))
@@ -214,6 +165,9 @@ class RacingRenderer:
             session_display = time_to_go[:11]
         else:
             session_display = session[:11]
+        if selected["code"] not in {"GREEN", "NONE", "CHECKERED"}:
+            target = str(selected["car"]) if selected.get("car") else "S" + str(selected["sector"]) if selected.get("sector") else ""
+            session_display = (selected["label"] + " " + target).strip()
         draw_tiny_text(draw, 4, 8, session_display, (180, 210, 255))
         _draw_weather(draw, weather)
 
@@ -399,120 +353,36 @@ def _info_name(payload: Mapping[str, Any]) -> str:
 
 
 def _display_flag(flag: object, state: object) -> str:
-    """Select a real race flag from the payload state."""
-    value = str(flag or "").strip().upper()
-    if value == "CHKD":
-        return "CHECKERED"
-    if value in _NON_FLAG_STATES:
-        value = ""
-    if value:
-        return value
-    return "CHECKERED" if str(state).lower() == "post" else "WHITE" if str(state).lower() == "pre" else "GREEN"
+    """Keep absent and unknown live signals distinct from green."""
+    if flag not in (None, ""):
+        return racing_flag_code(flag)
+    return "CHECKERED" if str(state).lower() == "post" else "NONE" if str(state).lower() == "pre" else "UNKNOWN"
 
 
-def _draw_mini_flag(draw: ImageDraw.ImageDraw, x: int, y: int, flag: str) -> None:
-    """Draw the compact scroll-card flag."""
-    if flag == "CHECKERED":
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=(240, 240, 240))
-        for row in range(y + 1, y + 7):
-            for column in range(x, x + 9):
-                if (row + column) % 2 == 0:
-                    draw.point((column, row), fill=(45, 45, 45))
-    elif flag == "GWC":
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=(240, 240, 240))
-        for row in range(y + 1, y + 7):
-            for column in range(x, x + 9):
-                if (row + column) % 2 == 0:
-                    draw.point((column, row), fill=(55, 190, 90))
-    elif flag == "MEATBALL":
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=(20, 20, 20))
-        center_x, center_y = x + 4, y + 3
-        draw.ellipse([center_x - 2, center_y - 2, center_x + 2, center_y + 2], fill=(255, 120, 0))
-    elif flag in {"BLACK AND WHITE", "BLACK WHITE"}:
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=(240, 240, 240))
-        draw.polygon([(x, y + 1), (x + 8, y + 1), (x, y + 6)], fill=(20, 20, 20))
-    elif flag == "DOUBLE YELLOW":
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=(20, 15, 0))
-        middle = (y + 1 + y + 6) // 2
-        draw.rectangle([x, y + 1, x + 8, middle - 1], fill=(255, 215, 0))
-        draw.rectangle([x, middle + 1, x + 8, y + 6], fill=(255, 215, 0))
-    elif flag == "BLUE":
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=(60, 100, 235))
-        draw.line([(x + 1, y + 6), (x + 8, y + 2)], fill=(255, 215, 0))
-        draw.line([(x + 2, y + 6), (x + 8, y + 3)], fill=(255, 215, 0))
-    elif flag in {"VSC ENDING", "SC ENDING"}:
-        middle = (x + x + 8) // 2
-        draw.rectangle([x, y + 1, middle, y + 6], fill=(255, 140, 0))
-        draw.rectangle([middle + 1, y + 1, x + 8, y + 6], fill=(55, 190, 90))
-    elif flag in {"FLAG TO FLAG", "FTF"}:
-        middle = (x + x + 8) // 2
-        draw.rectangle([x, y + 1, middle, y + 6], fill=(100, 160, 220))
-        draw.rectangle([middle + 1, y + 1, x + 8, y + 6], fill=(55, 190, 90))
-    else:
-        draw.rectangle([x, y + 1, x + 8, y + 6], fill=racing_flag_color(flag))
-    draw.rectangle([x, y + 1, x + 8, y + 6], outline=(35, 35, 35))
+def _flag_style(flag):
+    return flag if isinstance(flag, Mapping) else racing_signal(flag, "")
 
 
-def _draw_flag(draw: ImageDraw.ImageDraw, x: int, y: int, flag: str) -> None:
-    """Draw the full-screen info-panel flag."""
+def _pulse_flag(signal, elapsed):
+    if signal.get("motion") == "waved" and int(max(0, elapsed) / .35) % 2:
+        return {**signal, "color_rgb": [v // 3 for v in signal["color_rgb"]],
+                "accent_rgb": [v // 3 for v in signal["accent_rgb"]]}
+    return signal
+
+
+def _draw_mini_flag(draw: ImageDraw.ImageDraw, x: int, y: int, flag) -> None:
+    signal = _flag_style(flag)
+    for row in range(6):
+        for column in range(9):
+            draw.point((x + column, y + row + 1), fill=racing_flag_pixel(signal, column, row, 9, 6))
+
+
+def _draw_flag(draw: ImageDraw.ImageDraw, x: int, y: int, flag) -> None:
+    signal = _flag_style(flag)
     draw.rectangle([x - 1, y - 1, x + 15, y + 10], fill=(6, 8, 12), outline=(120, 130, 145))
-    if flag == "CHECKERED":
-        draw.rectangle([x, y, x + 14, y + 9], fill=(240, 240, 240))
-        for row in range(y + 1, y + 9):
-            for column in range(x + 1, x + 14):
-                if ((row - (y + 1)) // 2 + (column - (x + 1)) // 2) % 2 == 0:
-                    draw.point((column, row), fill=(45, 45, 45))
-    elif flag == "GWC":
-        draw.rectangle([x, y, x + 14, y + 9], fill=(240, 240, 240), outline=(35, 35, 35))
-        for row in range(y + 1, y + 9):
-            for column in range(x + 1, x + 14):
-                if ((row - (y + 1)) // 2 + (column - (x + 1)) // 2) % 2 == 0:
-                    draw.point((column, row), fill=(55, 190, 90))
-    elif flag == "MEATBALL":
-        draw.rectangle([x, y, x + 14, y + 9], fill=(20, 20, 20), outline=(35, 35, 35))
-        center_x, center_y = x + 7, y + 4
-        draw.ellipse([center_x - 3, center_y - 3, center_x + 3, center_y + 3], fill=(255, 120, 0))
-    elif flag in {"BLACK AND WHITE", "BLACK WHITE"}:
-        draw.rectangle([x, y, x + 14, y + 9], fill=(240, 240, 240), outline=(35, 35, 35))
-        draw.polygon([(x + 1, y + 1), (x + 13, y + 1), (x + 1, y + 8)], fill=(20, 20, 20))
-        draw.rectangle([x, y, x + 14, y + 9], outline=(35, 35, 35))
-    elif flag == "DOUBLE YELLOW":
-        draw.rectangle([x, y, x + 14, y + 9], fill=(20, 15, 0), outline=(35, 35, 35))
-        draw.rectangle([x + 1, y + 1, x + 13, y + 2], fill=(255, 215, 0))
-        draw.rectangle([x + 1, y + 7, x + 13, y + 8], fill=(255, 215, 0))
-    elif flag == "BLUE":
-        draw.rectangle([x, y, x + 14, y + 9], fill=(60, 100, 235), outline=(35, 35, 35))
-        for index in range(3):
-            draw.line([(x + 1 + index, y + 8), (x + 13, y + 1 + index)], fill=(255, 215, 0))
-    elif flag in {"VSC ENDING", "SC ENDING"}:
-        middle = (x + x + 14) // 2
-        draw.rectangle([x, y, middle, y + 9], fill=(255, 140, 0))
-        draw.rectangle([middle + 1, y, x + 14, y + 9], fill=(55, 190, 90))
-        draw.rectangle([x, y, x + 14, y + 9], outline=(35, 35, 35))
-    elif flag in {"FLAG TO FLAG", "FTF"}:
-        middle = (x + x + 14) // 2
-        draw.rectangle([x, y, middle, y + 9], fill=(100, 160, 220))
-        draw.rectangle([middle + 1, y, x + 14, y + 9], fill=(55, 190, 90))
-        draw.rectangle([x, y, x + 14, y + 9], outline=(35, 35, 35))
-    else:
-        draw.rectangle([x, y, x + 14, y + 9], fill=racing_flag_color(flag))
-    draw.rectangle([x, y, x + 14, y + 9], outline=(35, 35, 35))
-
-
-def _draw_empty_or_session(draw: ImageDraw.ImageDraw, payload: Mapping[str, Any], item: Mapping[str, Any], width: int) -> None:
-    """Draw an event state when results are not available."""
-    has_context = any(payload.get(key) for key in ("short_name", "event_name", "session_type", "session_name"))
-    if has_context:
-        state = str(item.get("state") or "").lower()
-        status = str(item.get("status") or "").strip()
-        text = status or "FINAL" if state == "post" else f"STARTS {status}" if state == "pre" and status and not status.upper().startswith("START") else status or "UPCOMING" if state == "pre" else "LIVE"
-        draw_tiny_text(draw, max(2, (width - _tiny_width(text[:22])) // 2), 18, text[:22], (200, 210, 235))
-        return
-    draw.rectangle([0, 0, width - 1, PANEL_HEIGHT - 1], fill=(8, 8, 16))
-    draw.rectangle([0, 0, 2, PANEL_HEIGHT - 1], fill=(72, 76, 92))
-    draw.rectangle([width - 3, 0, width - 1, PANEL_HEIGHT - 1], fill=(72, 76, 92))
-    draw_tiny_text(draw, max(2, (width - _tiny_width("NO GAMES AVAILABLE")) // 2), 10, "NO GAMES AVAILABLE", (205, 212, 224))
-    draw_tiny_text(draw, max(2, (width - _tiny_width("CHECK BACK LATER")) // 2), 18, "CHECK BACK LATER", (145, 152, 165))
+    for row in range(10):
+        for column in range(15):
+            draw.point((x + column, y + row), fill=racing_flag_pixel(signal, column, row, 15, 10))
 
 
 def _draw_weather(draw: ImageDraw.ImageDraw, weather: Mapping[str, Any]) -> None:

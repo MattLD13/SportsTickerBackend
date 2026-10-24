@@ -21,6 +21,7 @@ from ticker_core.rendering import ContentScene
 from ticker_core.rendering.strip import compose_pane_strip
 from ticker_core.rendering.style import pane_divider_colors
 from ticker_core.runtime import Content, FrameDecision, FrameKind
+from sports_ticker.projections.racing_display import racing_cards
 
 
 @lru_cache(maxsize=1)
@@ -47,10 +48,18 @@ def main_layout(row: dict) -> dict:
 def case_items(row: dict, presentation: str) -> list[dict]:
     """Select neighboring examples for the production scrolling view."""
     if presentation == "pinned":
-        return [row["game"]]
+        return [project_preview_game(row["game"])]
     group = [item for item in layout_library()["cases"] if item["group"] == row["group"] and item["mode"] == row["mode"] and item["main"]["pane"]]
     index = group.index(row)
-    return [group[(index + offset) % len(group)]["game"] for offset in range(min(4, len(group)))]
+    return [project_preview_game(group[(index + offset) % len(group)]["game"]) for offset in range(min(4, len(group)))]
+
+
+def project_preview_game(game: dict) -> dict:
+    """Use the same racing display contract as the device data route."""
+    result = deepcopy(game)
+    if str(result.get("sport")) in {"f1", "indycar", "nascar", "wec", "imsa"}:
+        result["racing_display"] = {"cards": racing_cards(result)}
+    return result
 
 
 class PreviewRenderer:

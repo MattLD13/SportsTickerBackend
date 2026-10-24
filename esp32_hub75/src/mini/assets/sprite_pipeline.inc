@@ -177,15 +177,10 @@ void prepareLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
   logoProgressComplete = 0;
   logoProgressTotal = 0;
   ++logoPlanGeneration;
-  JsonArrayConst items = payload.document()["content"][rotationFamily()].as<JsonArrayConst>();
   for (uint16_t offset = 0; offset < windowSize; ++offset) {
     const uint16_t targetIndex = (targetPage + offset) % gameCount;
-    uint16_t visibleIndex = 0;
-    for (JsonObjectConst item : items) {
-      if (!shownItem(item)) {
-        continue;
-      }
-      if (visibleIndex == targetIndex) {
+    JsonObjectConst item;
+    if (pageItemAt(targetIndex, item)) {
         JsonObjectConst game = item["data"].as<JsonObjectConst>();
         if (!game.isNull()) {
           if (offset < LOGO_FOREGROUND_GAMES) {
@@ -195,9 +190,6 @@ void prepareLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
           if (sportsMode) appendLogoWork(game, "away_logo_asset");
           appendLogoWork(game, "home_logo_asset");
         }
-        break;
-      }
-      ++visibleIndex;
     }
   }
   spriteAssets.pinWindow(logoWorkPrimary, logoWorkCount);

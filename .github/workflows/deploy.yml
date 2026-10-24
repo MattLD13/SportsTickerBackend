@@ -189,6 +189,12 @@ jobs:
         g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
         /tmp/mini-music-check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Verify Mini racing cards and flag patterns
+      run: |
+        python tools/mini/racing_vectors.py --check
+        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_racing.cpp esp32_hub75/src/mini/protocol/device_payload.cpp -o /tmp/mini-racing-check
+        /tmp/mini-racing-check tests/fixtures/display/mini_racing.json
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Read mini firmware version
       id: mini_version
       shell: bash

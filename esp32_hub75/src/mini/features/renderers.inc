@@ -11,6 +11,16 @@ class MiniSportsCanvas : public MiniCanvas {
 };
 
 void drawGame(JsonObjectConst game, const PreparedGameLogos& logos) {
+  if (game["racing_display"].is<JsonObjectConst>()) {
+    static String visibleRace;
+    static uint32_t visibleSince = 0;
+    const String identity = selectedModeItemId;
+    if (identity != visibleRace) { visibleRace = identity; visibleSince = millis(); }
+    MiniCanvas canvas;
+    ticker_ui::renderRacing(canvas, ticker_ui::racingPane(game, millis() - visibleSince, millis()));
+    presentContentFrame();
+    return;
+  }
   MiniSportsCanvas canvas(logos);
   ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game));
   presentContentFrame();
@@ -141,6 +151,7 @@ void renderCurrent() {
     prepareSelectedGameLogoSources(game);
     JsonObjectConst selected;
     selectedPageItem(selected);
+    selectedModeItemId = selected["id"] | "";
     beginFrame("sports", selected["id"] | "", pageIndex, pageCount,
                pageCount > 1 ? pageHoldMillis(pageHoldSeconds) : 0);
     drawGame(game, preparedGameLogos);

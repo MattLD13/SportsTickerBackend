@@ -85,7 +85,11 @@ bool renderPanel(Canvas& canvas, const std::string& mode, JsonObjectConst game, 
         view.elapsedMs = elapsed;
         view.ready = game["ready"] | true; view.date = game["date"] | ""; view.time = game["time"] | ""; view.seconds = game["seconds"] | 0;
         ticker_ui::renderClock(canvas, view);
-      } else if (mode == "sports") ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game));
+      } else if (mode == "sports") {
+        if (game["racing_display"].is<JsonObjectConst>())
+          ticker_ui::renderRacing(canvas, ticker_ui::racingPane(game, (row["elapsed_ms"] | 0) + elapsed, (row["signal_ms"] | 0) + elapsed));
+        else ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game));
+      }
       else return false;
   return true;
 }

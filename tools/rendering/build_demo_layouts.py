@@ -21,7 +21,8 @@ sys.path.insert(0, str(ROOT))
 from sports_ticker.assets.mini_artwork import encode_artwork
 from sports_ticker.assets.mini_sprite import encode_sprite
 from sports_ticker.assets.music_palette import artwork_colors
-from sports_ticker.dashboard_v2.preview import main_layout
+from sports_ticker.dashboard_v2.preview import main_layout, project_preview_game
+from sports_ticker.projections.racing_display import mini_racing_cards
 from sports_ticker.providers.logo_overrides import mini_logo_sources
 from tools.rendering.render_mini_ui import remote_render
 from tools.mini.generate_mini_weather import FRAMES as WEATHER_FRAMES, STEP_MS as WEATHER_FRAME_MS
@@ -42,7 +43,10 @@ def provenance() -> dict:
     """Identify every source that determines public Mini frames."""
     paths = sorted((ROOT / "esp32_hub75/src/mini/rendering").glob("*.h"))
     paths += [ROOT / name for name in (
-        "esp32_hub75/src/mini/protocol/panels.h", "esp32_hub75/platformio.ini",
+        "esp32_hub75/src/mini/protocol/panels.h", "esp32_hub75/src/mini/protocol/racing_pane.h", "esp32_hub75/platformio.ini",
+        "esp32_hub75/src/mini/protocol/rotation.h",
+        "sports_ticker/projections/racing_display.py", "sports_ticker/providers/racing_number_colors.json",
+        "sports_ticker/providers/sports_display.py",
         "sports_ticker/assets/images.py", "sports_ticker/assets/mini_sprite.py",
         "sports_ticker/assets/mini_artwork.py", "sports_ticker/assets/music_palette.py",
         "sports_ticker/providers/logo_overrides.py", "tools/rendering/render_mini_ui.cpp", "tools/rendering/build_demo_layouts.py",
@@ -73,6 +77,9 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", example["name"]):
             raise ValueError("Invalid public example name")
         row = {"name": example["name"], "mode": example["mode"], "game": deepcopy(example["game"])}
+        projected = project_preview_game(row["game"])
+        if projected.get("racing_display"):
+            row["game"] = mini_racing_cards({"id": row["name"], "is_shown": True, "data": projected})[0]["data"]
         background = row["game"].get("background", {})
         asset_mode = background.get("mode", row["mode"])
         asset_game = background.get("game", row["game"])

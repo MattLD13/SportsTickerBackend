@@ -6,28 +6,23 @@ bool shownItem(JsonObjectConst item) {
 }
 
 
-const char* rotationFamily() { return displayMode == "stock" ? "stock" : "sports"; }
+template<class Callback>
+void forEachRotationItem(Callback callback) {
+  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
+  ticker_ui::forEachRotationItem(content, sportsMode, callback);
+}
 
 bool rotatingMode() { return sportsMode || displayMode == "stock"; }
 
 uint16_t countShownPages() {
   uint16_t count = 0;
-  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
-  JsonArrayConst items = content[rotationFamily()].as<JsonArrayConst>();
-  for (JsonObjectConst item : items) {
-    if (shownItem(item)) {
-      ++count;
-    }
-  }
+  forEachRotationItem([&](JsonObjectConst) { ++count; });
   return count;
 }
 
 uint32_t pageRotationSignature() {
   String sequence = displayMode + "|";
-  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
-  JsonArrayConst items = content[rotationFamily()].as<JsonArrayConst>();
-  for (JsonObjectConst item : items) {
-    if (!shownItem(item)) continue;
+  forEachRotationItem([&](JsonObjectConst item) {
     String identity = item["id"] | "";
     if (identity.length() == 0) identity = item["identifier"] | "";
     if (identity.length() == 0) identity = item["key"] | "";
@@ -44,25 +39,26 @@ uint32_t pageRotationSignature() {
     sequence += identity + "|";
     sequence += miniSpriteToken(data, "away_logo_asset") + "|";
     sequence += miniSpriteToken(data, "home_logo_asset") + ";";
-  }
+  });
   return hashBody(sequence);
 }
 
-bool selectedPageItem(JsonObjectConst& selected) {
+bool pageItemAt(uint16_t wanted, JsonObjectConst& selected) {
   uint16_t index = 0;
-  JsonObjectConst content = payload.document()["content"].as<JsonObjectConst>();
-  JsonArrayConst items = content[rotationFamily()].as<JsonArrayConst>();
-  for (JsonObjectConst item : items) {
-    if (!shownItem(item)) {
-      continue;
-    }
-    if (index == pageIndex) {
-      selected = item;
-      return true;
-    }
-    ++index;
-  }
-  return false;
+  bool found = false;
+  forEachRotationItem([&](JsonObjectConst item) {
+    if (index++ == wanted) { selected = item; found = true; }
+  });
+  return found;
+}
+
+bool selectedPageItem(JsonObjectConst& selected) {
+  return pageItemAt(pageIndex, selected);
+}
+
+bool racingPageSelected() {
+  JsonObjectConst selected;
+  return sportsMode && selectedPageItem(selected) && selected["data"]["racing_display"].is<JsonObjectConst>();
 }
 
 bool selectedGame(JsonObjectConst& selected) {

@@ -272,3 +272,25 @@ def test_one_series_failure_does_not_freeze_a_healthy_series():
     by_kind = {item.kind: item.data for item in result.content}
     assert by_kind["f1"]["f1"]["flag"] == "RED"
     assert by_kind["wec"]["wec"]["flag"] == "GREEN"
+
+
+@pytest.mark.parametrize("sport,filename,timestamp,expected", [
+    ("nascar", "cup-phoenix-2026.json", "2026-10-19T01:00:00+00:00", ["CUP"]),
+    ("wec", "wec-barcelona-2026.json", "2026-10-18T16:30:00+00:00", ["HY", "LMGT3"]),
+    ("imsa", "cup-phoenix-2026.json", "2026-10-04T03:00:00+00:00", ["GTP", "LMP2", "GTD PRO", "GTD"]),
+])
+def test_official_classifications_reach_the_mini_filter_contract(sport, filename, timestamp, expected):
+    from sports_ticker.projections.device_data import project_device_data
+    now = datetime.fromisoformat(timestamp)
+    config = settings(sport)
+    provider = RacingProvider(source(JsonResponses(filename), now, ImsaSocket() if sport == "imsa" else None))
+    result = provider.fetch(config)
+    assert result.health.healthy, result.health.error
+    payload = project_data_v2(TickerSnapshot("mini-racing", 1, now, result.content, (), (), config), result.health, {})
+    mini = project_device_data(payload, mini=True)
+    cards = [item["data"]["racing_display"] for item in mini["content"]["racing"]]
+    assert [card["class_label"] for card in cards] == expected
+    assert all(len(card["rows"]) == 3 for card in cards)
+    assert all(card["state"] == "post" for card in cards)
+    assert all(len(card["signals"][0]["pixels"]) == 25 for card in cards)
+    assert [row["car"] for row in cards[0]["rows"]] == {"nascar": ["45", "12", "9"], "wec": ["8", "7", "50"], "imsa": ["6", "24", "40"]}[sport]

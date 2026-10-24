@@ -42,11 +42,10 @@ bool updateFromPayload(const ResponseBody& body) {
   pageCount = rotatingMode() && !pairingMode ? countShownPages() : 0;
   if (visibleId.length() > 0 && rotatingMode()) {
     uint16_t index = 0;
-    for (JsonObjectConst item : payload.document()["content"][rotationFamily()].as<JsonArrayConst>()) {
-      if (!shownItem(item)) continue;
-      if (visibleId == (item["id"] | "")) { pageIndex = index; break; }
+    forEachRotationItem([&](JsonObjectConst item) {
+      if (visibleId == (item["id"] | "")) pageIndex = index;
       ++index;
-    }
+    });
   }
   if (pageIndex >= pageCount) pageIndex = 0;
   float brightness = settings["brightness"] | 100.0f;

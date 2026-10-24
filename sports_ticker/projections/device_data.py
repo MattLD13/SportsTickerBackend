@@ -2,6 +2,7 @@
 from collections.abc import Mapping
 from typing import Any
 from .mini_fields import SPORTS_FIELDS
+from .racing_display import mini_racing_cards
 
 
 def project_device_data(payload: Mapping[str, Any], *, mini: bool = False) -> dict[str, Any]:
@@ -17,7 +18,7 @@ def compact_mini_data(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Apply the Mini wire fields after asset facts have been projected."""
     return {**payload, "content": {
         family: [{**item, "data": select_fields(item["data"], SPORTS_FIELDS)} for item in items]
-                if family == "sports" else items
+                if family == "sports" else [card for item in items for card in mini_racing_cards(item)] if family == "racing" else items
         for family, items in payload["content"].items()
     }}
 

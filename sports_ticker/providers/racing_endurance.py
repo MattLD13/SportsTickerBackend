@@ -15,7 +15,7 @@ from .racing_live import (
     _session_lifecycle_state, _format_local_time, _normalize_racing_flag, _CAUTION_FLAGS,
 )
 from .racing_sockets import AlkamelSnapshot, open_timing_socket
-from .sports_display import racing_short_name
+from .sports_display import racing_short_name, racing_flag_code
 
 
 _WEC = "https://insights.griiip.com"
@@ -97,7 +97,7 @@ class EnduranceRacingSource:
         raise ValueError("Unknown endurance series")
 
     def record(self, sport, identifier, event, track, session, state, start, end, drivers, flag, settings,
-               *, lap=0, total=0, country="", weather=None):
+               *, lap=0, total=0, country="", weather=None, flag_raw=None):
         now = self.now().astimezone(timezone.utc)
         timed = any(word in session.lower() for word in ("prac", "qual", "hyperpole", "warm"))
         grouped = defaultdict(list)
@@ -119,7 +119,8 @@ class EnduranceRacingSource:
                 "qualifying_metric": "time" if timed else "", "position_scope": "overall",
                 "lap": lap, "total_laps": total, "laps_remaining": max(0, total - lap),
                 "time_to_go": _format_duration((end - now).total_seconds()) if state == "in" else "",
-                "flag": "CHECKERED" if state == "post" else "WHITE" if state == "pre" else flag,
+                "flag": (flag if flag.startswith("CHECKERED") else "CHECKERED") if state == "post" else "NONE" if state == "pre" else flag,
+                "flag_raw": flag if flag_raw is None else flag_raw,
                 "caution": state == "in" and flag in _CAUTION_FLAGS,
                 "drivers": sorted(drivers, key=lambda item: item["pos"]),
                 "weather": weather if weather and weather.get("available") else self.weather.fetch(track, country),
@@ -142,7 +143,7 @@ class EnduranceRacingSource:
                     if state is None:
                         continue
                     sid = int(session["id"])
-                    drivers, flag, lap = [], "", 0
+                    drivers, flag, flag_raw, lap = [], "", "", 0
                     if state != "pre" or (start - now).total_seconds() <= 900:
                         data = self.read(f"{_WEC}/api/v2/public/live/session/{sid}/bootstrap", 15 if state == "in" else 300)
                         info = _mapping(data.get("sessionInfo"))
@@ -150,10 +151,13 @@ class EnduranceRacingSource:
                             raise ValueError("WEC timing does not match its session")
                         official = self.read(f"{_WEC}/meta/sessions/{sid}/results", 300) if state == "post" else {}
                         drivers = wec_drivers(data, timed=str(session.get("sessionType")) != "Race", official=official)
-                        flags = _sequence(data.get("raceFlags"))
-                        flag = _normalize_racing_flag(flags[-1].get("flag")) if flags else ""
+                        flags = sorted((row for row in _sequence(data.get("raceFlags"))
+                                        if not row.get("isDeleted") and not row.get("carNumber") and not row.get("sectorNumbers") and not row.get("classId")),
+                                       key=lambda row: str(row.get("ts") or row.get("raceFlagID") or ""))
+                        flag_raw = flags[-1].get("flag") if flags else ""
+                        flag = _normalize_racing_flag(flag_raw)
                         lap = max((_integer(row.get("lapNumber")) for row in _sequence(data.get("laps"))), default=0)
-                        if now >= start and (session.get("seenChequered") or flag == "CHECKERED"):
+                        if now >= start and (session.get("seenChequered") or flag.startswith("CHECKERED")):
                             state = "post"
                         if state == "in" and not drivers:
                             raise ValueError("WEC active session has no classification")
@@ -161,6 +165,7 @@ class EnduranceRacingSource:
                     event_name = str(event.get("eventName") or track)
                     records.append(self.record("wec", sid, event_name, track, str(session["name"]), state,
                                                start, end, drivers, flag, settings, lap=lap,
+                                               flag_raw=flag_raw,
                                                country=str(_mapping(event.get("trackCountry")).get("codeTwo") or "")))
         return records
 
@@ -212,10 +217,11 @@ class EnduranceRacingSource:
             state = "post"
         drivers = imsa_drivers(data, timed=info.get("type") != "RACE")
         track = str(info.get("eventShortName") or "")
-        flag = {"GF": "GREEN", "YF": "YELLOW", "RF": "RED FLAG", "SC": "SAFETY CAR", "FF": "CHECKERED"}.get(str(status.get("currentFlag")), "")
+        flag = racing_flag_code(status.get("currentFlag"), "imsa")
         ref = _mapping(info_doc.get("session")).get("$value")
         return [self.record("imsa", ref, str(info.get("eventName") or info.get("eventShortName") or track), track,
                             str(info.get("name") or "Race"), state, start, end, drivers, flag, settings,
+                            flag_raw=status.get("currentFlag"),
                             lap=_integer(status.get("elapsedLaps")), total=_integer(status.get("finalLaps")))]
 
 

@@ -91,7 +91,7 @@ class CupRacingSource:
                     state = "post"
                 elif state == "in" and not drivers:
                     state = "pre"
-                flag = "CHECKERED" if state == "post" else "WHITE" if state == "pre" else _NASCAR_FLAGS.get(flag_number, "")
+                flag = "CHECKERED" if state == "post" else "NONE" if state == "pre" else _NASCAR_FLAGS.get(flag_number, "UNKNOWN")
                 event = _nascar_short_event(str(race["race_name"]), str(race["track_name"]))
                 records.append({
                     "id": f"nascar_{identifier}_{run_type}", "type": "racing", "sport": "nascar",
@@ -106,6 +106,7 @@ class CupRacingSource:
                         "session_type": label, "session_name": label, "qualifying_metric": "time" if timed else "",
                         "lap": lap, "total_laps": total, "laps_remaining": max(0, total - lap),
                         "flag": flag, "caution": flag in _CAUTION_FLAGS,
+                        "flag_raw": timing.get("flag_state") if timing else flag,
                         "stage": f"Stage {timing['stage']['stage_num']}" if _mapping(timing.get("stage")).get("stage_num") else "",
                         "drivers": sorted(drivers, key=lambda driver: driver["pos"]),
                         "weather": self.weather.fetch(str(race["track_name"])),

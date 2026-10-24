@@ -8,10 +8,11 @@ from ticker_core.context import RenderContext
 from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
 from ticker_core.rendering import ContentScene, load_default_font_set
 from ticker_core.rendering.catalog import content_family
+from sports_ticker.projections.racing_display import racing_cards
 
 
 def _item(series: str) -> dict:
-    return {
+    item = {
         "sport": series,
         "state": "in",
         series: {
@@ -21,6 +22,8 @@ def _item(series: str) -> dict:
             "drivers": [{"pos": "1", "abbr": "AAA", "name": "Driver AAA", "car": "1", "gap": ""}],
         },
     }
+    item["racing_display"] = {"cards": racing_cards(item)}
+    return item
 
 
 def test_each_racing_series_renders_a_panel_frame() -> None:
@@ -57,6 +60,7 @@ def test_completed_f1_cards_show_leader_time_and_following_gaps(monkeypatch) -> 
         {"pos": 1, "abbr": "LEC", "name": "Charles Leclerc", "gap": "1:36.052", "best_time": "1:36.052"},
         {"pos": 2, "abbr": "VER", "name": "Max Verstappen", "gap": "+0.084", "best_time": "1:36.136"},
     ])
+    item["racing_display"] = {"cards": racing_cards(item)}
     renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
     renderer.render(RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
     assert "1:36.052" in drawn
@@ -95,7 +99,43 @@ def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
     item = _item("indycar")
     item["sports_presentation"] = "pinned"
     item["indycar"]["drivers"] = [{"pos": 2, "car": "2", "name": "Driver", "gap": "+1.234", "speed": "220.123"}]
+    item["racing_display"] = {"cards": racing_cards(item)}
     RacingRenderer(load_default_font_set(), MemoryRacingAssets()).render(
         RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
     assert "+1.234" in drawn
     assert "220.123" not in drawn
+
+
+def test_scroll_has_separate_class_cards_in_class_order():
+    from tools.mini.racing_vectors import game
+    item = game("imsa")
+    item["racing_display"] = {"cards": racing_cards(item)}
+    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    result = renderer.render(RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports"))
+    assert result.image.size == (128 * 4 + 6 * 3, 32)
+    assert [card["class_label"] for card in item["racing_display"]["cards"]] == ["GTP", "LMP2", "GTD PRO", "GTD"]
+
+
+def test_safety_car_labels_stay_distinct_in_both_six_layouts(monkeypatch):
+    import ticker_core.features.racing.renderer as rendering
+    from tools.mini.racing_vectors import game
+    drawn = []
+    original = rendering.draw_tiny_text
+
+    def record(draw, x, y, text, color):
+        drawn.append(str(text))
+        return original(draw, x, y, text, color)
+
+    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    for code in ("SAFETY CAR", "VSC", "FCY", "UNKNOWN"):
+        item = game("f1", code)
+        item["racing_display"] = {"cards": racing_cards(item)}
+        renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+        label = item["racing_display"]["cards"][0]["signals"][0]["label"]
+        for pinned in (False, True):
+            drawn.clear()
+            if pinned:
+                item["sports_presentation"] = "pinned"
+            renderer.render(RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports"))
+            assert any(label in text for text in drawn)
+            assert all("None" not in text for text in drawn)

@@ -7,6 +7,8 @@
 #include "../rendering/music_pane.h"
 #include "../rendering/weather_pane.h"
 #include "../rendering/auxiliary_panels.h"
+#include "racing_pane.h"
+#include "rotation.h"
 
 namespace ticker_ui {
 inline std::string label(JsonVariantConst value, const char* empty = "", size_t limit = 64) {

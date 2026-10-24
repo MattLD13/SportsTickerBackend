@@ -407,7 +407,7 @@ void miniTick() {
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
-  if (((displayMode == "music" || displayMode == "weather" || displayMode == "airports" || (displayMode == "clock" && !preparedClockValid)) || pairingMode ||
+  if (((displayMode == "music" || displayMode == "weather" || displayMode == "airports" || racingPageSelected() || (displayMode == "clock" && !preparedClockValid)) || pairingMode ||
        message.length() > 0 || firmwareUpdater.displayActive() || (assetsLoading && !sportsFrameReady)) &&
       now - lastAnimatedFrameAt >= 100) {
     lastAnimatedFrameAt = now;

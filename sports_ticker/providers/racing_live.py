@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
-from .sports_display import racing_short_name
+from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
 
 
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
@@ -243,13 +243,15 @@ class LiveRacingSource:
     ) -> dict[str, Any]:
         identifier = f"f1_{race['round']}_{session_key.lower()}"
         drivers: list[dict[str, Any]] = []
-        flag = "WHITE"
+        flag = "NONE"
+        flag_raw = "NONE"
         updated_at = ""
         if state != "pre" or (start - now).total_seconds() <= 900:
             timing = self._fetch_f1_timing(
                 race, session_key, practice or "qual" in session_name.lower(),
             )
             drivers, state, flag = timing["drivers"], timing["state"], timing["flag"]
+            flag_raw = timing.get("flag_raw", flag)
             lap, total_laps, updated_at = timing["lap"], timing["total_laps"], timing["updated_at"]
         else:
             lap, total_laps = 0, 0
@@ -280,6 +282,7 @@ class LiveRacingSource:
                 "track_name": track,
                 "session_type": session_name,
                 "session_name": session_name,
+                "qualifying_metric": "time" if practice or "qual" in session_name.lower() else "",
                 "lap": lap,
                 "total_laps": total_laps,
                 "laps_remaining": max(0, total_laps - lap),
@@ -292,6 +295,7 @@ class LiveRacingSource:
                 ),
                 "caution": flag in _CAUTION_FLAGS,
                 "flag": flag,
+                "flag_raw": flag_raw,
                 "drivers": drivers,
                 "updated_at": updated_at,
                 "weather": self._fetch_f1_weather(race, end, state),
@@ -327,7 +331,7 @@ class LiveRacingSource:
             raise ValueError("F1 session status must identify pre, in, or post")
         flag = (
             "CHECKERED" if state == "post"
-            else "WHITE" if state == "pre"
+            else "NONE" if state == "pre"
             else _normalize_racing_flag(status["flag"]) if status.get("flag")
             else ""
         )
@@ -337,6 +341,7 @@ class LiveRacingSource:
         updated_at = max((driver["updated_at"] for driver in drivers), default="")
         timing = {
             "drivers": drivers, "state": state, "flag": flag,
+            "flag_raw": status.get("flag") or flag,
             "lap": lap, "total_laps": total_laps, "updated_at": updated_at,
         }
         self._f1_timing[identifier] = (self._clock(), timing)
@@ -571,7 +576,8 @@ class LiveRacingSource:
         timing = _mapping(_mapping(timing_payload).get("timing_results")) if timing_payload else {}
         heartbeat = _mapping(timing.get("heartbeat")) if timing else {}
         is_live_on_feed = self._indycar_timing_matches_session(heartbeat, session_key, session_name, start, end)
-        flag = "WHITE" if state == "pre" else "CHECKERED" if state == "post" else "GREEN"
+        flag = "NONE" if state == "pre" else "CHECKERED" if state == "post" else "UNKNOWN"
+        flag_raw = flag
         items: tuple[Mapping[str, Any], ...] = ()
         total_laps = 0
         current_lap = 0
@@ -579,7 +585,8 @@ class LiveRacingSource:
         track_type = str(heartbeat.get("trackType") or heartbeat.get("TrackType") or "").strip().upper()
         qualifying_metric = ("mph" if track_type == "O" else "time") if _is_timed_session(session_name) else ""
         if is_live_on_feed:
-            flag = _normalize_racing_flag(heartbeat.get("currentFlag") or heartbeat.get("SessionStatus"))
+            flag_raw = heartbeat.get("currentFlag") or heartbeat.get("SessionStatus")
+            flag = _normalize_racing_flag(flag_raw)
             items = _sequence(timing.get("Item"))
             total_laps = _integer(heartbeat.get("totalLaps") or heartbeat.get("TotalLaps") or heartbeat.get("lapsInEvent"))
             current_lap = max((_integer(item.get("laps")) for item in items), default=0)
@@ -634,6 +641,7 @@ class LiveRacingSource:
                 "time_to_go": time_to_go,
                 "caution": flag in _CAUTION_FLAGS,
                 "flag": flag,
+                "flag_raw": flag_raw,
                 "drivers": drivers,
                 "weather": self._circuit_weather.fetch(track_name),
             },
@@ -980,7 +988,7 @@ def _indycar_driver(
     last = str(item.get("lastName") or "").strip()
     team = str(item.get("team") or "").strip()
     feed = index.get(car, {})
-    flag = _normalize_racing_flag(item.get("flag") or item.get("status"))
+    flag = _normalize_racing_flag(item.get("flag"))
     speed = str(item.get("qualSpeed") or item.get("BestSpeed") or item.get("LastSpeed") or "").strip()
     best_time = str(item.get("qualTime") or item.get("bestLapTime") or "").strip()
     raw_gap = str(item.get("diff") or item.get("gap") or "").strip()
@@ -1009,6 +1017,7 @@ def _indycar_driver(
         "status": str(item.get("status") or "Active"),
         "on_track": str(item.get("onTrack") or "").lower() == "true",
         "flag": flag,
+        "flag_raw": item.get("flag") or "",
     }
 
 
@@ -1033,75 +1042,14 @@ def _indycar_live_status(session_type: str, flag: str, lap: int, total_laps: int
         return f"{lap}/{total_laps}"
     if "qual" in session_lower and time_to_go:
         return time_to_go
-    return {"YELLOW": "YELLOW", "RED": "RED FLAG", "CHECKERED": "CHECKERED"}.get(flag, "GREEN")
+    return {"YELLOW": "YELLOW", "RED": "RED FLAG", "CHECKERED": "CHECKERED"}.get(flag, flag or "UNKNOWN")
 
 
-_FLAG_MAP = {
-    "VIRTUAL SAFETY CAR": "VSC",
-    "VSC ENDING": "VSC ENDING",
-    "SAFETY CAR ENDING": "SC ENDING",
-    "SC ENDING": "SC ENDING",
-    "SAFETY CAR": "SAFETY CAR",
-    "DOUBLE YELLOW": "DOUBLE YELLOW",
-    "DOUBLE_YELLOW": "DOUBLE YELLOW",
-    "FULL COURSE YELLOW": "FCY",
-    "BLACK AND ORANGE": "MEATBALL",
-    "BLACK AND WHITE": "BLACK AND WHITE",
-    "BLACK WHITE": "BLACK AND WHITE",
-    "ROLLING START": "GREEN",
-    "FORMATION LAP": "GREEN",
-    "CHECKERED FLAG": "CHECKERED",
-    "CHEQUERED": "CHECKERED",
-    "CHECKERED": "CHECKERED",
-    "YELLOW FLAG": "YELLOW",
-    "RED FLAG": "RED FLAG",
-    "RED_FLAG": "RED FLAG",
-    "PACE CAR": "SAFETY CAR",
-    "MEATBALL": "MEATBALL",
-    "STOPPED": "RED FLAG",
-    "CAUTION": "YELLOW",
-    "YELLOW": "YELLOW",
-    "GREEN": "GREEN",
-    "CLEAR": "GREEN",
-    "FINAL": "CHECKERED",
-    "WHITE": "WHITE",
-    "CHKD": "CHECKERED",
-    "BLUE": "BLUE",
-    "GWC": "GWC",
-    "VSC": "VSC",
-    "FCY": "FCY",
-    "SC": "SAFETY CAR",
-    "CODE60": "CODE60",
-    "CODE 60": "CODE60",
-    "RED": "RED FLAG",
-}
-_SORTED_FLAG_KEYS = sorted(_FLAG_MAP.keys(), key=len, reverse=True)
-
-_CAUTION_FLAGS = {
-    "YELLOW",
-    "DOUBLE YELLOW",
-    "SAFETY CAR",
-    "VSC",
-    "FCY",
-    "CODE60",
-    "RED",
-    "RED FLAG",
-    "SC ENDING",
-    "VSC ENDING",
-}
+_CAUTION_FLAGS = RACING_CAUTION_FLAGS
 
 
 def _normalize_racing_flag(flag: object, status: object = None) -> str:
-    raw = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(flag or status or "").strip()).upper()
-    if not raw:
-        return "GREEN"
-    if raw in _FLAG_MAP:
-        return _FLAG_MAP[raw]
-    for key in _SORTED_FLAG_KEYS:
-        pattern = r"\b" + re.escape(key) + r"\b"
-        if re.search(pattern, raw):
-            return _FLAG_MAP[key]
-    return "GREEN"
+    return racing_flag_code(flag if flag not in (None, "") else status)
 
 
 def _driver_abbr(first: object, last: object) -> str:
@@ -1114,10 +1062,11 @@ def _driver_abbr(first: object, last: object) -> str:
 _NASCAR_FLAGS = {
     1: "GREEN",
     2: "YELLOW",
-    3: "RED",
+    3: "RED FLAG",
     4: "CHECKERED",
-    8: "WARMUP",
-    9: "COLD",
+    6: "RED FLAG",
+    8: "NONE",
+    9: "NONE",
 }
 
 
@@ -1174,7 +1123,7 @@ def _nascar_driver(vehicle: Mapping[str, Any]) -> dict[str, Any] | None:
         "speed": str(vehicle.get("last_lap_speed") or ""),
         "status": "Active" if vehicle.get("is_on_track") else "Out",
         "on_track": bool(vehicle.get("is_on_track")),
-        "flag": "",
+        "flag": _normalize_racing_flag(vehicle.get("flag")) if vehicle.get("flag") else "",
     }
 
 

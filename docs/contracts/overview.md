@@ -26,6 +26,8 @@ Each content item contains `id`, `family`, `kind`, `is_shown`, and `data`.
 Each overlay contains `event_id`, `kind`, and `payload`.
 Family data varies with the content kind. Read the projector and provider definitions before changing those fields.
 
+Racing includes explicit class cards and scoped race-control signals. Read [the racing display contract](racing-flags.md).
+
 Scoreboard data includes integer `competition_stage`: `0` for regular season, `1` for playoffs, and `2` for finals.
 The sports display projector resolves this field from provider season and tournament round metadata.
 Game status and completion do not determine the tournament round.

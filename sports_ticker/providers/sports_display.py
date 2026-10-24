@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 import re
 from hashlib import sha1
 import unicodedata
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from sports_ticker.domain import ContentItem
@@ -16,6 +19,206 @@ _FOOTBALL = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
 _COLLEGE_FOOTBALL = frozenset(("ncf_fbs", "ncf_fcs"))
 _BASKETBALL = frozenset(("nba", "march_madness"))
 _ORDINALS = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
+
+
+# Physical flags and race-control boards share explicit identities across devices.
+# Labels describe the signal. Scope identifies the affected track, sector, or car.
+RACING_FLAGS = {
+    "NONE": ("WAIT", "No active flag", "solid", (95, 105, 120), (95, 105, 120)),
+    "UNKNOWN": ("?", "Unknown signal", "unknown", (110, 115, 130), (235, 235, 235)),
+    "GREEN": ("GREEN", "Track clear", "solid", (55, 190, 90), (55, 190, 90)),
+    "YELLOW": ("YEL", "Caution", "solid", (255, 215, 0), (255, 215, 0)),
+    "DOUBLE YELLOW": ("2YEL", "Double yellow", "double", (255, 215, 0), (25, 25, 20)),
+    "RED FLAG": ("RED", "Session stopped", "solid", (230, 70, 70), (230, 70, 70)),
+    "WHITE": ("WHITE", "White flag", "solid", (235, 235, 235), (235, 235, 235)),
+    "BLUE": ("BLUE", "Approaching car", "solid", (60, 110, 245), (60, 110, 245)),
+    "BLUE YELLOW": ("BLUE", "Approaching car", "diagonal", (60, 110, 245), (255, 215, 0)),
+    "BLACK": ("PIT", "Report to pits", "border", (20, 20, 20), (190, 195, 205)),
+    "BLACK AND WHITE": ("WARN", "Driving warning", "diagonal_split", (235, 235, 235), (20, 20, 20)),
+    "BLACK WHITE CROSS": ("NOSCR", "Scoring stopped", "cross", (20, 20, 20), (235, 235, 235)),
+    "MEATBALL": ("MECH", "Mechanical problem", "disc", (20, 20, 20), (255, 130, 0)),
+    "SURFACE": ("SURF", "Reduced grip or debris", "stripes", (255, 215, 0), (225, 45, 40)),
+    "WHITE RED CROSS": ("RESCU", "Safety personnel or vehicles", "cross", (235, 235, 235), (225, 45, 40)),
+    "RED YELLOW CROSS": ("PITCL", "Pit lane closed", "cross", (225, 45, 40), (255, 215, 0)),
+    "RED YELLOW STRIPE": ("PITCL", "Pit lane closed", "diagonal", (225, 45, 40), (255, 215, 0)),
+    "RED BLACK": ("END", "Session ended", "split", (225, 45, 40), (20, 20, 20)),
+    "BLACK ALL": ("PITS", "All cars return to pits", "border", (20, 20, 20), (235, 235, 235)),
+    "BLACK FURLED": ("WARN", "Driving warning", "furled", (20, 20, 20), (190, 195, 205)),
+    "CHECKERED": ("FIN", "Session finished", "checkered", (235, 235, 235), (25, 25, 25)),
+    "STAGE END": ("STAGE", "Stage finished", "checkered", (235, 235, 235), (25, 25, 25)),
+    "GREEN CHECKERED": ("STAGE", "Stage finished", "green_checkered", (235, 235, 235), (55, 190, 90)),
+    "GREEN CHECKERED YELLOW": ("STG/Y", "Stage finished under caution", "stage_split", (235, 235, 235), (255, 215, 0)),
+    "HALFWAY": ("HALF", "Halfway point", "crossed_checkers", (235, 235, 235), (25, 25, 25)),
+    "GREEN YELLOW": ("PACE", "Laps count under caution", "split", (55, 190, 90), (255, 215, 0)),
+    "GREEN WHITE": ("LAST", "Restart on the last lap", "split", (55, 190, 90), (235, 235, 235)),
+    "GWC": ("OT", "Overtime finish procedure", "green_checkered", (235, 235, 235), (55, 190, 90)),
+    "SAFETY CAR": ("SC", "Safety car deployed", "board", (255, 180, 0), (20, 20, 20)),
+    "SC ENDING": ("SCEND", "Safety car ending", "split", (255, 180, 0), (55, 190, 90)),
+    "VSC": ("VSC", "Virtual safety car", "board", (255, 180, 0), (20, 20, 20)),
+    "VSC ENDING": ("VSCEN", "Virtual safety car ending", "split", (255, 180, 0), (55, 190, 90)),
+    "FCY": ("FCY", "Full course yellow", "double", (255, 215, 0), (25, 25, 20)),
+    "SLOW ZONE": ("SLOW", "Local speed-controlled zone", "stripes", (255, 215, 0), (20, 20, 20)),
+    "NEXT SLOW": ("NEXT", "Slow zone ahead", "diagonal", (255, 215, 0), (20, 20, 20)),
+    "CODE60": ("C60", "Code 60 speed limit", "disc", (145, 65, 195), (235, 235, 235)),
+    "NATIONAL START": ("START", "Start by national flag", "board", (235, 235, 235), (35, 80, 145)),
+    "LAST LAP": ("LAST", "Last lap", "solid", (235, 235, 235), (235, 235, 235)),
+    "WHITE YELLOW": ("W/Y", "White and yellow flags", "split", (235, 235, 235), (255, 215, 0)),
+    "WHITE SC": ("W/SC", "White flag and safety car", "split", (235, 235, 235), (255, 180, 0)),
+    "LAST LAP YELLOW": ("LASTY", "Last lap under yellow", "split", (235, 235, 235), (255, 215, 0)),
+    "LAST LAP SC": ("LASTS", "Last lap behind safety car", "split", (235, 235, 235), (255, 180, 0)),
+    "LAST LAP VSC": ("LASTV", "Last lap under virtual safety car", "split", (235, 235, 235), (255, 180, 0)),
+    "CHECKERED YELLOW": ("FIN/Y", "Finished under yellow", "finish_split", (235, 235, 235), (255, 215, 0)),
+    "CHECKERED SC": ("FINSC", "Finished behind safety car", "finish_split", (235, 235, 235), (255, 180, 0)),
+    "CHECKERED VSC": ("FINVS", "Finished under virtual safety car", "finish_split", (235, 235, 235), (255, 180, 0)),
+}
+RACING_CAUTION_FLAGS = frozenset((
+    "YELLOW", "DOUBLE YELLOW", "RED FLAG", "SAFETY CAR", "SC ENDING", "VSC", "VSC ENDING",
+    "FCY", "SLOW ZONE", "NEXT SLOW", "CODE60", "GREEN YELLOW", "SURFACE", "WHITE RED CROSS",
+    "WHITE YELLOW", "WHITE SC", "LAST LAP YELLOW", "LAST LAP SC", "LAST LAP VSC",
+    "CHECKERED YELLOW", "CHECKERED SC", "CHECKERED VSC",
+    "GREEN CHECKERED YELLOW",
+))
+_RACING_FLAG_ALIASES = {
+    "RED": "RED FLAG", "RED_FLAG": "RED FLAG", "RF": "RED FLAG", "GREEN FLAG": "GREEN", "GF": "GREEN",
+    "YELLOW FLAG": "YELLOW", "YF": "YELLOW", "CAUTION": "YELLOW", "CLEAR": "GREEN",
+    "LOCAL YELLOW": "YELLOW", "SINGLE YELLOW": "YELLOW", "YELLOW WAVED": "YELLOW",
+    "SINGLE WAVED YELLOW": "YELLOW", "STANDING YELLOW": "YELLOW", "WAVED YELLOW": "YELLOW",
+    "DOUBLE WAVED YELLOW": "DOUBLE YELLOW", "DOUBLE YELLOW FLAGS": "DOUBLE YELLOW",
+    "CHEQUERED": "CHECKERED", "CHKD": "CHECKERED", "FF": "CHECKERED", "FINISH": "CHECKERED",
+    "CHECKERED FLAG": "CHECKERED", "CHEQUERED FLAG": "CHECKERED", "BLACK AND WHITE CHECKERED": "CHECKERED",
+    "WF": "WHITE", "WHITE FLAG": "WHITE", "BLUE FLAG": "BLUE",
+    "BLUE WITH YELLOW STRIPE": "BLUE YELLOW", "BLUE WITH DIAGONAL YELLOW STRIPE": "BLUE YELLOW",
+    "BLACK FLAG": "BLACK", "BLACK WITH WHITE CROSS": "BLACK WHITE CROSS", "BLACK CROSS": "BLACK WHITE CROSS",
+    "BLACK WITH ORANGE DISC": "MEATBALL", "BLACK WITH ORANGE DISK": "MEATBALL",
+    "BLACK AND ORANGE": "MEATBALL", "BLACK WHITE": "BLACK AND WHITE", "BLACK AND WHITE DIAGONAL": "BLACK AND WHITE",
+    "YELLOW RED": "SURFACE", "YELLOW WITH RED STRIPES": "SURFACE", "RED AND YELLOW STRIPES": "SURFACE",
+    "ALTERNATING RED AND YELLOW STRIPES": "SURFACE", "OIL FLAG": "SURFACE", "DEBRIS": "SURFACE",
+    "WHITE WITH RED CROSS": "WHITE RED CROSS", "WHITE WITH DIAGONAL RED CROSS": "WHITE RED CROSS",
+    "RED WITH YELLOW CROSS": "RED YELLOW CROSS", "PIT CLOSED": "RED YELLOW CROSS",
+    "RED WITH YELLOW STRIPE": "RED YELLOW STRIPE", "RED FLAG WITH YELLOW STRIPE": "RED YELLOW STRIPE",
+    "RED AND BLACK": "RED BLACK", "BLACK FLAG ALL": "BLACK ALL", "ALL BLACK": "BLACK ALL",
+    "FURLED BLACK": "BLACK FURLED",
+    "CROSSED CHECKERED FLAGS": "HALFWAY", "STAGE CHECKERED": "STAGE END",
+    "GREEN AND YELLOW": "GREEN YELLOW", "GREEN AND WHITE": "GREEN WHITE",
+    "GREEN WHITE CHECKERED": "GWC", "GREEN-WHITE-CHECKERED": "GWC",
+    "GREEN AND WHITE CHECKERED FLAG": "GREEN CHECKERED", "GREEN WHITE CHECKERED FLAG": "GREEN CHECKERED",
+    "GREEN WHITE CHECKERED AND YELLOW": "GREEN CHECKERED YELLOW",
+    "SC": "SAFETY CAR", "PACE CAR": "SAFETY CAR", "VIRTUAL SAFETY CAR": "VSC",
+    "SAFETY CAR ENDING": "SC ENDING", "FULL COURSE YELLOW": "FCY", "CODE 60": "CODE60",
+    "NATIONAL FLAG": "NATIONAL START", "ROLLING START": "GREEN", "FORMATION LAP": "NONE",
+    "WARMUP": "NONE", "WARM UP": "NONE", "WARM": "NONE", "COLD": "NONE", "NOT ACTIVE": "NONE",
+    "PRE": "NONE", "STANDBY": "NONE", "FINAL": "CHECKERED", "STOPPED": "RED FLAG", "STOP": "RED FLAG",
+    "CHEQUERED YELLOW": "CHECKERED YELLOW", "CHEQUERED SAFETY CAR": "CHECKERED SC",
+    "CHEQUERED VIRTUAL SAFETY CAR": "CHECKERED VSC", "TEMPORARY CHEQUERED": "CHECKERED",
+    "WHITE SAFETY CAR": "WHITE SC", "LAST LAP SAFETY CAR": "LAST LAP SC",
+    "LAST LAP VIRTUAL SAFETY CAR": "LAST LAP VSC", "C60": "CODE60",
+    "BLACK AND RED COMBINED": "RED BLACK", "BLACK AND RED": "RED BLACK",
+    "BLACK / WHITE DIVIDED DIAGONALLY": "BLACK AND WHITE",
+    "BLACK WITH ORANGE CIRCLE": "MEATBALL", "BLACK FLAG WITH ORANGE CIRCLE": "MEATBALL",
+    "BLUE FLAG WITH YELLOW STRIPE": "BLUE YELLOW", "BLACK FLAG WITH WHITE CROSS": "BLACK WHITE CROSS",
+    "YELLOW FLAG WITH RED STRIPES": "SURFACE", "RED AND BLACK FLAGS TOGETHER": "RED BLACK",
+}
+
+
+def racing_flag_code(raw: object, series: str = "") -> str:
+    """Resolve exact provider aliases. Never treat an unknown value as green."""
+    value = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(raw or "").strip()).upper()
+    value = " ".join(value.replace("_", " ").replace("-", " ").split())
+    value = re.sub(r"\s+IN SECTOR\s+\d+$", "", value)
+    if value.endswith(" DEPLOYED"):
+        value = value[:-9]
+    code = value if value in RACING_FLAGS else _RACING_FLAG_ALIASES.get(value)
+    if code:
+        return code
+    value = " ".join(re.sub(r"\b(?:WAVED|STANDING|MOTIONLESS)\b", "", value).split())
+    value = re.sub(r"\s+FLAGS?$", "", value)
+    return value if value in RACING_FLAGS else _RACING_FLAG_ALIASES.get(value, "UNKNOWN")
+
+
+def racing_signal(raw: object, series: str, *, scope: str = "track", car: object = "", sector: object = "") -> dict[str, Any]:
+    """Project one reported signal with its scope and physical flag pattern."""
+    code = racing_flag_code(raw, series)
+    short, meaning, pattern, ink, accent = RACING_FLAGS[code]
+    annotated_sector = re.search(r"\bIN SECTOR\s+(\d+)$", str(raw).upper())
+    if annotated_sector and not sector:
+        scope, sector = "sector", annotated_sector.group(1)
+    if scope == "track" and code in {"BLACK", "BLACK AND WHITE", "BLACK WHITE CROSS", "MEATBALL", "BLUE", "BLUE YELLOW", "BLACK FURLED"}:
+        scope = "car"
+    if scope == "track" and code in {"RED YELLOW CROSS", "RED YELLOW STRIPE"}:
+        scope = "pit"
+    if scope == "track" and code in {"SLOW ZONE", "NEXT SLOW"}:
+        scope = "sector"
+    if code == "WHITE":
+        meaning = "Last lap" if scope == "track" and series in {"indycar", "nascar", "imsa"} else "Slow vehicle ahead"
+        short = "LAST" if meaning == "Last lap" else "SLOW"
+    if code == "RED BLACK" and series == "imsa":
+        short, meaning = "STOP", "Stop beside the track"
+    if code == "BLACK" and series in {"f1", "wec"}:
+        short, meaning = "DSQ", "Disqualified; return to pits"
+    if code == "BLUE" and series == "nascar" and not car:
+        scope, short, meaning = "sector", "HAZ", "Obstruction ahead on road course"
+    if code == "YELLOW" and scope == "sector":
+        short = "LOCAL"
+    return {
+        "code": code, "label": short, "meaning": meaning, "scope": scope,
+        "car": str(car or ""), "sector": str(sector or ""), "raw": str(raw or ""),
+        "known": code != "UNKNOWN", "pattern": pattern, "color_rgb": list(ink), "accent_rgb": list(accent),
+        "caution": code in RACING_CAUTION_FLAGS,
+        "motion": "waved" if "WAVED" in str(raw).upper() else "standing" if any(word in str(raw).upper() for word in ("STANDING", "MOTIONLESS")) else "unspecified",
+    }
+
+
+def racing_flag_pixel(signal: Mapping[str, Any], x: int, y: int, width: int, height: int) -> tuple[int, int, int]:
+    """Rasterize a physical flag pattern for both native panel sizes."""
+    ink = tuple(signal.get("color_rgb") or (110, 115, 130))
+    accent = tuple(signal.get("accent_rgb") or (235, 235, 235))
+    pattern = signal.get("pattern")
+    if pattern in {"checkered", "green_checkered", "crossed_checkers"}:
+        if pattern == "crossed_checkers" and abs(x * (height - 1) - y * (width - 1)) > width and abs(x * (height - 1) + y * (width - 1) - (width - 1) * (height - 1)) > width:
+            return (95, 105, 120)
+        cell = 1 if width < 12 else 2
+        return accent if (x // cell + y // cell) % 2 else ink
+    if pattern == "double":
+        return accent if y == height // 2 else ink
+    if pattern == "stripes":
+        return accent if (x // max(1, width // 4)) % 2 else ink
+    if pattern == "split":
+        return ink if x < width // 2 else accent
+    if pattern == "diagonal_split":
+        return accent if x * height + y * width < width * height else ink
+    if pattern == "diagonal":
+        return accent if abs(x * (height - 1) + y * (width - 1) - (width - 1) * (height - 1)) <= width else ink
+    if pattern == "cross":
+        return accent if abs(x * (height - 1) - y * (width - 1)) <= width // 2 or abs(x * (height - 1) + y * (width - 1) - (width - 1) * (height - 1)) <= width // 2 else ink
+    if pattern == "disc":
+        return accent if ((x - (width - 1) / 2) / max(1, width / 3)) ** 2 + ((y - (height - 1) / 2) / max(1, height / 3)) ** 2 <= 1 else ink
+    if pattern in {"border", "furled", "board"}:
+        return accent if x in {0, width - 1} or y in {0, height - 1} else ink
+    if pattern == "finish_split":
+        return accent if x >= width // 2 else (235, 235, 235) if (x + y) % 2 else (25, 25, 25)
+    if pattern == "stage_split":
+        return accent if x >= width // 2 else (235, 235, 235) if (x + y) % 2 else (55, 190, 90)
+    if pattern == "unknown":
+        return accent if (x == width // 2 and y < height - 2) or (x == width // 2 and y == height - 1) else ink
+    return ink
+
+
+@lru_cache(maxsize=1)
+def _racing_number_colors() -> Mapping[str, Any]:
+    return json.loads(Path(__file__).with_name("racing_number_colors.json").read_text(encoding="utf-8"))
+
+
+def racing_number_style(series: str, driver: Mapping[str, Any], season: int) -> dict[str, Any]:
+    """Keep verified number art and livery accents distinct from missing color data."""
+    registry = _racing_number_colors()
+    group = str(driver.get("class") or "").replace(" ", "").upper()
+    entry = registry.get("styles", {}).get(series, {}).get(group, {}).get(str(driver.get("car") or ""), {}) if season == registry.get("season") else {}
+    raw = str(entry.get("color") or (driver.get("livery_primary") if series in {"f1", "indycar"} else "") or "FFFFFF").lstrip("#")
+    outline = str(entry.get("outline") or "").lstrip("#")
+    def rgb(value):
+        return [int(value[i:i + 2], 16) for i in (0, 2, 4)] if re.fullmatch(r"[0-9a-fA-F]{6}", value) else [235, 235, 235]
+    return {"color_rgb": rgb(raw), "outline_rgb": rgb(outline) if outline else [],
+            "source": entry.get("source") or ("team" if series in {"f1", "indycar"} and driver.get("livery_primary") else "unavailable")}
 
 
 _RACING_VENUES = (

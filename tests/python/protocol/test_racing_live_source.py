@@ -332,7 +332,7 @@ def test_racing_standardized_flags() -> None:
         "GWC": ("GWC", False),
         "GREEN": ("GREEN", False),
         "CLEAR": ("GREEN", False),
-        "1": ("GREEN", False),
+        "1": ("UNKNOWN", False),
     }
 
     for input_flag, (expected_token, is_caution) in cases.items():

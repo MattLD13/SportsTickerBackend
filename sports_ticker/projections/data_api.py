@@ -12,6 +12,7 @@ from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnaps
 from ..markets import selected_market_groups
 from ..providers.contracts import ProviderHealth
 from ..providers.sports_display import matches_followed_team, project_sports_display
+from .racing_display import racing_cards
 
 
 _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
@@ -217,6 +218,8 @@ def _content_item(item: ContentItem, *, apply_logo_rendering: bool = False) -> d
     data = dict(item.data)
     if item.family in {"sports", "golf", "racing"}:
         data = project_sports_display(data)
+    if item.family == "racing":
+        data["racing_display"] = {"cards": racing_cards(data)}
     if apply_logo_rendering and item.family == "sports":
         for side in ("home", "away"):
             rendering = _logo_rendering_choice(data, side)
