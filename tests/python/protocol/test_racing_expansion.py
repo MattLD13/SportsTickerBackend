@@ -109,6 +109,8 @@ def test_cup_uses_the_race_specific_feed_and_retains_all_37_cars():
     items = projected(RacingProvider(source(client, now)), "nascar", now)
     game = next(item["data"] for item in items if item["data"]["nascar"]["session_type"] == "Race")
     assert game["state"] == "post"
+    assert game["nascar"]["short_name"] == "Phoenix"
+    assert game["nascar"]["raw_event_name"] == "Freeway Insurance 500"
     drivers = game["nascar"]["drivers"]
     assert len(drivers) == 37
     assert (drivers[0]["car"], drivers[0]["name"]) == ("45", "Tyler Reddick")
@@ -141,7 +143,8 @@ def test_wec_retains_all_35_cars_with_class_positions_and_official_finish_gaps()
     items = projected(RacingProvider(source(client, now)), "wec", now)
     game = items[0]["data"]
     assert game["state"] == "post"
-    assert game["wec"]["short_name"] == "WEC Barcelona"
+    assert game["wec"]["short_name"] == "Barcelona 6h"
+    assert game["wec"]["raw_event_name"] == "FIA WEC - 6 Hours of Barcelona"
     drivers = game["wec"]["drivers"]
     assert len(drivers) == 35
     assert [(d["car"], d["gap"]) for d in drivers[:3]] == [("8", "Leader"), ("7", "+0.583"), ("50", "+39.725")]
@@ -172,6 +175,8 @@ def test_imsa_reads_ready_documents_and_retains_all_54_cars():
     items = projected(RacingProvider(source(JsonResponses("cup-phoenix-2026.json"), now, socket)), "imsa", now)
     game = items[0]["data"]
     assert game["state"] == "post"
+    assert game["imsa"]["short_name"] == "Petit Le Mans"
+    assert game["imsa"]["track_name"] == "ROAD ATLANTA"
     drivers = game["imsa"]["drivers"]
     assert len(drivers) == 54
     assert [(d["car"], d["gap"]) for d in drivers[:3]] == [("6", "Leader"), ("24", "+1.205"), ("40", "+8.630")]

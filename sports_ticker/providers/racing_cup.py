@@ -101,7 +101,8 @@ class CupRacingSource:
                     "startTimeUTC": start.isoformat(), "away_abbr": event, "home_abbr": label,
                     "away_score": "", "home_score": "", "is_shown": True,
                     "nascar": {
-                        "event_name": event, "short_name": event, "track_name": str(race["track_name"]),
+                        "event_name": event, "short_name": event, "raw_event_name": str(race["race_name"]),
+                        "track_name": str(race["track_name"]),
                         "session_type": label, "session_name": label, "qualifying_metric": "time" if timed else "",
                         "lap": lap, "total_laps": total, "laps_remaining": max(0, total - lap),
                         "flag": flag, "caution": flag in _CAUTION_FLAGS,

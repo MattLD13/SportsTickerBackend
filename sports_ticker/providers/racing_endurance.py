@@ -15,6 +15,7 @@ from .racing_live import (
     _session_lifecycle_state, _format_local_time, _normalize_racing_flag, _CAUTION_FLAGS,
 )
 from .racing_sockets import AlkamelSnapshot, open_timing_socket
+from .sports_display import racing_short_name
 
 
 _WEC = "https://insights.griiip.com"
@@ -106,14 +107,14 @@ class EnduranceRacingSource:
             for index, driver in enumerate(members, 1):
                 driver["class_pos"] = index
                 driver["car_illustration"] = self.images.image(sport, driver["car"], driver.get("class", ""), start.year)
-        short = f"{sport.upper()} {event}"
+        short = racing_short_name(sport, event, track)
         status = "FINAL" if state == "post" else _format_local_time(start, settings.timezone) if state == "pre" else flag or "LIVE"
         return {
             "id": f"{sport}_{identifier}", "type": "racing", "sport": sport, "state": state,
             "status": status, "is_shown": True, "startTimeUTC": start.isoformat(),
             "away_abbr": short, "home_abbr": session, "away_score": "", "home_score": "",
             sport: {
-                "event_name": short, "short_name": short, "track_name": track,
+                "event_name": short, "short_name": short, "raw_event_name": event, "track_name": track,
                 "session_type": session, "session_name": session,
                 "qualifying_metric": "time" if timed else "", "position_scope": "overall",
                 "lap": lap, "total_laps": total, "laps_remaining": max(0, total - lap),
@@ -157,8 +158,7 @@ class EnduranceRacingSource:
                         if state == "in" and not drivers:
                             raise ValueError("WEC active session has no classification")
                     track = str(event.get("trackName") or "")
-                    event_name = re.sub(r"^FIA WEC\s*-\s*", "", str(event.get("eventName") or track))
-                    event_name = re.sub(r"^\d+ Hours of\s+", "", event_name, flags=re.IGNORECASE)
+                    event_name = str(event.get("eventName") or track)
                     records.append(self.record("wec", sid, event_name, track, str(session["name"]), state,
                                                start, end, drivers, flag, settings, lap=lap,
                                                country=str(_mapping(event.get("trackCountry")).get("codeTwo") or "")))
@@ -214,7 +214,7 @@ class EnduranceRacingSource:
         track = str(info.get("eventShortName") or "")
         flag = {"GF": "GREEN", "YF": "YELLOW", "RF": "RED FLAG", "SC": "SAFETY CAR", "FF": "CHECKERED"}.get(str(status.get("currentFlag")), "")
         ref = _mapping(info_doc.get("session")).get("$value")
-        return [self.record("imsa", ref, str(info.get("eventShortName") or info["eventName"]), track,
+        return [self.record("imsa", ref, str(info.get("eventName") or info.get("eventShortName") or track), track,
                             str(info.get("name") or "Race"), state, start, end, drivers, flag, settings,
                             lap=_integer(status.get("elapsedLaps")), total=_integer(status.get("finalLaps")))]
 

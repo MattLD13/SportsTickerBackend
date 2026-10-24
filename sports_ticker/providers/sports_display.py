@@ -18,6 +18,74 @@ _BASKETBALL = frozenset(("nba", "march_madness"))
 _ORDINALS = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
 
 
+_RACING_VENUES = (
+    ("circuit of the americas", "COTA"), ("circuito de barcelona", "Barcelona"),
+    ("barcelona", "Barcelona"), ("spa-francorchamps", "Spa"), ("spa francorchamps", "Spa"),
+    ("sao paulo", "Sao Paulo"), ("interlagos", "Sao Paulo"), ("fuji", "Fuji"),
+    ("monza", "Monza"), ("imola", "Imola"), ("bahrain", "Bahrain"), ("qatar", "Qatar"),
+    ("lusail", "Qatar"), ("le mans", "Le Mans"), ("laguna seca", "Laguna Seca"),
+    ("road atlanta", "Road Atlanta"), ("road america", "Road America"),
+    ("watkins glen", "Watkins Glen"), ("sebring", "Sebring"), ("daytona", "Daytona"),
+    ("canadian tire", "Mosport"), ("mosport", "Mosport"), ("long beach", "Long Beach"),
+    ("detroit", "Detroit"), ("indianapolis", "Indy"), ("homestead", "Homestead"),
+    ("bowman gray", "Bowman Gray"), ("north wilkesboro", "North Wilkesboro"),
+    ("new hampshire", "New Hampshire"), ("world wide technology", "Gateway"),
+    ("gateway", "Gateway"), ("las vegas", "Las Vegas"), ("phoenix", "Phoenix"),
+    ("talladega", "Talladega"), ("martinsville", "Martinsville"), ("darlington", "Darlington"),
+    ("bristol", "Bristol"), ("charlotte", "Charlotte"), ("atlanta", "Atlanta"),
+    ("texas", "Texas"), ("kansas", "Kansas"), ("dover", "Dover"), ("nashville", "Nashville"),
+    ("michigan", "Michigan"), ("pocono", "Pocono"), ("san diego", "San Diego"),
+    ("sonoma", "Sonoma"), ("chicagoland", "Chicagoland"), ("iowa", "Iowa"),
+    ("richmond", "Richmond"),
+)
+
+
+def racing_short_name(series: str, event_name: str, track_name: str = "") -> str:
+    """Use familiar race names before sponsor titles or circuit legal names."""
+    event = " ".join(str(event_name or "").split())
+    folded = event.casefold().replace("–", "-")
+    track = str(track_name or "").casefold()
+    if series == "nascar":
+        for phrase, name in (
+            ("daytona 500", "Daytona 500"), ("coca-cola 600", "Coke 600"),
+            ("coca cola 600", "Coke 600"), ("coke 600", "Coke 600"),
+            ("southern 500", "Southern 500"), ("brickyard 400", "Brickyard 400"),
+            ("coke zero", "Daytona 400"), ("all-star", "All-Star Race"),
+            ("all star", "All-Star Race"), ("clash", "The Clash"), ("duel", "Daytona Duel"),
+        ):
+            if phrase in folded:
+                return name
+        if "bristol" in track and "night race" in folded:
+            return "Bristol Night"
+        if "charlotte" in track and "roval" in folded:
+            return "Charlotte Roval"
+    elif series == "imsa":
+        if "petit le mans" in folded:
+            return "Petit Le Mans"
+        if "rolex 24" in folded or ("daytona" in track and "24" in folded):
+            return "Rolex 24"
+        if "sebring" in folded and re.search(r"\b(?:12|twelve)\b", folded):
+            return "Sebring 12h"
+    elif series == "wec" and "lone star le mans" in folded:
+        return "Lone Star Le Mans"
+    venue = next((name for fragment, name in _RACING_VENUES if fragment in track), "")
+    if not venue:
+        venue = next((name for fragment, name in _RACING_VENUES if fragment in folded), "")
+    if venue:
+        if series in {"wec", "imsa"}:
+            duration = re.search(r"\b(\d+|six|eight|ten|twelve|twenty-four)\s*(?:hours?|h)\b", folded)
+            if duration:
+                hours = {"six": "6", "eight": "8", "ten": "10", "twelve": "12", "twenty-four": "24"}.get(duration.group(1), duration.group(1))
+                return f"{venue} {hours}h"
+            if "le mans" in folded and series == "wec":
+                return "Le Mans 24h"
+        return venue
+    # Keep unfamiliar events readable without inventing a known race identity.
+    clean = re.sub(r"\s+(?:presented by|powered by)\b.*$", "", event, flags=re.IGNORECASE)
+    clean = re.sub(r"^(?:FIA WEC\s*-\s*|\d+(?:st|nd|rd|th)\s+Annual\s+)", "", clean, flags=re.IGNORECASE)
+    return clean.strip() or str(track_name or series.upper()).strip()
+
+
 @dataclass(slots=True)
 class SportsDisplayProjector:
     """Own sport status, facts, and short-lived live state for one provider."""

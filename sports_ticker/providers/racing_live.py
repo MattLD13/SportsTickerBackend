@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
+from .sports_display import racing_short_name
 
 
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
@@ -1121,20 +1122,7 @@ _NASCAR_FLAGS = {
 
 
 def _nascar_short_event(event_name: str, track_name: str) -> str:
-    value = _clean_race_name(event_name or track_name or "NASCAR")
-    lowered = value.casefold()
-    if "daytona 500" in lowered:
-        return "Daytona 500"
-    if "coca-cola 600" in lowered or "coke 600" in lowered:
-        return "Coke 600"
-    if "southern 500" in lowered:
-        return "Southern 500"
-    if "brickyard 400" in lowered:
-        return "Brickyard 400"
-    distance = re.search(r"\b([A-Za-z][A-Za-z .&'-]*?)\s+(\d{3})$", value)
-    if distance:
-        return f"{_title_race_words(distance.group(1))} {distance.group(2)}"
-    return _title_race_words(value) or "NASCAR"
+    return racing_short_name("nascar", event_name, track_name)
 
 
 _NASCAR_LIVERIES_CACHE: dict[str, str] = {}
