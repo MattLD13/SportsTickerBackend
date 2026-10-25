@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from PIL import Image
 
 from ticker_core.context import RenderContext
 from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
@@ -83,6 +84,26 @@ def test_pinned_carousel_builds_the_entire_field(series, count):
     assert width == sum(card.width + 6 for card in cards)
     assert strip.width > width
     assert result.image.size == (384, 32)
+
+
+def test_pinned_racing_visual_key_ignores_unrelated_asset_revisions() -> None:
+    assets = MemoryRacingAssets()
+    renderer = RacingRenderer(load_default_font_set(), assets)
+    item = _item("f1")
+    item["sports_presentation"] = "pinned"
+    car_url = "https://assets.example/f1-car.png"
+    item["f1"]["drivers"][0]["car_illustration"] = car_url
+    scene = ContentScene(item, "sports")
+    context = RenderContext(datetime(2026, 10, 25, tzinfo=timezone.utc))
+
+    original = renderer.visual_key(context, scene, assets.revision)
+    assets.put_image("https://assets.example/unrelated.png", "logo", (18, 18), Image.new("RGBA", (18, 18)))
+    unrelated_asset = renderer.visual_key(context, scene, assets.revision)
+    assert unrelated_asset == original
+
+    assets.put_image(car_url, "car", (130, 20), Image.new("RGBA", (130, 20)))
+    active_car_ready = renderer.visual_key(context, scene, assets.revision)
+    assert active_car_ready != unrelated_asset
 
 
 def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):

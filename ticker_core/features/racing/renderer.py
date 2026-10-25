@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
@@ -58,6 +59,23 @@ class RacingRenderer:
     fonts: FontSet
     assets: RacingAssetService
     _strip_cache: dict[tuple[object, ...], tuple[tuple[Image.Image, ...], Image.Image, int]] = field(default_factory=dict)
+    _visual_item: Mapping[str, Any] | None = field(default=None, init=False, repr=False)
+    _visual_item_json: str | None = field(default=None, init=False, repr=False)
+    _asset_item: Mapping[str, Any] | None = field(default=None, init=False, repr=False)
+    _asset_revision: int | None = field(default=None, init=False, repr=False)
+    _pinned_asset_state: tuple[object, ...] = field(default=(), init=False, repr=False)
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        """Invalidate animated racing scenes only when their own inputs change."""
+        if scene.item is not self._visual_item:
+            self._visual_item = scene.item
+            self._visual_item_json = json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":"))
+        if scene.item.get("sports_presentation") == "pinned":
+            self._pinned_asset_key(scene.item, asset_revision)
+            assets: object = self._pinned_asset_state
+        else:
+            assets = asset_revision
+        return ("racing", self._visual_item_json, scene.mode, assets, int(context.now.timestamp() * 30))
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render a racing scroll card or a full leaderboard."""
@@ -189,7 +207,8 @@ class RacingRenderer:
         metric = str(payload.get("qualifying_metric") or "").lower()
         timed = _is_timed_session(session) or metric in {"mph", "time"}
         f1 = str(item.get("sport") or "").lower() == "f1"
-        key = (tuple(_driver_key(driver) for driver in drivers), timed, f1, metric, self.assets.revision)
+        asset_state = self._pinned_asset_key(item, self.assets.revision)
+        key = (tuple(_driver_key(driver) for driver in drivers), timed, f1, metric, asset_state)
         cards, strip, strip_width = self._driver_strip(drivers, timed, f1, metric, key)
         if len(cards) == 1:
             panel.paste(cards[0], (max(0, (panel_width - cards[0].width) // 2), 1), cards[0])
@@ -223,6 +242,39 @@ class RacingRenderer:
         result = (cards, strip, width)
         self._strip_cache = {key: result}
         return result
+
+    def _pinned_asset_key(self, item: Mapping[str, Any], revision: int | None = None) -> tuple[object, ...]:
+        """Track prepared assets used by this pinned field, not the whole ticker."""
+        current_revision = self.assets.revision if revision is None else revision
+        if item is self._asset_item and current_revision == self._asset_revision:
+            return self._pinned_asset_state
+        self._asset_item = item
+        self._asset_revision = current_revision
+        payload = self._payload(item)
+        sport = str(item.get("sport") or "").lower()
+        if sport == "nascar":
+            car_assets = (("nascar_car", (130, 20)), ("image", (120, 19)))
+        elif sport == "imsa":
+            car_assets = (("imsa_car", (120, 19)), ("image", (120, 19)))
+        elif sport in {"f1", "wec"}:
+            car_assets = (("car", (130, 20)), ("image", (120, 19)))
+        else:
+            car_assets = (("image", (120, 19)),)
+        self._pinned_asset_state = tuple(
+            (
+                tuple(bool(self.assets.image(car_url, processor, size)) for processor, size in car_assets)
+                if (car_url := str(driver.get("car_illustration") or ""))
+                else (),
+                tuple(
+                    bool(self.assets.image(logo_url, "logo", size))
+                    for size in ((18, 18), (21, 21))
+                )
+                if (logo_url := str(driver.get("team_logo") or ""))
+                else (),
+            )
+            for driver in _drivers(payload)
+        )
+        return self._pinned_asset_state
 
     def _driver_card(self, driver: Mapping[str, Any], qualifying: bool, f1: bool, metric: str) -> Image.Image:
         position = str(driver.get("pos") or "")
