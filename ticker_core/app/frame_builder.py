@@ -45,6 +45,8 @@ class FrameBuilder:
         self._connection_status = connection_status or ConnectionLostOverlay()
         self._geometry = geometry or FrameGeometry()
         self._last_base: Image.Image | None = None
+        self._cached_content: Content | None = None
+        self._cached_content_mapping: dict[str, Any] | None = None
 
     def visual_key(self, decision: FrameDecision, *, asset_revision: int | None = None) -> tuple[object, ...]:
         """Return the rendering-owned invalidation key for one decision."""
@@ -52,7 +54,7 @@ class FrameBuilder:
         key: list[object] = [decision.kind, decision.mode, decision.payload_key]
         context = RenderContext(decision.wall_time)
         if decision.kind is FrameKind.STATIC and decision.content is not None:
-            scene = ContentScene(_content_mapping(decision.content), decision.mode, decision.content_elapsed or 0.0)
+            scene = ContentScene(self._content_data(decision.content), decision.mode, decision.content_elapsed or 0.0)
             key.append(self._catalog.visual_key(context, scene, asset_revision))
         elif decision.kind is FrameKind.SCROLL:
             key.append(decision.scroll_offset)
@@ -155,8 +157,16 @@ class FrameBuilder:
         return frame
 
     def _render_content(self, context: RenderContext, content: Content, mode: str, elapsed: float) -> Image.Image:
-        rendered = self._catalog.render(context, ContentScene(_content_mapping(content), mode, elapsed))
+        rendered = self._catalog.render(context, ContentScene(self._content_data(content), mode, elapsed))
         return rendered.image
+
+    def _content_data(self, content: Content) -> dict[str, Any]:
+        """Reuse the immutable content projection across animation frames."""
+        if self._cached_content is not content:
+            self._cached_content = content
+            self._cached_content_mapping = _content_mapping(content)
+        assert self._cached_content_mapping is not None
+        return self._cached_content_mapping
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
         offset = max(0, decision.scroll_offset or 0)

@@ -155,6 +155,11 @@ class SportsRenderer:
         self._logos = logos
         self._stadium = PreparedStadiumRenderer(logos)
         self._full = PreparedSportsFullRenderer(fonts, logos)
+        self._visual_item: Mapping[str, Any] | None = None
+        self._visual_item_json: str | None = None
+        self._asset_item: Mapping[str, Any] | None = None
+        self._asset_revision: int | None = None
+        self._pinned_asset_state: tuple[bool, bool] = (False, False)
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render one score card or a 384 pixel full display."""
@@ -423,5 +428,29 @@ class SportsRenderer:
         if scene.item.get("sports_presentation") == "pinned" and str(scene.item.get("sport") or "").lower() in {"nhl", "hockey"}:
             pages = hockey_page_count(scene.item.get("situation") or {})
         phase = (int(context.now.timestamp()) // 5) % pages if pages > 1 else None
-        return ("scoreboard", json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":")), scene.mode, asset_revision, phase)
+        if scene.item is not self._visual_item:
+            self._visual_item = scene.item
+            self._visual_item_json = json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":"))
+        if scene.item.get("sports_presentation") == "pinned":
+            if scene.item is not self._asset_item or asset_revision != self._asset_revision:
+                self._asset_item = scene.item
+                self._asset_revision = asset_revision
+                self._pinned_asset_state = (
+                    bool(get_prepared_team_logo(
+                        self._logos,
+                        str(scene.item.get("home_logo") or "") or None,
+                        (24, 24),
+                        scene.item.get("home_logo_rendering"),
+                    )),
+                    bool(get_prepared_team_logo(
+                        self._logos,
+                        str(scene.item.get("away_logo") or "") or None,
+                        (24, 24),
+                        scene.item.get("away_logo_rendering"),
+                    )),
+                )
+            asset_state: object = self._pinned_asset_state
+        else:
+            asset_state = asset_revision
+        return ("scoreboard", self._visual_item_json, scene.mode, asset_state, phase)
 

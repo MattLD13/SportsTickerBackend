@@ -56,6 +56,8 @@ class ContentRendererCatalog:
 
     def __init__(self) -> None:
         self._renderers: dict[str, ContentRenderer] = {}
+        self._visual_item: Mapping[str, Any] | None = None
+        self._visual_item_json: str | None = None
 
     def register(self, family: str, renderer: ContentRenderer) -> None:
         """Register one renderer family."""
@@ -85,7 +87,10 @@ class ContentRendererCatalog:
         if callable(method):
             return method(context, scene, asset_revision)
         phase = _family_phase(family, scene.item, context, scene.elapsed)
-        return (family, _stable_item(scene.item), scene.mode, asset_revision, phase)
+        if scene.item is not self._visual_item:
+            self._visual_item = scene.item
+            self._visual_item_json = _stable_item(scene.item)
+        return (family, self._visual_item_json, scene.mode, asset_revision, phase)
 
 
 def _stable_item(item: Mapping[str, Any]) -> str:
