@@ -116,20 +116,21 @@ def test_pinned_carousel_reuses_unchanged_driver_cards(monkeypatch) -> None:
         {"pos": 2, "abbr": "BBB", "name": "Driver BBB", "car": "2", "gap": "+0.2"},
     ]
     calls = []
-    original = RacingRenderer._driver_card
+    original = RacingRenderer._driver_card_base
 
-    def count_card(self, driver, qualifying, f1, metric):
+    def count_card(self, driver, f1):
         calls.append(str(driver.get("abbr")))
-        return original(self, driver, qualifying, f1, metric)
+        return original(self, driver, f1)
 
-    monkeypatch.setattr(RacingRenderer, "_driver_card", count_card)
-    renderer.render(context, ContentScene(item, "sports"))
+    monkeypatch.setattr(RacingRenderer, "_driver_card_base", count_card)
+    first = renderer.render(context, ContentScene(item, "sports")).image
     updated = {**item, "f1": {**item["f1"], "drivers": [
         item["f1"]["drivers"][0], {**item["f1"]["drivers"][1], "gap": "+0.3"},
     ]}}
-    renderer.render(context, ContentScene(updated, "sports"))
+    second = renderer.render(context, ContentScene(updated, "sports")).image
 
-    assert calls == ["AAA", "BBB", "BBB"]
+    assert calls == ["AAA", "BBB"]
+    assert first.tobytes() != second.tobytes()
 
 
 def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):

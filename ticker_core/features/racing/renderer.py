@@ -230,19 +230,7 @@ class RacingRenderer:
         cached = self._strip_cache.get(key)
         if cached is not None:
             return cached
-        cards_list = []
-        for driver in drivers:
-            card_key = (_driver_key(driver), qualifying, f1, metric, self._pinned_asset_state)
-            card = self._driver_card_cache.get(card_key)
-            if card is None:
-                card = self._driver_card(driver, qualifying, f1, metric)
-                self._driver_card_cache[card_key] = card
-                while len(self._driver_card_cache) > 128:
-                    self._driver_card_cache.popitem(last=False)
-            else:
-                self._driver_card_cache.move_to_end(card_key)
-            cards_list.append(card)
-        cards = tuple(cards_list)
+        cards = tuple(self._driver_card(driver, qualifying, f1, metric) for driver in drivers)
         gap = 6
         width = sum(card.width for card in cards) + gap * len(cards)
         strip = Image.new("RGBA", (width + PANEL_WIDTH - 84, PANEL_HEIGHT), (0, 0, 0, 0))
@@ -291,6 +279,43 @@ class RacingRenderer:
         return self._pinned_asset_state
 
     def _driver_card(self, driver: Mapping[str, Any], qualifying: bool, f1: bool, metric: str) -> Image.Image:
+        base_key = (
+            tuple(str(driver.get(key) or "") for key in (
+                "pos", "name", "display_name", "class", "class_pos", "abbr", "car", "team",
+                "team_logo", "car_illustration", "livery_primary", "livery_secondary",
+            )),
+            f1,
+            self._pinned_asset_state,
+        )
+        card = self._driver_card_cache.get(base_key)
+        if card is None:
+            card = self._driver_card_base(driver, f1)
+            self._driver_card_cache[base_key] = card
+            while len(self._driver_card_cache) > 128:
+                self._driver_card_cache.popitem(last=False)
+        else:
+            self._driver_card_cache.move_to_end(base_key)
+        card = card.copy()
+        draw = ImageDraw.Draw(card)
+        position = str(driver.get("pos") or "")
+        width = card.width
+        is_mph = metric == "mph"
+        if is_mph:
+            right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+        elif qualifying and not f1 and metric == "time":
+            right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+        elif qualifying and f1:
+            right = str(driver.get("gap") or driver.get("best_time") or "")[:8]
+        elif qualifying:
+            right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:8]
+        else:
+            right = str(driver.get("gap") or driver.get("interval") or "")[:10]
+        if right:
+            draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
+        return card
+
+    def _driver_card_base(self, driver: Mapping[str, Any], f1: bool) -> Image.Image:
+        """Render driver identity and images without frequently changing timing text."""
         position = str(driver.get("pos") or "")
         name = str(driver.get("display_name") or driver.get("name") or driver.get("abbr") or "???").strip()
         car_number = str(driver.get("car") or "").strip()
@@ -352,19 +377,6 @@ class RacingRenderer:
                     draw.text((number_x + offset_x, offset_y), car_number, font=self.fonts.normal, fill=(255, 255, 255, 200))
             draw.text((number_x, 0), car_number, font=self.fonts.normal, fill=primary)
         draw.text((max(4, width - int(name_width) - 5), 10), name, font=name_font, fill=(255, 255, 255))
-        is_mph = metric == "mph"
-        if is_mph:
-            right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
-        elif qualifying and not f1 and metric == "time":
-            right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
-        elif qualifying and f1:
-            right = str(driver.get("gap") or driver.get("best_time") or "")[:8]
-        elif qualifying:
-            right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:8]
-        else:
-            right = str(driver.get("gap") or driver.get("interval") or "")[:10]
-        if right:
-            draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
         return card
 
     def _driver_colors(self, driver: Mapping[str, Any]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
