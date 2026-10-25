@@ -106,6 +106,32 @@ def test_pinned_racing_visual_key_ignores_unrelated_asset_revisions() -> None:
     assert active_car_ready != unrelated_asset
 
 
+def test_pinned_carousel_reuses_unchanged_driver_cards(monkeypatch) -> None:
+    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    context = RenderContext(datetime(2026, 10, 25, tzinfo=timezone.utc))
+    item = _item("f1")
+    item["sports_presentation"] = "pinned"
+    item["f1"]["drivers"] = [
+        {"pos": 1, "abbr": "AAA", "name": "Driver AAA", "car": "1", "gap": "+0.1"},
+        {"pos": 2, "abbr": "BBB", "name": "Driver BBB", "car": "2", "gap": "+0.2"},
+    ]
+    calls = []
+    original = RacingRenderer._driver_card
+
+    def count_card(self, driver, qualifying, f1, metric):
+        calls.append(str(driver.get("abbr")))
+        return original(self, driver, qualifying, f1, metric)
+
+    monkeypatch.setattr(RacingRenderer, "_driver_card", count_card)
+    renderer.render(context, ContentScene(item, "sports"))
+    updated = {**item, "f1": {**item["f1"], "drivers": [
+        item["f1"]["drivers"][0], {**item["f1"]["drivers"][1], "gap": "+0.3"},
+    ]}}
+    renderer.render(context, ContentScene(updated, "sports"))
+
+    assert calls == ["AAA", "BBB", "BBB"]
+
+
 def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
     import ticker_core.features.racing.renderer as rendering
 

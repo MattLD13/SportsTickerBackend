@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -59,6 +60,7 @@ class RacingRenderer:
     fonts: FontSet
     assets: RacingAssetService
     _strip_cache: dict[tuple[object, ...], tuple[tuple[Image.Image, ...], Image.Image, int]] = field(default_factory=dict)
+    _driver_card_cache: OrderedDict[tuple[object, ...], Image.Image] = field(default_factory=OrderedDict, init=False, repr=False)
     _visual_item: Mapping[str, Any] | None = field(default=None, init=False, repr=False)
     _visual_item_json: str | None = field(default=None, init=False, repr=False)
     _asset_item: Mapping[str, Any] | None = field(default=None, init=False, repr=False)
@@ -228,7 +230,19 @@ class RacingRenderer:
         cached = self._strip_cache.get(key)
         if cached is not None:
             return cached
-        cards = tuple(self._driver_card(driver, qualifying, f1, metric) for driver in drivers)
+        cards_list = []
+        for driver in drivers:
+            card_key = (_driver_key(driver), qualifying, f1, metric, self._pinned_asset_state)
+            card = self._driver_card_cache.get(card_key)
+            if card is None:
+                card = self._driver_card(driver, qualifying, f1, metric)
+                self._driver_card_cache[card_key] = card
+                while len(self._driver_card_cache) > 128:
+                    self._driver_card_cache.popitem(last=False)
+            else:
+                self._driver_card_cache.move_to_end(card_key)
+            cards_list.append(card)
+        cards = tuple(cards_list)
         gap = 6
         width = sum(card.width for card in cards) + gap * len(cards)
         strip = Image.new("RGBA", (width + PANEL_WIDTH - 84, PANEL_HEIGHT), (0, 0, 0, 0))
