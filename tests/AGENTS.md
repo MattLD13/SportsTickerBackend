@@ -17,7 +17,7 @@ Fixtures live in `tests/fixtures/`.
 | Racing | `tests/python/providers/test_racing_live_source.py`, `tests/python/features/racing/` |
 | Operations | `tests/python/operations/`, `tests/python/platform/` |
 | Assets | `tests/python/assets/` |
-| Agent workflow | `tests/python/operations/test_agent_workspaces.py`, `test_agent_startup.py`, `test_context_planner.py` |
+| Agent workflow | `ai/tests/test_agent_workspaces.py`, `test_agent_startup.py`, `test_context_planner.py` |
 
 Run selected Python paths with `python -m pytest -q <paths>`.
 Before every push, run `python -m pytest -m critical -q`.

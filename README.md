@@ -13,11 +13,11 @@ Provider workers -> per-ticker scheduler -> V2 snapshot -> ticker_core runtime -
                  +-> SQLite ticker settings, pairing, events, and integrations
 ```
 
-`sports_ticker/` owns provider reads, per-ticker settings, snapshots, pairing, Spotify connections, events, and the Flask API.
+`ticker-server/sports_ticker/` owns provider reads, per-ticker settings, snapshots, pairing, Spotify connections, events, and the Flask API.
 
-`ticker_core/` owns V2 transport, content caching, runtime scheduling, rendering, and matrix drivers.
+`ticker-six/ticker_core/` owns V2 transport, content caching, runtime scheduling, rendering, and matrix drivers.
 
-`TickerControlApp/` is the iOS controller app. It uses V2 controller credentials and never receives Spotify tokens.
+`ticker-control/` is the iOS controller app. It uses V2 controller credentials and never receives Spotify tokens.
 
 ## Modes
 
@@ -57,9 +57,23 @@ Useful endpoints:
 | `POST` | `/api/v2/pairings/exchange` | Claim a pairing code and receive a controller token. |
 | `POST` | `/api/v2/tickers/<ticker-id>/integrations/spotify/authorizations` | Start Spotify authorization. |
 
-Read [API V2 route definitions](sports_ticker/api/routes.py) for validation rules and complete route coverage.
+Read [API V2 route definitions](ticker-server/sports_ticker/api/routes.py) for validation rules and complete route coverage.
 
 ## Development
+
+Install the workspace packages before running tools:
+
+```bash
+python -m pip install -e . -r requirements-backend.txt
+```
+
+Start a product with its declared release paths:
+
+```bash
+python run.py server
+python run.py six
+```
+
 
 Run the focused V2 suite:
 
@@ -107,12 +121,11 @@ Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace th
 
 | Folder | Owner |
 |---|---|
-| `sports_ticker/` | Server APIs, domain data, persistence, and providers. |
-| `backend_ops/` | Provider workers, component deployment, rollback, and diagnostics. |
-| `ticker_core/` | Ticker Six runtime and rendering. |
-| `esp32_hub75/` | Ticker Mini firmware. |
-| `TickerControlApp/` | iOS controller app. |
-| `deploy/backend/` | Server and fetcher service units. |
+| `ticker-server/` | Ticker Server code, backend operations, and service units. |
+| `ticker-six/` | Ticker Six runtime and rendering. |
+| `ticker-mini/` | Ticker Mini firmware. |
+| `ticker-control/` | iOS controller app. |
+| `ai/` | AI workspace tooling, tests, guides, and context configuration. |
 | `tests/` | Python tests, native firmware checks, and fixtures. |
 | `tools/` | Utilities grouped by purpose. |
 | `docs/` | Architecture, contracts, development, operations, plans, and research. |

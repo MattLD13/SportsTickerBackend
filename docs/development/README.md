@@ -37,7 +37,7 @@ python -m ruff check sports_ticker ticker_core
 python -m mypy
 ```
 
-Ruff starts with syntax and selected correctness rules. Mypy starts with `sports_ticker/markets.py`.
+Ruff starts with syntax and selected correctness rules. Mypy starts with `ticker-server/sports_ticker/markets.py`.
 Expand coverage after resolving findings in the affected modules.
 
 `.github/workflows/deploy.yml` owns Python checks, shared layout checks, Mini firmware validation, and publishing.

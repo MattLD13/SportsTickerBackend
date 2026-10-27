@@ -23,7 +23,7 @@ from tools.mini.generate_mini_trust import (
 
 pytestmark = pytest.mark.critical
 ROOT = Path(__file__).resolve().parents[3]
-STORE = ROOT / "esp32_hub75/certs/backend.pem"
+STORE = ROOT / "ticker-mini/certs/backend.pem"
 
 
 def test_committed_trust_store_matches_metadata_and_authorities() -> None:

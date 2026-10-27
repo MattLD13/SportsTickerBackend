@@ -4,6 +4,8 @@ The product layout uses named product folders while preserving Python package na
 The showcase keeps its page sources, assets, and rendered examples.
 Generated source provenance records the relocated files and updated build tool.
 
+Preparation commit: `64d14de3a4f9b926ba91061d284e112036bca0b5`.
+
 ## Six preparation release
 
 `run.py` configures product imports from `release-layout.json` before starting a product.

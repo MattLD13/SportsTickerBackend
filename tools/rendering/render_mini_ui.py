@@ -145,13 +145,13 @@ def remote_render(host: str, key: Path, output: Path, native_root: str) -> None:
     ssh = ["ssh", "-i", str(key), "-o", "IdentitiesOnly=yes", host]
     scp = ["scp", "-i", str(key), "-o", "IdentitiesOnly=yes"]
     subprocess.run(ssh + [f"mkdir -p {native_root}/src/mini/rendering {native_root}/src/mini/protocol {native_root}/src/mini/assets {native_root}/arduino {native_root}/assets"], check=True)
-    headers = list((ROOT / "esp32_hub75/src/mini/rendering").glob("*.h"))
+    headers = list((ROOT / "ticker-mini/src/mini/rendering").glob("*.h"))
     subprocess.run(scp + [str(p) for p in headers] + [f"{host}:{native_root}/src/mini/rendering/"], check=True)
-    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/protocol/panels.h"), f"{host}:{native_root}/src/mini/protocol/"], check=True)
-    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_sprite.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
-    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_artwork.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
+    subprocess.run(scp + [str(ROOT / "ticker-mini/src/mini/protocol/panels.h"), f"{host}:{native_root}/src/mini/protocol/"], check=True)
+    subprocess.run(scp + [str(ROOT / "ticker-mini/src/mini/assets/mini_sprite.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
+    subprocess.run(scp + [str(ROOT / "ticker-mini/src/mini/assets/mini_artwork.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
     subprocess.run(scp + [str(ROOT / "tools/rendering/render_mini_ui.cpp"), f"{host}:{native_root}/src/"], check=True)
-    library = ROOT / "esp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src"
+    library = ROOT / "ticker-mini/.pio/libdeps/esp32s3/ArduinoJson/src"
     subprocess.run(scp + ["-r", str(library / "ArduinoJson"), str(library / "ArduinoJson.h"), str(library / "ArduinoJson.hpp"), f"{host}:{native_root}/arduino/"], check=True)
     sprites = list((output / "assets").glob("*.mts")) + list((output / "assets").glob("*.mta"))
     if sprites: subprocess.run(scp + [str(p) for p in sprites] + [f"{host}:{native_root}/assets/"], check=True)

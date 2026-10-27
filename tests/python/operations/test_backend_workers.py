@@ -31,7 +31,7 @@ def test_contract_identity_includes_shared_immutable_helper(tmp_path):
         for root in (tmp_path / "previous", tmp_path / "current"):
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(Path(name), target)
+            shutil.copyfile(Path("ticker-server") / name, target)
     previous = contract_id(tmp_path / "previous")
     assert contract_id(tmp_path / "current") == previous
     helper = tmp_path / "current/sports_ticker/immutable.py"

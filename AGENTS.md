@@ -7,19 +7,19 @@ This repository owns Ticker Server, Ticker Six, Ticker Mini, and the iOS control
 Use ordinary targeted searches for small tasks with a clear code location.
 Read only the relevant symbols and the nearest scoped instructions.
 If a supplied task packet matches the task, reuse it before source exploration.
-For bounded file and symbol discovery without a model, use `python tools/workspaces/find.py --search "<literal words>"`.
+For bounded file and symbol discovery without a model, use `python ai/workspaces/find.py --search "<literal words>"`.
 Use `--symbols <path>` for definitions and `--excerpt <path> --symbol <name>` for a source window.
 
 For a known component, select its manifest slice without a model call:
 
 ```text
-python tools/workspaces/start.py --slice <slice> --task "<task summary>"
+python ai/workspaces/start.py --slice <slice> --task "<task summary>"
 ```
 
 For broad, unfamiliar, or cross-component tasks, request GPT-6 Luna explicitly:
 
 ```text
-python tools/workspaces/start.py --plan --task "<task summary>"
+python ai/workspaces/start.py --plan --task "<task summary>"
 ```
 
 Startup hooks reuse existing context and never call a model.
@@ -36,7 +36,7 @@ If repository instructions change, read the changed instructions again.
 ## Engineering rules
 
 - Trace input, durable state, API output, client state, and the frame before fixing a display fact.
-- Give each fact one owner. Shared sports facts belong in `sports_ticker/providers/sports_display.py`.
+- Give each fact one owner. Shared sports facts belong in `ticker-server/sports_ticker/providers/sports_display.py`.
 - Extend explicit V2 contracts when several consumers need a fact.
 - Keep provider reads, persistence, projection, scheduling, and rendering separate. Rendering has no I/O.
 - Replace faulty designs. Remove replaced code, imports, tests, routes, jobs, fixtures, and documentation in the same change.
@@ -69,15 +69,15 @@ Pi releases are immutable. Never pull, reset, or clean a running release.
 
 | Work | Read when needed |
 |---|---|
-| Server | `sports_ticker/AGENTS.md` |
-| Six | `ticker_core/AGENTS.md` |
-| Mini | `esp32_hub75/AGENTS.md` |
-| Controller app | `TickerControlApp/AGENTS.md` |
-| Backend operations | `backend_ops/AGENTS.md` |
+| Server | `ticker-server/sports_ticker/AGENTS.md` |
+| Six | `ticker-six/ticker_core/AGENTS.md` |
+| Mini | `ticker-mini/AGENTS.md` |
+| Controller app | `ticker-control/AGENTS.md` |
+| Backend operations | `ticker-server/backend_ops/AGENTS.md` |
 | Tests | `tests/AGENTS.md` |
 | Tools | `tools/AGENTS.md` |
-| Writing and change rules | `docs/development/agent-rules.md` |
-| Workspace commands | `docs/development/agent-workspaces.md` |
+| Writing and change rules | `ai/guides/writing.md` |
+| Workspace commands | `ai/guides/workspaces.md` |
 
 Write documentation, comments, docstrings, and commit messages in Simplified Technical English.
 Use active voice, short sentences, and consistent terms. Read the writing guide before writing project documentation.

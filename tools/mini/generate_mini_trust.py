@@ -41,7 +41,7 @@ def build_trust_store(pem: bytes) -> bytes:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path("esp32_hub75/certs/backend.pem"))
+    parser.add_argument("--output", type=Path, default=Path("ticker-mini/certs/backend.pem"))
     args = parser.parse_args()
     pem = Path(certifi.where()).read_bytes()
     store = build_trust_store(pem)

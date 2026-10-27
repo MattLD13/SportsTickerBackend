@@ -64,17 +64,17 @@ def setup(tmp_path):
 
 
 def test_deployment_selects_the_fact_owner_and_shared_dependencies():
-    assert owners("sports_ticker/providers/music.py") == {"music"}
-    assert owners("sports_ticker/api/routes.py") == {"core"}
-    assert owners("sports_ticker/integrations/spotify.py") == {"core", "music"}
-    assert owners("sports_ticker/tls.py") == set(ALL)
-    assert owners("sports_ticker/immutable.py") == set(ALL)
-    assert owners("sports_ticker/domain/models.py") == set(ALL)
+    assert owners("ticker-server/sports_ticker/providers/music.py") == {"music"}
+    assert owners("ticker-server/sports_ticker/api/routes.py") == {"core"}
+    assert owners("ticker-server/sports_ticker/integrations/spotify.py") == {"core", "music"}
+    assert owners("ticker-server/sports_ticker/tls.py") == set(ALL)
+    assert owners("ticker-server/sports_ticker/immutable.py") == set(ALL)
+    assert owners("ticker-server/sports_ticker/domain/models.py") == set(ALL)
     assert owners("tests/python/test_modes.py") == set()
-    assert owners("sports_ticker/providers/sources/values.py") == {"golf", "stock", "flights", "news"}
-    assert owners("sports_ticker/providers/score_alerts.py") == {"espn", "fotmob"}
-    assert owners("sports_ticker/domain/settings.py") == set(ALL)
-    assert owners("sports_ticker/providers/racing_session.py") == {"core", "racing"}
+    assert owners("ticker-server/sports_ticker/providers/sources/values.py") == {"golf", "stock", "flights", "news"}
+    assert owners("ticker-server/sports_ticker/providers/score_alerts.py") == {"espn", "fotmob"}
+    assert owners("ticker-server/sports_ticker/domain/settings.py") == set(ALL)
+    assert owners("ticker-server/sports_ticker/providers/racing_session.py") == {"core", "racing"}
 
 
 @pytest.mark.parametrize("module,component", [
@@ -82,28 +82,28 @@ def test_deployment_selects_the_fact_owner_and_shared_dependencies():
     ("sources/flights", "flights"), ("sources/news", "news"), ("clock", "clock"),
 ])
 def test_source_file_changes_select_only_their_worker(module, component):
-    assert owners(f"sports_ticker/providers/{module}.py") == {component}
+    assert owners(f"ticker-server/sports_ticker/providers/{module}.py") == {component}
 
 
 def test_deployment_packages_shared_and_nested_dependencies_for_each_process(tmp_path):
     source = Path.cwd()
     root = tmp_path / "repository"
     required = (
-        "backend_ops/worker_contract.py",
-        "backend_ops/manager.py",
-        "backend_ops/deployment/__init__.py",
-        "backend_ops/deployment/components.py",
-        "backend_ops/deployment/manager.py",
-        "sports_ticker/providers/sources/__init__.py",
-        "sports_ticker/providers/sources/golf.py",
-        "sports_ticker/providers/sources/stocks.py",
-        "sports_ticker/providers/sources/flights.py",
-        "sports_ticker/providers/sources/news.py",
-        "sports_ticker/providers/sources/values.py",
-        "sports_ticker/domain/models.py",
-        "sports_ticker/providers/contracts.py",
-        "sports_ticker/immutable.py",
-        "sports_ticker/tls.py",
+        "ticker-server/backend_ops/worker_contract.py",
+        "ticker-server/backend_ops/manager.py",
+        "ticker-server/backend_ops/deployment/__init__.py",
+        "ticker-server/backend_ops/deployment/components.py",
+        "ticker-server/backend_ops/deployment/manager.py",
+        "ticker-server/sports_ticker/providers/sources/__init__.py",
+        "ticker-server/sports_ticker/providers/sources/golf.py",
+        "ticker-server/sports_ticker/providers/sources/stocks.py",
+        "ticker-server/sports_ticker/providers/sources/flights.py",
+        "ticker-server/sports_ticker/providers/sources/news.py",
+        "ticker-server/sports_ticker/providers/sources/values.py",
+        "ticker-server/sports_ticker/domain/models.py",
+        "ticker-server/sports_ticker/providers/contracts.py",
+        "ticker-server/sports_ticker/immutable.py",
+        "ticker-server/sports_ticker/tls.py",
     )
     for relative in required:
         target = root / relative
@@ -124,7 +124,7 @@ def test_deployment_packages_shared_and_nested_dependencies_for_each_process(tmp
         with tarfile.open(output / f"{component}.tar.gz", "r:gz") as archive:
             assert "sports_ticker/tls.py" in archive.getnames()
             assert "sports_ticker/immutable.py" in archive.getnames()
-            assert set(required) <= set(archive.getnames())
+            assert {name.removeprefix("ticker-server/") for name in required} <= set(archive.getnames())
 
 
 def test_bootstrap_copies_actual_legacy_contract_without_new_helper(tmp_path, monkeypatch):

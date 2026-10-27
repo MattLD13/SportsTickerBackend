@@ -11,7 +11,7 @@ from ticker_core.rendering import style
 from sports_ticker.leagues import LEAGUES
 from sports_ticker.providers.sports_display import sport_family
 
-TARGET = Path(__file__).resolve().parents[2] / "esp32_hub75/src/mini/rendering/ui_generated.h"
+TARGET = Path(__file__).resolve().parents[2] / "ticker-mini/src/mini/rendering/ui_generated.h"
 
 
 def header() -> str:

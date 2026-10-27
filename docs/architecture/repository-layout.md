@@ -7,7 +7,7 @@ Base revision: `5ee30fa4a9a2f84b7cb6155ea5027f028bebd271`.
 Group files by responsibility. Keep runtime behavior and public entry points stable.
 
 ```text
-sports_ticker/
+ticker-server/sports_ticker/
   providers/
     sources/
       golf.py
@@ -18,7 +18,7 @@ sports_ticker/
     clock.py
     factory.py
     ...provider adapters and shared sports facts
-backend_ops/
+ticker-server/backend_ops/
   deployment/
     components.py
     manager.py
@@ -46,12 +46,12 @@ docs/architecture/
 | `providers/flight_source.py` | `providers/sources/flights.py` | Match the flight adapter name. |
 | `providers/news_source.py` | `providers/sources/news.py` | Keep news source logic beside other source adapters. |
 | `providers/source_values.py` | `providers/sources/values.py` | Keep source-only numeric helpers in the source package. |
-| `backend_ops/components.py` | `backend_ops/deployment/components.py` | Put release selection beside release activation. |
-| Release implementation in `backend_ops/manager.py` | `backend_ops/deployment/manager.py` | Separate release mechanics from the stable command entry point. |
+| `ticker-server/backend_ops/components.py` | `ticker-server/backend_ops/deployment/components.py` | Put release selection beside release activation. |
+| Release implementation in `ticker-server/backend_ops/manager.py` | `ticker-server/backend_ops/deployment/manager.py` | Separate release mechanics from the stable command entry point. |
 | Provider source tests under `tests/python/protocol/` | `tests/python/providers/` | Keep source behavior separate from transport contracts. |
 | Project map and inventories in `docs/architecture/` | `docs/architecture/reviews/2026-10-27/` | Separate historical review evidence from current guides. |
 
-Provider paths in the first five rows are relative to `sports_ticker/`.
+Provider paths in the first five rows are relative to `ticker-server/sports_ticker/`.
 Clock remains a provider because it does not wrap an upstream source.
 The root manager module retains command parsing and delegates release operations to the deployment package.
 It does not retain duplicate release implementations.
@@ -68,7 +68,7 @@ It does not retain duplicate release implementations.
 
 ## Preserved boundaries
 
-Keep `sports_ticker`, `ticker_core`, `esp32_hub75`, and `TickerControlApp` as product roots.
+Keep `sports_ticker`, `ticker_core`, `ticker-mini`, and `ticker-control` as product roots.
 Installed releases, build tools, and showcase provenance use those paths.
 Keep `setup.sh`, `updater.py`, `test.py`, and service entry points stable.
 Keep showcase sources, assets, contracts, and `sports_display.py` unchanged.

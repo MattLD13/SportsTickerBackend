@@ -23,24 +23,24 @@ Keep provider reads, persistence, projection, scheduling, and rendering in their
 - Keep existing manual live-delay behavior and overlay timing.
 - Drop TV clock calibration, the calibration sheet, and per-device TV delay changes.
 - Keep operational `AGENTS.md` files and their scoped instructions.
-- Preserve `sports_ticker/server.py`, both active dashboards, `test.py`, and public demo assets.
+- Preserve `ticker-server/sports_ticker/server.py`, both active dashboards, `test.py`, and public demo assets.
 - Keep the Xcode user-state cleanup and duplicate-icon removal as Gate 0 evidence. Both already pass at this baseline.
 
 ## Current foundations
 
 | Capability | Current owner | Current state |
 |---|---|---|
-| Backend service | `sports_ticker/server.py`, `sports_ticker/asgi.py` | Hypercorn serves one ASGI worker. Flask HTTP routes use `WsgiToAsgi`. Device Stream V1 runs through the outer ASGI layer. |
-| V2 snapshot | `sports_ticker/projections/data_api.py` | Devices read `/api/v2/tickers/<ticker_id>/data`. |
-| Pi delta application | `ticker_core/protocol/model.py`, `ticker_core/protocol/stream.py` | HTTP provides boot state. The WebSocket client validates and applies sequenced deltas. |
-| Pi pane surfaces | `ticker_core/app/viewport.py` | Panes render asynchronously. The viewport caches pane surfaces and a tiled strip. |
-| Frame reuse | `ticker_core/app/application.py` | Unchanged visual states skip presentation work. |
-| Snapshot history | `sports_ticker/application/state_store.py` | Immutable snapshots use bounded per-ticker deques. |
-| Fleet storage | `sports_ticker/fleet/repository.py` | SQLite stores device and schedule state. |
-| Pi image cache | `ticker_core/platform/assets.py` | Original image bytes use SHA-256 storage. |
-| Mini image cache | `esp32_hub75/src/mini/assets/sprite_assets.cpp` | SpriteAssets owns LittleFS transactions and RAM pixels. Runtime planning owns page generations. |
+| Backend service | `ticker-server/sports_ticker/server.py`, `ticker-server/sports_ticker/asgi.py` | Hypercorn serves one ASGI worker. Flask HTTP routes use `WsgiToAsgi`. Device Stream V1 runs through the outer ASGI layer. |
+| V2 snapshot | `ticker-server/sports_ticker/projections/data_api.py` | Devices read `/api/v2/tickers/<ticker_id>/data`. |
+| Pi delta application | `ticker-six/ticker_core/protocol/model.py`, `ticker-six/ticker_core/protocol/stream.py` | HTTP provides boot state. The WebSocket client validates and applies sequenced deltas. |
+| Pi pane surfaces | `ticker-six/ticker_core/app/viewport.py` | Panes render asynchronously. The viewport caches pane surfaces and a tiled strip. |
+| Frame reuse | `ticker-six/ticker_core/app/application.py` | Unchanged visual states skip presentation work. |
+| Snapshot history | `ticker-server/sports_ticker/application/state_store.py` | Immutable snapshots use bounded per-ticker deques. |
+| Fleet storage | `ticker-server/sports_ticker/fleet/repository.py` | SQLite stores device and schedule state. |
+| Pi image cache | `ticker-six/ticker_core/platform/assets.py` | Original image bytes use SHA-256 storage. |
+| Mini image cache | `ticker-mini/src/mini/assets/sprite_assets.cpp` | SpriteAssets owns LittleFS transactions and RAM pixels. Runtime planning owns page generations. |
 | Pi deployment | `updater.py` | Immutable worktrees and rollback already exist. |
-| ESP32 update flow | `esp32_hub75/src/mini/platform/firmware_update.cpp` | Dual-slot update and boot validation already exist. |
+| ESP32 update flow | `ticker-mini/src/mini/platform/firmware_update.cpp` | Dual-slot update and boot validation already exist. |
 | CI | `.github/workflows/` | Python static and device build workflows exist. |
 
 Device Stream V1 provides projection deltas, bounded replay, and snapshot recovery. Gate 4 adds backend-generated Mini sports sprites.
@@ -70,11 +70,11 @@ Generate narrow DTOs only after Python, Swift, and C++ contracts agree.
 
 | Contract | Owner and consumers |
 |---|---|
-| Registration | `sports_ticker/api/routes.py`, `sports_ticker/fleet/`, Pi and Mini registration clients. |
-| Hardware profile | `sports_ticker/fleet/profiles.py`, `TickerHardwareProfile.swift`, Mini registration payload. |
-| Schedule | `sports_ticker/domain/schedule.py`, `sports_ticker/application/schedule.py`, `TickerScheduleModels.swift`. |
-| Firmware | `sports_ticker/firmware.py`, Pi updater, Mini update manifest reader. |
-| Display | `sports_ticker/projections/data_api.py`, Pi protocol model, Mini payload parser, dashboard client. |
+| Registration | `ticker-server/sports_ticker/api/routes.py`, `ticker-server/sports_ticker/fleet/`, Pi and Mini registration clients. |
+| Hardware profile | `ticker-server/sports_ticker/fleet/profiles.py`, `TickerHardwareProfile.swift`, Mini registration payload. |
+| Schedule | `ticker-server/sports_ticker/domain/schedule.py`, `ticker-server/sports_ticker/application/schedule.py`, `TickerScheduleModels.swift`. |
+| Firmware | `ticker-server/sports_ticker/firmware.py`, Pi updater, Mini update manifest reader. |
+| Display | `ticker-server/sports_ticker/projections/data_api.py`, Pi protocol model, Mini payload parser, dashboard client. |
 
 The existing `docs/contracts/device-registration.json` differs from route defaults and accepted fields.
 Resolve that mismatch before using schemas as runtime request gates.

@@ -26,24 +26,24 @@ def test_recovery_compares_backend_changes_only(tmp_path):
     git("config", "user.email", "deployment@example.invalid")
     scope = Path(__file__).resolve().parents[3] / ".github/deployment-paths.json"
     commit(".github/deployment-paths.json", scope.read_text(encoding="utf-8"))
-    deployed = commit("sports_ticker/server.py", "version = 1")
+    deployed = commit("ticker-server/sports_ticker/server.py", "version = 1")
     commit("docs/report.md", "Report")
-    commit("esp32_hub75/src/main.cpp", "Mini")
-    commit("TickerControlApp/View.swift", "App")
+    commit("ticker-mini/src/main.cpp", "Mini")
+    commit("ticker-control/View.swift", "App")
     commit("docs/example.json", json.dumps({"example": True}))
     assert not recovery_needed(tmp_path, deployed[:7])
     documentation_deploy = git("rev-parse", "HEAD")
     commit("docs/report.md", "Updated report")
     assert not recovery_needed(tmp_path, documentation_deploy)
-    commit("deploy/backend/ticker.service", "Updated service")
+    commit("ticker-server/deploy/ticker.service", "Updated service")
     assert recovery_needed(tmp_path, deployed)
     deployed = git("rev-parse", "HEAD")
-    commit("sports_ticker/server.py", "version = 2")
+    commit("ticker-server/sports_ticker/server.py", "version = 2")
     assert recovery_needed(tmp_path, deployed)
     assert not recovery_needed(tmp_path, git("rev-parse", "HEAD"))
     assert recovery_needed(tmp_path, "unknown")
     assert recovery_needed(tmp_path, "f" * 40)
-    for path in ("esp32_hub75/src/mini/rendering/music_pane.h", "docs/contracts/demo-layouts.json", "tools/rendering/render_mini_ui.cpp"):
+    for path in ("ticker-mini/src/mini/rendering/music_pane.h", "docs/contracts/demo-layouts.json", "tools/rendering/render_mini_ui.cpp"):
         deployed = git("rev-parse", "HEAD")
         commit(path, "Updated demo source")
         assert recovery_needed(tmp_path, deployed)
@@ -53,4 +53,4 @@ def test_shared_runtime_dependencies_trigger_a_six_update():
     scope = Path(__file__).resolve().parents[3] / ".github/deployment-paths.json"
     controller = json.loads(scope.read_text(encoding="utf-8"))["controller"]
     assert "requirements.txt" in controller
-    assert "sports_ticker/providers/racing_session.py" in controller
+    assert "ticker-server/sports_ticker/providers/racing_session.py" in controller

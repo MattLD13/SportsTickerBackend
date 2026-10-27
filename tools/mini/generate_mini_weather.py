@@ -15,11 +15,11 @@ sys.path.insert(0, str(ROOT))
 from ticker_core.rendering import load_default_font_set
 
 # Load the drawing owner without importing the weather runtime and its web dependencies.
-SPEC = importlib.util.spec_from_file_location("mini_weather_art_owner", ROOT / "ticker_core/features/weather/drawing.py")
+SPEC = importlib.util.spec_from_file_location("mini_weather_art_owner", ROOT / "ticker-six/ticker_core/features/weather/drawing.py")
 OWNER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(OWNER)
 
-TARGET = ROOT / "esp32_hub75/src/mini/rendering/weather_art_generated.h"
+TARGET = ROOT / "ticker-mini/src/mini/rendering/weather_art_generated.h"
 ICONS = ("sun", "moon", "cloud", "rain", "snow", "fog", "storm")
 WIDTH, HEIGHT, STEP_MS = 22, 17, 100
 

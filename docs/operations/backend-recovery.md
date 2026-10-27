@@ -48,12 +48,12 @@ Evidence tests check source tracebacks, redaction, storage limits, and ZIP conte
 
 The core and ten fetcher workers have separate immutable releases and service units.
 The fetchers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flights`, `music`, `news`, and `clock`.
-The planner in `backend_ops/deployment/components.py` owns source-to-component selection.
-`backend_ops/deployment/manager.py` owns release activation and recovery.
+The planner in `ticker-server/backend_ops/deployment/components.py` owns source-to-component selection.
+`ticker-server/backend_ops/deployment/manager.py` owns release activation and recovery.
 The installed `python -m backend_ops.manager` command remains stable.
 A provider implementation change updates that worker and its declared consumers.
 Shared domain, protocol, or dependency changes update all affected components together.
-The planner uses explicit source file ownership in `backend_ops/deployment/components.py`.
+The planner uses explicit source file ownership in `ticker-server/backend_ops/deployment/components.py`.
 For example, a change in `providers/sources/stocks.py` selects only `stock`.
 Shared source-value helpers select their golf, stock, flights, and news consumers.
 Unclassified shared provider changes select all components.

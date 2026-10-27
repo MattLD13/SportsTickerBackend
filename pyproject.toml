@@ -1,8 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sports-ticker-workspace"
+version = "0.0.0"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["ticker-server", "ticker-six"]
+include = ["sports_ticker*", "backend_ops*", "ticker_core*"]
+
+[tool.setuptools.package-data]
+sports_ticker = ["**/*.json", "**/*.html", "**/*.css", "**/*.js", "**/*.png"]
+ticker_core = ["rendering/font_assets/*"]
+
 [dependency-groups]
 dev = ["pytest>=8,<9", "ruff>=0.14,<0.15", "mypy>=1.18,<2"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/python"]
+testpaths = ["tests/python", "ai/tests"]
+pythonpath = [".", "ticker-server", "ticker-six"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -20,11 +38,11 @@ select = ["E9", "F63", "F7", "F82"]
 
 [tool.ruff.lint.per-file-ignores]
 # dbus-next uses D-Bus signature strings as annotations in this module.
-"ticker_core/platform/ble.py" = ["F722", "F821"]
+"ticker-six/ticker_core/platform/ble.py" = ["F722", "F821"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["sports_ticker/markets.py"]
+files = ["ticker-server/sports_ticker/markets.py"]
 follow_imports = "skip"
 check_untyped_defs = true
 warn_unused_ignores = true
