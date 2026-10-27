@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Iterable, Mapping
 from concurrent.futures import Executor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from multiprocessing import get_context
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Thread
 from time import monotonic
 from types import MappingProxyType
 from typing import Any, Callable
@@ -37,6 +37,7 @@ class _CardRequest:
     asset_generation: int
     generation: int
     scene: Mapping[str, Any] = field(init=False, compare=False)
+    queued_mono: float = field(default_factory=monotonic, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scene", _scene_mapping(self.item))
@@ -53,6 +54,8 @@ class _CardSurface:
     asset_generation: int
     changed_pixels: Image.Image | None = None
     installed_mono: float = 0.0
+    worker_wait_ms: float | None = None
+    worker_render_ms: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +77,8 @@ class _CardPixels:
     height: int
     rgba: bytes
     asset_signatures: tuple[tuple[str, str | None], ...] = ()
+    work_started_mono: float | None = None
+    work_finished_mono: float | None = None
 
 
 class CardViewport:
@@ -115,6 +120,10 @@ class CardViewport:
             self._render_job = self._render_local_job
         self._future: Future[_CardPixels] | None = None
         self._active_request: _CardRequest | None = None
+        self._completed: deque[tuple[_CardRequest, Future[_CardPixels]]] = deque()
+        self._completion_ready = Event()
+        self._closing = False
+        self._settlement_needed = False
         self._pending: OrderedDict[str, _CardRequest] = OrderedDict()
         self._desired: dict[str, _CardRequest] = {}
         self._order: tuple[str, ...] = ()
@@ -134,6 +143,8 @@ class CardViewport:
         self._region_patches = 0
         self._patched_pixels = 0
         self._cold_build = True
+        self._collector = Thread(target=self._collect_completed, name="ticker-card-collector", daemon=True)
+        self._collector.start()
 
     @property
     def revision(self) -> int:
@@ -151,7 +162,8 @@ class CardViewport:
     def status(self) -> Mapping[str, int]:
         """Return readiness facts for the current viewport generation."""
         with self._lock:
-            pending = len(self._pending) + int(self._future is not None)
+            pending = (len(self._pending) + len(self._completed) + int(self._future is not None)
+                       + int(self._settlement_needed))
             return {
                 "desired": len(self._desired),
                 "pending": pending,
@@ -193,7 +205,7 @@ class CardViewport:
                     current = self._staging_surfaces.get(item.id)
                     if current is not None and _matches(request, current):
                         continue
-                    if self._active_request is not None and _same_work_request(self._active_request, request):
+                    if self._work_inflight(request):
                         continue
                     self._pending[item.id] = request
                 self._priority_anchor = None
@@ -217,10 +229,9 @@ class CardViewport:
             self._priority_anchor = None
             for request in requests:
                 current = self._staging_surfaces.get(request.item.id)
-                active = self._active_request
                 if current is not None and _matches(request, current):
                     continue
-                if active is not None and _same_work_request(active, request):
+                if self._work_inflight(request):
                     continue
                 self._pending[request.item.id] = request
             self._start_next()
@@ -228,34 +239,26 @@ class CardViewport:
             return self._layout
 
     def install_completed(self) -> StripLayout | None:
-        """Commit one completed card at a frame boundary."""
+        """Commit a bounded batch of completed cards at a frame boundary."""
         with self._lock:
             before = self._layout
             cached = self._install_cached_panes()
-            future = self._future
-            request = self._active_request
-            if future is None or request is None or not future.done():
-                if cached:
-                    self._start_next()
-                    self._maybe_commit()
-                return self._layout if self._layout != before else None
-            self._future = None
-            self._active_request = None
-        try:
-            surface = future.result()
-        except Exception as error:
-            surface = None
-            with self._lock:
+            # Prioritize current visible work even when background cards completed first.
+            self._prioritize_completed()
+            processed = 0
+            while self._completed and processed < 8:
+                request, future = self._completed.popleft()
+                processed += 1
                 desired = self._desired.get(request.item.id)
-                if desired is not None and _same_work_request(request, desired):
-                    self._failed += 1
-                self._report_failure(request, error)
-                if isinstance(error, BrokenProcessPool):
-                    self._restart_worker_locked()
-                    self._queue_worker_retry_locked(request)
-        with self._lock:
-            desired = self._desired.get(request.item.id)
-            if surface is not None and desired is not None and _same_work_request(request, desired):
+                try:
+                    surface = future.result()
+                except Exception as error:
+                    if desired is not None and _same_work_request(request, desired):
+                        self._failed += 1
+                    self._report_failure(request, error)
+                    continue
+                if desired is None or not _same_work_request(request, desired):
+                    continue
                 image = Image.frombytes("RGBA", (surface.width, surface.height), surface.rgba)
                 previous = self._surfaces.get(request.item.id)
                 current_rgb = _surface_rgb(image)
@@ -268,15 +271,20 @@ class CardViewport:
                     desired.asset_generation,
                     ImageChops.difference(current_rgb, previous_rgb),
                     monotonic(),
+                    round((surface.work_started_mono - request.queued_mono) * 1000, 3)
+                    if surface.work_started_mono is not None else None,
+                    round((surface.work_finished_mono - surface.work_started_mono) * 1000, 3)
+                    if surface.work_started_mono is not None and surface.work_finished_mono is not None else None,
                 )
                 if _matches(desired, card):
                     self._staging_surfaces[card.item_id] = card
                     if self._pane_cache is not None and card.item_id in self._order[:16] and _cacheable(desired):
                         self._pane_cache.save(card.item_id, desired.scene, desired.mode, surface.width, surface.height,
                                               surface.rgba, surface.asset_signatures)
-            self._start_next()
-            before = self._layout
-            self._maybe_commit()
+            if cached or processed or self._settlement_needed:
+                self._settlement_needed = False
+                self._start_next()
+                self._maybe_commit()
             return self._layout if self._layout != before else None
 
     def invalidate(self) -> None:
@@ -308,6 +316,41 @@ class CardViewport:
             self._priority_anchor = None
             self._start_next()
             self._maybe_commit()
+
+    def visible_ids(self, offset: int, width: int = 384) -> frozenset[str] | None:
+        """Identify cards with pixels in the last presented scrolling frame."""
+        with self._lock:
+            return self._visible_ids_locked(offset, width)
+
+    def _visible_ids_locked(self, offset: int, width: int) -> frozenset[str] | None:
+        layout = self._layout
+        if layout is None or layout.width <= 0:
+            return None
+        position, remaining = offset % layout.width, width
+        result = set()
+        while remaining > 0:
+            end = min(layout.width, position + remaining)
+            start = 0
+            for segment in layout.segments:
+                if max(position, start) < min(end, start + segment.width - 1):
+                    result.add(segment.item_id)
+                start += segment.width
+            remaining -= end - position
+            position = 0
+        return frozenset(result)
+
+    def installed_times(self, item_ids: Iterable[str]) -> dict[str, dict[str, float | None]]:
+        """Return installed times and worker timings for current requested cards."""
+        with self._lock:
+            result = {}
+            for identifier in item_ids:
+                surface = self._surfaces.get(identifier)
+                desired = self._desired.get(identifier)
+                if surface is not None and desired is not None and _matches(desired, surface):
+                    result[identifier] = {"installed_mono": surface.installed_mono,
+                                          "worker_wait_ms": surface.worker_wait_ms,
+                                          "worker_render_ms": surface.worker_render_ms}
+            return result
 
     def visible_updates(self, offset: int, item_ids: Iterable[str], width: int = 384) -> dict[str, dict[str, Any]]:
         """Find current pane versions with changed pixels inside the presented viewport."""
@@ -368,12 +411,20 @@ class CardViewport:
 
     def close(self) -> None:
         """Stop the owned card renderer."""
+        with self._lock:
+            self._closing = True
+            self._completion_ready.set()
+        self._collector.join()
         self._worker.shutdown(wait=True, cancel_futures=True)
         if self._pane_cache is not None:
             self._pane_cache.close()
 
     def _start_next(self) -> None:
-        if self._future is not None:
+        if self._closing or self._future is not None or len(self._completed) >= 16:
+            return
+        visible = self._visible_ids_locked(self._scroll_offset, 384)
+        if self._completed and (self._cold_build or visible is None or
+                                any(request.item.id in visible for request, _ in self._completed)):
             return
         self._prioritize_pending()
         while self._pending:
@@ -385,6 +436,7 @@ class CardViewport:
             job = _CardJob(request.item.id, _plain_mapping(request.scene), request.mode, request.context, request.asset_generation)
             try:
                 self._future = self._worker.submit(self._render_job, job)
+                self._future.add_done_callback(lambda _future: self._completion_ready.set())
                 return
             except BrokenProcessPool as error:
                 self._active_request = None
@@ -397,6 +449,55 @@ class CardViewport:
                     self._failed += 1
                 self._maybe_commit()
                 return
+
+    def _work_inflight(self, request: _CardRequest) -> bool:
+        """Keep equal work in the worker or the completed queue."""
+        return ((self._active_request is not None and _same_work_request(self._active_request, request))
+                or any(_same_work_request(completed, request) for completed, _ in self._completed))
+
+    def _collect_completed(self) -> None:
+        """Start the next renderer job without waiting for the next display frame."""
+        while True:
+            self._completion_ready.wait()
+            self._completion_ready.clear()
+            with self._lock:
+                if self._closing:
+                    return
+                future, request = self._future, self._active_request
+                if future is None or request is None or not future.done():
+                    continue
+                self._future = None
+                self._active_request = None
+                try:
+                    error = future.exception()
+                except Exception as exception:
+                    error = exception
+                if isinstance(error, BrokenProcessPool):
+                    desired = self._desired.get(request.item.id)
+                    if desired is not None and _same_work_request(request, desired):
+                        self._failed += 1
+                    self._report_failure(request, error)
+                    self._restart_worker_locked()
+                    if not self._queue_worker_retry_locked(request):
+                        self._settlement_needed = True
+                else:
+                    self._completed.append((request, future))
+                self._start_next()
+
+    def _prioritize_completed(self) -> None:
+        """Install completed cards in current scrolling order."""
+        if not self._completed or self._layout is None:
+            return
+        position = self._scroll_offset % self._layout.width
+        start = 0
+        segments = self._layout.segments
+        for index, segment in enumerate(segments):
+            if start + segment.width > position:
+                break
+            start += segment.width
+        ordered = segments[index:] + segments[:index]
+        ranks = {segment.item_id: rank for rank, segment in enumerate(ordered)}
+        self._completed = deque(sorted(self._completed, key=lambda entry: ranks.get(entry[0].item.id, len(ranks))))
 
     def _queue_cached_panes(self, requests: Iterable[_CardRequest]) -> None:
         if self._pane_cache is None or not self._cold_build:
@@ -499,7 +600,7 @@ class CardViewport:
         return StripLayout(sum(segment.width for segment in segments), segments)
 
     def _maybe_commit(self) -> None:
-        complete = self._future is None and not self._pending
+        complete = self._future is None and not self._pending and not self._completed
         if not self._desired:
             self._surfaces = {}
             self._layout = None
@@ -580,8 +681,9 @@ class CardViewport:
 
     def _render_local_job(self, job: _CardJob) -> _CardPixels:
         """Render through the injected catalog in test and desktop processes."""
+        started = monotonic()
         signatures = self._pane_cache.signatures(job.scene) if self._pane_cache is not None else ()
-        return _render_catalog_job(self._catalog, job, signatures)
+        return _render_catalog_job(self._catalog, job, signatures, started=started)
 
 
 def _surface_rgb(image: Image.Image) -> Image.Image:
@@ -616,7 +718,7 @@ def _patch_tiled_strip(
     surfaces: Mapping[str, _CardSurface],
     changed: set[str],
 ) -> int:
-    """Replace changed card rectangles and adjacent dividers in every tiled copy."""
+    """Replace changed pixels and adjacent dividers in every tiled copy."""
     colors = pane_divider_colors(surfaces[segment.item_id].scene.get("competition_stage") for segment in layout.segments)
     offsets, start = [], 0
     for segment in layout.segments:
@@ -627,16 +729,19 @@ def _patch_tiled_strip(
         if segment.item_id not in changed:
             continue
         surface = surfaces[segment.item_id]
-        patch = Image.new("RGB", (segment.width, strip.height), "black")
-        patch.paste(colors[index], (0, 0, 1, strip.height))
-        patch.paste(surface.image, (1, 0), surface.image if surface.image.mode == "RGBA" else None)
+        bounds = surface.changed_pixels.getbbox() if surface.changed_pixels is not None else (0, 0, surface.image.width, surface.image.height)
+        patch = _surface_rgb(surface.image.crop(bounds)) if bounds is not None else None
         adjacent = (index + 1) % len(layout.segments)
         for repeat in range(strip.width // layout.width):
             origin = repeat * layout.width
-            strip.paste(patch, (origin + offsets[index], 0))
+            own_boundary = origin + offsets[index]
+            strip.paste(colors[index], (own_boundary, 0, own_boundary + 1, strip.height))
+            if patch is not None and bounds is not None:
+                strip.paste(patch, (own_boundary + 1 + bounds[0], bounds[1]))
+                writes += patch.width * patch.height
             boundary = origin + offsets[adjacent]
             strip.paste(colors[adjacent], (boundary, 0, boundary + 1, strip.height))
-            writes += (segment.width + 1) * strip.height
+            writes += 2 * strip.height
     return writes
 
 
@@ -680,6 +785,7 @@ def _initialize_process_catalog(asset_directory: str, worker_cpu: int | None) ->
 
 def _render_process_job(job: _CardJob) -> _CardPixels:
     """Render one card in the isolated process catalog."""
+    started = monotonic()
     if _PROCESS_CATALOG is None:
         raise RuntimeError("The card renderer process has no catalog.")
     global _PROCESS_ASSET_GENERATION
@@ -687,14 +793,15 @@ def _render_process_job(job: _CardJob) -> _CardPixels:
         _PROCESS_ASSETS.long_term.prepared.clear_memory()
         _PROCESS_ASSET_GENERATION = job.asset_generation
     signatures = asset_signatures(_PROCESS_ASSETS, job.scene)
-    return _render_catalog_job(_PROCESS_CATALOG, job, signatures)
+    return _render_catalog_job(_PROCESS_CATALOG, job, signatures, started=started)
 
 
-def _render_catalog_job(catalog: ContentRendererCatalog, job: _CardJob, signatures=()) -> _CardPixels:
+def _render_catalog_job(catalog: ContentRendererCatalog, job: _CardJob, signatures=(), *, started: float | None = None) -> _CardPixels:
     """Render one serializable scene and return only pixel data."""
     rendered = catalog.render(job.context, ContentScene(job.scene, job.mode))
     image = rendered.image.convert("RGBA")
-    return _CardPixels(image.width, image.height, image.tobytes(), signatures)
+    pixels = image.tobytes()
+    return _CardPixels(image.width, image.height, pixels, signatures, started, monotonic())
 
 
 def _cacheable(request: _CardRequest) -> bool:

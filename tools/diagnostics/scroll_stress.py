@@ -281,6 +281,15 @@ def main():
                     or actual.data.get('state') != game['data']['state']):
                 raise RuntimeError(f"The latest controlled game data was not retained: {game['id']}")
         visible_rows = [row for row in logger.latencies if row['outcome']=='presented' and row['trace_id'] in injected_visible]
+        def metrics_for(visible_at_accept):
+            rows = [row for row in logger.latencies if row.get('visible_at_accept') is visible_at_accept]
+            return {
+                'count': len(rows),
+                'outcomes': dict(Counter(row['outcome'] for row in rows)),
+                **{key: summarize([row[key] for row in rows if isinstance(row.get(key), (int, float))])
+                   for key in ('source_to_present_ms', 'pane_prepare_ms', 'worker_wait_ms',
+                               'worker_render_ms', 'visibility_wait_ms')},
+            }
         output = {'context': 'Controlled V2 input on the Pi through the normal polling process and queue bridge, production application, card process, scrolling renderer, and frame sink. No provider or network delay.',
                   'hardware': args.hardware, 'games': args.games, 'pane_count': len(viewport.layout.segments),
                   'start_index': args.start_index, 'rotation_wraps': wraps, 'last_scroll_offset': last_offset,
@@ -294,6 +303,8 @@ def main():
                   'visible_input_to_present': summarize([row['source_to_present_ms'] for row in visible_rows]),
                   'visible_by_case': {case: summarize([row['source_to_present_ms'] for row in visible_rows if cases[row['trace_id']]==case])
                                       for case in ('visible_game','all_games','visible_clock','game_final','reconnect')},
+                  'visible_at_accept': metrics_for(True), 'offscreen_at_accept': metrics_for(False),
+                  'visibility_unknown_at_accept': metrics_for(None),
                   'cpu_percent_main': cpu/elapsed*100, 'cpu_percent_card_worker': (worker_cpu()-children_started)/elapsed*100,
                   'peak_rss_kib_main': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                   'strip_rebuilds_observed': rebuilds, 'strip_rebuilds_during_updates': rebuilds-rebuilds_at_warm,

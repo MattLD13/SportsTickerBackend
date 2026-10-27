@@ -117,6 +117,62 @@ def test_latency_records_the_complete_path_only_after_matching_pixels_are_presen
     assert tracker.pending_ids == ()
 
 
+def test_visibility_at_accept_and_ready_time_survive_offscreen_supersession():
+    rows = []
+    tracker = DisplayLatencyTracker(rows.append)
+    tracker.accept(timing(), event_mono=2.02, accepted_mono=2.03, delay_seconds=0,
+                   visible_ids=frozenset({"other"}))
+    tracker.ready({"game": {"installed_mono": 2.08, "worker_wait_ms": 10, "worker_render_ms": 30}})
+    tracker.accept(timing(), event_mono=2.10, accepted_mono=2.11, delay_seconds=0,
+                   visible_ids=frozenset({"game"}))
+    assert rows[0]["outcome"] == "superseded"
+    assert rows[0]["visible_at_accept"] is False
+    assert rows[0]["pane_prepare_ms"] == 50
+    assert rows[0]["worker_wait_ms"] == 10 and rows[0]["worker_render_ms"] == 30
+    assert rows[0]["visibility_wait_ms"] is None
+    tracker.presented({"game": {"changed_visible": True, "installed_mono": 2.15}},
+                      at_ms=1300, at_mono=2.2, present_started=2.19)
+    assert rows[1]["visible_at_accept"] is True
+    assert rows[1]["pane_prepare_ms"] == 40
+    assert rows[1]["visibility_wait_ms"] == 40
+
+
+def test_visibility_classification_uses_presented_geometry_and_marks_overlays_unknown():
+    from ticker_core.app.application import TickerApplication
+    from ticker_core.runtime import Content, FrameDecision, FrameKind
+
+    class Viewport:
+        def visible_ids(self, offset, width):
+            assert (offset, width) == (12, 384)
+            return frozenset({"game"})
+
+    class Sink:
+        width = 384
+
+    app = object.__new__(TickerApplication)
+    app._viewport, app._sink = Viewport(), Sink()
+    frame = FrameDecision(FrameKind.SCROLL, .03, 100, False, datetime.now(timezone.utc), "sports", scroll_offset=12)
+    assert app._visible_ids_for_decision(frame) == frozenset({"game"})
+    from dataclasses import replace
+    assert app._visible_ids_for_decision(replace(frame, connection_lost=True)) is None
+    assert app._visible_ids_for_decision(replace(frame, news={"id": "news"})) is None
+    assert app._visible_ids_for_decision(replace(frame, kind=FrameKind.SCORE_ALERT)) is None
+    assert app._visible_ids_for_decision(replace(frame, kind=FrameKind.STATIC,
+                                                 content=Content("pinned", "scoreboard", "nfl", {}))) == frozenset({"pinned"})
+
+
+def test_reused_card_does_not_attribute_an_earlier_worker_run_to_a_new_update():
+    rows = []
+    tracker = DisplayLatencyTracker(rows.append)
+    tracker.accept(timing(), event_mono=2.02, accepted_mono=2.03, delay_seconds=0, visible_ids=frozenset({"game"}))
+    tracker.ready({"game": {"installed_mono": 2.0, "worker_wait_ms": 100, "worker_render_ms": 50}})
+    tracker.presented({"game": {"changed_visible": True, "installed_mono": 2.0}},
+                      at_ms=1240, at_mono=2.08, present_started=2.07)
+    assert rows[0]["pane_ready_during_accept"] is True
+    assert rows[0]["pane_prepare_ms"] == 0
+    assert rows[0]["worker_wait_ms"] is None and rows[0]["worker_render_ms"] is None
+
+
 def test_superseded_and_unchanged_pixels_do_not_claim_a_display_latency():
     rows = []
     tracker = DisplayLatencyTracker(rows.append)

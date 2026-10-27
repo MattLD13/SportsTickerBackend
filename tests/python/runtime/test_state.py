@@ -236,6 +236,23 @@ def test_score_alerts_queue_in_fifo_order_for_full_residence() -> None:
     assert runtime.next_frame().kind is not FrameKind.SCORE_ALERT
 
 
+def test_important_score_waits_for_current_alert_then_precedes_ordinary_queue() -> None:
+    clock = [0.0]
+    runtime = _runtime(clock)
+    current = {"id": "first", "kind": "field_goal", "headline": "FIELD GOAL"}
+    normal = {"id": "second", "kind": "run", "headline": "RUN"}
+    goal = {"id": "third", "kind": "goal", "headline": "GOAL"}
+    runtime.accept_response(_response(alerts=(current,)))
+    assert runtime.next_frame().alert["id"] == "first"
+    clock[0] = 1.0
+    runtime.accept_response(_response(alerts=(current, normal, goal)))
+    assert runtime.next_frame().alert["id"] == "first"
+    clock[0] = 8.0
+    assert runtime.next_frame().alert["id"] == "third"
+    clock[0] = 16.0
+    assert runtime.next_frame().alert["id"] == "second"
+
+
 def test_cancelled_update_restores_the_active_mode():
     runtime = _runtime([0.0])
     payload = _response().to_payload()

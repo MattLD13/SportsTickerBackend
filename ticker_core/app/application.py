@@ -147,6 +147,7 @@ class TickerApplication:
         self._last_visual_key: object | None = None
         self._last_base_visual_key: object | None = None
         self._last_frame = None
+        self._last_presented_visible_ids: frozenset[str] | None = None
         self._last_present_at: float | None = None
         self._present_retry = False
 
@@ -217,6 +218,9 @@ class TickerApplication:
         self._install_completed_cards()
         self._refresh_cards_after_asset_change()
         self._install_completed_cards()
+        installed_times = getattr(self._viewport, "installed_times", None)
+        if self._latency.pending_ids and callable(installed_times):
+            self._latency.ready(installed_times(self._latency.pending_ids))
         self._push_requested_modes()
         decision = self._runtime.next_frame()
         wifi_state = self._wifi_state
@@ -273,6 +277,7 @@ class TickerApplication:
             self._latency.presented(visible, at_ms=finished_ms, at_mono=finished_at, present_started=present_started_at)
         if self._frame_health is not None:
             self._frame_health.record(frame, decision.kind)
+        self._last_presented_visible_ids = self._visible_ids_for_decision(decision)
         if decision.update_failure is not None:
             self._runtime.mark_update_failure_presented(decision.update_failure["id"])
         if decision.update_failure is not None and self._update_service is not None:
@@ -354,13 +359,15 @@ class TickerApplication:
                 continue
             if isinstance(event, PreparedUpdate):
                 event_mono = monotonic()
+                visible_ids = self._visible_ids_at_accept()
                 self._logger.record_poll(success=True, elapsed_ms=event.event.elapsed_ms, response_bytes=event.event.response_bytes)
                 for source, error in event.issues:
                     self._logger.record_issue(source, error)
                 self._accept_fresh(event.response, persist=False, prepared=event)
                 settings = self._last_response.settings.data if self._last_response is not None else {}
                 self._latency.accept(event.event.timing, event_mono=event_mono, accepted_mono=monotonic(),
-                                     delay_seconds=float(settings.get("live_delay_seconds") or 0) if settings.get("live_delay_mode") else 0)
+                                     delay_seconds=float(settings.get("live_delay_seconds") or 0) if settings.get("live_delay_mode") else 0,
+                                     visible_ids=visible_ids)
             elif isinstance(event, PollConnected):
                 self._runtime.confirm_connection()
                 self._disconnected = False
@@ -390,6 +397,23 @@ class TickerApplication:
                 )
                 self._logger.record_issue("backend_poll", event.error, retry_in=event.retry_in)
                 self._handle_failure(event)
+
+    def _visible_ids_at_accept(self) -> frozenset[str] | None:
+        """Classify the last presented frame without inferring visibility from data."""
+        return self._last_presented_visible_ids
+
+    def _visible_ids_for_decision(self, decision: FrameDecision) -> frozenset[str] | None:
+        """Capture the viewport geometry for a successfully presented frame."""
+        if decision.news is not None or decision.update_failure is not None or decision.connection_lost:
+            return None
+        if decision.kind is FrameKind.SCROLL:
+            visible_ids = getattr(self._viewport, "visible_ids", None)
+            if callable(visible_ids):
+                return visible_ids(decision.scroll_offset or 0, getattr(self._sink, "width", 384))
+            return None
+        if decision.kind is FrameKind.STATIC and decision.content is not None:
+            return frozenset((decision.content.id,))
+        return None
 
     def request_mode(self, mode: str) -> None:
         """Queue one local mode change and one backend setting push."""

@@ -38,9 +38,13 @@ def test_visible_update_requires_current_surface_and_changed_pixels_inside_the_w
         assert viewport.visible_updates(60, ("game",), width=50)["game"]["changed_visible"]
         viewport.update((Content("game", "scoreboard", "nfl", {"score": 2}),), context, "sports")
         assert viewport.visible_updates(60, ("game",), width=50) == {}
+        prior_pixels = viewport.status["patched_pixels"]
         _drain(viewport, catalog, 2)
         assert viewport.visible_updates(0, ("game",), width=50) == {}
         assert viewport.visible_updates(60, ("game",), width=50)["game"]["changed_visible"]
+        assert viewport.frame(0).tobytes() == _previous_pane_composition(viewport, 0).tobytes()
+        repeats = viewport._tiled_strip.width // viewport.layout.width
+        assert viewport.status["patched_pixels"] - prior_pixels == repeats * (1 + 2 * 32)
     finally:
         viewport.close()
 
@@ -56,6 +60,23 @@ class Catalog:
         self.calls += 1
         color = (255, 0, 0) if scene.item.get("down") == "1st" else (0, 255, 0)
         return RenderedContent(Image.new("RGB", (96, 32), color))
+
+
+def test_visibility_uses_presented_geometry_and_wraps_at_the_rotation_seam():
+    catalog = Catalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 10, 26, tzinfo=timezone.utc))
+    games = tuple(Content(f"game-{index}", "scoreboard", "nfl", {"down": "1st"}) for index in range(6))
+    try:
+        assert viewport.visible_ids(0) is None
+        viewport.update(games, context, "sports")
+        _settle(viewport)
+        width = viewport.layout.width
+        assert viewport.visible_ids(0, width=96) == frozenset({"game-0"})
+        assert viewport.visible_ids(width - 20, width=50) == frozenset({"game-5", "game-0"})
+        assert set(viewport.installed_times(("game-0", "missing"))) == {"game-0"}
+    finally:
+        viewport.close()
 
 
 def test_scroll_rotation_keeps_150_panes_and_updates_the_last_game() -> None:
@@ -149,6 +170,87 @@ def test_visible_update_publishes_before_blocked_offscreen_work_and_patches_in_p
         assert viewport.status["full_compositions"] == original_compositions
     finally:
         catalog.release.set()
+        viewport.close()
+
+
+def test_visible_burst_follows_inflight_offscreen_and_discards_its_stale_result():
+    class BlockingCatalog(Catalog):
+        def __init__(self):
+            super().__init__()
+            self.blocked, self.release = Event(), Event()
+            self.order = []
+
+        def render(self, context, scene):
+            marker = scene.item.get("revision")
+            if marker is not None:
+                self.order.append((scene.item["id"], marker))
+                if scene.item["id"] == "game-0" and marker == 1:
+                    self.blocked.set()
+                    assert self.release.wait(5)
+            return super().render(context, scene)
+
+    catalog = BlockingCatalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 10, 26, tzinfo=timezone.utc))
+    games = tuple(Content(f"game-{index}", "scoreboard", "nfl", {"down": "1st"}) for index in range(150))
+    try:
+        viewport.update(games, context, "sports")
+        _settle(viewport)
+        offset = sum(segment.width for segment in viewport.layout.segments[:100])
+        viewport.frame(offset)
+        old = (Content("game-0", "scoreboard", "nfl", {"down": "2nd", "revision": 1}),) + games[1:]
+        viewport.update(old, context, "sports")
+        assert catalog.blocked.wait(2)
+        burst = tuple(Content(game.id, game.type, game.sport, {"down": "2nd", "revision": 2}) for game in games)
+        viewport.update(burst, context, "sports")
+        assert viewport.frame(offset).getpixel((1, 1)) == (255, 0, 0)
+        catalog.release.set()
+        deadline = monotonic() + 5
+        while len(catalog.order) < 2 and monotonic() < deadline:
+            viewport.install_completed()
+            sleep(0.001)
+        assert catalog.order[:2] == [("game-0", 1), ("game-100", 2)]
+        assert viewport.frame(0).getpixel((1, 1)) == (255, 0, 0)
+        _settle(viewport)
+        assert viewport.frame(offset).getpixel((1, 1)) == (0, 255, 0)
+        assert viewport.frame(0).getpixel((1, 1)) == (0, 255, 0)
+        assert ("game-0", 1) in catalog.order and ("game-0", 2) in catalog.order
+    finally:
+        catalog.release.set()
+        viewport.close()
+
+
+def test_background_worker_starts_next_offscreen_card_before_the_next_frame():
+    class RecordingCatalog(Catalog):
+        def __init__(self):
+            super().__init__()
+            self.updated = []
+            self.finished = Event()
+
+        def render(self, context, scene):
+            result = super().render(context, scene)
+            if scene.item.get("down") == "2nd":
+                self.updated.append(scene.item["id"])
+                if len(self.updated) == 2:
+                    self.finished.set()
+            return result
+
+    catalog = RecordingCatalog()
+    viewport = CardViewport(catalog)
+    context = RenderContext(datetime(2026, 10, 26, tzinfo=timezone.utc))
+    games = tuple(Content(str(index), "scoreboard", "nfl", {"down": "1st"}) for index in range(8))
+    try:
+        viewport.update(games, context, "sports")
+        _settle(viewport)
+        viewport.frame(0)
+        changed = tuple(Content(item.id, item.type, item.sport, {"down": "2nd"}) if item.id in {"5", "6"} else item
+                        for item in games)
+        viewport.update(changed, context, "sports")
+        assert catalog.finished.wait(2)
+        assert catalog.updated == ["5", "6"]
+        _settle(viewport)
+        assert viewport.frame(5 * 97).getpixel((1, 1)) == (0, 255, 0)
+    finally:
         viewport.close()
 
 

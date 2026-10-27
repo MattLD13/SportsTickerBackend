@@ -524,7 +524,7 @@ class TickerRuntime:
             self._active_alert = None
         self._activate_news(now)
         if self._active_alert is None:
-            item = self._pop_fresh(self._alerts, self.config.alert_max_age, now)
+            item = self._pop_fresh(self._alerts, self.config.alert_max_age, now, prioritize_scores=True)
             if item is not None:
                 self._active_alert = _ActiveEvent(now, item)
         if self._active_alert is not None:
@@ -675,12 +675,25 @@ class TickerRuntime:
                 del seen[identifier]
 
     @staticmethod
-    def _pop_fresh(queue: deque[_QueuedEvent], max_age: float, now: float) -> Mapping[str, Any] | None:
+    def _pop_fresh(queue: deque[_QueuedEvent], max_age: float, now: float, *,
+                   prioritize_scores: bool = False) -> Mapping[str, Any] | None:
+        if prioritize_scores:
+            for index, event in enumerate(queue):
+                if now - event.received_at <= max_age and _important_score(event.data):
+                    del queue[index]
+                    return event.data
         while queue:
             event = queue.popleft()
             if now - event.received_at <= max_age:
                 return event.data
         return None
+
+
+def _important_score(alert: Mapping[str, Any]) -> bool:
+    """Prioritize explicit scoring facts without guessing from display text."""
+    kind = str(alert.get("kind") or "").lower()
+    return (alert.get("big") is True or kind in {"goal", "touchdown", "home_run", "two_run_hr", "three_run_hr"}
+            or kind.endswith("_td"))
 
 
 def _brightness(raw: object) -> float:

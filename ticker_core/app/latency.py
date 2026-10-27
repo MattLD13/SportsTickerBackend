@@ -55,7 +55,8 @@ class DisplayLatencyTracker:
     def pending_ids(self) -> tuple[str, ...]:
         return tuple(self._pending)
 
-    def accept(self, timing: Mapping[str, Any] | None, *, event_mono: float, accepted_mono: float, delay_seconds: float) -> None:
+    def accept(self, timing: Mapping[str, Any] | None, *, event_mono: float, accepted_mono: float, delay_seconds: float,
+               visible_ids: frozenset[str] | None = None) -> None:
         if not timing:
             return
         removed = set(timing.get("removed_items", ()))
@@ -84,11 +85,23 @@ class DisplayLatencyTracker:
                     "received_at_ms", "received_mono", "decoded_mono", "queued_mono", "server_published_at_ms", "snapshot_ready_ms", "projected_at_ms")},
                 "event_mono": event_mono, "accepted_mono": accepted_mono,
                 "configured_delay_ms": delay_seconds * 1000.0,
+                "visible_at_accept": None if visible_ids is None else identifier in visible_ids,
             }
             current = self._pending.get(identifier)
             if current is not None and (identifier, current["trace_id"]) in self._presented:
                 self._pending.pop(identifier)
                 self._finish(identifier, current, "trace_already_presented")
+
+    def ready(self, installed: Mapping[str, Mapping[str, Any]]) -> None:
+        """Record when each current card was installed, even if it stays off screen."""
+        for identifier, details in installed.items():
+            value = self._pending.get(identifier)
+            installed_mono = timestamp(details.get("installed_mono"))
+            if value is not None and timestamp(installed_mono) is not None:
+                value.setdefault("pane_installed_mono", max(installed_mono, value["accepted_mono"]))
+                value.setdefault("pane_ready_during_accept", installed_mono < value["accepted_mono"])
+                for key in ("worker_wait_ms", "worker_render_ms"):
+                    value.setdefault(key, timestamp(details.get(key)) if installed_mono >= value["accepted_mono"] else None)
 
     def presented(self, visible: Mapping[str, Mapping[str, Any]], *, at_ms: float, at_mono: float, present_started: float) -> None:
         for identifier, state in visible.items():
