@@ -18,7 +18,7 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=TICKER_POLL_PROCESS=1
 Environment=TICKER_RENDER_CPU=1
 Environment=TICKER_POLL_CPU=2
-ExecStart=/usr/bin/env python3 -m ticker_core
+ExecStart=/usr/bin/env python3 /opt/sports-ticker/current/run.py six
 Restart=always
 RestartSec=5
 StandardOutput=append:/home/mld/ticker.log

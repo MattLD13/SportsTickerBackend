@@ -1,13 +1,13 @@
 # NHL manpower
 
-`sports_ticker/providers/nhl_live.py` reads current NHL game state every eight seconds.
+`ticker-server/sports_ticker/providers/nhl_live.py` reads current NHL game state every eight seconds.
 It refreshes completed games every 60 seconds to retain goal and shootout records.
 It reads the top-level `situation`, `periodDescriptor`, and `clock` from the NHL play-by-play response.
 The NHL omits `situation` during standard strength.
 Regulation and playoff overtime use five skaters. Regular-season overtime uses three skaters.
 Intermission, shootout, and finished games have no active player-count display.
 
-`sports_ticker/providers/sports_display.py` owns the V2 `situation.manpower` contract and PP and empty-net ownership.
+`ticker-server/sports_ticker/providers/sports_display.py` owns the V2 `situation.manpower` contract and PP and empty-net ownership.
 Each manpower object contains `phase`, `state`, `awaySkaters`, `homeSkaters`, `label`, `scrollLabel`, `powerPlayTimeRemaining`, and `penaltyNumbers`.
 Counts use away-team order followed by home-team order.
 An empty `label` hides the count. Unknown counts use JSON null.
@@ -66,7 +66,7 @@ Live validation also produced Vegas at Nashville `5v4` and Calgary at Anaheim `5
 Edmonton at Los Angeles produced an empty label for normal 5v5.
 Real 384x32 previews are saved under `previews/nhl/`.
 
-Run `python -m pytest tests/python/protocol/test_nhl_live.py tests/python/protocol/test_sports_display.py tests/python/protocol/test_espn_provider.py -q`.
+Run `python -m pytest tests/python/providers/test_nhl_live.py tests/python/protocol/test_sports_display.py tests/python/providers/test_espn_provider.py -q`.
 
 ## Rangers PP replay
 

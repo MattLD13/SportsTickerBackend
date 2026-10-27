@@ -10,14 +10,14 @@ Fixtures live in `tests/fixtures/`.
 |---|---|
 | Sports facts | `tests/python/protocol/test_sports_display.py`, `test_sports_lifecycle.py`, and relevant provider tests |
 | Mini hockey | `test_mini_hockey_contract.py`, `test_hockey_shootout_alert.py`, and `tests/native/mini_hockey_panes.cpp` |
-| Music | `tests/python/integrations/test_spotify.py`, `tests/python/protocol/test_music_stale_scope.py` |
-| Weather | `tests/python/protocol/test_weather_provider.py` |
-| Flights and airports | `tests/python/protocol/test_flights.py` |
-| Golf | `tests/python/protocol/test_golf_provider.py`, `test_golf_source.py` |
-| Racing | `tests/python/protocol/test_racing_live_source.py`, `tests/python/features/racing/` |
+| Music | `tests/python/integrations/test_spotify.py`, `tests/python/providers/test_music_stale_scope.py` |
+| Weather | `tests/python/providers/test_weather_provider.py` |
+| Flights and airports | `tests/python/providers/test_flights.py` |
+| Golf | `tests/python/providers/test_golf_provider.py`, `test_golf_source.py` |
+| Racing | `tests/python/providers/test_racing_live_source.py`, `tests/python/features/racing/` |
 | Operations | `tests/python/operations/`, `tests/python/platform/` |
 | Assets | `tests/python/assets/` |
-| Agent workflow | `tests/python/operations/test_agent_workspaces.py`, `test_agent_startup.py`, `test_context_planner.py` |
+| Agent workflow | `ai/tests/test_agent_workspaces.py`, `test_agent_startup.py`, `test_context_planner.py` |
 
 Run selected Python paths with `python -m pytest -q <paths>`.
 Before every push, run `python -m pytest -m critical -q`.

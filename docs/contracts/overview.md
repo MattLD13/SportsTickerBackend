@@ -9,8 +9,8 @@ Read [the revised engineering SOW](../plans/engineering-sow.md) before adding ru
 ## Data response
 
 Devices read `GET /api/v2/tickers/<ticker-id>/data`.
-`sports_ticker/projections/data_api.py` owns the JSON envelope.
-`sports_ticker/api/routes.py` owns route authorization and response construction.
+`ticker-server/sports_ticker/projections/data_api.py` owns the JSON envelope.
+`ticker-server/sports_ticker/api/routes.py` owns route authorization and response construction.
 
 | Field | Current meaning |
 |---|---|
@@ -71,13 +71,13 @@ Controller schedule override actions use this field. An inactive time window doe
 
 | Boundary | Source |
 |---|---|
-| Domain models | `sports_ticker/domain/models.py` and `sports_ticker/domain/snapshot.py` |
-| Overlay events | `sports_ticker/domain/events.py` |
-| Fleet persistence | `sports_ticker/fleet/repository.py` |
-| JSON projection | `sports_ticker/projections/data_api.py` |
-| HTTP routes | `sports_ticker/api/routes.py` |
-| Pi response parsing | `ticker_core/protocol/model.py` |
-| Pi polling | `ticker_core/protocol/client.py` and `ticker_core/protocol/polling.py` |
+| Domain models | `ticker-server/sports_ticker/domain/models.py` and `ticker-server/sports_ticker/domain/snapshot.py` |
+| Overlay events | `ticker-server/sports_ticker/domain/events.py` |
+| Fleet persistence | `ticker-server/sports_ticker/fleet/repository.py` |
+| JSON projection | `ticker-server/sports_ticker/projections/data_api.py` |
+| HTTP routes | `ticker-server/sports_ticker/api/routes.py` |
+| Pi response parsing | `ticker-six/ticker_core/protocol/model.py` |
+| Pi polling | `ticker-six/ticker_core/protocol/client.py` and `ticker-six/ticker_core/protocol/polling.py` |
 | Protocol validation coverage | `tests/python/protocol/` |
 
 The HTTP snapshot route remains the Pi boot path. The main Pi uses Device Stream V1 for sequenced updates.

@@ -13,6 +13,9 @@ from threading import Thread
 import time
 from typing import Callable
 
+from run import configure_paths
+configure_paths(Path(__file__).resolve().parent)
+
 from PIL import Image
 
 from ticker_core.composition import load_device_id

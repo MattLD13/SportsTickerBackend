@@ -2,26 +2,29 @@
 
 Sports Ticker serves V2 content to Pi displays, ESP32 displays, the dashboard, and the iOS controller.
 
-Read the [project map and cleanup plan](project-map.md) for component boundaries, confirmed overlaps, deployment links, and the complete file inventory.
+Read the [project map and cleanup plan](reviews/2026-10-27/project-map.md) for component boundaries, confirmed overlaps, deployment links, and the complete file inventory.
+
+Read the [repository organization design](repository-layout.md) for current folder groups and stable entry points.
 
 ## Ownership
 
 | Path | Responsibility |
 |---|---|
-| `sports_ticker/providers/` | Read upstream sources and normalize provider content. |
-| `sports_ticker/providers/sports_display.py` | Project shared sports display facts. |
-| `sports_ticker/domain/` | Define immutable content, settings, schedules, and events. |
-| `sports_ticker/application/` | Compose content, schedule refresh work, and retain snapshots. |
-| `sports_ticker/fleet/repository.py` | Persist fleet settings, pairing, schedules, and integration state in SQLite. |
-| `sports_ticker/projections/` | Produce JSON representations for API consumers. |
-| `sports_ticker/api/routes.py` | Define V2 routes and request authorization. |
-| `ticker_core/protocol/` | Poll the backend and validate V2 responses on the Pi. |
-| `ticker_core/app/` | Build frames and manage the card viewport. |
-| `ticker_core/features/` | Render content and overlays. |
-| `ticker_core/platform/assets.py` | Store durable image cache files. |
-| `ticker_core/assets/` | Plan assets and provide memory reads. |
-| `esp32_hub75/` | Build the ESP32 display firmware with PlatformIO. |
-| `TickerControlApp/` | Build the iOS controller with Xcode. |
+| `ticker-server/sports_ticker/providers/sources/` | Read upstream data through injected source adapters. |
+| `ticker-server/sports_ticker/providers/` | Read upstream sources and normalize provider content. |
+| `ticker-server/sports_ticker/providers/sports_display.py` | Project shared sports display facts. |
+| `ticker-server/sports_ticker/domain/` | Define immutable content, settings, schedules, and events. |
+| `ticker-server/sports_ticker/application/` | Compose content, schedule refresh work, and retain snapshots. |
+| `ticker-server/sports_ticker/fleet/repository.py` | Persist fleet settings, pairing, schedules, and integration state in SQLite. |
+| `ticker-server/sports_ticker/projections/` | Produce JSON representations for API consumers. |
+| `ticker-server/sports_ticker/api/routes.py` | Define V2 routes and request authorization. |
+| `ticker-six/ticker_core/protocol/` | Poll the backend and validate V2 responses on the Pi. |
+| `ticker-six/ticker_core/app/` | Build frames and manage the card viewport. |
+| `ticker-six/ticker_core/features/` | Render content and overlays. |
+| `ticker-six/ticker_core/platform/assets.py` | Store durable image cache files. |
+| `ticker-six/ticker_core/assets/` | Plan assets and provide memory reads. |
+| `ticker-mini/` | Build the ESP32 display firmware with PlatformIO. |
+| `ticker-control/` | Build the iOS controller with Xcode. |
 
 ## Data flow
 
@@ -35,9 +38,9 @@ Snapshot revisions identify backend replacements. They do not define a replayabl
 
 ## Deployment
 
-`sports_ticker/server.py` starts Hypercorn with one ASGI worker.
-`sports_ticker/asgi.py` owns the production runtime through ASGI lifespan and adapts existing Flask HTTP routes with `WsgiToAsgi`.
-`deploy/backend/ticker.service` starts that backend entry point.
+`ticker-server/sports_ticker/server.py` starts Hypercorn with one ASGI worker.
+`ticker-server/sports_ticker/asgi.py` owns the production runtime through ASGI lifespan and adapts existing Flask HTTP routes with `WsgiToAsgi`.
+`ticker-server/deploy/ticker.service` starts that backend entry point.
 `ticker-controller.service` starts `python3 -m ticker_core` on the Pi.
 `setup.sh` installs Pi releases as immutable Git worktrees under `/opt/sports-ticker`.
 The Pi service stores runtime data under `/home/mld/ticker` outside each release.
@@ -62,9 +65,11 @@ Read [the agent guide](../../AGENTS.md) for domain ownership and change rules.
 
 ## Deployment ownership
 
-`backend_ops/` owns component selection, immutable backend releases, recovery, and encrypted evidence collection workflows.
+`ticker-server/backend_ops/deployment/` owns component selection, immutable backend releases, and recovery.
+`ticker-server/backend_ops/manager.py` retains the installed command entry point.
+Other `ticker-server/backend_ops/` modules own workers, diagnostics, and reporting.
 The core and ten provider workers have separate service processes and release identities.
-`deploy/backend/` stores their service units and the external recovery timer.
+`ticker-server/deploy/` stores their service units and the external recovery timer.
 Read [backend recovery](../operations/backend-recovery.md) for activation, quarantine, and rollback rules.
 
 The root `setup.sh`, `updater.py`, and `ticker-controller.service` remain public installation entry points for deployed Pi releases.

@@ -16,6 +16,15 @@ See [`tests/AGENTS.md`](../../tests/AGENTS.md) for the domain test command matri
 
 The tests live in `tests/python/`. They use temporary SQLite files, injected provider ports, and memory frame sinks. They do not start the production scheduler or require panel hardware.
 
+Provider source checks live in `tests/python/providers/`.
+Transport and V2 contract checks live in `tests/python/protocol/`.
+
+Run provider and deployment checks:
+
+```powershell
+python -m pytest -q tests/python/providers tests/python/operations/test_backend_deployment.py
+```
+
 Use the renderer for display verification:
 
 ```powershell

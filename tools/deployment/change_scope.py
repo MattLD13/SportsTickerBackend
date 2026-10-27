@@ -7,7 +7,7 @@ import subprocess
 
 def mini_code_changed(repository: Path, base: str, head: str = "HEAD") -> bool:
     changes = subprocess.check_output(
-        ["git", "diff", "--no-ext-diff", "--unified=0", base, head, "--", "esp32_hub75"],
+        ["git", "diff", "--no-ext-diff", "--unified=0", base, head, "--", "ticker-mini"],
         cwd=repository, text=True,
     )
     suffix = ""

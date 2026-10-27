@@ -47,7 +47,7 @@ Existing manual live delay remains in scope as a behavior to preserve.
 
 | Claim | Why it is inaccurate or risky | Replacement |
 |---|---|---|
-| Delete `sports_ticker/server.py`. | It starts the active V2 production runtime. | Keep it until the ASGI entry point owns the same lifecycle and HTTP contract. |
+| Delete `ticker-server/sports_ticker/server.py`. | It starts the active V2 production runtime. | Keep it until the ASGI entry point owns the same lifecycle and HTTP contract. |
 | Delete `test.py`. | Setup uses it as a Pi hardware diagnostic. | Keep it and classify it as operations tooling. |
 | Remove one dashboard tree. | Both `/` and `/dashboard` are active. | Audit templates by route and keep both until product scope changes. |
 | Delete the music demo cover. | The public demo loads that asset. | Keep the asset and existing demo contract. |

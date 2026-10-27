@@ -2,7 +2,7 @@
 
 News is a durable V2 overlay. It shares the panel with the active base mode. It never replaces the base strip or resets its scroll state.
 
-`sports_ticker/application/events.py` owns event persistence and delivery. `sports_ticker/projections/data_api.py` projects pending events for one ticker. `ticker_core/features/alerts/news_banner.py` draws the overlay.
+`ticker-server/sports_ticker/application/events.py` owns event persistence and delivery. `ticker-server/sports_ticker/projections/data_api.py` projects pending events for one ticker. `ticker-six/ticker_core/features/alerts/news_banner.py` draws the overlay.
 
 Create an event through the V2 API:
 

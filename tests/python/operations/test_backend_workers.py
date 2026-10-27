@@ -10,7 +10,7 @@ import time
 import pytest
 
 from backend_ops.worker import ProviderWorker
-from backend_ops.manager import Host
+from backend_ops.deployment.manager import Host
 from backend_ops.worker_contract import contract_id, decode_result, encode, request
 from sports_ticker.domain import ContentItem, DisplaySettings
 from sports_ticker.providers.contracts import ProviderResult
@@ -31,7 +31,7 @@ def test_contract_identity_includes_shared_immutable_helper(tmp_path):
         for root in (tmp_path / "previous", tmp_path / "current"):
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(Path(name), target)
+            shutil.copyfile(Path("ticker-server") / name, target)
     previous = contract_id(tmp_path / "previous")
     assert contract_id(tmp_path / "current") == previous
     helper = tmp_path / "current/sports_ticker/immutable.py"
@@ -108,7 +108,7 @@ def test_recovery_probe_keeps_previous_release_contract(monkeypatch, tmp_path):
         sent.append((path, json.loads(body), timeout))
         return b'{"protocol":1,"contract":"previous","ready":true}\n'
 
-    monkeypatch.setattr("backend_ops.manager.exchange", exchange)
+    monkeypatch.setattr("backend_ops.deployment.manager.exchange", exchange)
     path = tmp_path / "worker.sock"
     response = Host(tmp_path).rpc(path, {"contract": "previous", "op": "health"})
     assert response["ready"]

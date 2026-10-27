@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
-from backend_ops.components import changed_components
+from backend_ops.deployment.components import changed_components
 
 
 def _git(root, *args: str) -> str:
@@ -18,9 +18,9 @@ def _git(root, *args: str) -> str:
 
 def test_changed_components_skips_binary_file_reads(tmp_path) -> None:
     (tmp_path / "docs/research").mkdir(parents=True)
-    (tmp_path / "sports_ticker/providers").mkdir(parents=True)
+    (tmp_path / "ticker-server/sports_ticker/providers").mkdir(parents=True)
     image = tmp_path / "docs/research/diagram.png"
-    weather = tmp_path / "sports_ticker/providers/weather.py"
+    weather = tmp_path / "ticker-server/sports_ticker/providers/weather.py"
     image.write_bytes(b"\x89PNG\r\n\x1a\n")
     weather.write_text("condition = 'cloud'\n", encoding="utf-8")
 
