@@ -21,6 +21,8 @@ from sports_ticker.domain import (
     ScoreAlertEvent,
 )
 
+from sports_ticker.domain.settings import settings_from_mapping, settings_to_mapping
+
 from .models import (
     DeviceMetadata,
     PairingState,
@@ -47,68 +49,6 @@ def _jsonable(value: Any) -> Any:
 
 def _dump(value: Any) -> str:
     return json.dumps(_jsonable(value), sort_keys=True, separators=(",", ":"))
-
-
-def _display_payload(settings: DisplaySettings) -> dict[str, Any]:
-    return {
-        "active_sports": dict(settings.active_sports),
-        "active_conferences": dict(settings.active_conferences),
-        "my_teams": list(settings.my_teams),
-        "custom_stock_symbols": list(settings.custom_stock_symbols),
-        "mode": settings.mode,
-        "sports_filter": settings.sports_filter,
-        "sports_presentation": settings.sports_presentation,
-        "pinned_content_id": settings.pinned_content_id,
-        "brightness": settings.brightness,
-        "inverted": settings.inverted,
-        "timezone": settings.timezone,
-        "weather_city": settings.weather_city,
-        "weather_lat": settings.weather_lat,
-        "weather_lon": settings.weather_lon,
-        "airport_code_iata": settings.airport_code_iata,
-        "airport_code_icao": settings.airport_code_icao,
-        "airport_name": settings.airport_name,
-        "track_flight_id": settings.track_flight_id,
-        "track_guest_name": settings.track_guest_name,
-        "live_delay_mode": settings.live_delay_mode,
-        "live_delay_seconds": settings.live_delay_seconds,
-        "scroll_seamless": settings.scroll_seamless,
-        "scroll_speed": settings.scroll_speed,
-        "score_alerts": settings.score_alerts,
-    }
-
-
-def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> DisplaySettings:
-    if isinstance(value, DisplaySettings):
-        return value
-    if value is None:
-        return DisplaySettings()
-    return DisplaySettings(
-        active_sports=value.get("active_sports", {}),
-        active_conferences=value.get("active_conferences", {}),
-        my_teams=value.get("my_teams", ()),
-        custom_stock_symbols=value.get("custom_stock_symbols", ()),
-        mode=value.get("mode", "sports"),
-        sports_filter=value.get("sports_filter", "all"),
-        sports_presentation=value.get("sports_presentation", "rotation"),
-        pinned_content_id=value.get("pinned_content_id", ""),
-        brightness=value.get("brightness", 100.0),
-        inverted=value.get("inverted", False),
-        timezone=value.get("timezone", ""),
-        weather_city=value.get("weather_city", "New York"),
-        weather_lat=value.get("weather_lat", 40.7128),
-        weather_lon=value.get("weather_lon", -74.0060),
-        airport_code_iata=value.get("airport_code_iata", "EWR"),
-        airport_code_icao=value.get("airport_code_icao", "KEWR"),
-        airport_name=value.get("airport_name", "Newark Liberty International"),
-        track_flight_id=value.get("track_flight_id", ""),
-        track_guest_name=value.get("track_guest_name", ""),
-        live_delay_mode=value.get("live_delay_mode", False),
-        live_delay_seconds=value.get("live_delay_seconds", 45.0),
-        scroll_seamless=value.get("scroll_seamless", True),
-        scroll_speed=value.get("scroll_speed", 0.03),
-        score_alerts=value.get("score_alerts", True),
-    )
 
 
 def _clear_incompatible_sports_pin(settings: dict[str, Any]) -> None:
@@ -567,7 +507,7 @@ class TickerRepository:
             record = TickerRecord(
                 ticker_id=ticker_id,
                 name=name,
-                display_settings=_display_settings(display_settings),
+                display_settings=settings_from_mapping(display_settings),
                 pairing=_pairing(pairing),
                 device=_device(device),
                 created_at=now,
@@ -593,7 +533,7 @@ class TickerRepository:
     def _write_children(self, record: TickerRecord) -> None:
         self._connection.execute(
             "INSERT INTO ticker_display_settings (ticker_id, settings_json) VALUES (?, ?)",
-            (record.ticker_id, _dump(_display_payload(record.display_settings))),
+            (record.ticker_id, _dump(settings_to_mapping(record.display_settings))),
         )
         if record.pairing is not None:
             self._connection.execute(
@@ -655,7 +595,7 @@ class TickerRepository:
             )
         display = DisplaySettings()
         if display_row is not None:
-            display = _display_settings(json.loads(display_row["settings_json"]))
+            display = settings_from_mapping(json.loads(display_row["settings_json"]))
         return TickerRecord(
             ticker_id=ticker_id,
             name=row["name"],
@@ -984,20 +924,20 @@ class TickerRepository:
             next_settings = current.display_settings
             if display_settings is not _UNSET:
                 if isinstance(display_settings, Mapping):
-                    merged_settings = _display_payload(current.display_settings)
+                    merged_settings = settings_to_mapping(current.display_settings)
                     merged_settings.update(display_settings)
                     _clear_incompatible_sports_pin(merged_settings)
-                    next_settings = _display_settings(merged_settings)
+                    next_settings = settings_from_mapping(merged_settings)
                 else:
-                    next_settings = _display_settings(display_settings)  # type: ignore[arg-type]
+                    next_settings = settings_from_mapping(display_settings)  # type: ignore[arg-type]
             elif settings is not _UNSET:
                 if isinstance(settings, Mapping):
-                    merged_settings = _display_payload(current.display_settings)
+                    merged_settings = settings_to_mapping(current.display_settings)
                     merged_settings.update(settings)
                     _clear_incompatible_sports_pin(merged_settings)
-                    next_settings = _display_settings(merged_settings)
+                    next_settings = settings_from_mapping(merged_settings)
                 else:
-                    next_settings = _display_settings(settings)  # type: ignore[arg-type]
+                    next_settings = settings_from_mapping(settings)  # type: ignore[arg-type]
             next_pairing = current.pairing if pairing is _UNSET else _pairing(pairing)  # type: ignore[arg-type]
             next_device = current.device if device is _UNSET else _device(device)  # type: ignore[arg-type]
             next_record = TickerRecord(

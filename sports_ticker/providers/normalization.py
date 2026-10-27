@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sports_ticker.domain import CONTENT_FAMILIES, ContentItem, DisplaySettings
+from sports_ticker.domain.settings import settings_from_mapping
 
 from .contracts import ProviderHealth, ProviderResult
 from .logo_overrides import corrected_logo
@@ -56,44 +57,8 @@ _RECORD_KEYS = frozenset(
 
 
 def normalize_settings(value: DisplaySettings | Mapping[str, Any] | None) -> DisplaySettings:
-    """Return immutable display settings from canonical or source mapping input."""
-
-    if isinstance(value, DisplaySettings):
-        return value
-    if value is None:
-        return DisplaySettings()
-    if not isinstance(value, Mapping):
-        raise TypeError("settings must be DisplaySettings, a mapping, or None")
-
-    active_sports = value.get("active_sports", {})
-    if not isinstance(active_sports, Mapping):
-        active_sports = {}
-    return DisplaySettings(
-        active_sports=dict(active_sports),
-        active_conferences=value.get("active_conferences", {}),
-        my_teams=value.get("my_teams", ()),
-        custom_stock_symbols=value.get("custom_stock_symbols", ()),
-        mode=str(value.get("mode", "sports")),
-        sports_filter=value.get("sports_filter", "all"),
-        sports_presentation=value.get("sports_presentation", "rotation"),
-        pinned_content_id=value.get("pinned_content_id", ""),
-        brightness=value.get("brightness", 100.0),
-        inverted=value.get("inverted", False),
-        timezone=value.get("timezone", ""),
-        weather_city=value.get("weather_city", "New York"),
-        weather_lat=value.get("weather_lat", 40.7128),
-        weather_lon=value.get("weather_lon", -74.0060),
-        airport_code_iata=value.get("airport_code_iata", "EWR"),
-        airport_code_icao=value.get("airport_code_icao", "KEWR"),
-        airport_name=value.get("airport_name", "Newark Liberty International"),
-        track_flight_id=value.get("track_flight_id", ""),
-        track_guest_name=value.get("track_guest_name", ""),
-        live_delay_mode=value.get("live_delay_mode", False),
-        live_delay_seconds=value.get("live_delay_seconds", 45.0),
-        scroll_seamless=value.get("scroll_seamless", True),
-        scroll_speed=value.get("scroll_speed", 0.03),
-        score_alerts=value.get("score_alerts", True),
-    )
+    """Read provider settings through the canonical domain codec."""
+    return settings_from_mapping(value)
 
 
 def normalize_content(

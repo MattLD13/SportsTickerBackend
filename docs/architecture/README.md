@@ -2,6 +2,8 @@
 
 Sports Ticker serves V2 content to Pi displays, ESP32 displays, the dashboard, and the iOS controller.
 
+Read the [project map and cleanup plan](project-map.md) for component boundaries, confirmed overlaps, deployment links, and the complete file inventory.
+
 ## Ownership
 
 | Path | Responsibility |

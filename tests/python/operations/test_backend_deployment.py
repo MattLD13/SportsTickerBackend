@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from backend_ops.components import ALL, owners, package, source_owners
+from backend_ops.components import ALL, owners, package
 from backend_ops.incidents import atomic_json
 from backend_ops.manager import Host as LinuxHost, Manager, read, switch
 from backend_ops.worker_contract import contract_id
@@ -71,10 +71,18 @@ def test_deployment_selects_the_fact_owner_and_shared_dependencies():
     assert owners("sports_ticker/immutable.py") == set(ALL)
     assert owners("sports_ticker/domain/models.py") == set(ALL)
     assert owners("tests/python/test_modes.py") == set()
-    source = Path("sports_ticker/providers/live_sources.py").read_text()
-    assert source_owners(source, source.replace('FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"',
-                                              'FINNHUB_QUOTE_URL = "https://finnhub.io/api/v2/quote"')) == {"stock"}
-    assert source_owners(source, source + "\nimport decimal\n") == {"golf", "stock", "flights", "news", "clock"}
+    assert owners("sports_ticker/providers/source_values.py") == {"golf", "stock", "flights", "news"}
+    assert owners("sports_ticker/providers/score_alerts.py") == {"espn", "fotmob"}
+    assert owners("sports_ticker/domain/settings.py") == set(ALL)
+    assert owners("sports_ticker/providers/racing_session.py") == {"core", "racing"}
+
+
+@pytest.mark.parametrize("module,component", [
+    ("golf_source", "golf"), ("stock_source", "stock"),
+    ("flight_source", "flights"), ("news_source", "news"), ("clock", "clock"),
+])
+def test_source_file_changes_select_only_their_worker(module, component):
+    assert owners(f"sports_ticker/providers/{module}.py") == {component}
 
 
 def test_deployment_packages_shared_tls_helper_for_each_process(tmp_path):

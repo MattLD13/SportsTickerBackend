@@ -25,6 +25,7 @@
     "updater.py",
     "requirements.txt",
     "ticker-controller.service",
-    "setup.sh"
+    "setup.sh",
+    "sports_ticker/providers/racing_session.py"
   ]
 }

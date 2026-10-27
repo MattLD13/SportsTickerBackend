@@ -13,7 +13,7 @@ from sports_ticker.projections import project_data_v2
 from sports_ticker.projections.device_data import project_device_data
 from sports_ticker.providers.fotmob import _content_item as soccer_item
 from sports_ticker.providers.golf import GolfProvider
-from sports_ticker.providers.live_sources import EspnGolfSource
+from sports_ticker.providers.golf_source import EspnGolfSource
 from sports_ticker.providers.racing import RacingProvider
 from sports_ticker.providers.racing_cup import CupRacingSource
 from sports_ticker.providers.sports_display import project_sports_display

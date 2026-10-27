@@ -1,0 +1,827 @@
+path,area,bytes,text_lines,python_top_level_symbols
+.claude/settings.json,Repository configuration and instructions,1393,37,
+.codex/hooks.json,Repository configuration and instructions,1390,37,
+.env.example,Repository configuration and instructions,553,15,
+.gemini/settings.json,Repository configuration and instructions,937,26,
+.gitattributes,Repository configuration and instructions,42,1,
+.github/agent-workspaces.json,GitHub validation and deployment,29870,1103,
+.github/backend-diagnostics-recipient.pem,GitHub validation and deployment,1460,24,
+.github/copilot-instructions.md,GitHub validation and deployment,182,3,
+.github/deployment-paths.json,GitHub validation and deployment,735,30,
+.github/workflows/agent-instructions.yml,GitHub validation and deployment,2050,60,
+.github/workflows/backend-diagnostics.yml,GitHub validation and deployment,1722,45,
+.github/workflows/deploy.yml,GitHub validation and deployment,21256,428,
+.github/workflows/device-credentials.yml,GitHub validation and deployment,1460,38,
+.github/workflows/fleet-diagnostics.yml,GitHub validation and deployment,1095,34,
+.github/workflows/fleet-update-control.yml,GitHub validation and deployment,2290,48,
+.github/workflows/ios.yml,GitHub validation and deployment,1082,37,
+.github/workflows/recover-deploy-trigger.yml,GitHub validation and deployment,6717,156,
+.gitignore,Repository configuration and instructions,1347,96,
+AGENTS.md,Repository configuration and instructions,4410,83,
+CLAUDE.md,Repository configuration and instructions,45,3,
+GEMINI.md,Repository configuration and instructions,45,3,
+README.md,Repository configuration and instructions,5012,122,
+TickerControlApp/AGENTS.md,iOS controller,497,8,
+TickerControlApp/Package.swift,iOS controller,1279,33,
+TickerControlApp/README.md,iOS controller,1341,15,
+TickerControlApp/ScheduleUITests/ScheduleUITests.swift,iOS controller,14511,323,
+TickerControlApp/TickerControl-Info.plist,iOS controller,2632,70,
+TickerControlApp/TickerControl.xcodeproj/project.pbxproj,iOS controller,12302,343,
+TickerControlApp/TickerControl.xcodeproj/project.xcworkspace/contents.xcworkspacedata,iOS controller,135,7,
+TickerControlApp/TickerControl/Assets.xcassets/AccentColor.colorset/Contents.json,iOS controller,123,11,
+TickerControlApp/TickerControl/Assets.xcassets/AppIcon.appiconset/AppIcon_base_1024.png,iOS controller,104069,,
+TickerControlApp/TickerControl/Assets.xcassets/AppIcon.appiconset/Contents.json,iOS controller,741,38,
+TickerControlApp/TickerControl/Assets.xcassets/AppIcon.appiconset/Icon-AppStore-1024.png,iOS controller,86496,,
+TickerControlApp/TickerControl/Assets.xcassets/Contents.json,iOS controller,63,6,
+TickerControlApp/TickerControl/ContentView.swift,iOS controller,2168,53,
+TickerControlApp/TickerControl/DeviceListState.swift,iOS controller,1961,64,
+TickerControlApp/TickerControl/Models/EnabledLeagueControls.swift,iOS controller,1165,38,
+TickerControlApp/TickerControl/Models/TickerContentModels.swift,iOS controller,24570,563,
+TickerControlApp/TickerControl/Models/TickerHardwareProfile.swift,iOS controller,699,30,
+TickerControlApp/TickerControl/Preview/SchedulePreviewView.swift,iOS controller,8344,169,
+TickerControlApp/TickerControl/Services/BLEProvisioningCoordinator.swift,iOS controller,8665,181,
+TickerControlApp/TickerControl/Services/TickerCredentialStore.swift,iOS controller,1910,48,
+TickerControlApp/TickerControl/Services/TickerDisplayResponse.swift,iOS controller,1236,28,
+TickerControlApp/TickerControl/Services/TickerHTTPClient.swift,iOS controller,3011,81,
+TickerControlApp/TickerControl/Services/TickerPollingCoordinator.swift,iOS controller,2590,84,
+TickerControlApp/TickerControl/TickerControl.entitlements,iOS controller,335,10,
+TickerControlApp/TickerControl/TickerControlApp.swift,iOS controller,388,18,
+TickerControlApp/TickerControl/TickerScheduleModels.swift,iOS controller,10128,260,
+TickerControlApp/TickerControl/TickerScheduleView.swift,iOS controller,33544,731,
+TickerControlApp/TickerControl/ViewModels/TickerViewModel.swift,iOS controller,58594,1375,
+TickerControlApp/TickerControl/Views/AirportBoardView.swift,iOS controller,11678,239,
+TickerControlApp/TickerControl/Views/DeviceViews.swift,iOS controller,15115,329,
+TickerControlApp/TickerControl/Views/FeedViews.swift,iOS controller,36823,730,
+TickerControlApp/TickerControl/Views/FirstRunSetupView.swift,iOS controller,2971,77,
+TickerControlApp/TickerControl/Views/HomeView.swift,iOS controller,9778,217,
+TickerControlApp/TickerControl/Views/ModesView.swift,iOS controller,36778,663,
+TickerControlApp/TickerControl/Views/SettingsView.swift,iOS controller,4451,93,
+TickerControlApp/TickerControl/Views/SharedStyle.swift,iOS controller,2968,60,
+TickerControlApp/TickerControl/Views/TeamsView.swift,iOS controller,4790,109,
+TickerControlApp/TickerControlTests/ContractModelsTests.swift,iOS controller,4416,84,
+TickerControlApp/TickerControlTests/DeviceListStateTests.swift,iOS controller,3670,69,
+TickerControlApp/TickerControlTests/EnabledLeagueControlsTests.swift,iOS controller,6186,129,
+TickerControlApp/TickerControlTests/HTTPTransportTests.swift,iOS controller,7457,139,
+TickerControlApp/TickerControlTests/PollingPolicyTests.swift,iOS controller,1807,30,
+TickerControlApp/TickerControlTests/SchedulePresentationTests.swift,iOS controller,6334,110,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Contents.json,iOS controller,2323,116,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-AppStore-1024.png,iOS controller,86496,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Home-60@2x.png,iOS controller,6197,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Home-60@3x.png,iOS controller,10817,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Noti-20@2x.png,iOS controller,1449,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Noti-20@3x.png,iOS controller,2447,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Settings-29@2x.png,iOS controller,2415,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Settings-29@3x.png,iOS controller,3972,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Spot-40@2x.png,iOS controller,3541,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-Spot-40@3x.png,iOS controller,6197,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Home-76@1x.png,iOS controller,3400,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Home-76@2x.png,iOS controller,8454,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Noti-20@1x.png,iOS controller,637,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Noti-20@2x.png,iOS controller,1449,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Pro-83@2x.png,iOS controller,9430,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Set-29@1x.png,iOS controller,984,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Set-29@2x.png,iOS controller,2415,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Spot-40@1x.png,iOS controller,1449,,
+TickerControlApp/design/ios_icons/AppIcon.appiconset/Icon-iPad-Spot-40@2x.png,iOS controller,3541,,
+TickerControlApp/design/ios_icons/AppIcon_base_1024.png,iOS controller,104069,,
+TickerControlApp/design/ios_icons/AppIcon_master_2048.png,iOS controller,171537,,
+TickerControlApp/design/ios_icons/card_hires.png,iOS controller,199367,,
+TickerControlApp/design/ios_icons/ticker_frame_fullres.png,iOS controller,157496,,
+TickerControlApp/design/ios_icons/ticker_frame_raw.png,iOS controller,2617,,
+TickerControlApp/schedule-ui-tests.yml,iOS controller,1383,51,
+backend_ops/AGENTS.md,Backend operations,664,10,
+backend_ops/__init__.py,Backend operations,62,1,
+backend_ops/components.py,Backend operations,7748,160,definitions:28 | source_owners:45 | owners:74 | git_text:98 | changed_components:103 | package:116 | main:148
+backend_ops/diagnostics.py,Backend operations,7365,154,read_json:17 | command_output:27 | log_tail:36 | collect:46 | bundle:127 | main:143
+backend_ops/github_reports.py,Backend operations,6268,127,GitHub:19 | identity:39 | description:45 | publish:57 | deliver:87 | main:108
+backend_ops/incidents.py,Backend operations,4845,109,release_id:22 | redact:28 | atomic_json:58 | IncidentStore:76
+backend_ops/manager.py,Backend operations,28478,512,read:27 | switch:34 | Host:42 | Manager:120 | main:487
+backend_ops/public_status.py,Backend operations,669,13,summary:7
+backend_ops/reporting.py,Backend operations,6746,145,RuntimeReport:24 | _append:57 | failure:71 | recovered:81 | export:91 | acknowledge:96 | main:108
+backend_ops/worker.py,Backend operations,8621,157,ProviderWorker:19 | serve:106 | main:131
+backend_ops/worker_contract.py,Backend operations,9678,197,contract_id:23 | encode:44 | _decode_content:56 | _decode_provider_result:73 | decode_result:80 | encode_batch:88 | decode_batch:104 | exchange:122 | request:132 | WorkerProvider:145
+deploy/backend/ticker-backend-guard.service,deploy: backend,278,11,
+deploy/backend/ticker-backend-guard.timer,deploy: backend,190,11,
+deploy/backend/ticker-fetcher@.service,deploy: backend,757,24,
+deploy/backend/ticker.service,deploy: backend,863,28,
+docs/README.md,docs: root,708,14,
+docs/architecture/README.md,docs: architecture,4426,76,
+docs/architecture/hardware-profiles.md,docs: architecture,1424,28,
+docs/architecture/hockey-manpower.md,docs: architecture,6214,93,
+docs/architecture/news-overlay.md,docs: architecture,775,15,
+docs/architecture/system-flow.md,docs: architecture,5068,116,
+docs/contracts/README.md,docs: contracts,3560,46,
+docs/contracts/agent-context-cases.json,docs: contracts,2363,39,
+docs/contracts/baseball-inning.json,docs: contracts,1304,80,
+docs/contracts/demo-assets/1f5f9914f5b72605fcc2c1b4789fcdb976819f73f6009facb2c268299ddb8ab9.source,docs: contracts,70067,,
+docs/contracts/demo-assets/3c41c36c04bdd6aaec220967a3cbe11f2808c5132ad8e2be1334dd7a52eca926.source,docs: contracts,98187,,
+docs/contracts/demo-assets/532e09446db868a0455f394f8c43f417c44015f6e669053d04728480ec2b8df6.source,docs: contracts,32372,,
+docs/contracts/demo-assets/626d206c34cef4db4d439a2cf8a7ebbad5e0ba7643744202506964e5c1ecf43f.source,docs: contracts,45561,,
+docs/contracts/demo-assets/730ea1e887f84293efbe6f4edf7484ab522ecd4c30acabbe3460208cc6fdef11.source,docs: contracts,116051,,
+docs/contracts/demo-assets/933388fe761918a46851c0c4697c2d371f45eaf268f29938f72bb0799a9522db.source,docs: contracts,37870,,
+docs/contracts/demo-assets/9a46642929dca3a94411f2f5c8b1d6222766c72308d26bb94be28a5f29bc90e4.source,docs: contracts,9586,,
+docs/contracts/demo-assets/9ccb335946107299818e6e2c39c970c5941e70ba7c861595129b49086e82db79.source,docs: contracts,36280,,
+docs/contracts/demo-assets/be877419f1d26dd44d4c0d570b93c648978dee0063bac481e2c59062dbf10dbb.source,docs: contracts,12778,,
+docs/contracts/demo-assets/c0fb73ccfd305f5392b70cef2fab3990750e342c74da062ff10bbd22d52a6a4a.source,docs: contracts,98474,,
+docs/contracts/demo-assets/c48a33c225c6da2035dcc0b8821a83a75447661f9885e60cfa96d1c323f10b60.source,docs: contracts,7574,,
+docs/contracts/demo-assets/dd704abcdd0d479e4354b75b3ac047df9da3975b89bbcd4194540e66e9067734.source,docs: contracts,77274,,
+docs/contracts/demo-assets/e1eb4b66a7cdc2da4982c0d39af9488ecf1f0d3e1e351141c3aec0505e80a1a0.source,docs: contracts,1974,,
+docs/contracts/demo-assets/eaabb3995384efc089bf9bd4489168c3aedbd7c2c23479ccec0d4591d0392bb3.source,docs: contracts,59969,,
+docs/contracts/demo-assets/f960ec2783b116ab54d2253f7c939693cc24a093ea991ff36ab71fab52a0cd7e.source,docs: contracts,40484,,
+docs/contracts/demo-layouts.json,docs: contracts,118244,4488,
+docs/contracts/device-registration-request.json,docs: contracts,629,32,
+docs/contracts/device-registration-response.json,docs: contracts,2383,111,
+docs/contracts/device-registration.json,docs: contracts,186,5,
+docs/contracts/device-stream-v1.md,docs: contracts,4314,76,
+docs/contracts/display-response.json,docs: contracts,4297,191,
+docs/contracts/display-settings-response.json,docs: contracts,2570,133,
+docs/contracts/display-timing.json,docs: contracts,880,27,
+docs/contracts/firmware-manifest-input.json,docs: contracts,567,23,
+docs/contracts/firmware-manifest-response.json,docs: contracts,808,41,
+docs/contracts/firmware-response.json,docs: contracts,455,22,
+docs/contracts/fixtures/baseball-inning.json,docs: contracts,57,5,
+docs/contracts/fixtures/device-registration-request.json,docs: contracts,84,6,
+docs/contracts/fixtures/device-registration-response.json,docs: contracts,2066,84,
+docs/contracts/fixtures/display-response.json,docs: contracts,2117,93,
+docs/contracts/fixtures/display-settings-response.json,docs: contracts,652,26,
+docs/contracts/fixtures/display-timing.json,docs: contracts,447,15,
+docs/contracts/fixtures/display/sports.json,docs: contracts,1926,92,
+docs/contracts/fixtures/firmware-manifest-input.json,docs: contracts,226,8,
+docs/contracts/fixtures/firmware-manifest-response.json,docs: contracts,220,8,
+docs/contracts/fixtures/firmware-response.json,docs: contracts,307,12,
+docs/contracts/fixtures/hardware-profile-request.json,docs: contracts,108,7,
+docs/contracts/fixtures/hardware-profile-response.json,docs: contracts,317,19,
+docs/contracts/fixtures/mini-sprite-asset.json,docs: contracts,382,1,
+docs/contracts/fixtures/schedule-block-patch-request.json,docs: contracts,25,3,
+docs/contracts/fixtures/schedule-block-request.json,docs: contracts,138,11,
+docs/contracts/fixtures/schedule-block-response.json,docs: contracts,318,19,
+docs/contracts/fixtures/schedule-condition-patch-request.json,docs: contracts,3,1,
+docs/contracts/fixtures/schedule-condition-request.json,docs: contracts,47,4,
+docs/contracts/fixtures/schedule-condition-response.json,docs: contracts,290,13,
+docs/contracts/fixtures/schedule-response.json,docs: contracts,2901,138,
+docs/contracts/fixtures/schedule-status-response.json,docs: contracts,439,19,
+docs/contracts/hardware-profile-request.json,docs: contracts,526,18,
+docs/contracts/hardware-profile-response.json,docs: contracts,1758,89,
+docs/contracts/mini-display-diagnostics-v1.md,docs: contracts,3976,74,
+docs/contracts/mini-sprite-asset.json,docs: contracts,1004,25,
+docs/contracts/mini-sprite-v1.md,docs: contracts,4579,91,
+docs/contracts/overview.md,docs: contracts,5989,100,
+docs/contracts/racing-flags.md,docs: contracts,9060,118,
+docs/contracts/schedule-block-patch-request.json,docs: contracts,1175,47,
+docs/contracts/schedule-block-request.json,docs: contracts,1241,52,
+docs/contracts/schedule-block-response.json,docs: contracts,1544,86,
+docs/contracts/schedule-condition-patch-request.json,docs: contracts,974,40,
+docs/contracts/schedule-condition-request.json,docs: contracts,999,43,
+docs/contracts/schedule-condition-response.json,docs: contracts,1156,64,
+docs/contracts/schedule-response.json,docs: contracts,1538,76,
+docs/contracts/schedule-status-response.json,docs: contracts,2247,126,
+docs/development/README.md,docs: development,2216,60,
+docs/development/agent-rules.md,docs: development,1705,38,
+docs/development/agent-workspaces.md,docs: development,16904,309,
+docs/development/hardware-lab.md,docs: development,2642,45,
+docs/development/testing.md,docs: development,1981,55,
+docs/hardware/labels/README.md,docs: hardware,776,15,
+docs/hardware/labels/ticker-identity-template.svg,docs: hardware,2144,24,
+docs/operations/backend-recovery.md,docs: operations,8365,149,
+docs/operations/device-setup.md,docs: operations,2509,45,
+docs/operations/ticker-six-checks.md,docs: operations,1136,26,
+docs/plans/engineering-sow.md,docs: plans,24479,345,
+docs/plans/feasibility.md,docs: plans,13381,156,
+docs/research/2026-10-19-agent-context.md,docs: research,4720,61,
+docs/research/2026-10-19-college-conference-agent-comparison.md,docs: research,8733,157,
+docs/research/2026-10-19-ios-request-reliability.md,docs: research,5403,92,
+docs/research/2026-10-19-nfl-alert-agent-comparison.md,docs: research,8194,148,
+docs/research/2026-10-19-progressive-agent-context.md,docs: research,9152,147,
+docs/research/2026-10-20-ios-schedule-redesign.md,docs: research,5883,110,
+docs/research/2026-10-20-live-rule-count.md,docs: research,2491,44,
+docs/research/2026-10-20-stock-autocomplete-and-mini-recovery.md,docs: research,2618,48,
+docs/research/2026-10-20-stock-markets-and-mini-logos.md,docs: research,2330,42,
+docs/research/agent-conference-trial-evidence.json,docs: research,14205,386,
+docs/research/agent-context-v5-evidence.json,docs: research,90357,2656,
+docs/research/baseball-transitions-2026-10-17.md,docs: research,2590,47,
+docs/research/conference-trial/.gitattributes,docs: research,73,4,
+docs/research/conference-trial/A-fbs-expanded.png,docs: research,512578,,
+docs/research/conference-trial/B-fbs-expanded.png,docs: research,503164,,
+docs/research/conference-trial/ConferenceContractAcceptance.swift,docs: research,1832,34,
+docs/research/conference-trial/ConferenceUIAcceptance.swift,docs: research,4395,117,
+docs/research/conference-trial/blind-review.md,docs: research,4989,87,
+docs/research/conference-trial/candidate-A.patch.gz,docs: research,3718,,
+docs/research/conference-trial/candidate-B.patch.gz,docs: research,3665,,
+docs/research/demo-automatic-layouts-2026-10-18.md,docs: research,3442,65,
+docs/research/device-list-pairing-and-inning-2026-10-15.md,docs: research,9209,153,
+docs/research/end-to-end-latency-2026-10-26.md,docs: research,22458,357,
+docs/research/hockey-badges-college-overtime-and-mini-dns-2026-10-16.md,docs: research,5058,85,
+docs/research/live-demo-rendering-2026-10-16.md,docs: research,3811,72,
+docs/research/mini-aviation-layouts-2026-10-18.md,docs: research,1780,36,
+docs/research/mini-color-profile-2026-10-15.md,docs: research,3123,61,
+docs/research/mini-display-diagnostics-2026-10-15.md,docs: research,4457,74,
+docs/research/mini-music-artwork-2026-10-18.md,docs: research,4480,74,
+docs/research/mini-page-timing-2026-10-15.md,docs: research,4188,73,
+docs/research/mini-sensors-and-public-coverage-2026-10-20.md,docs: research,3098,54,
+docs/research/mini-shootout-and-response-buffer-2026-10-15.md,docs: research,4004,72,
+docs/research/mini-sprite-hardware-2026-10-15.md,docs: research,5127,99,
+docs/research/mini-system-layouts-2026-10-18.md,docs: research,2151,44,
+docs/research/mini-ui-unification-2026-10-15.md,docs: research,4342,76,
+docs/research/mini-weather-layout-2026-10-18.md,docs: research,2674,48,
+docs/research/network-modules-and-wifi-2026-10-16.md,docs: research,13684,191,
+docs/research/pi-stream-overruns-2026-10-14.md,docs: research,7943,140,
+docs/research/platform-modularization-map.md,docs: research,5347,72,
+docs/research/platform-modules-2026-10-16.md,docs: research,4625,83,
+docs/research/public-demo-live-data-and-fleet-2026-10-20.md,docs: research,6538,99,
+docs/research/public-layout-explorer-2026-10-16.md,docs: research,4729,96,
+docs/research/python-performance-followups-2026-10-25.md,docs: research,10056,157,
+docs/research/six-card-templates-2026-10-26.md,docs: research,6237,97,
+docs/research/six-update-failure-notice-2026-10-18.md,docs: research,2433,46,
+docs/research/sow-final-packages-2026-10-17.md,docs: research,13747,192,
+docs/research/sports-intelligence-2026-10-17.md,docs: research,5794,93,
+docs/research/spotify-adaptive-polling-2026-10-18.md,docs: research,3064,50,
+docs/research/structural-cleanup-2026-10-26.md,docs: research,5377,56,
+docs/research/ticker-motion-2026-08-16/EVIDENCE.md,docs: research,6910,139,
+docs/research/ticker-motion-2026-08-16/README.md,docs: research,9572,121,
+docs/research/ticker-motion-2026-08-16/evidence/badge-mask-proof.json,docs: research,152,12,
+docs/research/ticker-motion-2026-08-16/evidence/brio-framing-calibration.json,docs: research,221,5,
+docs/research/ticker-motion-2026-08-16/evidence/brio-framing-representative.png,docs: research,339094,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate5-S1-contact.png,docs: research,213954,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate5-S10-contact.png,docs: research,154840,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate5-S5-contact.png,docs: research,208666,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate5-S8-contact.png,docs: research,206938,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate6-S1-contact.png,docs: research,152300,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate6-S10-contact.png,docs: research,200985,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate6-S5-contact.png,docs: research,204740,,
+docs/research/ticker-motion-2026-08-16/evidence/candidate6-S8-contact.png,docs: research,208012,,
+docs/research/ticker-motion-2026-08-16/evidence/independent-review-metrics.json,docs: research,3107,107,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-evaluation.json,docs: research,21113,1,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-evaluation.txt,docs: research,36393,1324,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000060.png,docs: research,9627,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000120.png,docs: research,9395,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000180.png,docs: research,9620,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000240.png,docs: research,9450,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000300.png,docs: research,9447,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000360.png,docs: research,9850,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000420.png,docs: research,9648,,
+docs/research/ticker-motion-2026-08-16/evidence/real-motion-frame-000480.png,docs: research,9941,,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-badge.avi,docs: research,238758,,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-base-evaluation.json,docs: research,6443,1,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-base-output.txt,docs: research,11051,408,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-base.avi,docs: research,232260,,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-calibration.json,docs: research,89,1,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-evaluation.json,docs: research,6455,1,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-manifest.json,docs: research,599,34,
+docs/research/ticker-motion-2026-08-16/evidence/synthetic-output.txt,docs: research,11063,408,
+docs/research/ticker-motion-2026-08-16/evidence/ticker-motion-trial-manifest.json,docs: research,15261,716,
+docs/research/ticker-motion-2026-08-16/evidence/validation-output.txt,docs: research,3030,117,
+docs/research/ticker-motion-2026-08-16/pi-safety/ticker-motion-recovery.service,docs: research,254,9,
+docs/research/ticker-motion-2026-08-16/pi-safety/ticker-motion-recovery.timer,docs: research,174,10,
+docs/research/ticker-motion-2026-08-16/pi-safety/ticker-motion-restore,docs: research,213,10,
+docs/research/ticker-motion-2026-08-16/pi-safety/ticker-motion-restore.service,docs: research,202,10,
+docs/research/ticker-motion-2026-08-16/pi-safety/ticker-motion-trial-start,docs: research,845,29,
+docs/research/ticker-motion-2026-08-16/pi-safety/ticker-motion-trial.service,docs: research,495,16,
+docs/research/ticker-motion-2026-08-16/source/rejected-spatial-dither-quality-test.py,docs: research,13964,322,EdgeCatalog:34 | SolidCatalog:45 | PatternCatalog:53 | test_runtime_keeps_a_monotonic_30ms_distance_at_all_levels:66 | test_fractional_motion_reads_the_real_following_panel_column:88 | test_fractional_motion_uses_exact_q_over_64_a_or_b_coverage:106 | test_slow_levels_progress_without_intermediate_rgb:141 | test_fast_levels_are_exact_crisp_integer_columns:164 | test_dither_has_no_eight_pixel_periodic_texture:179 | test_real_sports_luminance_and_temporal_error_stay_bounded:202 | test_high_speed_edges_never_blend_neighboring_columns:263 | test_low_speed_edge_energy_has_no_brightness_modulation:282 | _response:302 | _drain:316
+docs/research/ticker-motion-2026-08-16/source/rejected-spatial-dither.patch,docs: research,17425,377,
+docs/research/wifi-reliability-2026-10-16.md,docs: research,5559,82,
+esp32_hub75/.gitignore,Mini: build and entry points,94,5,
+esp32_hub75/AGENTS.md,Mini: build and entry points,887,13,
+esp32_hub75/README.md,Mini: build and entry points,18508,307,
+esp32_hub75/certs/README.md,Mini: build and entry points,1264,23,
+esp32_hub75/certs/backend.json,Mini: build and entry points,507,16,
+esp32_hub75/certs/backend.pem,Mini: build and entry points,23974,394,
+esp32_hub75/generate_team_logos.py,Mini: build and entry points,4210,107,rgb565:41 | fetch:45 | bitmap:51 | main:68
+esp32_hub75/partitions.csv,Mini: build and entry points,312,7,
+esp32_hub75/platformio.ini,Mini: build and entry points,656,26,
+esp32_hub75/preview_card.py,Mini: build and entry points,3680,76,text:34 | badge:44
+esp32_hub75/preview_score_card.png,Mini: build and entry points,1704,,
+esp32_hub75/src/main.cpp,Mini: build and entry points,103,9,
+esp32_hub75/src/mini/assets/artwork_assets.cpp,Mini: assets,4654,109,
+esp32_hub75/src/mini/assets/artwork_assets.h,Mini: assets,743,27,
+esp32_hub75/src/mini/assets/artwork_window.h,Mini: assets,3291,90,
+esp32_hub75/src/mini/assets/logo_residency.h,Mini: assets,586,20,
+esp32_hub75/src/mini/assets/logo_sources.cpp,Mini: assets,815,15,
+esp32_hub75/src/mini/assets/logo_sources.h,Mini: assets,126,6,
+esp32_hub75/src/mini/assets/mini_artwork.h,Mini: assets,1028,19,
+esp32_hub75/src/mini/assets/mini_sprite.h,Mini: assets,4914,130,
+esp32_hub75/src/mini/assets/sprite_assets.cpp,Mini: assets,10737,264,
+esp32_hub75/src/mini/assets/sprite_assets.h,Mini: assets,1186,36,
+esp32_hub75/src/mini/assets/sprite_pipeline.inc,Mini: assets,9362,243,
+esp32_hub75/src/mini/features/renderers.inc,Mini: features,6363,173,
+esp32_hub75/src/mini/platform/boot_validation.cpp,Mini: platform,133,2,
+esp32_hub75/src/mini/platform/config.h,Mini: platform,2609,57,
+esp32_hub75/src/mini/platform/connectivity.inc,Mini: platform,14198,405,
+esp32_hub75/src/mini/platform/deadline_client.h,Mini: platform,1985,49,
+esp32_hub75/src/mini/platform/device_credentials.cpp,Mini: platform,1229,38,
+esp32_hub75/src/mini/platform/device_credentials.h,Mini: platform,256,12,
+esp32_hub75/src/mini/platform/device_sensors.cpp,Mini: platform,1033,33,
+esp32_hub75/src/mini/platform/device_sensors.h,Mini: platform,732,23,
+esp32_hub75/src/mini/platform/display_metrics.h,Mini: platform,4263,125,
+esp32_hub75/src/mini/platform/display_orientation.h,Mini: platform,1003,36,
+esp32_hub75/src/mini/platform/firmware_update.cpp,Mini: platform,20158,493,
+esp32_hub75/src/mini/platform/firmware_update.h,Mini: platform,3918,93,
+esp32_hub75/src/mini/platform/firmware_validation.h,Mini: platform,2757,70,
+esp32_hub75/src/mini/platform/http_diagnostics.cpp,Mini: platform,447,11,
+esp32_hub75/src/mini/platform/http_diagnostics.h,Mini: platform,131,5,
+esp32_hub75/src/mini/platform/matrix_driver.cpp,Mini: platform,4032,113,
+esp32_hub75/src/mini/platform/matrix_driver.h,Mini: platform,1281,31,
+esp32_hub75/src/mini/platform/network_gate.cpp,Mini: platform,740,25,
+esp32_hub75/src/mini/platform/network_gate.h,Mini: platform,1245,39,
+esp32_hub75/src/mini/platform/network_recovery.h,Mini: platform,593,21,
+esp32_hub75/src/mini/platform/response_stream.h,Mini: platform,665,21,
+esp32_hub75/src/mini/platform/station_retry.h,Mini: platform,976,27,
+esp32_hub75/src/mini/platform/tls.h,Mini: platform,3981,95,
+esp32_hub75/src/mini/platform/tls_client.h,Mini: platform,699,23,
+esp32_hub75/src/mini/platform/transfer_deadline.h,Mini: platform,342,13,
+esp32_hub75/src/mini/platform/wifi_station.cpp,Mini: platform,3602,110,
+esp32_hub75/src/mini/platform/wifi_station.h,Mini: platform,1226,34,
+esp32_hub75/src/mini/protocol/backend.inc,Mini: protocol,3918,101,
+esp32_hub75/src/mini/protocol/device_payload.cpp,Mini: protocol,1754,54,
+esp32_hub75/src/mini/protocol/device_payload.h,Mini: protocol,556,21,
+esp32_hub75/src/mini/protocol/dns_answer.h,Mini: protocol,1868,46,
+esp32_hub75/src/mini/protocol/fields_generated.h,Mini: protocol,1773,3,
+esp32_hub75/src/mini/protocol/panels.h,Mini: protocol,13597,263,
+esp32_hub75/src/mini/protocol/payload.inc,Mini: protocol,4559,107,
+esp32_hub75/src/mini/protocol/payload_reader.h,Mini: protocol,601,22,
+esp32_hub75/src/mini/protocol/racing_pane.h,Mini: protocol,2720,58,
+esp32_hub75/src/mini/protocol/response_body.h,Mini: protocol,1404,42,
+esp32_hub75/src/mini/protocol/rotation.h,Mini: protocol,515,13,
+esp32_hub75/src/mini/rendering/auxiliary_panels.h,Mini: rendering,3433,74,
+esp32_hub75/src/mini/rendering/glyphs.h,Mini: rendering,302,14,
+esp32_hub75/src/mini/rendering/matrix_canvas.h,Mini: rendering,314,8,
+esp32_hub75/src/mini/rendering/music_pane.h,Mini: rendering,1891,45,
+esp32_hub75/src/mini/rendering/presentation.inc,Mini: rendering,6690,185,
+esp32_hub75/src/mini/rendering/racing_pane.h,Mini: rendering,3317,89,
+esp32_hub75/src/mini/rendering/sports_pane.h,Mini: rendering,14381,298,
+esp32_hub75/src/mini/rendering/system_pane.h,Mini: rendering,7989,155,
+esp32_hub75/src/mini/rendering/text_layout.h,Mini: rendering,830,28,
+esp32_hub75/src/mini/rendering/text_primitives.cpp,Mini: rendering,1655,40,
+esp32_hub75/src/mini/rendering/text_primitives.h,Mini: rendering,720,15,
+esp32_hub75/src/mini/rendering/ui_generated.h,Mini: rendering,9223,352,
+esp32_hub75/src/mini/rendering/utility_panels.h,Mini: rendering,3034,75,
+esp32_hub75/src/mini/rendering/weather_art_generated.h,Mini: rendering,235423,224,
+esp32_hub75/src/mini/rendering/weather_pane.h,Mini: rendering,4187,93,
+esp32_hub75/src/mini/runtime/diagnostics.inc,Mini: runtime,9989,211,
+esp32_hub75/src/mini/runtime/http_session.cpp,Mini: runtime,2408,60,
+esp32_hub75/src/mini/runtime/http_session.h,Mini: runtime,384,17,
+esp32_hub75/src/mini/runtime/mini_runtime.cpp,Mini: runtime,7606,210,
+esp32_hub75/src/mini/runtime/mini_runtime.h,Mini: runtime,49,4,
+esp32_hub75/src/mini/runtime/network.cpp,Mini: runtime,3055,90,
+esp32_hub75/src/mini/runtime/network.h,Mini: runtime,2467,66,
+esp32_hub75/src/mini/runtime/network_results.inc,Mini: runtime,1311,28,
+esp32_hub75/src/mini/runtime/scheduler.inc,Mini: runtime,20107,517,
+esp32_hub75/src/team_logos.h,Mini: build and entry points,57509,116,
+pyproject.toml,Repository configuration and instructions,882,30,
+requirements-backend.txt,Repository configuration and instructions,101,5,
+requirements.txt,Repository configuration and instructions,159,12,
+setup.sh,Six installation and update entry points,2651,68,
+sports_ticker/AGENTS.md,Server: startup and shared configuration,1250,29,
+sports_ticker/__init__.py,Server: startup and shared configuration,153,6,
+sports_ticker/api/__init__.py,Server: api,112,5,
+sports_ticker/api/app.py,Server: api,1096,39,create_app:18
+sports_ticker/api/routes.py,Server: api,43796,973,ApiError:26 | register_routes:36 | _json_object:606 | _patch_values:615 | _settings_value:637 | _event_values:646 | _optional_mapping:683 | _check_keys:690 | _ticker_id:696 | _require_ticker:702 | _spotify_service:710 | _catalog:719 | _device_ticker_owner:728 | _device_or_controller_owner:738 | _controller_ticker_owner:744 | _controller_token:755 | _require_deployment_token:765 | _ticker_value:774 | _schedule_block_values:799 | _schedule_condition_values:847 | _display_settings_value:892 | _event_value:921 | _scheduler_health_value:935 | _json_value:957 | _error_response:969
+sports_ticker/application/__init__.py,Server: application,634,22,
+sports_ticker/application/composition.py,Server: application,34206,796,BackendApplication:28
+sports_ticker/application/events.py,Server: application,5862,164,EventService:16 | event_to_mapping:135 | _json_value:151
+sports_ticker/application/provider_demand.py,Server: application,2097,49,ProviderDemand:13
+sports_ticker/application/provider_recovery.py,Server: application,2233,59,Circuit:7 | ProviderRecovery:14
+sports_ticker/application/refresh.py,Server: application,5506,164,RefreshOutcome:22 | RefreshService:37 | refresh_ticker:140 | _fetch_provider:151
+sports_ticker/application/runtime.py,Server: application,7405,182,WaitStopPrimitive:15 | BackendRuntime:26
+sports_ticker/application/schedule.py,Server: application,22484,589,ScheduleService:28 | block_to_mapping:491 | condition_to_mapping:509 | _with_block:527 | _with_mode:536 | _condition_matches:546 | _is_live_game:554 | _utc_datetime:560 | _local_datetime:569 | _local_timestamp:581
+sports_ticker/application/scheduler.py,Server: application,25487,636,SnapshotRefreshService:42 | SchedulerHealth:55 | _ProviderJob:67 | _Ticker:82 | _CachedProviderData:88 | _utc_now:95 | _all_settings_key:99 | _all_provider_demand:105 | _error_text:117 | _refresh_succeeded:123 | _refresh_warning:140 | _format_ticker_messages:148 | RefreshScheduler:163 | _read_provider_batch:562 | _advance_due:582 | _run_snapshot_refresh:591 | _run_provider_refresh:604
+sports_ticker/application/state_store.py,Server: application,5024,132,_StoredSnapshot:15 | SnapshotStore:22 | _source_changed:110 | _same_source_item:121
+sports_ticker/asgi.py,Server: startup and shared configuration,10895,231,BackendASGI:19 | create_asgi_application:222
+sports_ticker/assets/__init__.py,Server: assets,84,1,
+sports_ticker/assets/images.py,Server: assets,1027,26,prepare_contained:9 | prepare_contained_native_grid:14 | _prepare_contained:19
+sports_ticker/assets/mini_artwork.py,Server: assets,5387,120,encode_artwork:22 | MiniArtworkService:35
+sports_ticker/assets/mini_service.py,Server: assets,12782,264,SourceReply:35 | fetch_source:43 | MiniSpriteService:72
+sports_ticker/assets/mini_sprite.py,Server: assets,2752,68,SpritePolicy:24 | encode_sprite:40 | validate_sprite:60
+sports_ticker/assets/music_palette.py,Server: assets,899,17,artwork_colors:7
+sports_ticker/bootstrap_v2.py,Server: startup and shared configuration,2896,75,create_backend_application:20
+sports_ticker/dashboard_v2/__init__.py,Server: dashboard_v2,327,16,
+sports_ticker/dashboard_v2/live_demo.py,Server: dashboard_v2,6396,124,PublicDemoData:21
+sports_ticker/dashboard_v2/preview.py,Server: dashboard_v2,10547,194,layout_library:28 | layout_case:33 | main_layout:38 | case_items:48 | project_preview_game:57 | PreviewRenderer:65
+sports_ticker/dashboard_v2/routes.py,Server: dashboard_v2,23468,561,public_index:33 | index:82 | demo:89 | demo_portfolio:106 | demo_layouts:123 | demo_frame:130 | demo_animation:174 | _prevent_preview_caching:203 | _version_hash:217 | _uptime:229 | _fleet_rows:236 | _build_label:262 | _market_rows:276 | _hardware_specs:288 | _coverage_catalog:321 | _sports_rows:331 | _utility_rows:345 | _display_modes:351 | _demo_modes:363 | _live_sports_content:375 | _demo_content:414 | _public_mode_content:426 | _preview_items:438 | _display_content:453 | _selection_settings:480 | _PreviewAssets:493 | _preview_assets:529 | _duration:543 | _server_health:551
+sports_ticker/dashboard_v2/static/dashboard_v2/app.js,Server: dashboard_v2,14846,286,
+sports_ticker/dashboard_v2/static/dashboard_v2/style.css,Server: dashboard_v2,10375,43,
+sports_ticker/dashboard_v2/static/hardware-catalog.js,Server: dashboard_v2,1801,42,
+sports_ticker/dashboard_v2/static/layout-explorer.css,Server: dashboard_v2,8644,108,
+sports_ticker/dashboard_v2/static/layout-explorer.js,Server: dashboard_v2,16436,341,
+sports_ticker/dashboard_v2/static/layout-gallery.json,Server: dashboard_v2,627353,1,
+sports_ticker/dashboard_v2/static/led.js,Server: dashboard_v2,14319,394,
+sports_ticker/dashboard_v2/static/mr-blue-sky-cover.png,Server: dashboard_v2,468469,,
+sports_ticker/dashboard_v2/static/style.css,Server: dashboard_v2,24934,763,
+sports_ticker/dashboard_v2/static/ticker-demo.js,Server: dashboard_v2,10345,207,
+sports_ticker/dashboard_v2/templates/dashboard/index.html,Server: dashboard_v2,20293,449,
+sports_ticker/dashboard_v2/templates/dashboard_v2/index.html,Server: dashboard_v2,8963,137,
+sports_ticker/dashboard_v2/templates/demo_layouts.html,Server: dashboard_v2,6248,92,
+sports_ticker/dashboard_v2/templates/demo_portfolio.html,Server: dashboard_v2,1162,21,
+sports_ticker/dashboard_v2/templates/demo_ticker.html,Server: dashboard_v2,1457,23,
+sports_ticker/device_stream.py,Server: startup and shared configuration,13476,332,_encoded_object:25 | StreamProjection:31 | project_stream_payload:57 | OutboundMessage:63 | _TickerStreamState:72 | _Subscriber:81 | DeviceStreamHub:87 | _server_time:331
+sports_ticker/display_alerts/__init__.py,Server: display_alerts,254,14,
+sports_ticker/display_alerts/routes.py,Server: display_alerts,344,14,index:11
+sports_ticker/display_alerts/templates/display_alerts/index.html,Server: display_alerts,6581,92,
+sports_ticker/domain/__init__.py,Server: domain,1011,44,
+sports_ticker/domain/events.py,Server: domain,4557,141,_freeze:14 | _timestamp:30 | OverlayEvent:46 | ScoreAlertEvent:114 | NewsEvent:122
+sports_ticker/domain/models.py,Server: domain,8135,188,ContentItem:44 | DisplaySettings:72
+sports_ticker/domain/schedule.py,Server: domain,7557,194,_timestamp:26 | _days:35 | ScheduleBlock:56 | ScheduleCondition:109 | _minute:171
+sports_ticker/domain/snapshot.py,Server: domain,1469,47,TickerSnapshot:22
+sports_ticker/firmware.py,Server: startup and shared configuration,4625,116,FirmwareManifest:21
+sports_ticker/fleet/__init__.py,Server: fleet,604,26,
+sports_ticker/fleet/device_credentials.py,Server: fleet,673,16,device_token_hash:7 | validate_device_hash:13
+sports_ticker/fleet/models.py,Server: fleet,8948,213,_freeze:15 | _display_settings:31 | PairingState:71 | DeviceMetadata:95 | TickerRecord:110 | SpotifyConnection:147 | SpotifyOAuthAttempt:182
+sports_ticker/fleet/profiles.py,Server: fleet,6406,159,DisplayGeometry:17 | TickerCapabilities:45 | TickerProfile:75 | profile_from_metadata:155
+sports_ticker/fleet/repository.py,Server: fleet,81068,1813,_jsonable:36 | _dump:48 | _display_payload:52 | _display_settings:81 | _clear_incompatible_sports_pin:114 | _pairing:122 | _device:137 | TickerRepository:161 | _ticker_schedule_block_from_row:1778 | _ticker_schedule_condition_from_row:1795
+sports_ticker/fleet/update_ledger.py,Server: fleet,10543,144,UpdateLedger:11
+sports_ticker/immutable.py,Server: startup and shared configuration,625,17,freeze:7
+sports_ticker/integrations/__init__.py,Server: integrations,316,15,
+sports_ticker/integrations/spotify.py,Server: integrations,41185,1026,SpotifyIntegrationError:39 | _SpotifyTrack:55 | _PlaybackWindow:78 | SpotifyConfig:89 | SpotifyHttpPort:134 | UrllibSpotifyHttpClient:153 | SpotifyIntegrationService:240 | SpotifyMusicSource:712 | _extract_track:731 | _extract_queue_tracks:759 | _build_playback_record:778 | _idle_record:824 | _playback_record:855 | _connection_record:866 | _connection_status_value:908 | _playback_window_key:922 | _required_text:931 | _pkce_challenge:938 | _digest:943 | _attempt_id_from_state:947 | _ticker_id:954 | _https_uri:961 | _app_return_uri:969 | _image_url:977 | _retry_after_seconds:993 | _playback_refresh_seconds:1007
+sports_ticker/leagues.py,Server: startup and shared configuration,5997,174,League:12 | college_conference_key:93 | college_conference_settings:99 | allows_college_conferences:114 | league_for:145 | allows_my_team_selection:151
+sports_ticker/markets.py,Server: startup and shared configuration,2099,39,MarketGroup:10 | selected_market_groups:30
+sports_ticker/production.py,Server: startup and shared configuration,9778,251,create_production_application:46 | start_runtime:122 | _provider_fetch:148 | _provider_settings_key:160 | _sports_key:203 | _positive_float:215 | _build_version:222 | _provision_initial_ticker:235
+sports_ticker/projections/__init__.py,Server: projections,177,5,
+sports_ticker/projections/data_api.py,Server: projections,12797,326,project_data_v2:39 | _settings_value:90 | select_display_content:123 | _sports_item:154 | _market_items:173 | _is_my_team_game:196 | _item_data:213 | _content_item:220 | _logo_rendering_choice:243 | _overlay_items:267 | _health_value:288 | _stale_value:306 | _json_value:312
+sports_ticker/projections/device_data.py,Server: projections,1808,37,project_device_data:8 | compact_mini_data:17 | select_fields:29
+sports_ticker/projections/logo_rendering_decisions.json,Server: projections,253092,9988,
+sports_ticker/projections/mini_fields.py,Server: projections,2058,54,payload_filter:47
+sports_ticker/projections/racing_display.py,Server: projections,8508,150,_position:19 | _name:26 | racing_cards:39 | mini_racing_cards:122
+sports_ticker/providers/__init__.py,Server: providers,1883,72,
+sports_ticker/providers/background.py,Server: providers,1946,60,BackgroundTask:6
+sports_ticker/providers/catalog.py,Server: providers,17775,469,_CatalogCache:35 | _CatalogLease:55 | EspnTeamCatalog:65 | _teams:359 | _college_season:398 | _source_team_ids:416 | _logo:433 | _hex_color:456
+sports_ticker/providers/contracts.py,Server: providers,2848,84,ProviderHealth:21 | ProviderResult:41 | Provider:68
+sports_ticker/providers/espn.py,Server: providers,152600,3856,_ScoreboardSource:156 | _LeagueSchedule:168 | _RawScoreboardResponse:177 | _RawEventScoreboardResponse:188 | _LiveRefresh:197 | _MlbLiveDetailCache:206 | _MlbEventKey:215 | _MlbScheduleGame:225 | _ScoreboardReadError:234 | _source_key:242 | _event_league_priority:257 | EspnScoreboardProvider:267 | _events:1479 | _filter_college_conference_events:1498 | _event_conference_ids:1516 | _conference_id:1530 | _event_payload:1542 | _merge_event_collections:1555 | _event_update:1586 | _merge_mlb_detail_payload:1653 | _merge_mlb_situation:1680 | _event_competition:1699 | _is_current_event:1707 | _scoreboard_dates:1740 | _schedule_day:1757 | _league_needs_refresh:1765 | _event_needs_live_refresh:1776 | _unique_live_events:1791 | _status_rank:1808 | _merge_mapping:1819 | _merge_competitors:1832 | _competitor_key:1868 | _scoreboard_url_for_dates:1878 | _display_timezone:1890 | _event_time:1899 | _content_item:1911 | _competitors:1983 | _find_side:1989 | _team:1997 | _needs_ncaa_logo_lookup:2018 | _team_source_logo:2036 | _team_name_candidates:2049 | _ncaa_logo_url:2061 | _parse_ncaa_school_index:2082 | _normalize_team_name:2103 | _event_detail_url:2111 | _mlb_api_summary_url:2120 | _mlb_has_boxscore:2129 | _parse_ncaa_college_football_rankings:2162 | _college_ranking_name_keys:2176 | _resolve_college_football_rankings:2191 | _nhl_event_details:2227 | _soccer_event_details:2245 | _event_plays:2291 | _event_drive_plays:2300 | _event_scoring_details:2329 | _event_football_details:2541 | _normalize_football_play:2564 | _event_boolean:2698 | _event_participant_team:2704 | _event_interceptor:2727 | _event_interception_returner:2734 | _event_fumbler:2745 | _event_recoverer:2759 | _event_fumble_returner:2766 | _event_forced_by:2777 | _event_return_yards:2784 | _event_team_abbr:2793 | _event_player:2813 | _event_boxscore_athletes:2821 | _event_person_name:2836 | _event_participant_names:2851 | _event_assist_names:2873 | _compact_event_name:2918 | _event_yards:2933 | _event_passer:2940 | _event_text_player:2946 | _soccer_goal_type:2952 | _event_clock:2967 | _shootout_details:2976 | _mlb_event_details:3002 | _mlb_live_player_ids:3071 | _mlb_live_detail_cache_matches:3088 | _mlb_abs_challenge_fields:3113 | _mlb_team_abbreviations_match:3143 | _mlb_statsapi_summary:3151 | _statsapi_pitch_play:3267 | _statsapi_scoring_plays:3311 | _mlb_play_metrics:3379 | _optional_mlb_number:3416 | _statsapi_player_ref:3427 | _statsapi_first_value:3439 | _statsapi_boxscore:3447 | _mlb_situation_player_name:3516 | _mlb_latest_play_participant:3530 | _mlb_players:3543 | _mlb_last_pitch:3570 | _mlb_pitcher_pitches:3610 | _mlb_pitch_label:3639 | _mlb_person_id:3651 | _mlb_value:3659 | _mlb_first_value:3664 | _mlb_number:3672 | _sequence:3679 | _hex_color:3685 | _first_mapping:3702 | _text:3710 | _event_player_full:3717 | _event_boxscore_players:3741 | _event_role_priority:3757 | _event_football_full_name:3776 | _event_text_player_full:3789 | _event_passer_full:3845
+sports_ticker/providers/espn_fastcast.py,Server: providers,38756,960,_FastcastSocket:30 | EspnFastcastSource:50 | _freeze_snapshot:479 | _snapshot_events:490 | _snapshot_event_ids:505 | _replace_snapshot_event:517 | _patch_event_ids:564 | _absolute_patch_event_ids:604 | fastcast_topic:639 | _discover_fastcast:655 | _connect_fastcast:661 | _fastcast_socket_url:677 | _read_json:698 | _json_object:709 | fastcast_published_at_ms:719 | _decode_fastcast_payload:739 | _inflate_base64:765 | _checkpoint_url:784 | _apply_fastcast_payload:797 | _is_patch_sequence:811 | _is_patch:821 | _apply_json_patch:827 | _resolve_patch_path:851 | _find_uid_path:863 | _find_uid:882 | _pointer_parts:888 | _read_path:897 | _change_path:909 | _is_socket_timeout:945
+sports_ticker/providers/factory.py,Server: providers,3719,75,create_provider:5
+sports_ticker/providers/features.py,Server: providers,9076,294,FeatureSource:20 | GolfSource:27 | RacingSource:31 | StockSource:35 | FlightsSource:39 | MusicSource:43 | NewsSource:47 | _FeatureProvider:51 | _content_payload:102 | _news_payload:123 | _extract_content:151 | _metadata:165 | _records:179 | _is_record_mapping:206 | _first:237 | FeatureProviders:245
+sports_ticker/providers/flights.py,Server: providers,3691,121,FlightsProvider:13 | _flight_kind:47 | _flight_family:60 | _default_flight_item:66
+sports_ticker/providers/fotmob.py,Server: providers,29325,740,_DetailCacheEntry:62 | _MatchSource:71 | _RawMatchesResponse:81 | FotMobSoccerProvider:89 | _matches_url:428 | _detail_entry_is_fresh:432 | _display_days:444 | _league_matches:450 | _visible_matches:468 | _display_window:488 | _content_item:501 | _match_state:546 | _is_halftime:557 | _status_label:571 | _fotmob_period:578 | _match_status:591 | _needs_details:617 | _situation:624 | _team_colors:666 | _sort_key:677 | _kickoff:681 | _display_timezone:690 | _abbreviation:697 | _score:705 | _logo:710 | _event_player:714 | _event_minute:720 | _color:726 | _integer:731
+sports_ticker/providers/golf.py,Server: providers,2122,65,GolfProvider:15 | _golf_kind:33 | _golf_payload:39 | _round_label:58
+sports_ticker/providers/http.py,Server: providers,4299,119,JsonHttpError:18 | OwnedClient:22 | JsonHttpClient:39 | TextHttpClient:47 | _PooledHttpClient:54 | PooledJsonHttpClient:96 | PooledTextHttpClient:108
+sports_ticker/providers/live_sources.py,Server: providers,93877,2436,EspnGolfSource:159 | FinnhubStockSource:229 | _stock_logo_url:548 | FlightRadarSource:558 | EspnNewsSource:644 | _apply_news_team_colors:784 | _filter_news_for_ticker:810 | _article_team_records:830 | _article_athletes:861 | _classify_espn_news_article:887 | _news_impact:1033 | _article_abbreviations:1067 | ClockProvider:1092 | _golf_player:1109 | _rank_golf_players:1126 | _search_flight:1146 | _fetch_flight_details:1190 | _FlightReference:1210 | _merge_flight_details:1219 | _pending_flight:1240 | _tracked_flight_record:1293 | _airport_rows:1453 | _looks_like_flight:1535 | _detail_mapping:1542 | _flight_identifiers:1553 | _compact:1574 | _flight_code_parts:1580 | _same_flight_number:1594 | _airline_codes_from_flight:1615 | _airline_logo_url:1649 | _airport_info:1659 | _flight_position:1720 | _flight_status:1774 | _state_from_text:1816 | _flight_times:1849 | _delay_minutes:1876 | _source_distance:1908 | _source_progress:1931 | _distance_miles:1944 | _eta_text:1967 | _format_duration:1993 | _schedule_status:2001 | _aircraft_code:2021 | _aircraft_label:2029 | _first_text:2037 | _number_first:2049 | _number_optional:2059 | _integer:2073 | _boolean:2079 | _timestamp:2095 | _iso_timestamp:2131 | _airport_weather:2140 | _temperature_text:2267 | _first_event:2278 | _status:2282 | _is_current_golf_event:2291 | _golf_round:2325 | _golf_brand:2332 | _is_golf_match_play:2338 | _golf_match_play:2349 | _first_mapping:2401 | _timeout:2408 | _symbols:2415 | _positive:2419 | _number:2423
+sports_ticker/providers/logo_overrides.py,Server: providers,4719,76,corrected_logo:51 | mini_logo_sources:58
+sports_ticker/providers/market_sessions.py,Server: providers,1334,36,_calendar:11 | MarketSession:17 | us_equity_session:22
+sports_ticker/providers/music.py,Server: providers,1609,49,MusicProvider:13 | _music_kind:44
+sports_ticker/providers/news.py,Server: providers,716,26,NewsProvider:11
+sports_ticker/providers/news_transactions.py,Server: providers,8225,238,ConfirmedTransaction:52 | TransactionConfirmationSource:64 | NhlTradeTrackerSource:79 | _tracker_url:152 | _parse_tracker:160 | _normalize:224 | _contains_name:232
+sports_ticker/providers/nhl_live.py,Server: providers,11249,277,NhlLiveSituationSource:21 | _current_games:161 | nhl_team_key:180 | _descriptions:190 | _current_penalties:197 | _game_events:219
+sports_ticker/providers/normalization.py,Server: providers,16315,453,normalize_settings:58 | normalize_content:99 | normalize_provider_result:114 | _content_records:163 | _is_grouped_content:181 | _content_item:193 | _family:209 | _canonical_family:244 | _stable_identifier:251 | _stable_value:263 | _data_payload:273 | _apply_sports_logo_overrides:315 | _sports_display:343 | _nested_text:372 | _is_visible:381 | _records:393 | _first_present:406 | _health:413 | _datetime:428 | _normalize_sport:442 | _text:447
+sports_ticker/providers/payloads.py,Server: providers,670,18,as_mapping:9 | mapping_values:14
+sports_ticker/providers/racing.py,Server: providers,2969,78,RacingProvider:14 | _racing_kind:55
+sports_ticker/providers/racing_asset_updater.py,Server: providers,4989,110,RacingAssetUpdater:19
+sports_ticker/providers/racing_cup.py,Server: providers,6670,115,CupRacingSource:15
+sports_ticker/providers/racing_endurance.py,Server: providers,16339,295,_epoch:25 | _state:32 | _indexed:37 | _gap:46 | RacingImageCatalog:56 | EnduranceRacingSource:76 | wec_drivers:229 | imsa_drivers:260
+sports_ticker/providers/racing_grid_verified_db.json,Server: providers,15975,153,
+sports_ticker/providers/racing_live.py,Server: providers,53147,1242,LiveRacingSource:127 | _f1_statistics:725 | _f1_event_to_race:735 | _f1_relevant_sessions:786 | _f1_short_event:815 | _f1_team_match:825 | _f1_team_color:830 | _f1_car_url:834 | _indycar_event_to_race:843 | _indycar_event_slug:864 | _parse_indycar_weekend_html:869 | _indycar_relevant_sessions:898 | _indycar_short_event:927 | _clean_race_name:950 | _title_race_words:957 | _is_timed_session:963 | _indycar_driver:985 | _indycar_session_time:1032 | _team_livery:1042 | _indycar_live_status:1047 | _normalize_racing_flag:1059 | _driver_abbr:1063 | _nascar_short_event:1081 | _get_nascar_car_url:1088 | _nascar_driver:1104 | _session_lifecycle_state:1138 | _in_reset_window:1161 | _display_timezone:1170 | _format_local_time:1177 | _format_duration:1181 | _format_qualifying_time:1190 | _parse_datetime:1195 | _mapping:1205 | _sequence:1209 | _number:1215 | _integer:1222 | _rounded:1229 | _first_text:1234
+sports_ticker/providers/racing_number_colors.json,Server: providers,36527,835,
+sports_ticker/providers/racing_sockets.py,Server: providers,2703,58,open_timing_socket:11 | AlkamelSnapshot:18
+sports_ticker/providers/racing_weather.py,Server: providers,3137,63,CircuitWeatherSource:13
+sports_ticker/providers/score_alerts.py,Server: providers,49962,1086,_number:46 | _describe:53 | _football_event_identity:202 | _football_events:221 | _has_football_projection:232 | _football_event_side:238 | _compact_metric:250 | _latest_scoring_play:260 | _football_scoring_play_for_score:299 | _hockey_scoring_play_for_score:321 | _FootballScoreMemory:354 | _football_score_phase:383 | _football_score_memory:388 | ScoreAlertTracker:417 | alerts_for_settings:812 | _extract_alert_facts:852 | _football_scoring_status:1007 | _play_player:1021 | _play_assists:1033 | _football_down_distance:1041 | _football_red_zone:1058 | _latest_turnover_play:1064
+sports_ticker/providers/singleflight.py,Server: providers,1768,54,SingleFlightCache:14
+sports_ticker/providers/sports_display.py,Server: providers,78271,1803,racing_flag_code:123 | racing_signal:138 | racing_flag_pixel:171 | _racing_number_colors:207 | racing_number_style:211 | racing_short_name:246 | SportsDisplayProjector:293 | sports_content_sort_key:391 | _status:407 | display_situation:480 | assign_active_team:535 | _baseball_batting_team:614 | _baseball_player_name:621 | baseball_player_stats:635 | _football_situation:671 | _final_status:716 | _period_status:736 | _is_zero_clock:745 | _nhl_has_shootout_marker:751 | _baseball_status:786 | normalize_soccer_clock:793 | _seeds:841 | _football_ranks:851 | _seed:866 | _rank:871 | normalize_rank:882 | _possession:892 | _yard_line:908 | _shootout:922 | _results:932 | _events:940 | soccer_event:956 | _boolean_any:993 | _integer:997 | _integer_or_none:1002 | _mapping:1009 | _sequence:1013 | _competitors:1017 | _find_side:1021 | _first_mapping:1025 | baseball_inning_display:1083 | project_baseball_display:1096 | normalize_competition_stage:1134 | _competition_stage:1139 | espn_competition_stage:1160 | fotmob_competition_stage:1174 | golf_competition_stage:1184 | nascar_competition_stage:1192 | nhl_competition_stage:1201 | sports_game_phase:1206 | project_sports_display:1233 | sport_family:1261 | matches_followed_team:1277 | _nhl_situation:1300 | nhl_manpower_situation:1314 | nhl_goal_display:1418 | nhl_shootout_display:1443 | football_name_matches:1501 | normalize_football_turnover_play:1521 | football_red_zone_for_play:1745
+sports_ticker/providers/stale_cache.py,Server: providers,2138,55,SettingsResultCache:14
+sports_ticker/providers/stock_catalog.py,Server: providers,3009,65,StockSymbolCatalog:14
+sports_ticker/providers/stocks.py,Server: providers,910,35,StockProvider:13 | _stock_kind:31
+sports_ticker/providers/weather.py,Server: providers,33401,889,WeatherLocationResolver:36 | OpenMeteoWeatherProvider:93 | _content_item:205 | HybridWeatherProvider:281 | _nws_content_item:484 | _nws_observation_is_fresh:602 | _nws_forecast:622 | _nws_day_name:659 | _condition_icon:668 | _temperature_f:685 | _wind_mph:704 | _number:714 | _text:721 | _forecast:725 | _query:750 | _nws_source_time:756 | _nws_uvi_valid_date:771 | _nws_uvi_values:783 | _normalize_uvi_city:796 | _first:802 | _at:808 | _rounded:814 | _optional_int:823 | _display:832 | _source_date:836 | _parse_datetime:847 | _parse_date:857 | _day_name:864 | _weather_icon:871
+sports_ticker/server.py,Server: startup and shared configuration,1314,46,server_config:17 | main:31
+sports_ticker/services/score_alerts.py,Server: services,23884,590,_int_or_none:41 | normalize_last_play:48 | _last_name:103 | baseball_half_inning:133 | is_walkoff:150 | home_run_stats:176 | _ordinal:193 | _describe_baseball:200 | _describe_football:265 | _describe_hockey:308 | _describe_basketball:327 | _describe_soccer:340 | _sport_family:349 | describe_score:382 | ScoreAlertTracker:395
+sports_ticker/tls.py,Server: startup and shared configuration,427,18,verified_https_context:12
+sports_ticker/wsgi_v2.py,Server: startup and shared configuration,877,33,create_app:16
+test.py,Six installation and update entry points,10086,247,main:34 | parse_args:74 | run_forced_wifi_setup:94 | print_report_header:121 | create_sink:128 | flash_colors:141 | check_backend:151 | check_internet:168 | check_platform_commands:175 | run_wifi_setup:181 | run_check:213 | write_report:227
+tests/AGENTS.md,tests: root,1939,35,
+tests/fixtures/assets/f1_mercedes_2026.webp,tests: fixtures,34648,,
+tests/fixtures/backend_legacy/backend_ops/worker_contract.py,tests: fixtures,3710,87,contract_id:19 | encode:29 | decode_result:41 | request:53 | WorkerProvider:71
+tests/fixtures/backend_legacy/sports_ticker/domain/models.py,tests: fixtures,8674,202,_freeze:39 | ContentItem:58 | DisplaySettings:86
+tests/fixtures/backend_legacy/sports_ticker/providers/contracts.py,tests: fixtures,3431,99,_freeze:17 | ProviderHealth:36 | ProviderResult:56 | Provider:83
+tests/fixtures/display/college_football_render_snapshot.json,tests: fixtures,1679,68,
+tests/fixtures/display/fbs_untimed_overtime.json,tests: fixtures,16356,469,
+tests/fixtures/display/fcs_scoring_capture.json,tests: fixtures,17924,681,
+tests/fixtures/display/football_scoring_capture.json,tests: fixtures,38446,1259,
+tests/fixtures/display/football_turnover_names.json,tests: fixtures,25574,916,
+tests/fixtures/display/mini_hockey_panes.json,tests: fixtures,17813,785,
+tests/fixtures/display/mini_racing.json,tests: fixtures,278422,9398,
+tests/fixtures/display/nhl_goal_ledger.json,tests: fixtures,14079,465,
+tests/fixtures/display/nhl_live_manpower.json,tests: fixtures,1589,77,
+tests/fixtures/display/nhl_rangers_pp_replay.json,tests: fixtures,2571,105,
+tests/fixtures/display/nhl_shootout_failed_attempt.json,tests: fixtures,6604,255,
+tests/fixtures/display/nhl_shootout_final.json,tests: fixtures,1484,65,
+tests/fixtures/display/nhl_shootout_ledger.json,tests: fixtures,16825,619,
+tests/fixtures/display/nhl_staggered_penalties_replay.json,tests: fixtures,3274,140,
+tests/fixtures/display/v2_flights_render_snapshot.json,tests: fixtures,1862,59,
+tests/fixtures/display/v2_render_snapshot.json,tests: fixtures,2116,93,
+tests/fixtures/display/v2_soccer_events_snapshot.json,tests: fixtures,873,32,
+tests/fixtures/providers/competition_stage_sources.json,tests: fixtures,18192,655,
+tests/fixtures/providers/f1_austin_practice1_2026.json,tests: fixtures,38829,1239,
+tests/fixtures/providers/f1_austin_practice_2026.json,tests: fixtures,39686,1288,
+tests/fixtures/providers/postseason_rounds.json,tests: fixtures,22854,829,
+tests/fixtures/providers/racing/cup-phoenix-2026.json,tests: fixtures,59607,1946,
+tests/fixtures/providers/racing/imsa-official-finish-2026.json,tests: fixtures,11519,515,
+tests/fixtures/providers/racing/imsa-petit-lemans-2026.json,tests: fixtures,28005,979,
+tests/fixtures/providers/racing/indy-other-series-2026.json,tests: fixtures,5324,194,
+tests/fixtures/providers/racing/wec-barcelona-2026.json,tests: fixtures,152336,5668,
+tests/fixtures/render_baseline/assets.json,tests: fixtures,726,18,
+tests/fixtures/render_baseline/mlb-bos.png,tests: fixtures,37870,,
+tests/fixtures/render_baseline/mlb-nyy.png,tests: fixtures,20024,,
+tests/fixtures/render_baseline/nfl-dal.png,tests: fixtures,32372,,
+tests/fixtures/render_baseline/nfl-nyg.png,tests: fixtures,7574,,
+tests/fixtures/render_baseline/pixels.json,tests: fixtures,6261,222,
+tests/fixtures/render_baseline/snapshot.json,tests: fixtures,2464,97,
+tests/native/mini_artwork_window.cpp,tests: native,2126,45,
+tests/native/mini_aviation_panels.cpp,tests: native,2297,56,
+tests/native/mini_device_payload.cpp,tests: native,1738,35,
+tests/native/mini_display_metrics.cpp,tests: native,6465,154,
+tests/native/mini_dns_answer.cpp,tests: native,1790,35,
+tests/native/mini_firmware_validation.cpp,tests: native,3454,58,
+tests/native/mini_hockey_panes.cpp,tests: native,11637,239,
+tests/native/mini_logo_residency.cpp,tests: native,2390,60,
+tests/native/mini_music_panel.cpp,tests: native,2990,68,
+tests/native/mini_racing.cpp,tests: native,3963,86,
+tests/native/mini_sprite_cache.cpp,tests: native,6039,141,
+tests/native/mini_station_retry.cpp,tests: native,1317,44,
+tests/native/mini_stock_panel.cpp,tests: native,2164,57,
+tests/native/mini_system_panels.cpp,tests: native,3434,74,
+tests/native/mini_text_layout.cpp,tests: native,2052,58,
+tests/native/mini_transfer_deadline.cpp,tests: native,3481,89,
+tests/native/mini_weather_panel.cpp,tests: native,4006,82,
+tests/python/api/test_asgi.py,tests: python,16187,385,_http_scope:22 | _request:31 | test_asgi_runs_flask_requests_concurrently_with_a_bounded_limit:46 | test_cancelled_http_request_keeps_its_slot_until_the_worker_stops:118 | test_asgi_rejects_invalid_http_thread_settings_before_creating_state:185 | test_asgi_factory_preserves_http_thread_environment_setting:194 | test_asgi_preserves_http_health_security_and_mutation_contracts:203 | test_production_asgi_lifespan_starts_and_stops_one_runtime:248 | test_asgi_lifespan_reports_failures_and_cleans_up_once:303 | test_asgi_import_has_no_database_or_runtime_side_effects:341 | test_server_bind_configuration_preserves_deployment_settings:355 | test_server_main_loads_environment_and_serves_asgi:366
+tests/python/api/test_controller_browser_contract.py,tests: python,1791,47,test_dashboard_shell_does_not_render_fleet_before_controller_token:11 | test_display_alert_surface_sends_the_controller_token:36
+tests/python/api/test_device_credentials.py,tests: python,4683,80,test_device_enrollment_requires_admin_and_rotates_without_exposing_hashes:11 | test_device_secret_survives_restart_and_rejects_corruption:46 | test_device_authorization_rejects_other_devices_and_registration_claims:56
+tests/python/api/test_device_poll_presence.py,tests: python,3619,57,test_device_poll_refreshes_presence_and_get_reads_preserve_it:8 | test_device_poll_omits_hidden_games_and_controller_read_retains_them:36
+tests/python/api/test_device_stream_asgi.py,tests: python,5440,138,_app:22 | _scope:51 | test_device_stream_sends_a_projected_snapshot:67 | test_device_stream_rejects_unknown_ticker_and_missing_subprotocol:91 | test_device_stream_rejects_missing_credentials_and_closes_after_rotation:116
+tests/python/api/test_device_visibility_pairing.py,tests: python,7902,137,test_month_old_rows_hide_without_revoking_controller_or_device_state:16 | test_snapshot_refreshes_expired_code_without_rebooting_mini:45 | test_v2_owns_baseball_inning_facts_for_both_renderers:73 | test_baseball_transition_reaches_both_devices_without_changing_source:98
+tests/python/api/test_firmware_manifest.py,tests: python,6391,182,_register_mini:24 | test_device_can_fetch_matching_manifest_by_existing_ticker_identity:45 | test_configured_firmware_binary_is_served_from_the_release_directory:63 | test_manifest_rejects_unknown_release_and_mismatched_hardware:82 | test_mini_update_request_requires_the_configured_manifest:115 | test_mini_update_request_rejects_incompatible_hardware:140 | test_manifest_validation_fails_closed:178
+tests/python/api/test_mini_artwork.py,tests: python,5225,90,test_music_cover_uses_real_projection_and_checked_memory_only_bytes:18 | test_artwork_cache_bounds_failures_and_rejects_untrusted_sources:71
+tests/python/api/test_mini_sprite_routes.py,tests: python,6386,109,test_mini_asset_contract_prepares_once_and_serves_checked_immutable_bytes:19 | test_mini_stock_logos_use_shared_immutable_sprites_without_changing_six:68
+tests/python/api/test_public_demo.py,tests: python,22793,492,prepared_public_assets:18 | _close:26 | test_public_coverage_separates_markets_and_uses_conference_names:33 | test_public_fleet_reports_finite_chip_temperature:73 | test_public_page_survives_conference_provider_outage:86 | test_public_frames_match_hardware_and_follow_renderer_changes:105 | test_public_scroll_matches_real_card_viewport:158 | test_public_demo_stays_available_without_controller_access:199 | test_public_layout_explorer_has_exact_frames_without_fleet_access:253 | test_public_mini_animation_uses_complete_artwork_and_current_weather_contract:329 | test_public_mini_gallery_rejects_stale_renderer_provenance:352 | test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode:361 | test_public_demo_sports_keeps_hardware_ads_off_server:425
+tests/python/api/test_public_demo_live.py,tests: python,22211,421,stock:22 | test_public_stock_refresh_is_shared_and_does_not_use_saved_apple_sample:31 | test_public_ewr_board_selects_a_real_arrival_without_personal_settings:59 | test_public_provider_failure_is_explicit_and_old_quotes_expire:87 | demo_app:102 | test_stock_web_frame_uses_real_card_and_prepared_logos:116 | test_animation_atlas_contains_consecutive_production_frames:144 | test_missing_public_feed_does_not_show_fake_flight_or_apple_quote:177 | test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor:184 | test_fleet_modes_stock_options_and_device_specific_specs:210 | test_empty_fleet_has_no_on_air_badge_and_shows_all_stock_options:261 | test_live_provider_envelopes_keep_renderer_identity:272 | test_device_build_labels_keep_existing_version_numbers:306 | test_page_versions_stylesheet_and_preserves_full_device_build_on_hover:311 | test_markets_allow_multiple_green_groups_and_keep_unused_groups_orange:335 | test_public_weather_uses_nyc_coordinates_without_ticker_settings:348 | test_live_pixels_are_not_stored_by_browsers_or_cdns:366 | test_flight_demo_tries_next_candidate_and_keeps_real_schedule_when_tracking_fails:377 | test_hardware_catalog_includes_server_with_its_own_build_and_runtime:409
+tests/python/api/test_registration_auth.py,tests: python,21562,515,_register:19 | test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap:29 | test_partial_display_settings_patch_preserves_other_ticker_controls:82 | test_conference_filter_patch_round_trips_without_changing_my_teams:118 | test_live_delay_patch_isolated_to_target_ticker:154 | test_device_registration_renews_expired_pairing_code:207 | test_device_registration_renews_the_code_exposed_by_ble_session:230 | test_controller_routes_return_only_the_owner_and_protect_mutations:263 | test_deployment_fleet_health_reports_bounded_heartbeat_facts:325 | test_registration_persists_mini_profile_and_limits_modes:348 | test_reboot_command_is_durable_and_single_use:388 | test_custom_registration_requires_display_geometry:419 | test_pairing_code_expiry_survives_backend_restart:437 | test_controller_group_pairs_multiple_tickers_and_lists_the_fleet:460
+tests/python/api/test_schedule.py,tests: python,14387,333,test_live_rule_counts_only_its_ticker_and_reverts_below_threshold:16 | test_schedule_presence_uses_only_enabled_rules_for_this_ticker:60 | _register_and_exchange:86 | test_schedule_routes_are_ticker_owned_and_use_weekly_days:103 | test_schedule_uses_ticker_timezone_condition_precedence_and_expiry:205 | test_schedule_dashboard_path_is_removed:323
+tests/python/api/test_stock_catalog.py,tests: python,2698,59,test_stock_search_uses_provider_symbols_and_caches_bounded_results:12 | test_stock_catalog_http_contract_and_failure_does_not_expose_provider_details:44
+tests/python/api/test_update_results.py,tests: python,5080,79,test_boot_failure_quarantines_only_assigned_family_and_preserves_controls:9 | test_download_failure_remains_retryable_and_cannot_claim_another_release:60
+tests/python/app/test_poller.py,tests: python,4018,128,_payload:18 | FakeStream:24 | Client:46 | StopAfterWait:77 | test_poller_bootstraps_over_http_then_accepts_stream_snapshot:88 | test_poller_reports_stream_failure_and_uses_backoff:113
+tests/python/application/test_composition.py,tests: python,637,17,test_device_identity_uses_explicit_value_and_windows_data_path:9
+tests/python/application/test_custom_stocks.py,tests: python,8902,160,test_custom_symbols_validate_normalize_and_persist_per_ticker:21 | test_custom_symbols_reject_invalid_settings:39 | test_custom_source_shares_quotes_but_keeps_lists_and_order_separate:44 | test_custom_list_patch_and_api_round_trip:94 | test_custom_projection_keeps_more_than_ten_stocks_in_saved_order:116 | test_new_custom_quote_interrupts_market_sweep_and_is_published_before_sweep_finishes:137
+tests/python/application/test_frame_builder.py,tests: python,8643,222,Catalog:14 | Utility:24 | Alerts:30 | News:40 | Viewport:50 | keyed_catalog:57 | decision:65 | test_score_alert_uses_clean_base_and_outranks_news:69 | test_static_content_receives_elapsed_animation_time:82 | test_visual_key_owns_update_animation_without_crashing:92 | test_scrolling_visual_key_changes_when_a_ready_card_installs_at_the_same_offset:99 | test_visual_key_preserves_rendering_cadence_classes:108 | test_visual_key_invalidates_empty_scroll_overlays_output_and_assets:144 | test_static_no_games_content_advances_the_minute_progress_bar:167 | test_frame_builder_supports_mini_geometry:185 | test_frame_builder_crop_mode_preserves_native_pixels:200
+tests/python/application/test_lifecycle.py,tests: python,26907,740,payload:19 | IdlePoller:30 | Assets:38 | Logger:54 | Viewport:82 | Frames:102 | Sink:112 | Client:129 | Commands:139 | test_event_budget_keeps_remaining_events_in_order_for_the_next_frame:149 | test_scrolling_continues_while_a_delta_waits_for_background_asset_planning:173 | OfflineWiFiRecovery:230 | test_wifi_recovery_starts_with_the_application_and_selects_setup_frame:253 | test_fresh_content_keeps_connection_icon_until_cache_expiry:293 | test_same_poll_payload_does_not_update_scroll_cards:335 | test_static_frame_skips_unchanged_build_and_present:370 | test_april_fools_hardware_cards_refresh_when_the_day_changes:397 | test_delta_prefetches_only_changed_asset_scenes:448 | test_unchanged_success_does_not_write_poll_history:502 | test_frame_failure_does_not_stop_step_or_clear_matrix:524 | test_present_failure_keeps_last_good_matrix_frame_and_retries:545 | test_present_failure_retries_even_when_visual_key_is_unchanged:576 | test_unintended_black_frame_is_rejected_and_retried:607 | test_poll_failure_grants_grace_period_for_disconnected_content:635 | test_update_result_reaches_real_failure_overlay_once:676
+tests/python/application/test_prepared_updates.py,tests: python,3168,93,Cache:18 | Assets:29 | response:38 | test_consecutive_deltas_retain_unchanged_games_even_when_auxiliary_services_fail:45 | test_slow_producer_preparation_does_not_block_the_drawing_queue:72
+tests/python/application/test_provider_demand.py,tests: python,7535,158,test_demand_uses_schedule_horizon_without_device_presence:18 | test_app_mode_override_keeps_selected_provider_demand_without_device_presence:36 | test_paused_refreshes_keep_data_and_resume_before_the_next_interval:52 | test_demand_resolves_once_per_ticker_and_reads_fresh_state_each_pass:75 | test_scheduler_selects_demand_once_for_the_complete_provider_set:101 | test_market_holidays_early_closes_and_dst:127 | test_closed_market_fetches_once_and_retains_close_after_restart:131
+tests/python/application/test_refresh.py,tests: python,2076,66,Source:14 | _game:27 | test_refresh_interleaves_espn_and_fotmob_scoreboards_by_start_time:36 | test_snapshot_store_notifies_stream_listeners_after_replacement:54
+tests/python/application/test_scheduler.py,tests: python,11507,327,test_failed_provider_does_not_block_snapshot_publication:17 | test_accepted_degraded_provider_result_publishes_and_reports_warning:54 | test_repeated_provider_errors_are_compact_for_many_tickers:91 | test_failed_refresh_keeps_compatible_cached_provider_data:116 | test_settings_key_is_frozen_once_per_provider_ticker_pass:153 | test_ready_score_publishes_while_another_provider_is_blocked:188 | test_source_notifications_coalesce_and_keep_the_http_deadline:216 | test_settings_changed_during_read_cannot_publish_an_old_result:239 | test_source_change_during_a_pending_read_remains_queued:272 | test_background_scheduler_uses_one_batch_and_keeps_ticker_results_separate:303
+tests/python/application/test_stock_selection.py,tests: python,3327,85,test_categories_select_leaders_at_open_and_close_and_momentum_intraday:10
+tests/python/application/test_viewport.py,tests: python,34650,863,test_visible_update_requires_current_surface_and_changed_pixels_inside_the_window:21 | Catalog:52 | test_visibility_uses_presented_geometry_and_wraps_at_the_rotation_seam:65 | test_scroll_rotation_keeps_150_panes_and_updates_the_last_game:82 | _settle:116 | test_visible_update_publishes_before_blocked_offscreen_work_and_patches_in_place:124 | test_visible_burst_follows_inflight_offscreen_and_discards_its_stale_result:176 | test_background_worker_starts_next_offscreen_card_before_the_next_frame:223 | test_pending_cards_follow_scroll_order_across_the_rotation_seam:257 | test_cold_rotation_starts_after_one_screenful_without_waiting_for_the_last_card:281 | test_cold_progress_survives_an_equal_payload_before_the_first_screen_is_ready:314 | test_incremental_strip_matches_full_composition_for_alpha_and_changed_geometry:350 | test_tournament_update_recolors_both_boundaries_and_the_repeat_seam:381 | test_viewport_renders_only_changed_card:408 | test_changed_game_delta_reuses_every_unchanged_scene:432 | test_incremental_update_detects_changed_locally_generated_panes:458 | test_viewport_reuses_inflight_render_for_equal_content_in_a_new_generation:476 | test_viewport_reuses_surfaces_for_equal_content_from_a_new_payload:508 | test_unchanged_cached_panes_do_not_serialize_scenes_again:532 | test_fifteen_live_games_rerender_only_the_changed_pane:560 | test_cached_pane_strip_matches_previous_composition_across_wraps:605 | test_viewport_keeps_cold_start_unpublished_until_a_surface_is_ready:624 | test_viewport_keeps_committed_surface_when_a_replacement_fails:638 | test_viewport_omits_a_failed_new_card_and_keeps_old_layout_during_refresh:663 | test_stale_generation_failure_does_not_change_current_readiness:690 | test_asset_refresh_commits_successful_card_and_retains_failed_prior_card:723 | test_broken_worker_submission_is_recovered_without_stuck_queue:765 | test_broken_worker_future_requeues_the_current_card_once:791 | _drain:826 | _previous_pane_composition:835
+tests/python/assets/test_assets.py,tests: python,18372,439,test_completed_asset_future_registers_callback_outside_coordinator_lock:16 | test_coordinator_reuses_persistent_original_bytes:46 | test_asset_fetch_only_advertises_installed_image_decoders:66 | test_undecodable_original_is_replaced_with_a_verified_download:86 | test_undecodable_download_does_not_replace_a_valid_expired_original:102 | test_series_aware_ttl_caching:115 | test_coordinator_reuses_prepared_logo_after_restart:138 | test_logo_view_changes_from_fallback_to_prepared_image:155 | test_failed_logo_fetch_retries_after_negative_lifetime:170 | test_asset_revision_tracks_material_readiness_only:190 | test_running_durable_asset_view_observes_new_prepared_file:216 | test_default_positive_logo_remains_memory_readable_past_fifteen_minutes:231 | test_capacity_eviction_rehydrates_from_durable_cache_before_render_read:241 | test_content_cache_recovers_then_expires_last_good_payload:263 | test_content_cache_keeps_repeated_payloads_in_memory:276 | test_content_cache_store_does_not_wait_for_disk:293 | test_planner_extracts_every_family_without_mode_filtering:323 | test_planner_reads_team_logos_from_v2_content_envelopes:345 | test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response:368 | _png:405 | test_v2_alert_only_logo_reaches_the_production_frame:412
+tests/python/assets/test_mini_sprites.py,tests: python,5470,139,png:14 | test_sprite_identity_includes_bytes_and_policy_and_wire_rejects_damage:20 | test_persisted_reuse_conditional_refresh_same_url_changes_and_policy_invalidation:37 | test_source_304_preserves_sprite_and_corrupt_files_never_publish_ready:86 | test_cache_bounds_and_failed_writes_leave_the_previous_file_valid:118
+tests/python/clock/test_clock_renderer.py,tests: python,2887,81,legacy_clock_frame:17 | clock_fonts:45 | test_clock_renderer_matches_legacy_pixels:50 | test_clock_renderer_fills_minute_progress_inclusive:67 | test_clock_scene_kind_cannot_be_reconfigured:78
+tests/python/features/alerts/test_score_alert_renderer.py,tests: python,9334,254,test_football_goal_distance_chip_fits_beside_the_scoring_clock:17 | test_news_banner_cache_reuses_pixels_and_keeps_animation_output:40 | EmptyLogos:65 | test_baseball_alert_shows_top_bottom_and_mid_inning_markers:73 | test_baseball_alert_keeps_final_status_without_an_inning_marker:81 | test_score_alert_render_duration_matches_runtime_residence:87 | test_score_alert_groups_labeled_hockey_assists_in_a_separate_box:92 | test_score_alert_places_football_down_distance_in_its_own_chip:116 | test_score_alert_long_facts_keep_every_box_inside_the_center_panel:129 | test_score_alert_colors_down_distance_red_inside_the_red_zone:168 | test_score_alert_colors_down_distance_green_outside_the_red_zone:196 | test_score_alert_fact_boxes_keep_one_assist_label_without_repeating_the_headline:223 | test_sports_news_kinds_use_distinct_banner_accents:242
+tests/python/features/racing/test_racing_renderer.py,tests: python,8148,189,_item:15 | test_each_racing_series_renders_a_panel_frame:30 | test_completed_f1_cards_show_leader_time_and_following_gaps:47 | test_pinned_carousel_builds_the_entire_field:73 | test_pinned_racing_visual_key_ignores_unrelated_asset_revisions:89 | test_pinned_carousel_reuses_unchanged_driver_cards:109 | test_indycar_race_uses_gap_instead_of_qualifying_speed:136 | test_scroll_has_separate_class_cards_in_class_order:157 | test_safety_car_labels_stay_distinct_in_both_six_layouts:167
+tests/python/features/sports/test_sports_renderers.py,tests: python,30232,788,EmptyLogos:23 | test_tournament_rules_color_compact_sports_and_preserve_pinned_layouts:33 | test_regular_season_final_keeps_the_normal_status_rule:47 | sports:54 | test_scoreboard_is_deterministic_and_32_pixels_high:59 | test_campaign_ad_renders_as_a_compact_scroll_card:69 | test_baseball_compact_and_full_paths_match_legacy_oracle:99 | test_full_card_keeps_panel_geometry:128 | test_full_football_uses_alternate_for_gray_iowa_primary:136 | test_full_screen_clock_uses_dash_and_plain_zero:166 | test_full_football_marks_possession_above_the_team:173 | test_team_logo_gets_adaptive_keyline_when_mark_blends_into_background:202 | test_nyg_logo_color_stays_unoutlined_on_its_blue_background:218 | test_team_logo_keeps_high_contrast_mark_unoutlined:229 | test_team_logo_keeps_visible_color_without_an_unneeded_keyline:240 | test_team_logo_keeps_distinct_team_color_without_a_keyline:250 | test_crimson_ou_mark_stays_unoutlined_on_the_dark_ticker:260 | test_team_logo_with_its_own_contrasting_edge_does_not_get_an_extra_keyline:269 | test_team_logo_with_visible_color_details_does_not_get_an_unneeded_keyline:280 | test_full_logo_policy_outlines_a_mark_that_scroll_leaves_clean:292 | test_full_logo_policy_outlines_the_near_matching_jets_green_mark:309 | test_missing_logo_badge_uses_team_color_and_acronym:326 | test_missing_logo_badge_has_smooth_symmetric_rounded_edges:352 | test_scroll_sports_uses_colored_acronym_badges_when_logos_are_missing:364 | test_full_sports_uses_colored_acronym_badges_when_logos_are_missing:395 | test_full_baseball_renders_live_details_and_scales_long_names:426 | test_full_baseball_preserves_zero_stats_and_pitcher_era:468 | test_full_baseball_uses_projected_phase_and_batting_owner:512 | test_full_baseball_draws_abs_challenge_markers_from_situation:545 | test_full_baseball_draws_second_abs_challenge_marker:571 | test_score_alert_uses_full_panel_and_is_deterministic:597 | test_news_banner_keeps_live_frame_geometry:607 | test_hockey_power_play_renders_for_its_team_in_both_layouts:622 | test_hockey_full_screen_pages_every_real_goal:680 | test_hockey_shootout_columns_use_three_shared_rounds_without_covering_scores:710 | test_full_hockey_card_uses_empty_net_side:753
+tests/python/features/utility/test_utility_renderers.py,tests: python,4032,71,test_utility_and_weather_render_deterministically:15 | test_clear_weather_uses_moon_at_night:28 | test_media_and_flight_keep_explicit_animation_state:45 | test_system_status_panels_render_at_matrix_size:60
+tests/python/features/weather/test_weather_animation.py,tests: python,4731,114,fonts:25 | weather_item:29 | panel:45 | test_weather_panel_repeats_with_all_forecast_offsets:52 | test_small_weather_icons_repeat_at_each_forecast_offset:61 | test_weather_motion_remains_active:71 | test_storm_flash_is_continuous_at_the_loop_boundary:78 | test_weather_frames_continue_through_the_loop_boundary:89 | test_clear_night_stars_repeat_without_changing_the_moon:98 | test_production_catalog_keeps_the_loop_at_panel_size:106
+tests/python/features/weather/test_weather_art_contract.py,tests: python,733,19,test_mini_weather_track_uses_the_exact_shared_period:10 | test_invalid_or_partial_weather_frames_are_rejected:17
+tests/python/fleet/test_controller_groups.py,tests: python,1011,25,test_group_spotify_connection_is_shared_without_ticker_credentials:4
+tests/python/fleet/test_profiles.py,tests: python,1034,34,test_full_profile_has_six_panel_geometry:10 | test_legacy_normal_profile_reads_as_full:18 | test_mini_profile_has_one_panel_and_sports_only:24 | test_custom_profile_requires_geometry:32
+tests/python/integrations/test_spotify.py,tests: python,28066,720,FakeSpotifyHttp:33 | _sample_track:73 | _setup_service:86 | test_spotify_playback_caches_last_played_and_next_three_songs:116 | test_spotify_playback_preserves_last_played_song_when_idle:191 | test_spotify_queue_error_does_not_crash_playback:232 | test_asset_planner_plans_last_song_and_next_three_songs:254 | FakeLogoSource:279 | test_music_renderer_blends_dominant_color_from_previous_song:293 | test_spotify_image_url_selects_optimal_resolution_for_led_panel:321 | test_asset_planner_recognizes_family_and_kind_without_explicit_type:333 | test_production_spotify_refresh_interval_limits_api_polling:353 | test_spotify_api_cooldown_honors_retry_after_and_resumes_at_expiry:360 | test_spotify_adaptive_polling_and_access_token_cache:400 | test_spotify_adaptive_idle_polling_uses_cached_record:444 | test_spotify_access_token_refreshes_after_cached_lifetime:463 | test_spotify_unauthorized_cached_access_token_is_refreshed_on_next_poll:486 | test_spotify_transient_error_waits_for_retry_with_or_without_cached_playback:522 | test_spotify_playback_cadence_is_shared_by_tickers_in_one_group:552 | test_spotify_http_error_exposes_retry_after_header:585 | test_spotify_retries_failed_queue_fetch_for_the_same_track:606 | test_spotify_reauthorization_clears_playback_window_and_cadence:634 | test_spotify_shared_group_poll_uses_single_flight:666
+tests/python/operations/test_agent_startup.py,tests: python,14777,277,decision:18 | planner_calls:27 | test_shared_edit_guards_include_consumers:37 | session_repo:47 | test_packets_preserve_dirty_source_and_exclude_raw_prompts:74 | test_followups_preserve_scope_and_independent_agents_stay_separate:94 | test_hooks_never_plan_or_create_packets:115 | test_hooks_reuse_existing_packets_without_planning:128 | test_child_hook_prefers_its_own_packet:140 | test_unspecified_scope_never_calls_luna:149 | test_invalidated_cache_requires_explicit_model_selection:156 | test_cli_luna_is_an_explicit_choice:169 | test_cli_explicit_slice_needs_no_model:179 | test_failed_planning_saves_usage_without_overwriting_a_valid_scope:187 | test_model_cannot_omit_shared_owner_context_from_a_contract_change:205 | test_configured_session_commands_execute_from_a_nested_directory:215 | test_instruction_bridges_and_root_budget_have_one_owner:231 | test_cli_rejects_missing_task_without_mutating_source:246 | test_scope_ids_support_expansion_reset_and_path_safety:252 | test_packet_lists_no_unrelated_initial_mini_context:269
+tests/python/operations/test_agent_workspaces.py,tests: python,10912,213,test_local_inventory_excludes_deleted_files_without_changing_the_revision_tree:18 | source:26 | prepare:65 | test_pin_filter_packet_and_staging_preserve_omitted_files:72 | test_expansion_preserves_dirty_files_and_records_reason:94 | test_shared_edits_require_every_consumer_even_after_commit:106 | test_new_files_and_unknown_ownership_expand_conservatively:119 | test_private_runtime_and_unsafe_paths_are_rejected:134 | test_checks_record_commands_results_and_failures:139 | test_reject_existing_destination_bad_sha_and_manifest_mutation:152 | test_filter_capability_is_required_before_fetch:164 | test_manifest_slice_paths_checks_and_initial_context_are_real:173 | test_manifest_cycles_and_empty_patterns_fail:189 | test_cli_rejects_non_github_credentials:200 | test_check_input_digest_includes_new_files_and_staged_content:205
+tests/python/operations/test_backend_deployment.py,tests: python,12222,255,Host:20 | setup:45 | test_deployment_selects_the_fact_owner_and_shared_dependencies:66 | test_deployment_packages_shared_tls_helper_for_each_process:80 | test_bootstrap_copies_actual_legacy_contract_without_new_helper:111 | test_activation_restarts_only_the_changed_component:139 | test_failed_startup_restores_old_release_and_quarantines_candidate:149 | test_fetcher_code_rollback_requires_a_healthy_previous_replay:167 | test_guard_restarts_once_then_restores_only_the_failed_worker:178 | test_guard_resolves_an_interrupted_activation_from_durable_state:193 | test_failed_health_does_not_promote_a_process_with_another_release:206 | test_contract_rollback_keeps_a_compatible_cohort_after_later_worker_updates:213 | test_malformed_process_health_counts_as_failure_instead_of_stopping_the_guard:230 | test_replay_does_not_roll_back_a_fetcher_that_has_already_recovered:236 | test_guard_detects_crashes_between_successful_health_samples:246
+tests/python/operations/test_backend_evidence_privacy.py,tests: python,1005,21,test_workflows_upload_only_encrypted_backend_evidence:11
+tests/python/operations/test_backend_recovery.py,tests: python,4611,102,test_fetcher_circuit_preserves_good_data_and_other_tickers:19 | test_runtime_readiness_detects_stalls_without_treating_provider_errors_as_a_crash:54 | test_provider_preserves_exception_location_for_private_diagnostics:70 | test_incidents_and_agent_bundle_are_bounded_and_redacted:86
+tests/python/operations/test_backend_workers.py,tests: python,6224,135,message:22 | test_contract_identity_includes_shared_immutable_helper:27 | test_contract_identity_uses_the_actual_legacy_release_dependencies:44 | test_worker_retains_canonical_fields_and_private_exception_replay:59 | test_source_wait_does_not_take_the_fetch_lock_and_validates_its_bounds:86 | test_recovery_probe_keeps_previous_release_contract:104 | test_real_worker_process_returns_clock_and_health:119
+tests/python/operations/test_ble.py,tests: python,2671,70,make_envelope:13 | test_ble_envelope_authenticates_and_decrypts_wifi_credentials:28 | test_ble_session_reassembles_chunks_and_calls_callback:42 | test_pairing_code_persists_for_ble_then_clears_when_paired:63
+tests/python/operations/test_components.py,tests: python,1278,39,_git:8 | test_changed_components_skips_binary_file_reads:19
+tests/python/operations/test_context_benchmark.py,tests: python,14292,302,inputs:13 | ready:34 | injected_planner:42 | successful_runner:47 | test_usage_subsets_do_not_inflate_total:52 | test_injected_evaluation_keeps_expected_answers_out_of_prompts:63 | test_planners_cannot_inspect_evaluation_rubric_sources:84 | test_broad_build_scope_does_not_count_as_selected_entry_points:99 | test_failed_attempt_usage_remains_in_totals_when_planner_retries:111 | test_failed_unknown_usage_is_distinct_and_excluded_from_pairs:139 | test_success_after_unknown_usage_retains_lower_bound:160 | test_observation_counts_exact_utf8_request_and_repeated_source_text:169 | test_cli_defaults_to_offline_and_never_loads_model_runners:182 | test_case_validation_requires_three_classes_and_existing_paths:209 | test_planner_failure_evidence_preserves_available_usage:223 | test_observation_uses_each_transport_request_encoding:239 | test_partial_failure_counts_do_not_become_complete_usage:250 | test_arm_order_alternates_for_paired_runs:268 | test_attempt_checkpoints_keep_completed_usage_before_plan_failure:279 | test_report_write_keeps_valid_json:297
+tests/python/operations/test_context_discovery.py,tests: python,19066,366,byte_size:15 | repository:20 | request:40 | test_catalog_has_compact_descriptions_and_only_explicit_allowed_entrypoints:46 | test_catalog_limits_count_and_utf8_bytes:57 | test_allowed_files_preserve_missing_sources_and_reject_private_or_nonregular_paths:66 | test_linked_files_and_ancestors_are_rejected_before_reads:80 | test_component_inventory_includes_dependencies_owners_instructions_and_missing_files:99 | test_component_inventory_has_count_and_byte_limits:109 | test_requested_component_precedes_large_dependency_inventory:119 | test_ancestor_guides_precede_large_dependency_inventory:130 | test_python_symbols_use_ast_names_imports_and_lines:139 | test_cpp_and_swift_symbols_ignore_comments_and_strings:148 | test_search_queries_are_literal_data:163 | test_invalid_queries_fail_before_discovery:169 | test_literal_search_finds_paths_and_qualified_symbols:174 | test_search_bounds_total_source_reads:182 | test_search_bounds_scan_count_and_missing_path_output:195 | test_search_and_symbol_results_limit_match_counts:203 | test_filename_search_returns_without_reading_sources:214 | test_symbol_search_accepts_literal_path_prefix:221 | test_sparse_sources_have_explicit_missing_state:227 | test_targeted_excerpt_uses_definition_instead_of_earlier_text_match:235 | test_large_source_uses_streamed_late_definition_and_local_window:245 | test_scoped_substring_search_finds_late_matches_after_symbol_list_limit:264 | test_scoped_search_bounds_matching_definitions_separately:276 | hints:284 | test_filename_hints_rank_exact_paths_first_without_source_reads_or_scope_selection:289 | test_filename_hints_rank_rare_name_tokens_and_include_tests:302 | test_filename_hints_bound_count_bytes_and_task_tokens:311 | test_filename_hints_ignore_generic_words_and_honor_safe_tracked_index:319 | test_filename_hints_support_unicode_and_camel_case_names:330 | test_excerpt_limits_lines_bytes_and_nonascii_output:337 | test_source_reads_limit_bytes_and_lines:347 | test_invalid_syntax_is_explicit_and_does_not_invent_symbols:355 | test_unknown_operations_components_and_paths_fail:364
+tests/python/operations/test_context_find.py,tests: python,2731,63,test_find_lists_matching_paths_without_model_calls:17 | test_find_rejects_credential_excerpt_without_printing_source:27 | test_find_reads_one_named_definition:33 | test_manifest_build_set_can_import_startup_without_unselected_dependencies:41 | test_symbol_option_requires_excerpt:61
+tests/python/operations/test_context_planner.py,tests: python,15252,309,ready:17 | source:25 | test_planner_requests_controlled_inspection_then_returns_a_plan:36 | test_model_cannot_select_credentials_or_external_files:60 | test_unknown_checks_and_slices_are_rejected:66 | test_inspection_budget_counts_repeated_requests:78 | test_planner_failure_is_visible_without_keyword_fallback:88 | test_discovery_reveals_paths_before_context_selection:96 | test_undisclosed_path_is_rejected_even_if_tracked:118 | test_failed_validation_preserves_usage_and_bounded_evidence:129 | test_request_bytes_stop_large_tasks_before_any_model_call:143 | test_latest_results_replace_earlier_source_excerpts:152 | test_transport_failures_retain_completed_usage:165 | test_transport_sums_completed_turns_and_keeps_subsets_separate:177 | test_local_validation_enforces_bounds_independently_of_model_schema:191 | test_transport_handles_malformed_json_events_without_losing_failure_type:208 | test_later_failure_cannot_make_prior_unknown_usage_complete:218 | test_final_schema_requires_ready_and_no_more_requests:234 | test_timeout_preserves_measured_tokens_as_an_incomplete_lower_bound:242 | test_source_reads_are_bounded_and_known_files_only:254 | test_transport_disables_recursive_hooks_tools_and_memory:263 | test_transport_collects_usage_and_rejects_tool_events:274 | test_missing_cli_returns_an_actionable_error:296 | test_weather_art_and_catalog_tests_have_precise_consumer_ownership:302
+tests/python/operations/test_deployment_scope.py,tests: python,2306,54,test_recovery_compares_backend_changes_only:12 | test_shared_requirements_trigger_a_six_update:52
+tests/python/operations/test_frame_health.py,tests: python,3315,65,test_frame_receipt_requires_successful_nonblank_output_and_current_identity:16 | test_active_service_without_a_new_frame_fails_release_health:32 | test_failed_frame_validation_restores_previous_release_before_cleanup:42 | test_cleanup_retains_the_actual_rollback_release:54
+tests/python/operations/test_live_ticker_hardware_smoke.py,tests: python,832,21,test_idle_windows_preserve_the_last_known_stream_sequence:6
+tests/python/operations/test_mini_diagnostics.py,tests: python,2932,67,wire_frame:14 | test_complete_frame_keeps_every_rgb_byte_and_packet_order:22 | test_receiver_rejects_incomplete_or_corrupt_frames:35 | test_receiver_rejects_unknown_dimensions:51 | test_saved_matrix_and_png_match_the_wire_pixels:58
+tests/python/operations/test_mini_trust.py,tests: python,4401,93,test_committed_trust_store_matches_metadata_and_authorities:29 | test_generator_keeps_selected_root_certificates_and_removes_other_authorities:45 | test_generator_rejects_invalid_certificate_input:61 | test_generator_excludes_compromised_anchors_even_if_source_contains_them:66 | test_runtime_certifi_bundle_distrusts_compromised_emudhra_anchors:90
+tests/python/operations/test_repository_layout.py,tests: python,2570,57,test_firmware_comments_do_not_request_a_replacement_release:12 | test_current_layout_has_one_owner_for_tests_tools_and_backend_units:38 | test_entry_tools_resolve_the_current_display_fixture:52
+tests/python/operations/test_runtime_reporting.py,tests: python,5802,132,state:18 | github:23 | test_reports_survive_restart_acknowledge_only_confirmed_ids_and_exclude_details:61 | test_rollback_recovery_marks_the_restored_revision_without_clearing_the_failed_revision:78 | test_lost_acknowledgement_cannot_create_duplicate_checks_or_regress_recovery:91 | test_failed_delivery_keeps_reports_queued_and_retries_after_confirmation:106 | test_invalid_reports_never_reach_github:124
+tests/python/operations/test_update.py,tests: python,1504,38,Commands:9 | test_update_request_launches_once_until_finished:17 | test_updater_compiles_runtime_packages_before_activation:27
+tests/python/operations/test_update_journal.py,tests: python,2668,51,test_update_result_survives_network_failure_and_reports_each_transition_once:11 | test_boot_guard_recovers_an_interrupted_unhealthy_activation:30
+tests/python/operations/test_wifi.py,tests: python,10969,328,Commands:15 | test_wifi_setup_starts_hotspot_and_connects_from_portal:37 | test_wifi_setup_renderer_returns_the_real_panel_size:70 | test_wifi_setup_page_is_mobile_friendly_and_rejects_wrong_code:86 | test_wifi_setup_expires_and_limits_code_attempts:117 | test_local_setup_pin_persists_without_storing_wifi_password:155 | test_force_setup_marker_starts_wifi_mode_without_network_change:178 | test_ble_setup_owns_credentials_without_starting_hotspot:209 | test_local_setup_portal_requires_tls_context:234 | test_wifi_setup_default_threshold_is_twelve:260 | test_wifi_setup_auto_recovers_when_internet_returns:280 | test_probe_internet_checks_targets:324
+tests/python/platform/test_commands.py,tests: python,1683,50,test_platform_commands_delegate_to_injected_subprocesses:10 | test_update_command_requires_an_executable:46
+tests/python/platform/test_frames.py,tests: python,4077,132,test_memory_sink_converts_inverts_and_clamps_brightness:11 | test_frame_sink_rejects_wrong_display_size:24 | test_rgb_matrix_sink_uses_vsync_canvas_and_brightness:31 | test_rgb_matrix_sink_uses_direct_output_without_vsync:44 | _Canvas:55 | _Matrix:63 | _DirectMatrix:78 | test_memory_sink_retains_its_own_pixels_after_the_caller_changes_the_source:86 | test_banded_transfer_preserves_all_pixels_across_reused_vsync_canvases:95
+tests/python/platform/test_health.py,tests: python,1310,41,test_health_collector_reports_snapshot_and_caches_build:9 | test_health_collector_reports_wifi_lifecycle:31
+tests/python/platform/test_identity.py,tests: python,1134,26,test_identity_store_persists_primary_identifier:9 | test_identity_store_uses_fallback_when_primary_cannot_be_created:19
+tests/python/platform/test_pane_cache.py,tests: python,8437,202,test_cached_pane_requires_matching_scene_renderer_asset_and_pixels:17 | test_corrupt_pane_file_is_not_used:51 | test_persistent_pane_cache_is_bounded:69 | test_restart_shows_verified_cached_cards_while_renderer_is_blocked:82 | test_restart_does_not_show_a_cached_score_after_the_game_changes:129 | test_process_renderer_uses_new_prepared_logo_after_asset_revision:170
+tests/python/platform/test_performance.py,tests: python,5563,144,test_pi_logger_writes_frame_history_and_events_off_loop:8 | test_pi_logger_rotates_bounded_files:84 | test_pi_logger_keeps_bounded_overrun_details_and_stage_totals:95 | test_pi_logger_records_idle_ticks_and_viewport_age:121
+tests/python/platform/test_rgbmatrix_settings.py,tests: python,1002,33,test_settings_preserve_six_panel_geometry:6 | test_environment_can_disable_hardware_pulsing:14 | test_environment_uses_module_probe_when_pulsing_is_unset:24 | test_environment_uses_stable_refresh_default:30
+tests/python/protocol/test_catalog_provider.py,tests: python,5253,156,ConferenceCatalogClient:16 | test_college_conferences_are_existing_controller_league_options:69 | test_team_name_map_resolves_names_without_changing_team_payloads:103 | test_catalog_cache_uses_read_start_time_and_retries_failed_reads:133
+tests/python/protocol/test_client.py,tests: python,4688,129,_payload:12 | FakeResponse:23 | FakeSession:36 | test_client_fetches_the_version_two_data_endpoint:52 | test_client_registers_before_the_first_display_poll:65 | test_client_reports_http_json_and_transport_failures:93 | test_client_builds_a_tls_verified_device_stream_resume_url:102 | test_client_requires_a_complete_stream_resume_cursor:126
+tests/python/protocol/test_competition_stage.py,tests: python,3879,78,test_recorded_round_survives_snapshot_and_both_device_projections:25 | test_earlier_rounds_override_a_generic_final_type:44 | test_final_result_and_recap_do_not_change_a_regular_season_round:49 | test_soccer_uses_tournament_metadata_instead_of_full_time:57 | test_soccer_detail_round_is_available_when_the_match_omits_it:63 | test_pi_rejects_noncontract_competition_stages:69
+tests/python/protocol/test_competition_stage_sources.py,tests: python,4632,102,RecordedClient:29 | assert_stage_at_device_boundary:38 | test_recorded_soccer_rounds_reach_the_device_contract:50 | test_recorded_pga_events_reach_the_device_contract:56 | test_recorded_cup_schedule_metadata_reaches_the_device_contract:68 | test_nonplayoff_series_keep_stage_zero_at_the_projection:93 | test_stage_audit_covers_every_supported_sport:98
+tests/python/protocol/test_device_stream.py,tests: python,8254,206,_payload:17 | _message:21 | test_client_applies_delta_and_ignores_duplicate_sequence:33 | test_client_rejects_missing_and_reordered_deltas:58 | test_stream_reuses_unchanged_sections_and_detaches_incoming_replacements:68 | test_stream_delta_removal_and_invalid_replacement_preserve_recovery:89 | test_hub_replays_contiguous_updates_for_a_matching_cursor:106 | test_hub_resets_a_slow_client_with_a_full_snapshot:135 | test_hub_detaches_input_and_shares_an_immutable_wire_message:153 | test_hub_tracks_removed_and_null_sections_and_ignores_object_key_order:169 | test_projection_encoding_runs_with_the_projector_outside_the_event_loop:181
+tests/python/protocol/test_espn_batch.py,tests: python,8024,175,ControlledSource:20 | Client:25 | create:47 | update:55 | settings:61 | test_150_game_batch_encodes_shared_content_once_and_reprojects_only_changed_games:65 | test_batch_captures_one_version_and_keeps_conference_filters_separate:98 | test_worker_batch_validates_bounds_and_has_one_shared_game_table:121 | test_shared_batch_keeps_existing_new_and_muted_alert_histories_separate:142 | test_worker_client_splits_batches_at_the_contract_limit:158
+tests/python/protocol/test_espn_fastcast.py,tests: python,10717,316,_snapshot:25 | _plain:38 | test_source_versions_wake_waiters_and_change_after_worker_restart:46 | test_fastcast_topic_uses_scoreboard_path_and_group:70 | test_fastcast_socket_url_uses_secure_port_and_escapes_token:79 | test_fastcast_decoder_reads_plain_and_compressed_message_wrappers:93 | test_fastcast_patch_supports_uid_relative_and_json_pointer_paths:103 | test_fastcast_source_waits_for_checkpoint_after_a_message_gap:126 | test_fastcast_source_tracks_event_specific_update_times:166 | test_fastcast_source_ignores_non_patch_payloads:190 | test_snapshot_views_detach_input_and_retain_unchanged_events:204 | test_failed_patch_batch_keeps_the_complete_previous_snapshot:225 | test_patch_arrays_copy_move_test_and_escaped_paths:241 | _FakeSocket:254 | test_fastcast_source_subscribes_once_and_applies_compressed_update:277
+tests/python/protocol/test_espn_provider.py,tests: python,99584,2708,_event:27 | RecordingClient:64 | test_ncaa_college_football_rankings_fill_scoreboard_sentinel:124 | test_mixed_division_game_uses_each_team_ncaa_poll:154 | test_fbs_rankings_use_ncaa_ap_instead_of_espn_curated_rank:186 | test_ncaa_ranking_name_aliases_match_espn_team_names:211 | test_missing_college_logos_use_cached_ncaa_school_index:234 | _settings:269 | test_fastcast_invalidates_the_shared_source_before_five_seconds_without_http:273 | test_cfb_conference_filters_preserve_team_ids_and_keep_mixed_games:294 | test_unchanged_controller_active_sports_map_controls_cfb_conferences:339 | test_espn_after_three_requests_current_date_and_accepts_event:374 | test_espn_after_three_keeps_next_local_day_event_inside_window:396 | test_espn_before_three_requests_prior_and_current_local_dates:416 | test_espn_date_query_preserves_existing_parameters:440 | test_espn_date_query_repeats_each_calendar_date:450 | test_espn_overlapping_date_payloads_do_not_duplicate_events:463 | test_espn_cfb_group_overlap_prefers_fcs_ownership_without_duplicates:479 | test_espn_empty_date_response_is_healthy_and_empty:524 | test_espn_source_reads_once_for_any_number_of_tickers:537 | test_espn_raw_reads_share_across_active_masks_and_timezones:551 | test_espn_raw_failure_backoff_is_shared_across_ticker_views:590 | test_espn_malformed_scoreboard_is_unhealthy_with_other_league_success:628 | test_espn_scoreboard_leagues_read_concurrently:649 | test_espn_schedule_cache_refreshes_only_at_kickoff_or_during_live_play:678 | test_espn_live_refresh_reads_one_event_scoreboard_for_one_live_game_in_large_schedule:707 | test_espn_mlb_live_refresh_reads_summary_details_for_dense_slate:749 | test_espn_nhl_dense_live_slate_keeps_scoring_players:791 | test_espn_nhl_goal_details_keep_assist_roles_and_goal_score_identity:836 | test_espn_nhl_live_refresh_uses_scoreboard_clock_before_summary_detail:866 | test_espn_mlb_dense_live_refresh_keeps_details_after_schedule_refresh:922 | test_espn_fastcast_updates_live_game_without_an_event_http_request:1021 | test_espn_stale_fastcast_game_uses_one_targeted_http_refresh:1109 | test_espn_five_live_games_use_one_scoreboard_refresh:1214 | test_espn_cold_dense_live_set_uses_one_scoreboard_request:1256 | test_espn_sparse_event_scoreboard_requests_deduplicate_event_ids:1273 | test_espn_event_update_preserves_scoreboard_fields_and_live_state:1291 | test_team_logo_uses_first_usable_url_when_primary_logo_is_empty:1327 | test_espn_nhl_detail_update_keeps_scoreboard_live_status:1335 | test_espn_nhl_fastcast_merge_keeps_scoreboard_live_status:1360 | test_espn_event_update_keeps_mlb_players_when_fastcast_sends_empty_objects:1379 | test_espn_event_update_keeps_mlb_names_when_fastcast_sends_matching_ids:1397 | test_espn_event_update_preserves_final_state:1415 | test_espn_event_scoreboard_failure_keeps_scoreboard_healthy:1430 | test_espn_partial_scoreboard_failure_keeps_cached_league_and_fresh_league:1504 | test_espn_partial_scoreboard_poll_publishes_healthy_alerts_only:1564 | test_espn_discovery_refresh_finds_new_games_after_sixty_seconds:1624 | test_espn_event_updates_do_not_reset_discovery_age:1655 | test_espn_source_cache_timestamp_starts_after_network_completion:1679 | test_espn_failed_date_requests_return_unhealthy_stale_contract:1704 | test_espn_missing_event_id_is_unhealthy:1719 | test_espn_event_scoring_details_normalize_team_and_scorer:1737 | test_espn_hockey_scoring_details_mark_goal_team_and_clock:1772 | test_espn_event_scoring_details_extract_football_metadata_without_participants:1799 | test_espn_event_football_details_extract_turnovers_from_drive_plays:1825 | test_espn_event_scoring_details_keep_pick_six_context:1889 | test_espn_event_scoring_details_resolve_basketball_participants:1914 | test_espn_soccer_details_keep_goal_type_and_assist:1945 | test_espn_mlb_scoring_details_use_summary_play_type_and_run_count:1978 | test_espn_mlb_event_details_use_live_situation_names_without_boxscore_rows:2031 | test_espn_mlb_live_details_survive_failed_refresh_and_clear_at_final:2050 | test_espn_mlb_event_details_keep_scoreboard_batter_stats_without_boxscore:2142 | test_espn_mlb_event_details_count_pitcher_throws_from_summary_plays:2164 | test_espn_mlb_event_details_use_due_up_and_last_play_between_innings:2186 | test_espn_mlb_uses_summary_event_detail_url:2214 | test_espn_mlb_summary_retries_api_host_when_web_host_has_no_boxscore:2223 | test_espn_mlb_statsapi_fallback_keeps_espn_event_shell_and_scoring_history:2264 | test_espn_mlb_statsapi_matching_accepts_team_abbreviation_aliases:2323 | test_espn_mlb_statsapi_matching_uses_full_start_time_for_cross_midnight_series:2345 | test_espn_mlb_statsapi_feed_supplies_live_player_stats:2409 | test_espn_mlb_event_details_keep_last_pitch_when_last_play_starts_at_bat:2495 | test_espn_mlb_summary_requires_active_player_names_and_real_pitch_context:2522 | test_espn_mlb_statsapi_play_events_supply_zero_count_era_and_latest_pitch:2536 | test_espn_mlb_scoring_details_preserve_rbi_type_from_live_play:2595 | test_espn_period_five_plays_do_not_own_nhl_shootout_results:2628 | test_live_nhl_source_enriches_even_when_espn_detail_poll_is_suppressed:2643 | test_sparse_espn_hockey_details_clear_unverified_power_play:2680
+tests/python/protocol/test_f1_live_source.py,tests: python,10025,221,CapturedTiming:23 | test_f1_survives_the_adapter_snapshot_and_v2_projection:39 | test_f1_event_labels_keep_the_location_without_sponsors:76 | test_f1_refreshes_live_positions_and_caches_driver_identity:80 | test_f1_cached_timing_keeps_each_tickers_local_start_time:99 | test_f1_uses_live_lifecycle_for_delays_and_early_finishes:116 | test_f1_flag_recovers_after_a_caution:127 | test_f1_failure_reports_stale_data_and_respects_the_disabled_setting:141 | test_f1_race_uses_the_matching_competition_and_lap_count:161 | test_f1_qualifying_formats_the_latest_completed_segment_time:172 | test_completed_f1_practice_keeps_official_times_gaps_and_session_weather:182 | test_f1_weather_caches_circuit_location_and_conditions:198 | test_f1_weather_outage_keeps_timing_and_reports_unavailable_conditions:212
+tests/python/protocol/test_flights.py,tests: python,10734,253,FlightRadarFixture:18 | NearMissFlightRadarFixture:170 | _settings:180 | test_flight_source_supplies_live_and_airport_contract_facts:191 | test_flight_search_does_not_select_a_nearby_flight_number:222 | test_flight_provider_projection_and_render_keep_contract_shape:229
+tests/python/protocol/test_football_scoring_data.py,tests: python,12273,228,captured:18 | test_captured_fcs_singular_yards_and_kickoff_return_use_the_scoring_player:26 | test_captured_football_scores_keep_their_player_clock_yardage_and_drive:62 | test_late_final_football_detail_hydrates_once_without_next_drive_facts:85 | test_grouped_touchdown_and_conversion_keep_the_correct_scoring_player:115 | test_final_score_transition_alerts_once_and_score_corrections_do_not_replay:130 | test_failed_or_reversed_play_cannot_supply_scoring_detail:151 | test_unknown_two_point_score_does_not_invent_a_safety:159 | test_observed_touchdown_and_later_kick_keep_one_v2_takeover:169 | test_football_missing_logos_hydrate_without_replaying_or_retiming:214
+tests/python/protocol/test_football_turnover_names.py,tests: python,3003,59,test_recorded_turnover_players_keep_their_names_and_teams_in_v2_alerts:19
+tests/python/protocol/test_fotmob_provider.py,tests: python,23975,750,_InlineExecutor:24 | _NoOpExecutor:31 | _RecordingClient:42 | _live_match:67 | _final_match:82 | test_fotmob_normalizes_first_half_stoppage_clock:94 | test_fotmob_live_clock_has_one_apostrophe_without_hidden_spacing:111 | test_fotmob_prefers_the_precise_stoppage_clock:122 | test_fotmob_normalizes_second_half_stoppage_clock:135 | test_fotmob_reads_halftime_from_live_time_when_reason_is_empty:146 | test_fotmob_soccer_events_match_the_v1_renderer_contract:167 | test_fotmob_soccer_goal_keeps_assist_and_shot_facts:193 | test_fotmob_keeps_final_match_details_until_the_display_window_closes:224 | test_fotmob_fetches_pregame_details_for_team_colors:230 | test_fotmob_fetches_live_mls_colors_before_projection:246 | test_fotmob_replaces_the_last_live_details_with_one_final_snapshot:276 | test_fotmob_reuses_pregame_details_until_the_match_starts:296 | test_fotmob_emits_score_alerts_for_followed_teams:316 | test_fotmob_ticker_source_is_shared_across_one_hundred_tickers:370 | test_fotmob_ticker_source_expires_after_five_seconds:387 | test_fotmob_raw_date_cache_ignores_ticker_projection_settings:409 | test_fotmob_raw_date_cache_filters_one_hundred_varied_active_selections:452 | test_fotmob_raw_date_cache_backs_off_failed_dates_until_expiry:508 | test_fotmob_reads_the_two_match_dates_concurrently:547 | test_fotmob_color_detail_requests_are_bounded:575 | test_fotmob_caps_pregame_and_final_detail_warming_per_source_window:593 | test_fotmob_detail_failure_does_not_invalidate_fresh_scores:608 | test_fotmob_direct_fetch_keeps_fresh_source_semantics:630 | test_fotmob_score_alert_uses_canonical_soccer_event_time:646 | test_fotmob_partial_date_failure_preserves_alert_memory_and_recovery_baseline:678 | test_fotmob_dense_live_snapshot_drops_stale_details:732
+tests/python/protocol/test_golf_provider.py,tests: python,794,27,Source:7 | test_golf_provider_keeps_only_the_round_number:23
+tests/python/protocol/test_golf_source.py,tests: python,5852,149,MockHttpClient:8 | _sample_golf_payload:19 | test_golf_source_assigns_masters_or_pga_brand:47 | test_golf_source_excludes_future_tournament_before_start_day:52 | test_golf_source_includes_pre_tournament_on_start_day:64 | test_golf_source_includes_live_tournament:77 | test_golf_source_projects_presidents_cup_team_score_and_matches:90 | test_golf_source_reads_once_for_many_tickers_in_one_refresh:139
+tests/python/protocol/test_hockey_shootout_alert.py,tests: python,4490,87,test_hockey_shootout_winner_reaches_the_v2_alert_contract_once:21
+tests/python/protocol/test_http.py,tests: python,5923,158,server:19 | _client:83 | test_reuses_connections_across_threads_and_follows_redirects:91 | test_concurrent_reads_preserve_each_response:101 | test_closed_connection_recovers_on_the_next_read:108 | test_failed_reads_do_not_retry_or_poison_the_next_response:121 | test_redirect_loop_has_a_fixed_limit:129 | test_json_and_text_ports_keep_their_headers:136 | test_rejects_invalid_timeouts_before_opening_a_connection:145 | test_pool_retains_verified_tls_configuration:152
+tests/python/protocol/test_http_ownership.py,tests: python,4031,105,Client:14 | test_default_client_closes_once_and_injected_client_remains_open:34 | test_hybrid_weather_shares_one_owned_client_with_fallback:48 | test_application_closes_owned_resources_once_but_not_injected_catalog:58 | test_factory_owns_golf_source_but_injected_source_stays_open:76 | test_bootstrap_closes_route_catalog_and_resolver:93
+tests/python/protocol/test_immutable.py,tests: python,511,16,test_freeze_copies_nested_values_without_changing_mapping_keys:8
+tests/python/protocol/test_latency.py,tests: python,14745,283,test_fastcast_timestamp_comes_from_the_wrapper_and_not_the_message_id:22 | test_event_timing_stays_with_the_retained_snapshot_and_http_replaces_its_origin:30 | traced_payload:51 | test_timing_survives_projection_but_does_not_enter_the_scene_or_display_fingerprint:61 | test_input_timing_alone_does_not_create_a_new_delayed_source_frame:78 | timing:94 | test_latency_records_the_complete_path_only_after_matching_pixels_are_presented:101 | test_visibility_at_accept_and_ready_time_survive_offscreen_supersession:120 | test_visibility_classification_uses_presented_geometry_and_marks_overlays_unknown:140 | test_reused_card_does_not_attribute_an_earlier_worker_run_to_a_new_update:164 | test_superseded_and_unchanged_pixels_do_not_claim_a_display_latency:176 | test_bad_clock_order_remains_visible_in_the_record:189 | test_the_same_input_trace_is_measured_only_at_its_first_presentation:200 | test_receive_timing_is_serializable_across_the_polling_process_boundary:211 | test_timing_tracks_all_150_games_and_prunes_games_that_leave_the_rotation:221 | test_polling_process_bridge_retains_timing_on_success_events:244 | test_worker_receipt_starts_generic_timing_and_preserves_earlier_fastcast_timing:257 | test_report_counts_first_presentation_per_device_and_omits_small_sample_tail_estimates:273
+tests/python/protocol/test_logo_overrides.py,tests: python,2227,65,test_sports_logo_override_updates_top_level_and_nested_display_urls:11 | test_nfl_jets_keep_the_current_espn_mark_in_the_scoreboard_projection:43
+tests/python/protocol/test_mini_fields.py,tests: python,1446,22,test_mini_fields_preserve_display_facts_and_match_generated_filter:9
+tests/python/protocol/test_mini_hockey_contract.py,tests: python,1416,33,test_mini_hockey_vectors_use_the_shared_shootout_projection:16 | test_compact_hash_has_crossbar_extensions_and_exports_width:28
+tests/python/protocol/test_mini_racing.py,tests: python,3393,70,test_mini_has_one_top_three_page_per_class:15 | test_metric_values_and_colors_do_not_change_with_number_colors:27 | test_number_styles_preserve_season_class_and_leading_zero_identity:37 | test_upcoming_session_has_no_white_or_green_flag:45 | test_le_mans_lmp2_card_sits_between_hypercar_and_lmgt3:55 | test_compact_status_preserves_the_lap_and_start_time_without_clipping_a_leading_digit:65
+tests/python/protocol/test_model.py,tests: python,5727,133,_payload:17 | test_response_validates_the_v2_display_contract:28 | test_pairing_response_exposes_the_pairing_code:38 | test_payload_boundary_rejects_a_non_v2_response:45 | test_payload_hashing_and_snapshot_stability:50 | test_payload_hash_matches_canonical_wire_data_and_rejects_nonfinite_values:61 | test_frozen_hashing_matches_wire_bytes_without_thawing_the_tree:74 | test_payload_boundary_detaches_nested_values_inside_external_mapping_proxies:92 | test_response_can_cross_the_poll_process_without_mapping_proxy_errors:101 | test_display_delta_behavior:109
+tests/python/protocol/test_music_stale_scope.py,tests: python,1552,35,test_rate_limited_music_never_reuses_another_tickers_record:10
+tests/python/protocol/test_news_distribution.py,tests: python,11008,318,_article:16 | FixtureClient:111 | _source:120 | FixtureTradeVerifier:129 | test_ten_recent_real_transaction_shapes_get_impact_tiers:147 | test_espn_team_catalog_primary_and_alternate_colors_reach_news_records:157 | test_unverified_trade_language_stays_followed_team_news:179 | test_unverified_trade_recap_stays_a_headline_news_item:208 | test_sponsor_deal_does_not_create_a_team_signing_alert:226 | test_record_breaking_does_not_create_an_injury_alert:242 | test_blockbuster_and_major_trades_broadcast_without_followed_teams:254 | test_followed_team_receives_its_major_trade_and_all_blockbusters:272 | test_trade_request_followed_by_injured_reserve_move_is_an_injury_alert:280 | test_unverified_roster_transaction_stays_followed_team_news:307
+tests/python/protocol/test_news_transactions.py,tests: python,3861,120,TrackerClient:20 | _source:45 | test_tracker_confirms_recent_trade_with_both_teams_and_official_link:55 | test_tracker_rejects_old_and_unrelated_articles:76 | test_tracker_does_not_confirm_speculative_copy_of_a_completed_trade:103
+tests/python/protocol/test_nhl_live.py,tests: python,19173,381,NhlClient:24 | test_current_nhl_situation_replaces_historical_play_strength:48 | test_current_pp_and_empty_net_survive_faceoffs_without_historical_inference:75 | test_staggered_penalty_clocks_survive_projection_and_remove_expired_players:93 | test_complete_nhl_goal_and_shootout_ledgers_reach_the_v2_contract:133 | test_current_nhl_phase_controls_standard_counts_and_visibility:170 | test_shared_competition_stage_controls_nhl_overtime_through_both_devices:198 | test_explicit_nhl_power_play_counts_take_priority_over_overtime_defaults:230 | test_nhl_shootout_rounds_align_across_live_sudden_death_and_completion:240 | test_failed_game_reads_do_not_renew_or_preserve_old_manpower:277 | test_situation_cache_drops_finished_games_and_rejects_wrong_identity:293 | test_nhl_team_join_normalizes_provider_abbreviations:305 | test_nhl_manpower_replaces_stale_facts_through_snapshot_api_and_pi:310 | test_power_play_header_uses_advantaged_team_first:378
+tests/python/protocol/test_offline_contracts.py,tests: python,10038,222,_read:21 | _validate:25 | validate:90 | test_saved_positive_contract:95 | test_sports_projection_fixture_contains_content_and_overlays:99 | test_saved_negative_contract:133 | test_registration_contract_matches_route_defaults_and_normalization:144 | test_profile_fixture_preserves_input_coercion:178 | test_manifest_fixture_preserves_input_normalization:188 | test_schedule_fixtures_match_domain_normalization:196 | test_contract_required_fields_reject_missing_values:216
+tests/python/protocol/test_overlays.py,tests: python,6791,165,SequenceClient:11 | _scoreboard:22 | test_espn_score_change_enters_the_v2_alert_channel:41 | NewsClient:57 | VerifiedTransactionSource:121 | test_espn_news_source_produces_half_panel_payload_for_followed_team:147
+tests/python/protocol/test_polling.py,tests: python,611,12,test_backoff_is_deterministic_and_resets_after_contact:4
+tests/python/protocol/test_projection.py,tests: python,3372,102,test_provider_overlays_use_the_v2_event_envelope:14 | test_my_teams_filter_projection_matches_aliases:47
+tests/python/protocol/test_provider_shutdown.py,tests: python,2806,95,test_background_cleanup_waits_until_the_active_request_finishes:9 | test_close_during_thread_start_prevents_the_request:28 | test_cleanup_failure_is_not_repeated:50 | test_factory_owned_news_dependencies_preserve_injected_catalog:65 | test_shared_catalog_waits_for_news_lease:79
+tests/python/protocol/test_provider_singleflight.py,tests: python,2423,79,CachedValue:15 | test_concurrent_reads_share_one_completion_and_expire_from_completion_time:20 | test_loader_exception_releases_the_key_for_a_later_attempt:55 | test_cache_accepts_values_without_a_completion_timestamp:72
+tests/python/protocol/test_racing_asset_updater.py,tests: python,264,7,test_racing_asset_updater_initialization:3
+tests/python/protocol/test_racing_expansion.py,tests: python,13725,296,settings:23 | JsonResponses:27 | NoWeather:37 | ImsaSocket:42 | source:74 | projected:80 | test_supported_racing_series_are_selectable:88 | test_removed_series_is_not_selectable_or_polled_from_a_saved_setting:92 | test_cup_uses_the_race_specific_feed_and_retains_all_37_cars:106 | test_cup_rejects_another_series_or_race:124 | test_cup_results_expire_at_the_display_reset:133 | test_wec_retains_all_35_cars_with_class_positions_and_official_finish_gaps:140 | test_wec_rejects_wrong_session_identity:156 | test_wec_does_not_show_last_weekends_race:165 | test_imsa_reads_ready_documents_and_retains_all_54_cars:172 | test_imsa_does_not_reload_or_show_old_standings:192 | test_car_catalog_preserves_leading_zero_identity_and_rejects_wrong_number:201 | test_indycar_requires_the_correct_series_date_and_practice_number:210 | test_current_indy_development_test_never_appears_as_indycar:221 | test_circuit_weather_rejects_a_street_and_keeps_wind_bearing:236 | test_one_series_failure_does_not_freeze_a_healthy_series:253 | test_official_classifications_reach_the_mini_filter_contract:282
+tests/python/protocol/test_racing_flags.py,tests: python,5681,112,test_published_timing_vocabularies_keep_their_identity:30 | test_absent_or_unrecognized_values_never_become_green:35 | test_fia_white_flag_means_slow_vehicle:43 | test_white_flag_keeps_starter_and_corner_post_meanings_separate:48 | test_safety_boards_are_distinct_and_car_flags_keep_their_target:53 | test_every_signal_has_valid_pixels_at_all_three_native_sizes:67 | test_patterned_signals_remain_distinct_from_plain_flags:76 | test_native_fixture_matches_the_contract_generator:88 | test_reported_motion_survives_normalization_and_mini_projection:92 | test_car_and_sector_signals_survive_mini_projection_without_changing_the_track_signal:99
+tests/python/protocol/test_racing_live_source.py,tests: python,14269,341,JsonFixture:9 | TextFixture:23 | _settings:34 | NoCircuitWeather:38 | _source:43 | test_indycar_polls_the_official_timing_blob_and_driver_feed:47 | test_indycar_race_leader_sets_leader_gap_when_diff_is_present:95 | test_indycar_qualifying_uses_speed_on_ovals_and_time_on_street_courses:108 | test_indycar_short_event_names_keep_city_or_race_distance:125 | test_indycar_expired_post_session_clears_after_3am:140 | test_indycar_session_lifecycle_and_3am_rollover:186 | test_indycar_weekend_session_html_parser:274 | test_racing_standardized_flags:316
+tests/python/protocol/test_racing_short_names.py,tests: python,3266,53,test_race_short_names:44 | test_missing_event_uses_the_known_circuit_without_inventing_a_race_title:48 | test_missing_identity_remains_explicit:52
+tests/python/protocol/test_score_alert_boundaries.py,tests: python,14751,330,baseline:23 | touchdown:30 | test_touchdown_then_unenriched_extra_point_is_one_takeover:38 | test_later_touchdown_and_field_goal_still_alert:57 | test_conversion_without_preceding_observed_touchdown_is_not_dropped:74 | test_opponent_score_change_and_stale_poll_cannot_replay_the_same_touchdown:83 | test_initial_score_baseline_cannot_replay_after_a_correction:99 | test_football_score_memory_leaves_with_its_game:111 | test_distinct_touchdown_after_correction_gets_a_fresh_identity:123 | test_enriched_conversion_identity_cannot_replay_after_score_recovery:159 | test_primed_converted_touchdown_does_not_replay_its_extra_point:174 | test_standalone_conversion_remembers_the_parent_touchdown_identity:185 | test_baseline_seeds_all_past_play_ids_without_consuming_future_plays:199 | test_turnover_detail_cannot_split_a_touchdown_and_conversion:219 | test_espn_team_selects_a_usable_logo:244 | test_other_sports_keep_separate_consecutive_scores:250 | test_v2_alert_logo_is_planned_when_game_is_absent:260 | test_enriched_alert_updates_queued_or_visible_data_without_restarting:274 | test_display_delta_prepares_and_renders_alert_logo_without_a_game_card:298
+tests/python/protocol/test_sports_display.py,tests: python,16373,443,_event:9 | _item:19 | test_active_team_belongs_to_the_backend_sports_contract:25 | test_baseball_projects_live_player_names_from_scoreboard_situation:36 | test_baseball_projects_next_batter_when_between_innings:54 | test_baseball_projects_scoreboard_batter_stats:70 | test_football_red_zone_only_marks_the_opponents_end_zone:95 | test_college_football_projects_external_team_rankings:109 | test_college_football_uses_external_ranking_when_scoreboard_has_no_rank:124 | test_finished_game_has_no_live_play_context:138 | test_basketball_zero_clock_uses_period_end_label:148 | test_basketball_numeric_zero_clock_uses_period_end_label:157 | test_college_basketball_zero_clock_keeps_half_label:166 | test_timed_sports_zero_clock_uses_the_period_end_label:195 | test_zero_clock_does_not_create_period_end_for_countup_or_inning_sports:206 | test_final_status_keeps_overtime_number:237 | test_hockey_overtime_period_labels_follow_provider_period:256 | test_hockey_period_end_uses_end_label:267 | test_hockey_shootout_uses_shootout_label_not_overtime_number:277 | test_hockey_second_overtime_stays_overtime_without_shootout_marker:290 | test_soccer_clock_has_one_apostrophe_without_provider_spacing:300 | test_soccer_clock_keeps_stoppage_minutes_and_seconds:309 | test_soccer_clock_handles_first_half_stoppage_with_period:327 | test_espn_soccer_first_half_stoppage_projection:336 | test_nhl_shootout_status_uses_explicit_shootout_marker:349 | test_nhl_second_overtime_is_not_mistaken_for_a_shootout:361 | test_nhl_manpower_projects_counts_and_hides_unneeded_labels:371 | test_college_overtime_is_active_without_a_game_clock:422 | test_captured_ecu_uab_overtime_stays_active:429 | test_college_overtime_uses_final_only_after_provider_completion:440
+tests/python/protocol/test_sports_lifecycle.py,tests: python,6647,127,test_game_lifecycle_clears_only_live_context_for_both_devices:44 | test_football_cache_never_crosses_possession_period_score_or_break:86 | test_authoritative_status_precedes_lagging_clock_and_final_precedes_period_end:118 | test_fotmob_penalty_phase_precedes_the_old_extra_time_clock:124
+tests/python/protocol/test_weather_provider.py,tests: python,10953,269,FakeJsonClient:10 | _settings:106 | test_hybrid_weather_prefers_open_meteo_current_for_us_coordinates:110 | test_hybrid_weather_uses_open_meteo_current_when_nws_observation_is_stale:130 | test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location:149 | test_hybrid_weather_uses_nws_uv_bulletin_and_open_meteo_current:161 | test_hybrid_weather_reports_nws_uv_failure:174 | test_weather_provider_uses_source_calendar_labels:191 | test_nws_forecast_uses_observation_day_when_tonight_is_first:202 | test_hybrid_weather_uses_hourly_forecast_when_station_observation_is_missing:213 | test_weather_location_resolver_canonicalizes_a_zip:247
+tests/python/providers/test_score_alerts.py,tests: python,20056,539,test_score_alert_enrichment_details:7 | test_hockey_score_alert_hydrates_when_summary_detail_arrives_after_score:60 | test_hockey_goal_alerts_match_each_goal_and_hydrate_assists:100 | test_football_score_alert_uses_the_scoring_play:153 | test_football_turnover_alerts_include_player_context_and_deduplicate:176 | test_football_pick_six_detail_uses_returner_and_quarterback:223 | test_basketball_scores_never_create_alerts:247 | test_mlb_score_alert_detail_shows_player_stats_and_last_pitch:279 | test_mlb_home_run_detail_shows_statcast_metrics:303 | test_mlb_score_alert_does_not_infer_home_run_from_runs_scored:325 | test_mlb_score_alert_distinguishes_scoring_play_results:390 | test_mlb_score_alert_uses_verified_home_run_type:424 | test_score_alerts_filtering_and_team_matching:454 | test_cfb_score_alerts_follow_conference_filters:494
+tests/python/rendering/test_catalog.py,tests: python,1257,41,SolidRenderer:18 | test_catalog_routes_by_content_family:22 | test_catalog_rejects_duplicate_and_unknown_families:32
+tests/python/rendering/test_frozen_baseline.py,tests: python,446,13,test_production_frames_match_the_reviewed_offline_baseline:8
+tests/python/rendering/test_templates.py,tests: python,9666,176,NoTemplates:24 | Logos:29 | test_templates_are_bounded_and_return_independent_copies:37 | test_sports_template_matches_uncached_dynamic_and_logo_changes:49 | test_150_wide_distinct_sports_cards_fit_in_the_bounded_template_cache:73 | test_sports_logo_outline_changes_invalidate_the_template:90 | test_pinned_sports_field_templates_preserve_dynamic_fields:109 | test_mode_templates_match_fresh_layers_when_values_change:134
+tests/python/runtime/test_pacing.py,tests: python,1204,48,Clock:8 | test_frame_pacer_keeps_deadlines_after_fast_frames:16 | test_frame_pacer_rebases_after_a_slow_frame:25 | test_frame_pacer_resets_and_rejects_negative_intervals:36
+tests/python/runtime/test_state.py,tests: python,10601,267,_response:12 | _runtime:44 | test_runtime_uses_v2_settings_for_scroll_and_panel_controls:53 | test_alert_enrichment_updates_logo_without_restarting_or_requeuing:68 | test_scrolling_uses_payload_interval_and_integer_offsets:87 | test_sports_pinned_is_a_presentation_not_a_second_mode:100 | test_pinned_animation_survives_payload_refresh_and_empty_strip_install:121 | test_april_fools_ads_are_controller_only_and_ignore_live_delay:137 | test_april_fools_ads_change_at_midnight_and_stop_after_april_first:153 | test_april_fools_ads_do_not_enter_pinned_presentation:174 | test_flights_and_airports_have_separate_content_classes:184 | test_disconnect_keeps_content_until_the_cache_expiry:195 | test_score_alert_stays_on_the_led_for_eight_seconds:208 | test_score_alerts_queue_in_fifo_order_for_full_residence:220 | test_important_score_waits_for_current_alert_then_precedes_ordinary_queue:239 | test_cancelled_update_restores_the_active_mode:256
+tests/python/test_bootstrap.py,tests: python,721,23,test_default_registry_resolves_and_renders_clock_scene:13
+tests/python/test_modes.py,tests: python,2645,56,test_user_modes_have_one_explicit_owner:12 | test_sports_filter_marks_cards_without_removing_them_from_the_app_feed:30
+tests/python/test_rendering_core.py,tests: python,2079,73,SampleScene:19 | SampleRenderer:26 | test_context_keeps_the_injected_time:34 | test_registry_renders_a_scene_by_its_kind:45 | test_registry_rejects_duplicate_scene_kinds:56 | test_registry_reports_unknown_scene_kinds:65
+ticker-controller.service,Six installation and update entry points,829,28,
+ticker_core/AGENTS.md,Six: startup and public interfaces,592,10,
+ticker_core/README.md,Six: startup and public interfaces,4610,84,
+ticker_core/__init__.py,Six: startup and public interfaces,379,18,
+ticker_core/__main__.py,Six: startup and public interfaces,381,18,main:8
+ticker_core/_enum.py,Six: startup and public interfaces,354,14,
+ticker_core/app/__init__.py,Six: app,311,6,
+ticker_core/app/application.py,Six: app,31698,748,PollWorker:40 | ContentCache:47 | TickerApplication:66 | _run_poll_process:674 | _ProcessPollEvents:686 | _NullPiLogger:702 | _unintended_black:733 | _default_update_command:743
+ticker_core/app/frame_builder.py,Six: app,9135,196,ViewportSource:21 | FrameBuilder:32 | _content_mapping:182 | _stable_value:191
+ticker_core/app/latency.py,Six: app,10117,165,timestamp:10 | received_timing:16 | DisplayLatencyTracker:46
+ticker_core/app/poller.py,Six: app,14344,335,Waiter:27 | PollSucceeded:35 | PollFailed:45 | PollConnected:54 | PollStreamEvent:62 | PollUpdateResult:75 | BackendPoller:85
+ticker_core/app/updates.py,Six: app,3593,93,PreparedUpdate:15 | RejectedUpdate:25 | PreparedEventQueue:29 | delta_asset_source:88
+ticker_core/app/viewport.py,Six: app,37607,820,_CardRequest:31 | _CardSurface:47 | _CardJob:62 | _CardPixels:73 | CardViewport:84 | _surface_rgb:689 | _same_work_request:695 | _matches:705 | _patch_tiled_strip:715 | _compose_tiled_strip:748 | _initialize_process_catalog:774 | _render_process_job:786 | _render_catalog_job:799 | _cacheable:807 | _scene_mapping:814
+ticker_core/assets/__init__.py,Six: assets,801,25,
+ticker_core/assets/content.py,Six: assets,6760,181,CachedContent:17 | ShortTermContentCache:30 | _thaw_mapping:168 | _thaw:173
+ticker_core/assets/memory.py,Six: assets,7849,205,_Entry:22 | PreparedAssetStore:27 | MemoryAssetView:200
+ticker_core/assets/model.py,Six: assets,2200,69,AssetRequest:14 | AssetView:31 | LogoAssetView:43
+ticker_core/assets/planner.py,Six: assets,9295,190,AssetPlan:13 | AssetPlanner:19 | _content_items:84 | _payload_items:117 | _mapping:135 | _urls:140 | _records:145 | _add:150 | _add_team_logo:156 | _flight_logo_url:168 | _airline_domain:184
+ticker_core/assets/processors.py,Six: assets,2911,84,prepare_car:11 | prepare_imsa_car:27 | prepare_nascar_car:32 | remove_border_background:37 | _crop_nonwhite:71
+ticker_core/bootstrap.py,Six: startup and public interfaces,4145,111,CachedLogoView:23 | _ClockContentRenderer:36 | create_default_content_catalog:50 | create_default_frame_builder:72 | create_default_scene_registry:101
+ticker_core/composition.py,Six: startup and public interfaces,8716,209,create_application:36 | _device_profile:113 | _frame_geometry:127 | _create_sink:140 | _enabled:152 | _cpu_setting:160 | load_device_id:172 | _persist_pairing_code:187 | _load_pairing_code:201
+ticker_core/context.py,Six: startup and public interfaces,235,11,RenderContext:8
+ticker_core/drivers/__init__.py,Six: drivers,383,15,
+ticker_core/drivers/emulator.py,Six: drivers,3089,97,TkFrameSink:14
+ticker_core/drivers/frames.py,Six: drivers,562,27,FrameSink:11
+ticker_core/drivers/memory.py,Six: drivers,1467,48,MemoryFrameSink:10 | _prepare_frame:36 | _brightness:47
+ticker_core/drivers/rgbmatrix.py,Six: drivers,6089,158,_set_image:19 | RgbMatrixUnavailableError:26 | RgbMatrixSettings:31 | RgbMatrixFrameSink:84 | _sound_module_loaded:154
+ticker_core/features/alerts/__init__.py,Six: features,255,5,
+ticker_core/features/alerts/news_banner.py,Six: features,12135,303,news_banner_duration:58 | _ease_out:63 | _hex_rgb:68 | _readable:78 | _darken:91 | _gradient_stops:96 | _team_text_color:116 | _draw_header_gradient:128 | _news_kind_style:142 | wrap_lines:150 | NewsBannerMixin:172 | PreparedNewsBannerRenderer:290
+ticker_core/features/alerts/renderer.py,Six: features,6631,157,_hex:22 | _scale:32 | _mix:36 | _luma:40 | score_alert_duration:44 | news_banner_duration:49 | ScoreAlertRenderer:55 | NewsBannerRenderer:66
+ticker_core/features/alerts/score_alert.py,Six: features,24305,557,_scale:51 | _mix:55 | _luma:59 | _readable_team_color:63 | score_alert_duration:72 | _compact_fact_name:77 | _score_alert_fact_layout:85 | ScoreAlertMixin:172 | PreparedScoreAlertRenderer:485
+ticker_core/features/clock/__init__.py,Six: features,142,6,
+ticker_core/features/clock/renderer.py,Six: features,2514,65,ClockRenderer:23
+ticker_core/features/clock/scene.py,Six: features,224,11,ClockScene:8
+ticker_core/features/flight/__init__.py,Six: features,104,5,
+ticker_core/features/flight/renderer.py,Six: features,8998,178,FlightRenderer:24
+ticker_core/features/golf/__init__.py,Six: features,139,5,
+ticker_core/features/golf/renderer.py,Six: features,23976,459,GolfAnimationState:18 | GolfRenderer:26
+ticker_core/features/music/__init__.py,Six: features,146,5,
+ticker_core/features/music/renderer.py,Six: features,9965,192,MusicAnimationState:20 | MusicRenderer:36
+ticker_core/features/racing/__init__.py,Six: features,381,13,
+ticker_core/features/racing/assets.py,Six: features,384,15,
+ticker_core/features/racing/renderer.py,Six: features,31583,645,_is_timed_session:28 | racing_flag_color:51 | RacingRenderer:58 | _mapping:401 | _drivers:406 | _nascar_payload:412 | _header_label:426 | _info_name:436 | _display_flag:444 | _flag_style:451 | _pulse_flag:455 | _draw_mini_flag:462 | _draw_flag:469 | _draw_weather:477 | _draw_condition_icon:488 | _driver_position:507 | _driver_key:515 | _hex:520 | _sample_colors:529 | _trim_transparent_padding:551 | _draw_f1_car:557 | _draw_number:569 | _tiny_width:592 | _text_width:598 | _ordinal:607 | _luminance:617 | _brighten_if_dark:622 | _wind:631 | _round:640
+ticker_core/features/sports/__init__.py,Six: features,151,5,
+ticker_core/features/sports/ads.py,Six: features,19042,530,compose_april_fools_ads:416 | _ads_enabled:456 | is_hardware_ad:473 | _random_brand_order:482 | _ad_card:490
+ticker_core/features/sports/logo_badge.py,Six: features,2869,85,draw_missing_team_badge:14 | _badge_label:58 | _rgb:66 | _relative_luminance:78
+ticker_core/features/sports/logo_rendering.py,Six: features,2516,67,TeamLogoLayout:19 | team_logo_layout:28 | resize_team_logo:41 | prepare_team_logo:50 | get_prepared_team_logo:61
+ticker_core/features/sports/logo_visibility.py,Six: features,7979,218,LogoOutlineMode:24 | paste_team_logo:31 | _inner_contour_mask:88 | mean_edge_brightness:97 | _logo_edge_pairs:105 | _logo_pixel_pairs:125 | _is_edge_pixel:144 | _needs_keyline:156 | _is_contrasting:171 | _relative_luminance:184 | _contrast_ratio:194 | _keyline_color:204
+ticker_core/features/sports/pinned.py,Six: features,62257,1270,SportsMixin:24 | PreparedSportsFullRenderer:1149 | hockey_page_count:1263
+ticker_core/features/sports/renderer.py,Six: features,22764,456,LogoSource:29 | _clamp:36 | _hex:40 | _dark:50 | _is_sports_ad:54 | _sports_ad_width:60 | pixel_width:103 | pixel_text:108 | _normalise:121 | card_width:135 | SportsRenderer:150
+ticker_core/features/sports/stadium_port.py,Six: features,28773,648,_clamp:24 | fi:26 | li:33 | da:37 | hex_to_rgb:41 | pf_char:54 | pf_text:66 | pf_w:73 | draw_hybrid_text:79 | draw_football:104 | draw_base_diamond:120 | draw_shootout_dot:139 | draw_so_column:166 | calc_card_width:178 | StadiumRenderer:223 | PreparedStadiumRenderer:592 | build_strip:612 | draw_hockey_so_column:636
+ticker_core/features/status/__init__.py,Six: features,145,5,
+ticker_core/features/status/connection.py,Six: features,945,21,ConnectionLostOverlay:6
+ticker_core/features/utility/__init__.py,Six: features,114,5,
+ticker_core/features/utility/primitives.py,Six: features,1046,42,tiny_text:14 | hybrid_text:27 | normal_text:40
+ticker_core/features/utility/renderer.py,Six: features,15743,313,LogoSource:21 | EmptyLogoSource:28 | offline_elapsed_label:36 | UtilityRenderer:48
+ticker_core/features/weather/__init__.py,Six: features,99,5,
+ticker_core/features/weather/drawing.py,Six: features,30089,606,_phase:11 | _angle:16 | _travel:21 | _flash:28 | PreparedWeatherRenderer:49
+ticker_core/features/weather/renderer.py,Six: features,929,25,WeatherRenderer:12
+ticker_core/modes.py,Six: startup and public interfaces,587,23,DisplayMode:6 | display_mode:18
+ticker_core/platform/__init__.py,Six: platform,1520,53,
+ticker_core/platform/affinity.py,Six: platform,376,13,pin_to_cpu:6
+ticker_core/platform/assets.py,Six: platform,11096,270,AssetFetcher:21 | _asset_ttl_seconds:28 | PersistentAssetStore:36 | LongTermAssetCache:95 | AssetCoordinator:112 | _fetch_with_requests:242
+ticker_core/platform/ble.py,Six: platform,12939,302,derive_ble_key:32 | decrypt_credentials:43 | BleProvisioningService:60 | _BleSessionState:147 | _load_dbus_types:191 | _make_interface:217 | _BleObjectManager:224 | _BleService:240 | _BleCharacteristic:253 | _BleAdvertisement:284
+ticker_core/platform/commands.py,Six: platform,4023,112,WiFiNetwork:13 | PlatformCommands:20 | SubprocessPlatformCommands:42
+ticker_core/platform/constants.py,Six: platform,112,5,
+ticker_core/platform/device_credentials.py,Six: platform,1151,30,load_device_token:9
+ticker_core/platform/frame_health.py,Six: platform,2531,65,PresentedFrameHealth:17 | receipt_matches:54
+ticker_core/platform/health.py,Six: platform,2854,75,HealthCollector:15
+ticker_core/platform/identity.py,Six: platform,2179,67,DeviceIdentityStore:12
+ticker_core/platform/panes.py,Six: platform,6580,157,asset_signatures:25 | _renderer_fingerprint:36 | PreparedPaneCache:47
+ticker_core/platform/performance.py,Six: platform,25094,686,TickerPiLogger:25 | _Window:353 | _Metric:597 | _percentile:629 | _system_record:634 | _rss_mb:646 | _load_1m:663 | _error_text:670 | _length:675 | _number:682
+ticker_core/platform/update.py,Six: platform,2541,66,UpdateState:15 | OtaUpdaterService:22
+ticker_core/platform/update_journal.py,Six: platform,2533,65,UpdateJournal:8
+ticker_core/platform/wifi.py,Six: platform,21246,524,HotspotDetails:91 | WiFiAvailability:99 | WiFiSetupState:107 | PortalRunner:136 | HotspotStarter:143 | SetupUnavailableError:150 | SetupRateLimitError:154 | probe_internet:166 | run_flask_portal:177 | WiFiRecoveryService:182 | LocalProvisioningService:501 | _start_background:505 | _new_setup_code:509 | _hotspot_password:514 | _portal_url:519
+ticker_core/protocol/__init__.py,Six: protocol,1441,63,
+ticker_core/protocol/client.py,Six: protocol,15083,362,BackendError:25 | BackendTransportError:29 | BackendHttpError:34 | BackendPayloadError:46 | DeviceRegistration:51 | BackendClient:78 | _thaw_settings:348
+ticker_core/protocol/model.py,Six: protocol,21640,590,PayloadValidationError:33 | DeviceState:37 | _freeze:44 | _mapping:59 | _object:66 | _items:73 | _string:79 | _number:87 | _boolean:95 | _thaw:103 | canonical_payload_hash:111 | _json_object:118 | _json_payload_hash:125 | _display_payload_hash:138 | _render_data:151 | _renderer_type:171 | _renderer_sport:181 | ContentItem:196 | OverlayItem:235 | TickerSettings:273 | TickerResponse:306 | DisplayItemDelta:446 | DisplayDelta:457 | display_delta:475 | apply_display_delta:504 | _restore_pickled_response:538 | _frozen_mapping:586
+ticker_core/protocol/polling.py,Six: protocol,1517,41,PollBackoff:7
+ticker_core/protocol/stream.py,Six: protocol,5646,123,StreamMessage:14 | DeviceStreamState:77 | _sequence:120
+ticker_core/protocol/telemetry.py,Six: protocol,567,24,TelemetrySnapshot:10 | current_python_version:21
+ticker_core/registry.py,Six: startup and public interfaces,1485,45,DuplicateSceneRendererError:12 | UnknownSceneKindError:16 | SceneRegistry:20
+ticker_core/rendering/__init__.py,Six: rendering,560,18,
+ticker_core/rendering/catalog.py,Six: rendering,4454,112,ContentRenderer:14 | DuplicateContentRendererError:21 | UnknownContentRendererError:25 | content_family:29 | ContentRendererCatalog:54 | _stable_item:96 | _family_phase:101
+ticker_core/rendering/font_assets/DejaVuSans-Bold.ttf,Six: rendering,708920,,
+ticker_core/rendering/font_assets/DejaVuSans.ttf,Six: rendering,759720,,
+ticker_core/rendering/font_assets/DejaVuSansMono-Bold.ttf,Six: rendering,334268,,
+ticker_core/rendering/font_assets/DejaVuSansMono.ttf,Six: rendering,343140,,
+ticker_core/rendering/font_assets/LICENSE.txt,Six: rendering,2732,51,
+ticker_core/rendering/fonts.py,Six: rendering,2211,57,FontSet:11 | load_monospace_font:30 | load_display_font:37 | load_default_font_set:44
+ticker_core/rendering/geometry.py,Six: rendering,754,22,FrameGeometry:9
+ticker_core/rendering/model.py,Six: rendering,697,30,ContentScene:13 | RenderedContent:23
+ticker_core/rendering/pixels.py,Six: rendering,8074,141,normalize_special_chars:97 | draw_tiny_text:113 | draw_hybrid_text:128
+ticker_core/rendering/strip.py,Six: rendering,1060,30,compose_pane_strip:10
+ticker_core/rendering/style.py,Six: rendering,1536,48,sports_rule_color:33 | pane_divider_colors:40
+ticker_core/rendering/templates.py,Six: rendering,1720,45,image_key:9 | ImageTemplates:17
+ticker_core/rendering/values.py,Six: rendering,606,18,plain_mapping:7 | plain:12
+ticker_core/runtime/__init__.py,Six: runtime,835,37,
+ticker_core/runtime/model.py,Six: runtime,5405,196,FrameKind:18 | Content:34 | PayloadSnapshot:45 | ContentClassification:64 | StripSegment:72 | StripLayout:86 | FrameDecision:102 | UpdateRequest:132 | ModeRequest:140 | RuntimeConfig:147 | frozen_mapping:185 | _freeze:190
+ticker_core/runtime/pacing.py,Six: runtime,885,29,FramePacer:10
+ticker_core/runtime/state.py,Six: runtime,32080,791,_value:34 | _mapping:44 | _content:54 | _event:66 | prepare_content:73 | _fingerprint:86 | classify_content:98 | remap_strip_offset:157 | _QueuedEvent:179 | _ActiveEvent:185 | TickerRuntime:190 | _important_score:692 | _brightness:699 | _interval:708 | _canonical_mode:717 | _is_weather:725 | _is_music:730 | _is_visitor_flight:735 | _is_airport:740 | _pinned_sports:745 | _is_pinned_content:753 | _same_pinned_content:758 | _is_clock:772 | _is_stock:777 | _is_sports:782
+ticker_core/scene.py,Six: startup and public interfaces,522,23,Scene:8 | SceneRenderer:19
+tools/AGENTS.md,tools: root,1695,49,
+tools/assets/Ohio_State_Buckeyes_logo.svg,tools: assets,3827,9,
+tools/assets/ohio-state-white-text.svg,tools: assets,3842,9,
+tools/benchmarks/README.md,tools: benchmarks,7091,130,
+tools/benchmarks/benchmark_mini_https.py,tools: benchmarks,3369,72,benchmark:11 | main:56
+tools/benchmarks/context_discovery.py,tools: benchmarks,19037,330,AttemptFailure:27 | digest:35 | load_cases:39 | usage_counts:65 | observed_runner:86 | total_usage:133 | coverage:144 | score_result:150 | paired_summary:185 | evaluate:203 | load_planner:259 | write_report:268 | main:276
+tools/benchmarks/device_stream_apply.py,tools: benchmarks,3580,96,_plain:16 | main:24
+tools/benchmarks/frozen_render_baseline.py,tools: benchmarks,5165,101,run:27 | main:88
+tools/benchmarks/league_batch.py,tools: benchmarks,8954,173,ControlledSource:29 | FixtureClient:34 | worker_main:56 | main:82
+tools/benchmarks/matrix_transfer.py,tools: benchmarks,6255,126,PixelCanvas:22 | summary:32 | main:37
+tools/benchmarks/pi_pane_composition.py,tools: benchmarks,15496,342,FlattenedPanes:35 | BoundedPaneRibbon:74 | _independent_pane_frame:126 | _wait_ready:155 | _timings:173 | _case:194 | main:312
+tools/benchmarks/pi_stream_replay.py,tools: benchmarks,6889,155,CapturedConnection:15 | ReplayTransportClient:36 | DisabledCommands:64 | main:71
+tools/benchmarks/pi_viewport_baseline.py,tools: benchmarks,13934,258,process_metrics:33 | summary:74 | wait_ready:81 | fonts_manifest:99 | run_case:116 | main:220
+tools/benchmarks/pi_viewport_windows_baseline.json,tools: benchmarks,17276,547,
+tools/benchmarks/profile_followups.py,tools: benchmarks,9342,195,canonical:23 | metrics:27 | demand:35 | fastcast:75 | https:106 | main:176
+tools/benchmarks/sports_card_templates.py,tools: benchmarks,15267,246,load_reference:34 | Logos:45 | inputs:66 | main:95
+tools/benchmarks/stream_publication.py,tools: benchmarks,4982,115,projections:17 | measure:33 | replay:39 | main:86
+tools/benchmarks/worker_notification_latency.py,tools: benchmarks,7080,146,ControlledSource:29 | FixtureClient:34 | worker_main:45 | main:64
+tools/deployment/change_scope.py,tools: deployment,1434,39,mini_code_changed:8 | main:30
+tools/deployment/deployment_scope.py,tools: deployment,1613,44,backend_revision:12 | recovery_needed:20 | main:34
+tools/deployment/device_auth.py,tools: deployment,542,14,device_headers:7
+tools/deployment/provision_device_credentials.py,tools: deployment,3992,83,mini_digest:19 | pi_digest:54 | main:65
+tools/diagnostics/debug_openf1.py,tools: diagnostics,6649,163,get:27 | show:41
+tools/diagnostics/latency_probe.py,tools: diagnostics,10825,217,worker:22 | display:38 | server:85 | main:197
+tools/diagnostics/latency_report.py,tools: diagnostics,7568,125,summarize:24 | load_records:54 | render_source_sections:62 | render_fastcast_headline:72 | render_event_rows:84 | render_html:90 | main:110
+tools/diagnostics/live_pi_scoreboard_stress.py,tools: diagnostics,21065,511,_ssh_command:27 | _scp_command:41 | _ssh:55 | _live_game_items:66 | _orchestrate:107 | _percentile:207 | _summarize:215 | _device_run:235 | _temperature_c:452 | _phase_meets_budget:460 | _parse_args:472 | main:497
+tools/diagnostics/live_ticker_hardware_smoke.py,tools: diagnostics,9309,258,_ssh:18 | _records:39 | _baseline:51 | _post_records:65 | _timestamp:109 | _active_event:118 | run:128 | main:236
+tools/diagnostics/scroll_stress.py,tools: diagnostics,17472,323,summarize:26 | ControlledInput:35 | main:67
+tools/diagnostics/ticker_camera_evaluator.py,tools: diagnostics,32599,639,Calibration:30 | _quad_points:36 | load_calibration:44 | rectify:58 | _rect_mask:64 | metric_mask:81 | _marker_metrics:92 | _timestamp:109 | _profile:117 | estimate_shift:131 | _aligned:155 | _edge_energy:161 | _ghost_ratio:169 | _spray_ratio:196 | _phase_metrics:214 | _open_frames:257 | analyze_clip:289 | speed_velocity:419 | _manifest_number:426 | _manifest_window:435 | _resolve_manifest_path:453 | _comparison_rows:461 | _detect_declared_sync_marker:486 | analyze_manifest:522 | main:604
+tools/diagnostics/ticker_motion_trial.py,tools: diagnostics,27605,664,_repo_root:74 | speed_interval:97 | load_payload:105 | runtime_items:118 | _apply_badge:132 | badge:142 | baseline_badge:147 | _badge_font:153 | _rank_plane:159 | _coverage_mask_base:177 | _spatial_dither_frame:182 | motion_parameters:199 | render_motion_frame:218 | make_sink:227 | wait_for_layout:232 | layout_spans:243 | dwell_schedule:253 | _manifest_event:266 | validate_manifest:284 | write_manifest:312 | emit_sync_marker:317 | run_baseline:344 | run_segment:383 | run:520 | main:637
+tools/diagnostics/v2_control_harness.py,tools: diagnostics,12898,345,V2ControlHarness:57 | _object:145 | _settings:151 | _content:155 | _response:176 | run_self_test:190 | _assert_delayed_overlays:264 | main:303
+tools/diagnostics/virtual_hardware_lab.py,tools: diagnostics,30146,704,LoopbackHttpSession:49 | RestPollProbe:82 | LoopbackStreamConnector:142 | _LoopbackStreamConnection:168 | VirtualAssets:199 | VirtualPlatformCommands:213 | VirtualRunLogger:239 | _load_payload:277 | HypercornThread:282 | _free_port:344 | _snapshot:350 | _wait_for:373 | _save_frame:393 | run:412 | main:690
+tools/experiments/evaluate_news_headlines.py,tools: experiments,18098,469,_published_at:52 | _article_url:67 | _week_headlines:75 | _StoryTextParser:136 | _fetch_full_article:161 | _schema:193 | _output_text:223 | _classify:235 | _estimated_cost:314 | _classify_corpus:330 | _index_results:357 | main:374
+tools/experiments/golf_ui_concepts.py,tools: experiments,11115,276,GolfPalette:25 | GolfConceptRenderer:101 | render_all:226 | _save_contact_sheet:240 | main:253
+tools/experiments/render_mini_concepts.py,tools: experiments,6163,158,text:46 | frame:56 | sports:62 | weather:77 | music:90 | flight:102 | airports:115 | clock:130 | main:141
+tools/export_logo_rendering_decisions.py,tools: root,5956,165,build_manifest:37 | export_decisions:92 | main:146
+tools/mini/capture_mini.py,tools: mini,9852,206,checksum:18 | CapturedFrame:26 | FrameReceiver:31 | save_frame:68 | save_gallery:80 | collect:97 | main:188
+tools/mini/check_mini_tls.py,tools: mini,3043,80,check:12 | main:68
+tools/mini/check_mini_wifi.py,tools: mini,4950,99,check:13 | main:86
+tools/mini/generate_mini_fields.py,tools: mini,1121,32,header:14 | main:19
+tools/mini/generate_mini_trust.py,tools: mini,2519,64,build_trust_store:27 | main:42
+tools/mini/generate_mini_ui.py,tools: mini,3380,61,header:17
+tools/mini/generate_mini_weather.py,tools: mini,4003,88,animation_frame_count:27 | header:40 | main:73
+tools/mini/mini_logo_comparison.html,tools: mini,22640,62,
+tools/mini/mini_logo_workbench_web.py,tools: mini,30605,414,_load_state:86 | _png_base64:94 | _prepare_frames:101 | index:138 | compare:145 | catalog:151 | logo:180 | prepare_logo:199 | state:221 | comparison_picks:233 | rendering_manifest:283 | connect:315 | device:358 | disconnect:365 | _frame_checksum:375 | frame:384
+tools/mini/mini_sprite_vectors.py,tools: mini,1985,48,generate:17
+tools/mini/mini_ticker_test_pairer.py,tools: mini,10458,242,PairerState:38 | configure_logging:54 | find_serial_port:63 | serial_reader:73 | encrypt_credentials:98 | exchange_pairing_code:120 | wait_for_backend_code:134 | pair_once:146 | run:201 | parse_args:218
+tools/mini/racing_vectors.py,tools: mini,4418,88,game:19 | mini_payload:34 | vectors:43 | main:73
+tools/mini/verify_mini_logos.py,tools: mini,4510,107,verify:20 | main:93
+tools/rendering/build_demo_layouts.py,tools: rendering,10481,195,encode_image:35 | provenance:42 | prepare_rows:68 | local_render:116 | build:145 | main:182
+tools/rendering/render_clock.py,tools: rendering,1445,50,parse_datetime:16 | main:24
+tools/rendering/render_frame.py,tools: rendering,9297,212,parse_datetime:46 | load_snapshot:54 | normalize_snapshot:76 | _items:95 | _items_mapping:100 | content_items:106 | choose_item:118 | panel_image:129 | render_snapshot:136 | main:179
+tools/rendering/render_mini_ui.cpp,tools: rendering,6224,120,
+tools/rendering/render_mini_ui.py,tools: rendering,13383,204,cases:22 | prepare:108 | remote_render:143 | gallery:163
+tools/rendering/render_mini_weather.py,tools: rendering,5133,93,render:21 | main:69
+tools/rendering/render_offline_screen.py,tools: rendering,999,30,main:18
+tools/rendering/render_score_alert_combinations.py,tools: rendering,16651,311,_scores:38 | _game_data:45 | _status:54 | _alert:65 | collect_espn:93 | collect_mlb:195 | render_gallery:236 | main:294
+tools/rendering/render_score_alert_gallery.py,tools: rendering,9376,184,EmptyLogos:18 | render_gallery:138
+tools/rendering/verify_public_demo.py,tools: rendering,3165,55,main:25
+tools/workspaces/discovery.py,tools: workspaces,28267,575,_size:42 | _clip:46 | _append:50 | _target:62 | allowed_files:85 | catalog:101 | _query:127 | _closure:135 | _owners:153 | _name_tokens:158 | initial_hints:164 | _component:200 | _read:238 | _symbols:257 | _scan_targeted:320 | _symbol_result:422 | _search:446 | discover:507 | excerpt:524
+tools/workspaces/find.py,tools: workspaces,2385,49,main:17
+tools/workspaces/manage.py,tools: workspaces,20944,420,WorkspaceError:28 | git:32 | stamp:40 | write_json:44 | safe_path:50 | supports_filter:62 | tree:71 | matching:80 | resolve:90 | manifest_read:135 | select:142 | sparse:151 | metadata:156 | load:163 | save:174 | create:197 | expand:242 | audit:288 | run_check:323 | input_digest:357 | main:370
+tools/workspaces/native_hockey.py,tools: workspaces,2839,57,run:14 | main:44
+tools/workspaces/planner.py,tools: workspaces,17791,297,schema:53 | PlannerFailure:71 | request_text:79 | _usage:84 | codex_command:114 | run_codex:126 | validate:159 | plan_task:210
+tools/workspaces/start.py,tools: workspaces,13986,238,edit_owners:21 | inventory:35 | prepare:53 | hook:182 | main:207
+updater.py,Six installation and update entry points,13215,303,_repository_owner:27 | _git:35 | _prepare_release_directory:45 | _revision:55 | _changed_files:65 | _checkout_release:72 | _validate_release:83 | _current_release:91 | _service_is_healthy:99 | _install_requirements:119 | _activate_release:134 | _install_service:144 | _cleanup_releases:154 | _install_checked_release:176 | _install_boot_guard:193 | _recover_pending_boot:207 | main:235

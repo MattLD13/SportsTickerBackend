@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, PooledJsonHttpClient, PooledTextHttpClient
+from .racing_session import racing_timed_session
 from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
 
 
@@ -591,7 +592,7 @@ class LiveRacingSource:
         current_lap = 0
         time_to_go = ""
         track_type = str(heartbeat.get("trackType") or heartbeat.get("TrackType") or "").strip().upper()
-        qualifying_metric = ("mph" if track_type == "O" else "time") if _is_timed_session(session_name) else ""
+        qualifying_metric = ("mph" if track_type == "O" else "time") if racing_timed_session(session_name) else ""
         if is_live_on_feed:
             flag_raw = heartbeat.get("currentFlag") or heartbeat.get("SessionStatus")
             flag = _normalize_racing_flag(flag_raw)
@@ -719,7 +720,6 @@ class LiveRacingSource:
             return result
         except Exception:
             return {}
-
 
 
 def _f1_statistics(value: object) -> dict[str, Mapping[str, Any]]:
@@ -960,28 +960,6 @@ def _title_race_words(value: str) -> str:
     return re.sub(r"\bGp\b", "GP", words.title().replace(" Of ", " of "))
 
 
-def _is_timed_session(session: object) -> bool:
-    name = str(session or "").lower()
-    return any(
-        keyword in name
-        for keyword in (
-            "qual",
-            "fast",
-            "top 12",
-            "last chance",
-            "hyperpole",
-            "pole",
-            "shootout",
-            "prac",
-            "fp",
-            "warm",
-            "shakedown",
-            "test",
-            "time trial",
-        )
-    )
-
-
 def _indycar_driver(
     item: Mapping[str, Any],
     index: Mapping[str, Any],
@@ -1002,7 +980,7 @@ def _indycar_driver(
     raw_gap = str(item.get("diff") or item.get("gap") or "").strip()
     qualifying_metric = "mph" if track_type == "O" else "time"
     qualifying_value = f"{float(speed):.3f}" if qualifying_metric == "mph" and _number(speed) is not None else speed if qualifying_metric == "mph" else best_time
-    is_timed = _is_timed_session(session_type)
+    is_timed = racing_timed_session(session_type)
     if is_timed:
         gap = qualifying_value or (best_time if qualifying_metric == "time" else speed) or ("Leader" if pos == 1 else raw_gap)
     else:

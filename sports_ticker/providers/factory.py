@@ -21,7 +21,7 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         return FotMobSoccerProvider(FOTMOB_LEAGUES)
     if name == "news":
         from .catalog import EspnTeamCatalog
-        from .live_sources import EspnNewsSource
+        from .news_source import EspnNewsSource
         from .news import NewsProvider
         from .news_transactions import NhlTradeTrackerSource
         owns_catalog = catalog is None
@@ -55,21 +55,21 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         return provider
     if name == "golf":
         from .golf import GolfProvider
-        from .live_sources import EspnGolfSource
+        from .golf_source import EspnGolfSource
         provider = GolfProvider(EspnGolfSource())
         provider.own_source()
         return provider
     if name == "stock":
         from .stocks import StockProvider
-        from .live_sources import FinnhubStockSource
+        from .stock_source import FinnhubStockSource
         provider = StockProvider(FinnhubStockSource())
         provider.own_source()
         return provider
     if name == "flights":
         from .flights import FlightsProvider
-        from .live_sources import FlightRadarSource
+        from .flight_source import FlightRadarSource
         return FlightsProvider(FlightRadarSource())
     if name == "clock":
-        from .live_sources import ClockProvider
+        from .clock import ClockProvider
         return ClockProvider()
     raise ValueError("unknown provider component")

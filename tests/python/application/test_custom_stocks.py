@@ -10,7 +10,7 @@ from sports_ticker.fleet import TickerRepository
 from sports_ticker.markets import MARKET_GROUPS, MARKET_OPTIONS, selected_market_groups
 from sports_ticker.production import _provider_settings_key
 from sports_ticker.projections.data_api import project_data_v2, select_display_content
-from sports_ticker.providers import live_sources
+from sports_ticker.providers import stock_source
 from sports_ticker.providers.market_sessions import MarketSession
 from sports_ticker.providers.normalization import normalize_settings
 from sports_ticker.providers.stocks import StockProvider
@@ -42,7 +42,7 @@ def test_custom_symbols_reject_invalid_settings(symbols):
 
 
 def test_custom_source_shares_quotes_but_keeps_lists_and_order_separate(tmp_path, monkeypatch):
-    monkeypatch.setattr(live_sources, "MARKET_GROUPS", (SimpleNamespace(id="stock_tech_ai", label="Tech", symbols=("AAPL",)),))
+    monkeypatch.setattr(stock_source, "MARKET_GROUPS", (SimpleNamespace(id="stock_tech_ai", label="Tech", symbols=("AAPL",)),))
     monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
     now = [datetime(2026, 10, 20, 21, tzinfo=timezone.utc).timestamp()]
     calls = []
@@ -59,8 +59,8 @@ def test_custom_source_shares_quotes_but_keeps_lists_and_order_separate(tmp_path
             calls.append(symbol)
             return {"c": 100, "d": 2, "dp": 2, "t": now[0]}
 
-    monkeypatch.setattr(live_sources, "Thread", ImmediateThread)
-    source = live_sources.FinnhubStockSource(Quotes(), cache_path=tmp_path / "quotes.json", clock=lambda: now[0],
+    monkeypatch.setattr(stock_source, "Thread", ImmediateThread)
+    source = stock_source.FinnhubStockSource(Quotes(), cache_path=tmp_path / "quotes.json", clock=lambda: now[0],
         monotonic_clock=lambda: now[0], sleeper=lambda _: None,
         market_session=lambda _: MarketSession(False, "2026-10-20"))
     first = DisplaySettings(mode="stock", custom_stock_symbols=("NVDA", "AAPL"), active_sports={"stock_custom": True})
@@ -135,7 +135,7 @@ def test_custom_projection_keeps_more_than_ten_stocks_in_saved_order():
 
 
 def test_new_custom_quote_interrupts_market_sweep_and_is_published_before_sweep_finishes(tmp_path, monkeypatch):
-    monkeypatch.setattr(live_sources, "MARKET_GROUPS", (SimpleNamespace(id="stock_tech_ai", label="Tech", symbols=("AAA", "BBB")),))
+    monkeypatch.setattr(stock_source, "MARKET_GROUPS", (SimpleNamespace(id="stock_tech_ai", label="Tech", symbols=("AAA", "BBB")),))
     monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
     calls = []
     source = None
@@ -153,8 +153,8 @@ def test_new_custom_quote_interrupts_market_sweep_and_is_published_before_sweep_
                 records = source.fetch(custom)["content"]
                 assert any(row["symbol"] == "ZZZ" and row["market_group"] == "stock_custom" for row in records)
             return {"c": 100, "dp": 2, "d": 2, "t": 1000}
-    monkeypatch.setattr(live_sources, "Thread", Thread)
-    source = live_sources.FinnhubStockSource(Client(), cache_path=tmp_path / "stocks.json", clock=lambda: 1000,
+    monkeypatch.setattr(stock_source, "Thread", Thread)
+    source = stock_source.FinnhubStockSource(Client(), cache_path=tmp_path / "stocks.json", clock=lambda: 1000,
         monotonic_clock=lambda: 1000, sleeper=lambda _: None, market_session=lambda _: MarketSession(True, None))
     source.fetch(DisplaySettings(mode="stock"))
     assert calls == ["AAA", "ZZZ", "BBB"]

@@ -2,7 +2,7 @@ import pytest
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.espn import EspnScoreboardProvider
-from sports_ticker.providers.live_sources import EspnNewsSource
+from sports_ticker.providers.news_source import EspnNewsSource
 from sports_ticker.providers.news_transactions import ConfirmedTransaction
 
 pytestmark = pytest.mark.critical

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers.live_sources import EspnGolfSource, _golf_brand, _is_current_golf_event
+from sports_ticker.providers.golf_source import EspnGolfSource, _golf_brand, _is_current_golf_event
 
 
 class MockHttpClient:

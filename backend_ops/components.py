@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import fnmatch
 import hashlib
 import json
@@ -13,11 +12,13 @@ import tarfile
 from .worker_contract import PROVIDERS, contract_id
 
 ALL = ("core", *PROVIDERS)
-SOURCE_ENTRIES = {"golf": "EspnGolfSource", "stock": "FinnhubStockSource", "flights": "FlightRadarSource",
-                  "news": "EspnNewsSource", "clock": "ClockProvider"}
 OWNERS = {
+    "golf_source.py": ("golf",), "stock_source.py": ("stock",),
+    "flight_source.py": ("flights",), "news_source.py": ("news",), "clock.py": ("clock",),
+    "source_values.py": ("golf", "stock", "flights", "news"),
+    "racing_session.py": ("core", "racing"),
     "espn.py": ("espn", "golf", "news"),
-    "espn*": ("espn",), "nhl_live.py": ("espn",), "score_alerts.py": ("espn",),
+    "espn*": ("espn",), "nhl_live.py": ("espn",), "score_alerts.py": ("espn", "fotmob"),
     "fotmob.py": ("fotmob",), "golf.py": ("golf",), "stocks.py": ("stock",),
     "market_sessions.py": ("stock",), "flights.py": ("flights",), "music.py": ("music",),
     "news*": ("news",), "racing*": ("racing",), "weather.py": ("core", "weather"),
@@ -25,57 +26,9 @@ OWNERS = {
 }
 
 
-def definitions(source):
-    tree = ast.parse(source)
-    nodes = {}
-    other = []
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            nodes[node.name] = node
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            names = [part.id for target in targets for part in ast.walk(target) if isinstance(part, ast.Name)]
-            for name in names:
-                nodes[name] = node
-        elif not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)):
-            other.append(ast.dump(node, include_attributes=False))
-    return nodes, other
-
-
-def source_owners(before, after):
-    """Follow local symbol dependencies in the shared provider source module."""
-    try:
-        old, old_other = definitions(before)
-        new, new_other = definitions(after)
-    except SyntaxError:
-        return set(SOURCE_ENTRIES)
-    if old_other != new_other or any(token in after for token in ("globals(", "eval(", "exec(")):
-        return set(SOURCE_ENTRIES)
-    changed = {name for name in old.keys() | new.keys()
-               if ast.dump(old.get(name, ast.Pass()), include_attributes=False) != ast.dump(new.get(name, ast.Pass()), include_attributes=False)}
-    affected = set()
-    for owner, entry in SOURCE_ENTRIES.items():
-        used, pending = set(), [entry]
-        while pending:
-            name = pending.pop()
-            if name in used:
-                continue
-            used.add(name)
-            for graph in (old, new):
-                if name in graph:
-                    pending.extend(part.id for part in ast.walk(graph[name]) if isinstance(part, ast.Name) and part.id not in used)
-        if changed & used:
-            affected.add(owner)
-    if changed and not affected:
-        return set(SOURCE_ENTRIES)
-    return affected
-
-
-def owners(path, *, before=None, after=None):
+def owners(path):
     if path in ("sports_ticker/tls.py", "sports_ticker/immutable.py"):
         return set(ALL)
-    if path == "sports_ticker/providers/live_sources.py":
-        return source_owners(before or "", after or "")
     if path.startswith(("sports_ticker/integrations/", "sports_ticker/fleet/")):
         return {"core", "music"}
     if path.startswith("sports_ticker/providers/"):
@@ -95,21 +48,11 @@ def owners(path, *, before=None, after=None):
     return set()
 
 
-def git_text(root, ref, path):
-    result = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=root, capture_output=True)
-    return result.stdout.decode("utf-8") if result.returncode == 0 else ""
-
-
 def changed_components(root, base, head="HEAD"):
     paths = subprocess.check_output(["git", "diff", "--name-only", base, head], cwd=root, text=True).splitlines()
     selected = set()
     for path in paths:
-        if path == "sports_ticker/providers/live_sources.py":
-            before = git_text(root, base, path)
-            after = git_text(root, head, path)
-        else:
-            before = after = None
-        selected.update(owners(path, before=before, after=after))
+        selected.update(owners(path))
     return [name for name in ALL if name in selected]
 
 

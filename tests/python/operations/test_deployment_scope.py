@@ -49,6 +49,8 @@ def test_recovery_compares_backend_changes_only(tmp_path):
         assert recovery_needed(tmp_path, deployed)
 
 
-def test_shared_requirements_trigger_a_six_update():
+def test_shared_runtime_dependencies_trigger_a_six_update():
     scope = Path(__file__).resolve().parents[3] / ".github/deployment-paths.json"
-    assert "requirements.txt" in json.loads(scope.read_text(encoding="utf-8"))["controller"]
+    controller = json.loads(scope.read_text(encoding="utf-8"))["controller"]
+    assert "requirements.txt" in controller
+    assert "sports_ticker/providers/racing_session.py" in controller

@@ -51,8 +51,9 @@ The fetchers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flight
 The planner owns source-to-component selection.
 A provider implementation change updates that worker and its declared consumers.
 Shared domain, protocol, or dependency changes update all affected components together.
-The planner follows local symbol dependencies inside `providers/live_sources.py`.
-For example, a stock quote URL change selects only `stock`.
+The planner uses explicit source file ownership in `backend_ops/components.py`.
+For example, a change in `providers/stock_source.py` selects only `stock`.
+Shared source-value helpers select their golf, stock, flights, and news consumers.
 Unclassified shared provider changes select all components.
 Worker bundles include provider dependencies. They exclude the core API, dashboard, and Pi renderer.
 The core calls workers through a bounded local JSON socket contract.

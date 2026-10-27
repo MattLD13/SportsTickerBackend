@@ -17,6 +17,7 @@ from backend_ops.incidents import redact
 from sports_ticker.fleet.device_credentials import device_token_hash
 from sports_ticker.application.composition import BackendApplication
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.domain.settings import settings_to_mapping
 from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyIntegrationError
 from sports_ticker.application.schedule import block_to_mapping, condition_to_mapping
@@ -779,7 +780,7 @@ def _ticker_value(ticker: Any, application: BackendApplication) -> dict[str, Any
         "ticker_id": ticker.ticker_id,
         "name": ticker.name,
         "profile": ticker.profile.to_mapping(),
-        "display_settings": _display_settings_value(settings),
+        "display_settings": settings_to_mapping(settings),
         "schedule_override": application.schedule_override(ticker.ticker_id),
         "schedule_override_expires_at": application.schedule_override_expires_at(ticker.ticker_id),
         "pairing": None
@@ -887,35 +888,6 @@ def _schedule_condition_values(payload: Mapping[str, Any], *, require_all: bool)
             raise ApiError("enabled must be a boolean", 400, "invalid_request")
         values["enabled"] = payload["enabled"]
     return values
-
-
-def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:
-    return {
-        "active_sports": _json_value(settings.active_sports),
-        "active_conferences": _json_value(settings.active_conferences),
-        "my_teams": list(settings.my_teams),
-        "custom_stock_symbols": list(settings.custom_stock_symbols),
-        "mode": settings.mode,
-        "sports_filter": settings.sports_filter,
-        "sports_presentation": settings.sports_presentation,
-        "pinned_content_id": settings.pinned_content_id,
-        "brightness": settings.brightness,
-        "inverted": settings.inverted,
-        "timezone": settings.timezone,
-        "weather_city": settings.weather_city,
-        "weather_lat": settings.weather_lat,
-        "weather_lon": settings.weather_lon,
-        "airport_code_iata": settings.airport_code_iata,
-        "airport_code_icao": settings.airport_code_icao,
-        "airport_name": settings.airport_name,
-        "track_flight_id": settings.track_flight_id,
-        "track_guest_name": settings.track_guest_name,
-        "live_delay_mode": settings.live_delay_mode,
-        "live_delay_seconds": settings.live_delay_seconds,
-        "scroll_seamless": settings.scroll_seamless,
-        "scroll_speed": settings.scroll_speed,
-        "score_alerts": settings.score_alerts,
-    }
 
 
 def _event_value(event: Any) -> dict[str, Any]:

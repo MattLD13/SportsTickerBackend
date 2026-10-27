@@ -4,7 +4,7 @@ import pytest
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.news_transactions import ConfirmedTransaction
-from sports_ticker.providers.live_sources import (
+from sports_ticker.providers.news_source import (
     EspnNewsSource,
     _classify_espn_news_article,
     _filter_news_for_ticker,

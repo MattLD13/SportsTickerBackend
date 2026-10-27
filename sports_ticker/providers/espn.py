@@ -35,6 +35,7 @@ from .sports_display import (
     nhl_shootout_display,
     assign_active_team,
     baseball_player_stats,
+    _baseball_player_name as baseball_player_name,
     display_situation,
     football_red_zone_for_play,
     football_name_matches,
@@ -3010,10 +3011,10 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     if not situation:
         return {}
     batter_ref = situation.get("batter")
-    if not _mlb_person_id(batter_ref) and not _mlb_situation_player_name(batter_ref):
+    if not _mlb_person_id(batter_ref) and not baseball_player_name(batter_ref):
         batter_ref = _first_mapping(situation.get("dueUp"))
     pitcher_ref = situation.get("pitcher")
-    if not _mlb_person_id(pitcher_ref) and not _mlb_situation_player_name(pitcher_ref):
+    if not _mlb_person_id(pitcher_ref) and not baseball_player_name(pitcher_ref):
         pitcher_ref = _mlb_latest_play_participant(summary, "pitcher")
     batter_id = _mlb_person_id(batter_ref)
     pitcher_id = _mlb_person_id(pitcher_ref)
@@ -3034,10 +3035,10 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     if pitcher_era in {"-", "-.--", "N/A", "n/a"}:
         pitcher_era = ""
     batter_name = str(
-        batter.get("name") or _mlb_situation_player_name(batter_ref)
+        batter.get("name") or baseball_player_name(batter_ref)
     ).strip()
     pitcher_name = str(
-        pitcher.get("name") or _mlb_situation_player_name(pitcher_ref)
+        pitcher.get("name") or baseball_player_name(pitcher_ref)
     ).strip()
     result: dict[str, Any] = {
         "balls": _mlb_number(situation.get("balls")),
@@ -3077,10 +3078,10 @@ def _mlb_live_player_ids(payload: Any) -> tuple[str, str]:
         competition.get("situation")
     )
     batter_ref = situation.get("batter")
-    if not _mlb_person_id(batter_ref) and not _mlb_situation_player_name(batter_ref):
+    if not _mlb_person_id(batter_ref) and not baseball_player_name(batter_ref):
         batter_ref = _first_mapping(situation.get("dueUp"))
     pitcher_ref = situation.get("pitcher")
-    if not _mlb_person_id(pitcher_ref) and not _mlb_situation_player_name(pitcher_ref):
+    if not _mlb_person_id(pitcher_ref) and not baseball_player_name(pitcher_ref):
         pitcher_ref = _mlb_latest_play_participant(summary, "pitcher")
     return _mlb_person_id(batter_ref), _mlb_person_id(pitcher_ref)
 
@@ -3513,20 +3514,6 @@ def _statsapi_boxscore(boxscore: Mapping[str, Any]) -> dict[str, Any]:
     return {"players": teams}
 
 
-def _mlb_situation_player_name(value: Any) -> str:
-    """Read a live batter or pitcher name directly from ESPN situation data."""
-
-    player = _mapping(value)
-    athlete = _mapping(player.get("athlete"))
-    return str(
-        athlete.get("displayName")
-        or athlete.get("fullName")
-        or player.get("displayName")
-        or player.get("fullName")
-        or ""
-    ).strip()
-
-
 def _mlb_latest_play_participant(
     summary: Mapping[str, Any], role: str
 ) -> Mapping[str, Any]:
@@ -3703,8 +3690,6 @@ def _first_mapping(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and value:
         return _mapping(value[0])
     return {}
-
-
 
 
 def _text(value: Any, default: str = "") -> str:

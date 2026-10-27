@@ -18,6 +18,7 @@ from ticker_core.rendering.pixels import TINY as TINY_FONT_MAP
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
 from .assets import RacingAssetService
+from sports_ticker.providers.racing_session import racing_timed_session
 from sports_ticker.providers.sports_display import racing_signal, racing_flag_pixel, racing_flag_code
 
 
@@ -25,33 +26,9 @@ PANEL_WIDTH = 384
 PANEL_HEIGHT = 32
 
 
-def _is_timed_session(session: object) -> bool:
-    """Return whether a session is time trial, practice, or multi-stage qualifying."""
-    name = str(session or "").lower()
-    return any(
-        keyword in name
-        for keyword in (
-            "qual",
-            "fast",
-            "top 12",
-            "last chance",
-            "hyperpole",
-            "pole",
-            "shootout",
-            "prac",
-            "fp",
-            "warm",
-            "shakedown",
-            "test",
-            "time trial",
-        )
-    )
-
-
 def racing_flag_color(value: object) -> tuple[int, int, int]:
     """Return the panel color for one race control state."""
     return tuple(racing_signal(value, "")["color_rgb"])
-
 
 
 @dataclass(slots=True)
@@ -218,7 +195,7 @@ class RacingRenderer:
             return
         session = str(payload.get("session_name") or payload.get("session_type") or "").lower()
         metric = str(payload.get("qualifying_metric") or "").lower()
-        timed = _is_timed_session(session) or metric in {"mph", "time"}
+        timed = racing_timed_session(session) or metric in {"mph", "time"}
         f1 = str(item.get("sport") or "").lower() == "f1"
         asset_state = self._pinned_asset_key(item, self.assets.revision)
         key = (tuple(_driver_key(driver) for driver in drivers), timed, f1, metric, asset_state)

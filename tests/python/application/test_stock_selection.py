@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers import live_sources
+from sports_ticker.providers import stock_source
 from sports_ticker.providers.market_sessions import MarketSession
 
 
@@ -13,7 +13,7 @@ def test_categories_select_leaders_at_open_and_close_and_momentum_intraday(tmp_p
         SimpleNamespace(id="stock_tech_ai", label="Tech", symbols=symbols),
         SimpleNamespace(id="stock_momentum", label="Momentum", symbols=("M",)),
     )
-    monkeypatch.setattr(live_sources, "MARKET_GROUPS", groups)
+    monkeypatch.setattr(stock_source, "MARKET_GROUPS", groups)
     monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
     now = [datetime(2026, 10, 20, 14, tzinfo=timezone.utc).timestamp()]
     market = [MarketSession(True, None)]
@@ -36,8 +36,8 @@ def test_categories_select_leaders_at_open_and_close_and_momentum_intraday(tmp_p
         def start(self):
             self.target(*self.args)
 
-    monkeypatch.setattr(live_sources, "Thread", ImmediateThread)
-    source = live_sources.FinnhubStockSource(
+    monkeypatch.setattr(stock_source, "Thread", ImmediateThread)
+    source = stock_source.FinnhubStockSource(
         Quotes(), cache_path=tmp_path / "stocks.json", clock=lambda: now[0],
         monotonic_clock=lambda: now[0], sleeper=lambda _: None,
         market_session=lambda _: market[0],
@@ -73,7 +73,7 @@ def test_categories_select_leaders_at_open_and_close_and_momentum_intraday(tmp_p
     assert source.fetch(settings) == close
     assert len(calls) == count
 
-    restarted = live_sources.FinnhubStockSource(
+    restarted = stock_source.FinnhubStockSource(
         Quotes(), cache_path=tmp_path / "stocks.json", clock=lambda: now[0],
         market_session=lambda _: market[0],
     )
