@@ -1,7 +1,6 @@
 flask
 waitress
 requests
-urllib3>=2.6,<3
 certifi>=2026.10.19
 python-dotenv
 tzdata

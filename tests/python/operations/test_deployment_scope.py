@@ -47,3 +47,8 @@ def test_recovery_compares_backend_changes_only(tmp_path):
         deployed = git("rev-parse", "HEAD")
         commit(path, "Updated demo source")
         assert recovery_needed(tmp_path, deployed)
+
+
+def test_shared_requirements_trigger_a_six_update():
+    scope = Path(__file__).resolve().parents[3] / ".github/deployment-paths.json"
+    assert "requirements.txt" in json.loads(scope.read_text(encoding="utf-8"))["controller"]

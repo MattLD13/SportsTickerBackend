@@ -23,6 +23,7 @@
   "controller": [
     "ticker_core/**",
     "updater.py",
+    "requirements.txt",
     "ticker-controller.service",
     "setup.sh"
   ]
