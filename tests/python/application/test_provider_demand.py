@@ -23,11 +23,10 @@ def test_demand_uses_schedule_horizon_without_device_presence(tmp_path):
         schedules = ScheduleService(repository, SnapshotStore(), clock=lambda: now.timestamp())
         schedules.create_block("mini", days_of_week=[1], start_minute=3, end_minute=4, mode="flights")
         demand = ProviderDemand(repository, schedules)
-        assert demand("flights", "mini", settings, now)
-        assert not demand("stock", "mini", settings, now)
-        assert not demand("golf", "mini", settings, now)
-        assert demand("flights", "mini", settings, now + timedelta(seconds=91))
-        assert demand("espn", "mini", settings, now + timedelta(days=1))
+        active = demand(("flights", "stock", "golf"), {"mini": settings}, now)
+        assert active == {"flights": frozenset({"mini"}), "stock": frozenset(), "golf": frozenset()}
+        assert demand(("flights",), {"mini": settings}, now + timedelta(seconds=91))["flights"] == frozenset({"mini"})
+        assert demand(("espn",), {"mini": settings}, now + timedelta(days=1))["espn"] == frozenset({"mini"})
 
 
 @pytest.mark.parametrize(("mode", "provider", "other_provider"), [
@@ -45,8 +44,9 @@ def test_app_mode_override_keeps_selected_provider_demand_without_device_presenc
         schedules.set_schedule_override("mini", True, settings=settings)
         demand = ProviderDemand(repository, schedules)
 
-        assert demand(provider, "mini", settings, now)
-        assert not demand(other_provider, "mini", settings, now)
+        active = demand((provider, other_provider), {"mini": settings}, now)
+        assert active[provider] == frozenset({"mini"})
+        assert active[other_provider] == frozenset()
 
 
 def test_paused_refreshes_keep_data_and_resume_before_the_next_interval():
@@ -55,7 +55,9 @@ def test_paused_refreshes_keep_data_and_resume_before_the_next_interval():
     calls, published = [], []
     scheduler = RefreshScheduler(lambda ticker, settings, data: published.append(dict(data)),
                                  monotonic=lambda: 0, wall_clock=lambda: now)
-    scheduler.set_refresh_policy(lambda *args: enabled[0])
+    scheduler.set_provider_demand(lambda providers, tickers, now: {
+        name: frozenset(tickers) if enabled[0] else frozenset() for name in providers
+    })
     scheduler.register_provider("flights", 30, lambda settings: calls.append(1) or {"flight": "last-good"})
     scheduler.register_ticker("mini", lambda ticker: {})
     scheduler.run_due(0)
@@ -68,6 +70,48 @@ def test_paused_refreshes_keep_data_and_resume_before_the_next_interval():
     scheduler.run_due(31)
     assert len(calls) == 2
     assert scheduler.get_health("flights").refresh_calls == 2
+
+
+def test_demand_resolves_once_per_ticker_and_reads_fresh_state_each_pass(tmp_path, monkeypatch):
+    now = datetime(2026, 5, 5, 12, tzinfo=timezone.utc)
+    settings = DisplaySettings(mode="stock")
+    with TickerRepository(tmp_path / "demand.sqlite3") as repository:
+        repository.create_ticker("six", settings)
+        schedules = ScheduleService(repository, SnapshotStore(), clock=lambda: now.timestamp())
+        calls = []
+        modes_within = schedules.modes_within
+
+        def measured(*args, **kwargs):
+            calls.append(args[0])
+            return modes_within(*args, **kwargs)
+
+        monkeypatch.setattr(schedules, "modes_within", measured)
+        policy = ProviderDemand(repository, schedules)
+        providers = ("golf", "stock", "flights", "espn")
+        before = policy(providers, {"six": settings}, now)
+        assert calls == ["six"]
+        assert before == {"golf": frozenset(), "stock": frozenset({"six"}), "flights": frozenset(), "espn": frozenset({"six"})}
+        schedules.create_block("six", days_of_week=[now.weekday()], start_minute=0, end_minute=1440, mode="flights")
+        after = policy(providers, {"six": settings}, now)
+        assert calls == ["six", "six"]
+        assert after["stock"] == frozenset()
+        assert after["flights"] == frozenset({"six"})
+
+
+def test_scheduler_selects_demand_once_for_the_complete_provider_set():
+    selections = []
+    scheduler = RefreshScheduler(lambda *args: None)
+    scheduler.register_ticker("six", lambda identifier: DisplaySettings())
+    for name in ("golf", "stock", "flights"):
+        scheduler.register_provider(name, 30, lambda settings: {})
+
+    def demand(providers, tickers, now):
+        selections.append((providers, tuple(tickers)))
+        return {name: frozenset(tickers) for name in providers}
+
+    scheduler.set_provider_demand(demand)
+    scheduler.run_due(0)
+    assert selections == [(("golf", "stock", "flights"), ("six",))]
 
 
 @pytest.mark.parametrize("timestamp,opened", [

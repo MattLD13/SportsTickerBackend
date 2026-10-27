@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from sports_ticker.immutable import freeze as _freeze
+
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from types import MappingProxyType
 from typing import TypeAlias
 
 from .models import ContentItem, DisplaySettings
@@ -15,22 +16,6 @@ SnapshotContent: TypeAlias = tuple[ContentItem, ...]
 SnapshotEvents: TypeAlias = tuple[object, ...]
 
 
-def _freeze(value: object) -> object:
-    """Copy common mutable containers into immutable values."""
-
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {_freeze(key): _freeze(item) for key, item in value.items()}
-        )
-    if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze(item) for item in value)
-    if isinstance(value, bytearray):
-        return bytes(value)
-    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +29,7 @@ class TickerSnapshot:
     alerts: SnapshotEvents
     news: SnapshotEvents
     effective_settings: DisplaySettings
+    committed_at_ms: float | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         """Freeze snapshot collections and validate the revision value."""

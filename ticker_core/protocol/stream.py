@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import math
 from typing import Any
 
 from .model import PayloadValidationError, TickerResponse
@@ -20,6 +21,8 @@ class StreamMessage:
     payload: Mapping[str, Any] | None = None
     changes: Mapping[str, Any] | None = None
     removed: tuple[str, ...] = ()
+    server_time: str = ""
+    projected_at_ms: float | None = None
 
     @classmethod
     def from_payload(cls, value: object) -> "StreamMessage":
@@ -43,6 +46,12 @@ class StreamMessage:
             raise PayloadValidationError("delta seq must follow base_seq")
         if not isinstance(value.get("server_time"), str):
             raise PayloadValidationError("server_time must be a string")
+        timing = value.get("timing", {})
+        if not isinstance(timing, Mapping):
+            raise PayloadValidationError("stream timing must be an object")
+        projected = timing.get("projected_at_ms")
+        if projected is not None and (isinstance(projected, bool) or not isinstance(projected, (int, float)) or not math.isfinite(projected) or projected < 0):
+            raise PayloadValidationError("projected_at_ms must be a number")
         payload = value.get("payload")
         changes = value.get("changes")
         removed = value.get("removed", ())
@@ -60,6 +69,8 @@ class StreamMessage:
             dict(payload) if isinstance(payload, Mapping) else None,
             dict(changes) if isinstance(changes, Mapping) else None,
             tuple(removed),
+            value["server_time"],
+            float(projected) if projected is not None else None,
         )
 
 

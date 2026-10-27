@@ -15,6 +15,13 @@ from tools.workspaces.start import inventory
 pytestmark = pytest.mark.critical
 
 
+def test_local_inventory_excludes_deleted_files_without_changing_the_revision_tree(source):
+    root, base, path = source
+    (root / "mini/pane.h").unlink()
+    assert "mini/pane.h" in tree(root, base)
+    assert "mini/pane.h" not in inventory(root, manifest_read(path), base)
+
+
 @pytest.fixture
 def source(tmp_path):
     root = tmp_path / "source"

@@ -48,6 +48,7 @@ class News:
 
 
 class Viewport:
+    revision = 0
     def frame(self, offset, width=384, height=32):
         del offset
         return Image.new("RGB", (width, height))
@@ -93,6 +94,15 @@ def test_visual_key_owns_update_animation_without_crashing() -> None:
     first = decision(FrameKind.UPDATE, update_version="2026.08", update_progress=0.2)
     second = decision(FrameKind.UPDATE, update_version="2026.08", update_progress=0.2)
     assert builder.visual_key(first) == builder.visual_key(second)
+
+
+def test_scrolling_visual_key_changes_when_a_ready_card_installs_at_the_same_offset():
+    viewport = Viewport()
+    builder = FrameBuilder(Catalog(), Utility(), Alerts(), News(), viewport)
+    frame = decision(FrameKind.SCROLL, scroll_offset=0)
+    previous = builder.visual_key(frame)
+    viewport.revision = 1
+    assert builder.visual_key(frame) != previous
 
 
 def test_visual_key_preserves_rendering_cadence_classes() -> None:

@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import base64
-import copy
 import json
 import math
 import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
-from threading import Event, RLock, Thread, current_thread
+from threading import Condition, Event, RLock, Thread, current_thread
+from types import MappingProxyType
 from typing import Any, Protocol
 from urllib.parse import parse_qs, quote, urlsplit
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 from sports_ticker.tls import verified_https_context
 
@@ -57,6 +58,7 @@ class EspnFastcastSource:
         discovery_reader: DiscoveryReader | None = None,
         socket_connector: SocketConnector | None = None,
         monotonic: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         if not isinstance(topics, Mapping):
             raise TypeError("topics must be a mapping")
@@ -76,18 +78,46 @@ class EspnFastcastSource:
         self._discover = discovery_reader or _discover_fastcast
         self._connect = socket_connector or _connect_fastcast
         self._monotonic = monotonic
+        self._wall_clock = wall_clock
         self._snapshots: dict[str, Any] = {}
         self._subscribed: set[str] = set()
         self._resync_required: set[str] = set()
         self._last_message_ids: dict[str, int] = {}
         self._last_topic_message_at: dict[str, float] = {}
         self._event_updated_at: dict[tuple[str, str], float] = {}
+        self._event_timings: dict[tuple[str, str], Mapping[str, Any]] = {}
         self._errors: dict[str, str] = {}
         self._socket: _FastcastSocket | None = None
         self._last_message_at = 0.0
         self._worker: Thread | None = None
         self._stop = Event()
         self._lock = RLock()
+        self._changed = Condition(self._lock)
+        self._generation = uuid4().hex
+        self._revisions = {league: 0 for league in normalized}
+
+    def versions(self) -> dict[str, str]:
+        """Return source versions, including an identity for this worker lifetime."""
+        with self._lock:
+            return {league: f"{self._generation}:{revision}" for league, revision in self._revisions.items()}
+
+    def wait_for_changes(self, after: Mapping[str, str], timeout: float) -> dict[str, str]:
+        """Wait for a source change without holding the provider fetch lock."""
+        deadline = time.monotonic() + timeout
+        with self._changed:
+            self._changed.wait_for(lambda: self._stop.is_set() or self.versions() != after, timeout)
+            if after and self.versions() != after:
+                self._changed.wait_for(self._stop.is_set, min(0.025, max(0.0, deadline - time.monotonic())))
+            return self.versions()
+
+    def capture(self) -> tuple[dict[str, str], dict[str, tuple[Any, Mapping[str, Mapping[str, Any]]]]]:
+        """Capture matching league versions and immutable input views for one consumer batch."""
+        with self._lock:
+            return self.versions(), {league: self.timed_snapshot(league) for league in self.topics}
+
+    def _source_changed(self, league: str) -> None:
+        self._revisions[league] += 1
+        self._changed.notify_all()
 
     def start(self) -> None:
         """Start the one background stream worker when it is not running."""
@@ -107,6 +137,8 @@ class EspnFastcastSource:
         """Stop the stream worker and close its current socket."""
 
         self._stop.set()
+        with self._changed:
+            self._changed.notify_all()
         with self._lock:
             socket = self._socket
             worker = self._worker
@@ -129,7 +161,7 @@ class EspnFastcastSource:
             return
         if not isinstance(payload, Mapping):
             raise TypeError("Fastcast snapshots must be objects")
-        snapshot = copy.deepcopy(payload)
+        snapshot = _freeze_snapshot(payload)
         event_ids = _snapshot_event_ids(snapshot)
         updated_at = self._monotonic()
         with self._lock:
@@ -139,8 +171,11 @@ class EspnFastcastSource:
             for key in tuple(self._event_updated_at):
                 if key[0] == identifier and key[1] not in event_ids:
                     self._event_updated_at.pop(key, None)
+                    self._event_timings.pop(key, None)
             for event_id in event_ids:
                 self._event_updated_at[(identifier, event_id)] = updated_at
+                self._event_timings[(identifier, event_id)] = self._input_timing("espn_http", event_id)
+            self._source_changed(identifier)
 
     def prime_event(
         self,
@@ -170,14 +205,15 @@ class EspnFastcastSource:
                 return
             self._snapshots[identifier] = updated_snapshot
             self._event_updated_at[key] = self._monotonic()
+            self._event_timings[key] = self._input_timing("espn_http", event_id)
+            self._source_changed(identifier)
 
     def snapshot(self, league: str) -> Any | None:
-        """Return one immutable-by-copy scoreboard snapshot when available."""
+        """Return one immutable scoreboard view that remains valid after later updates."""
 
         identifier = str(league).strip().lower()
         with self._lock:
-            value = self._snapshots.get(identifier)
-            return copy.deepcopy(value) if value is not None else None
+            return self._snapshots.get(identifier)
 
     def event_updated_at(self, league: str, event_id: str) -> float | None:
         """Return the monotonic time when Fastcast last updated one event."""
@@ -185,6 +221,23 @@ class EspnFastcastSource:
         key = (str(league).strip().lower(), str(event_id).strip())
         with self._lock:
             return self._event_updated_at.get(key)
+
+    def event_timing(self, league: str, event_id: str) -> Mapping[str, Any] | None:
+        """Return the input timing for the exact retained event version."""
+        with self._lock:
+            return self._event_timings.get((str(league).strip().lower(), str(event_id).strip()))
+
+    def timed_snapshot(self, league: str) -> tuple[Any, Mapping[str, Mapping[str, Any]]]:
+        """Read one immutable snapshot and its matching input timings atomically."""
+        identifier = str(league).strip().lower()
+        with self._lock:
+            return self._snapshots.get(identifier), MappingProxyType({
+                event_id: timing for (name, event_id), timing in self._event_timings.items() if name == identifier
+            })
+
+    def _input_timing(self, source: str, event_id: str) -> Mapping[str, Any]:
+        return MappingProxyType({"trace_id": uuid4().hex + ":" + event_id, "source": source,
+                                 "ingested_at_ms": self._wall_clock() * 1000.0, "input_boundary": "http_snapshot_applied"})
 
     def active(self, league: str) -> bool:
         """Return whether one league has a fresh subscribed stream."""
@@ -302,18 +355,19 @@ class EspnFastcastSource:
 
     def _handle_wire_message(self, raw: str) -> None:
         """Decode one wire frame that contains one message or a message list."""
-
+        received_at_ms = self._wall_clock() * 1000.0
         decoded = json.loads(raw) if isinstance(raw, str) else raw
         if isinstance(decoded, Sequence) and not isinstance(decoded, (str, bytes)):
             for message in decoded:
                 if isinstance(message, Mapping):
-                    self._handle_message(message)
+                    self._handle_message(message, received_at_ms=received_at_ms)
             return
-        self._handle_message(_json_object(decoded))
+        self._handle_message(_json_object(decoded), received_at_ms=received_at_ms)
 
-    def _handle_message(self, message: Mapping[str, Any]) -> None:
+    def _handle_message(self, message: Mapping[str, Any], *, received_at_ms: float | None = None) -> None:
         """Apply one Fastcast acknowledgement, checkpoint, or patch update."""
 
+        received_at_ms = self._wall_clock() * 1000.0 if received_at_ms is None else received_at_ms
         topic = str(message.get("tc") or "").strip()
         league = self._league_by_topic.get(topic)
         if league is None:
@@ -372,9 +426,18 @@ class EspnFastcastSource:
                 updated_at = self._monotonic()
                 event_ids = _patch_event_ids(payload, current)
                 event_ids.update(_patch_event_ids(payload, updated))
+                published = fastcast_published_at_ms(message)
+                message_id = message.get("mid")
+                trace_prefix = f"{topic}:{message_id if message_id is not None else uuid4().hex}"
                 for event_id in event_ids:
                     self._event_updated_at[(league, event_id)] = updated_at
+                    timing = {"trace_id": f"{trace_prefix}:{event_id}",
+                              "source": "espn_fastcast", "ingested_at_ms": received_at_ms, "input_boundary": "fastcast_socket_received"}
+                    if published is not None:
+                        timing.update(source_published_at_ms=published, source_timestamp_kind="publisher_envelope")
+                    self._event_timings[(league, event_id)] = MappingProxyType(timing)
                 self._errors.pop(league, None)
+                self._source_changed(league)
 
     def _mark_topic_error(self, league: str, error: Exception) -> None:
         """Mark one topic stale until a complete scoreboard primes it again."""
@@ -411,6 +474,17 @@ class EspnFastcastSource:
             if error:
                 for league in self.topics:
                     self._errors[league] = error
+
+
+def _freeze_snapshot(value: Any) -> Any:
+    """Detach incoming JSON once before sharing immutable snapshot branches."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_snapshot(child) for key, child in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_snapshot(child) for child in value)
+    raise TypeError(f"unsupported Fastcast JSON value: {type(value).__name__}")
 
 
 def _snapshot_events(value: Any) -> tuple[Mapping[str, Any], ...]:
@@ -451,18 +525,19 @@ def _replace_snapshot_event(
     event_id = str(update.get("id") or "").strip()
     if not event_id:
         return None
-    result = copy.deepcopy(snapshot)
+    result = dict(snapshot)
+    frozen_update = _freeze_snapshot(update)
     events = result.get("events")
     if isinstance(events, Sequence) and not isinstance(events, (str, bytes)):
         updated_events = list(events)
         for index, event in enumerate(updated_events):
             if isinstance(event, Mapping) and str(event.get("id") or "").strip() == event_id:
-                updated_events[index] = copy.deepcopy(update)
-                result["events"] = updated_events
-                return result
-        updated_events.append(copy.deepcopy(update))
-        result["events"] = updated_events
-        return result
+                updated_events[index] = frozen_update
+                result["events"] = tuple(updated_events)
+                return MappingProxyType(result)
+        updated_events.append(frozen_update)
+        result["events"] = tuple(updated_events)
+        return MappingProxyType(result)
 
     leagues = result.get("leagues")
     if not isinstance(leagues, Sequence) or isinstance(leagues, (str, bytes)) or not leagues:
@@ -478,11 +553,11 @@ def _replace_snapshot_event(
         for event_index, event in enumerate(updated_events):
             if isinstance(event, Mapping) and str(event.get("id") or "").strip() == event_id:
                 updated_league = dict(league)
-                updated_events[event_index] = copy.deepcopy(update)
-                updated_league["events"] = updated_events
-                updated_leagues[league_index] = updated_league
-                result["leagues"] = updated_leagues
-                return result
+                updated_events[event_index] = frozen_update
+                updated_league["events"] = tuple(updated_events)
+                updated_leagues[league_index] = MappingProxyType(updated_league)
+                result["leagues"] = tuple(updated_leagues)
+                return MappingProxyType(result)
     return None
 
 
@@ -497,6 +572,8 @@ def _patch_event_ids(payload: Any, document: Any) -> set[str]:
         if not isinstance(patch, Mapping):
             continue
         for key in ("path", "from"):
+            if key == "from" and str(patch.get("op") or "").lower() not in {"move", "copy"}:
+                continue
             raw_path = str(patch.get(key) or "")
             if not raw_path:
                 event_ids.update(known_event_ids)
@@ -639,6 +716,26 @@ def _json_object(value: Any) -> Mapping[str, Any]:
     return value
 
 
+def fastcast_published_at_ms(value: Any) -> float | None:
+    """Read epoch milliseconds from publication wrappers, never from the sequence or game clock."""
+    for _ in range(8):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                return None
+        if not isinstance(value, Mapping):
+            return None
+        timestamp = value.get("ts")
+        if isinstance(timestamp, (int, float)) and not isinstance(timestamp, bool):
+            if math.isfinite(timestamp) and 946684800000 <= timestamp <= 4102444800000:
+                return float(timestamp)
+        if "pl" not in value or value.get("~c"):
+            return None
+        value = value["pl"]
+    return None
+
+
 def _decode_fastcast_payload(value: Any) -> Any:
     """Decode one ESPN plain or compressed payload wrapper."""
 
@@ -703,9 +800,9 @@ def _apply_fastcast_payload(document: Any, payload: Any) -> Any:
     patches = payload if _is_patch_sequence(payload) else (payload,)
     if not all(_is_patch(patch) for patch in patches):
         if isinstance(payload, Mapping):
-            return copy.deepcopy(payload.get("data", payload))
+            return _freeze_snapshot(payload.get("data", payload))
         raise TypeError("Fastcast payload is not a JSON patch")
-    result = copy.deepcopy(document)
+    result = document if isinstance(document, MappingProxyType) else _freeze_snapshot(document)
     for patch in patches:
         result = _apply_json_patch(result, patch)
     return result
@@ -728,159 +825,120 @@ def _is_patch(value: Any) -> bool:
 
 
 def _apply_json_patch(document: Any, patch: Mapping[str, Any]) -> Any:
-    """Apply one JSON patch with ESPN's UID-relative path extension."""
-
+    """Copy only changed ancestors while applying one atomic JSON patch."""
     operation = str(patch.get("op") or "").strip().lower()
     if operation not in {"add", "remove", "replace", "copy", "move", "test"}:
         raise ValueError(f"unsupported Fastcast patch operation: {operation}")
-    target, pointer = _resolve_patch_target(document, str(patch.get("path") or ""))
+    path = _resolve_patch_path(document, str(patch.get("path") or ""))
     if operation == "test":
-        if _read_pointer(target, pointer) != patch.get("value"):
+        if _read_path(document, path) != _freeze_snapshot(patch.get("value")):
             raise ValueError("Fastcast patch test failed")
         return document
     if operation in {"copy", "move"}:
-        source_target, source_pointer = _resolve_patch_target(
-            document,
-            str(patch.get("from") or ""),
-        )
-        value = copy.deepcopy(_read_pointer(source_target, source_pointer))
+        source = _resolve_patch_path(document, str(patch.get("from") or ""))
+        value = _read_path(document, source)
         if operation == "move":
-            document = _remove_pointer(document, source_target, source_pointer)
-            target, pointer = _resolve_patch_target(document, str(patch.get("path") or ""))
-        return _add_pointer(document, target, pointer, value)
+            if len(path) > len(source) and path[:len(source)] == source:
+                raise ValueError("Fastcast cannot move a value inside itself")
+            document = _change_path(document, source, "remove")
+            path = _resolve_patch_path(document, str(patch.get("path") or ""))
+        return _change_path(document, path, "add", value)
     if operation == "remove":
-        return _remove_pointer(document, target, pointer)
-    if operation == "replace":
-        return _replace_pointer(document, target, pointer, copy.deepcopy(patch.get("value")))
-    return _add_pointer(document, target, pointer, copy.deepcopy(patch.get("value")))
+        return _change_path(document, path, operation)
+    return _change_path(document, path, operation, _freeze_snapshot(patch.get("value")))
 
 
-def _resolve_patch_target(document: Any, path: str) -> tuple[Any, str]:
-    """Resolve ESPN's optional UID prefix before applying a JSON pointer."""
-
-    raw = str(path)
-    if raw == "":
-        return document, ""
-    parts = raw.split("/")
+def _resolve_patch_path(document: Any, path: str) -> tuple[str, ...]:
+    """Resolve a UID-relative pointer into one path from the snapshot root."""
+    if not path or path.startswith("/"):
+        return _pointer_parts(path)
+    parts = path.split("/", 1)
     uid = parts[0].replace("~0l:", "~l:").replace("~0e:", "~e:")
-    if raw.startswith("/"):
-        return document, raw
-    relative = "/" + "/".join(parts[1:]) if len(parts) > 1 else ""
-    target = _find_uid(document, uid)
-    return (target, relative) if target is not None else (document, f"/{raw}")
+    base = _find_uid_path(document, uid)
+    if base is None:
+        return _pointer_parts(f"/{path}")
+    return base + _pointer_parts(f"/{parts[1]}" if len(parts) > 1 else "")
 
 
-def _find_uid(value: Any, uid: str) -> Any | None:
-    """Find the first nested object with one matching ESPN UID."""
-
+def _find_uid_path(value: Any, uid: str) -> tuple[str, ...] | None:
+    """Find the path of the first nested object with one matching ESPN UID."""
     if not uid:
         return None
     if isinstance(value, Mapping):
         if str(value.get("uid") or "") == uid:
-            return value
-        for child in value.values():
-            found = _find_uid(child, uid)
-            if found is not None:
-                return found
-    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        for child in value:
-            found = _find_uid(child, uid)
-            if found is not None:
-                return found
+            return ()
+        children = value.items()
+    elif isinstance(value, (list, tuple)):
+        children = ((str(index), child) for index, child in enumerate(value))
+    else:
+        return None
+    for key, child in children:
+        path = _find_uid_path(child, uid)
+        if path is not None:
+            return (key, *path)
     return None
+
+
+def _find_uid(value: Any, uid: str) -> Any | None:
+    """Read a matching UID through the shared path resolver."""
+    path = _find_uid_path(value, uid)
+    return _read_path(value, path) if path is not None else None
 
 
 def _pointer_parts(pointer: str) -> tuple[str, ...]:
     """Decode a JSON pointer into unescaped path tokens."""
-
     if pointer == "":
         return ()
     if not pointer.startswith("/"):
         raise ValueError("Fastcast JSON pointer must start with slash")
-    return tuple(
-        token.replace("~1", "/").replace("~0", "~")
-        for token in pointer[1:].split("/")
-    )
+    return tuple(token.replace("~1", "/").replace("~0", "~") for token in pointer[1:].split("/"))
 
 
-def _read_pointer(target: Any, pointer: str) -> Any:
-    """Read one JSON pointer from a resolved patch target."""
-
-    value = target
-    for token in _pointer_parts(pointer):
+def _read_path(value: Any, path: tuple[str, ...]) -> Any:
+    """Read one path from an immutable snapshot."""
+    for token in path:
         if isinstance(value, Mapping):
             value = value[token]
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        elif isinstance(value, (list, tuple)):
             value = value[int(token)]
         else:
             raise KeyError(token)
     return value
 
 
-def _parent_pointer(target: Any, pointer: str) -> tuple[Any, str]:
-    """Return one pointer's parent and final token."""
-
-    parts = _pointer_parts(pointer)
-    if not parts:
-        return None, ""
-    parent = target
-    for token in parts[:-1]:
-        if isinstance(parent, Mapping):
-            parent = parent[token]
-        elif isinstance(parent, Sequence) and not isinstance(parent, (str, bytes)):
-            parent = parent[int(token)]
-        else:
-            raise KeyError(token)
-    return parent, parts[-1]
-
-
-def _add_pointer(document: Any, target: Any, pointer: str, value: Any) -> Any:
-    """Add one value to a mapping, array, or document root."""
-
-    parent, token = _parent_pointer(target, pointer)
-    if parent is None:
+def _change_path(node: Any, path: tuple[str, ...], operation: str, value: Any = None) -> Any:
+    """Retain unchanged branches and rebuild only the path to one changed value."""
+    if not path:
+        if operation == "remove":
+            raise ValueError("Fastcast cannot remove the document root")
         return value
-    if isinstance(parent, dict):
-        parent[token] = value
-        return document
-    if isinstance(parent, list):
-        if token == "-":
-            parent.append(value)
+    token, rest = path[0], path[1:]
+    if isinstance(node, Mapping):
+        changed = dict(node)
+        if rest:
+            changed[token] = _change_path(node[token], rest, operation, value)
+        elif operation == "remove":
+            del changed[token]
         else:
-            parent.insert(int(token), value)
-        return document
-    raise TypeError("Fastcast patch parent is not a container")
-
-
-def _replace_pointer(document: Any, target: Any, pointer: str, value: Any) -> Any:
-    """Replace one value in a mapping, array, or document root."""
-
-    parent, token = _parent_pointer(target, pointer)
-    if parent is None:
-        return value
-    if isinstance(parent, dict):
-        if token not in parent:
-            raise KeyError(token)
-        parent[token] = value
-        return document
-    if isinstance(parent, list):
-        parent[int(token)] = value
-        return document
-    raise TypeError("Fastcast patch parent is not a container")
-
-
-def _remove_pointer(document: Any, target: Any, pointer: str) -> Any:
-    """Remove one value from a mapping or array."""
-
-    parent, token = _parent_pointer(target, pointer)
-    if parent is None:
-        raise ValueError("Fastcast cannot remove the document root")
-    if isinstance(parent, dict):
-        del parent[token]
-        return document
-    if isinstance(parent, list):
-        del parent[int(token)]
-        return document
+            if operation == "replace" and token not in node:
+                raise KeyError(token)
+            changed[token] = value
+        return MappingProxyType(changed)
+    if isinstance(node, (list, tuple)):
+        changed = list(node)
+        if rest:
+            index = int(token)
+            changed[index] = _change_path(node[index], rest, operation, value)
+        elif operation == "add":
+            if token == "-":
+                changed.append(value)
+            else:
+                changed.insert(int(token), value)
+        elif operation == "remove":
+            del changed[int(token)]
+        else:
+            changed[int(token)] = value
+        return tuple(changed)
     raise TypeError("Fastcast patch parent is not a container")
 
 

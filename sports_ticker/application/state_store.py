@@ -58,11 +58,11 @@ class SnapshotStore:
         if not isinstance(snapshot, TickerSnapshot):
             raise TypeError("snapshot must be a TickerSnapshot")
 
-        stored_at = self._clock()
         with self._lock:
+            stored_at = self._clock()
             previous = self._snapshots.get(snapshot.ticker_id)
             revision = 1 if previous is None else previous.revision + 1
-            stored = dataclass_replace(snapshot, revision=revision)
+            stored = dataclass_replace(snapshot, revision=revision, committed_at_ms=stored_at * 1000.0)
             self._snapshots[snapshot.ticker_id] = stored
             history = self._history.setdefault(snapshot.ticker_id, deque())
             if not history or _source_changed(history[-1].snapshot, stored):
@@ -111,9 +111,21 @@ def _source_changed(previous: TickerSnapshot, current: TickerSnapshot) -> bool:
     """Return if a new source frame needs a delayed history entry."""
 
     return (
-        previous.content != current.content
+        len(previous.content) != len(current.content)
+        or any(not _same_source_item(left, right) for left, right in zip(previous.content, current.content))
         or previous.alerts != current.alerts
         or previous.news != current.news
+    )
+
+
+def _same_source_item(left, right) -> bool:
+    """Keep receipt metadata from creating artificial delayed display history."""
+    if left == right:
+        return True
+    return (
+        (left.id, left.family, left.kind, left.is_shown) == (right.id, right.family, right.kind, right.is_shown)
+        and {key: value for key, value in left.data.items() if key != "_source_timing"}
+        == {key: value for key, value in right.data.items() if key != "_source_timing"}
     )
 
 

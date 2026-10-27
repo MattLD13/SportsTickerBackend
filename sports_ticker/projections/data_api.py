@@ -63,14 +63,19 @@ def project_data_v2(
         family = item.family if item.family in content else item.family
         content.setdefault(family, []).append(_content_item(item, apply_logo_rendering=apply_logo_rendering))
 
+    snapshot_value = {
+        "ticker_id": str(snapshot.ticker_id), "revision": snapshot.revision,
+        "observed_at": _json_value(snapshot.observed_at), "stale": _stale_value(meta),
+    }
+    timings = {item.id: _json_value(item.data["_source_timing"]) for item in snapshot.content
+               if isinstance(item.data.get("_source_timing"), Mapping)}
+    if timings or snapshot.committed_at_ms is not None:
+        snapshot_value["timing"] = {
+            "items": timings, "snapshot_ready_ms": snapshot.committed_at_ms,
+        }
     return {
         "api_version": "v2",
-        "snapshot": {
-            "ticker_id": str(snapshot.ticker_id),
-            "revision": snapshot.revision,
-            "observed_at": _json_value(snapshot.observed_at),
-            "stale": _stale_value(meta),
-        },
+        "snapshot": snapshot_value,
         "settings": _settings_value(snapshot.effective_settings),
         "content": content,
         "events": {
@@ -216,6 +221,7 @@ def _content_item(item: ContentItem, *, apply_logo_rendering: bool = False) -> d
     if not isinstance(item, ContentItem):
         raise TypeError("snapshot content must contain ContentItem values")
     data = dict(item.data)
+    data.pop("_source_timing", None)
     if item.family in {"sports", "golf", "racing"}:
         data = project_sports_display(data)
     if item.family == "racing":

@@ -80,11 +80,13 @@ def create_default_frame_builder(
     logos = CachedLogoView(assets)
     catalog = create_default_content_catalog(assets)
     asset_directory = getattr(assets, "directory", None)
+    from .platform.panes import PreparedPaneCache
     viewport = CardViewport(
         catalog,
         use_process=asset_directory is not None,
         asset_directory=asset_directory,
         worker_cpu=card_cpu,
+        pane_cache=PreparedPaneCache(assets) if asset_directory is not None else None,
     )
     return FrameBuilder(
         catalog,

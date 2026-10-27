@@ -229,6 +229,11 @@ class TickerPiLogger:
         if now - self._window.started_at >= self._window_seconds:
             self._flush_window()
 
+    def record_latency(self, value: Mapping[str, Any]) -> None:
+        """Write a bounded input-to-presentation trace from the background logger."""
+        if self._started:
+            self._enqueue({"schema": 1, "kind": "latency", "at": self._timestamp(), **value})
+
     def record_payload(self, response: object) -> None:
         """Record bounded facts from one accepted backend payload."""
         if not self._started:

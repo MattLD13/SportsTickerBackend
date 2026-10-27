@@ -13,7 +13,7 @@ from asgiref.sync import ThreadSensitiveContext
 from flask import Flask, request
 
 from .production import create_production_application, start_runtime
-from .device_stream import DeviceStreamHub, SUBPROTOCOL, encode_message
+from .device_stream import DeviceStreamHub, SUBPROTOCOL, project_stream_payload
 
 
 class BackendASGI:
@@ -166,18 +166,18 @@ class BackendASGI:
         try:
             while True:
                 generation = self._stream_hub.generation
-                payload = await asyncio.to_thread(application.project_data, ticker_id)
+                projection = await asyncio.to_thread(project_stream_payload, application.project_data, ticker_id)
                 if generation != self._stream_hub.generation:
                     continue
                 subscriber, initial_messages = self._stream_hub.subscribe(
                     ticker_id,
-                    payload,
+                    projection,
                     resume_stream_id=resume_stream_id,
                     after_seq=after_seq,
                 )
                 break
             for message in initial_messages:
-                await send({"type": "websocket.send", "text": encode_message(message)})
+                await send({"type": "websocket.send", "text": message.encoded})
             receive_task = asyncio.create_task(receive())
             queue_task = asyncio.create_task(subscriber.queue.get())
             while True:
@@ -201,7 +201,7 @@ class BackendASGI:
                         await send({"type": "websocket.close", "code": 4403})
                         return
                     message = queue_task.result()
-                    await send({"type": "websocket.send", "text": encode_message(message)})
+                    await send({"type": "websocket.send", "text": message.encoded})
                     queue_task = asyncio.create_task(subscriber.queue.get())
         except Exception:
             await send({"type": "websocket.close", "code": 1011})

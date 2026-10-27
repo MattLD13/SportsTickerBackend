@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from math import isfinite
 import re
 import time
-from threading import Event, RLock
+from threading import RLock
 from types import MappingProxyType
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
@@ -20,10 +21,12 @@ from sports_ticker.leagues import COLLEGE_FOOTBALL_LEAGUES, allows_college_confe
 
 from .contracts import ProviderHealth, ProviderResult
 from .espn_fastcast import EspnFastcastSource
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .http import JsonHttpClient, PooledJsonHttpClient
 from .logo_overrides import corrected_logo
 from .nhl_live import nhl_team_key
+from .payloads import as_mapping as _mapping
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
+from .singleflight import SingleFlightCache
 from .sports_display import (
     SportsDisplayProjector,
     normalize_competition_stage,
@@ -286,7 +289,8 @@ class EspnScoreboardProvider:
         self._event_detail_urls = {
             league: _event_detail_url(league, url) for league, url in urls.items()
         }
-        self.client = client or UrllibJsonHttpClient()
+        self._owned_client = PooledJsonHttpClient() if client is None else None
+        self.client = client if client is not None else self._owned_client
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
@@ -296,11 +300,13 @@ class EspnScoreboardProvider:
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._monotonic = monotonic or time.monotonic
-        self._source_cache: dict[tuple[object, ...], tuple[float, _ScoreboardSource]] = {}
-        self._scoreboard_cache: dict[str, _RawScoreboardResponse] = {}
-        self._scoreboard_inflight: dict[str, Event] = {}
-        self._event_scoreboard_cache: dict[tuple[str, str], _RawEventScoreboardResponse] = {}
-        self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
+        self._source_cache: dict[tuple[object, ...], tuple[float, _ScoreboardSource, dict[str, str]]] = {}
+        self._scoreboard_cache = SingleFlightCache(
+            ttl=_SOURCE_CACHE_SECONDS, clock=self._monotonic
+        )
+        self._event_scoreboard_cache = SingleFlightCache(
+            ttl=_SOURCE_CACHE_SECONDS, clock=self._monotonic
+        )
         self._mlb_live_detail_cache: dict[str, _MlbLiveDetailCache] = {}
         self._mlb_event_keys: dict[str, _MlbEventKey] = {}
         self._mlb_schedule_cache: dict[
@@ -311,9 +317,12 @@ class EspnScoreboardProvider:
         self._ncaa_school_index_cache: tuple[float, dict[str, str]] | None = None
         self._fastcast = fastcast
         self._nhl_situation_source = nhl_situation_source
+        self._owned_nhl_situation_source = None
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
         self._mlb_live_detail_cache_lock = RLock()
+        self._projected_events: OrderedDict[tuple[str, str], tuple[object, object, ContentItem]] = OrderedDict()
+        self._projection_contexts: dict[str, object] = {}
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -327,11 +336,67 @@ class EspnScoreboardProvider:
         tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
         return self._fetch(settings, tracker, cache_source=True)
 
+    def fetch_live_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
+        """Project retained source updates without starting HTTP reconciliation."""
+        tracker = self._score_alerts_by_ticker.setdefault(str(ticker_id).strip(), ScoreAlertTracker())
+        return self._fetch(settings, tracker, cache_source=True, live_only=True)
+
+    def fetch_batch_for_tickers(self, settings_by_ticker: Mapping[str, DisplaySettings], *, live_only: bool = False) -> dict[str, object]:
+        """Prepare each source view once and keep alert state separate for every ticker."""
+        sources = {}
+        results = {}
+        with self._source_cache_lock:
+            current = self._now()
+            keys = {ticker_id: _source_key(self.scoreboard_urls, settings, _scoreboard_dates(settings.timezone, now=current))
+                    for ticker_id, settings in settings_by_ticker.items()}
+            representatives = {keys[ticker_id]: settings for ticker_id, settings in settings_by_ticker.items()}
+            for key, settings in representatives.items():
+                if not live_only or key not in self._source_cache:
+                    try:
+                        self._get_source(settings, cache_source=True, current=current)
+                    except Exception as error:
+                        sources[key] = error
+            batch = None
+            if self._fastcast is not None:
+                versions, views = self._fastcast.capture()
+                batch = {"versions": versions, "views": views, "merged": {}}
+            for ticker_id, settings in settings_by_ticker.items():
+                key = keys[ticker_id]
+                if key not in sources:
+                    try:
+                        sources[key] = self._get_source(settings, cache_source=True, live_only=True, batch=batch, current=current)
+                    except Exception as error:
+                        sources[key] = error
+                source = sources[key]
+                if isinstance(source, Exception):
+                    results[ticker_id] = source
+                    continue
+                tracker = self._score_alerts_by_ticker.setdefault(str(ticker_id).strip(), ScoreAlertTracker())
+                try:
+                    results[ticker_id] = self._result_from_source(settings, tracker, source)
+                except Exception as error:
+                    results[ticker_id] = error
+        return results
+
+    def own_nhl_situation_source(self) -> None:
+        self._owned_nhl_situation_source = self._nhl_situation_source
+
     def close(self) -> None:
-        """Stop the optional shared Fastcast stream."""
+        """Stop Fastcast and close this provider's retained HTTP connections."""
 
         if self._fastcast is not None:
             self._fastcast.close()
+        source, self._owned_nhl_situation_source = self._owned_nhl_situation_source, None
+        if source is not None:
+            source.close()
+        if self._owned_client is not None:
+            self._owned_client.close()
+
+    def wait_for_changes(self, after: Mapping[str, str], timeout: float) -> dict[str, str]:
+        """Expose source notifications to the core or its worker transport."""
+        if self._fastcast is None:
+            raise RuntimeError("ESPN source notifications require Fastcast")
+        return self._fastcast.wait_for_changes(after, timeout)
 
     def _fetch(
         self,
@@ -339,27 +404,46 @@ class EspnScoreboardProvider:
         score_alerts: ScoreAlertTracker,
         *,
         cache_source: bool,
+        live_only: bool = False,
     ) -> ProviderResult:
         """Fetch scoreboard content and emit only alerts allowed by ticker settings."""
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
 
-        current = self._now()
+        source = self._get_source(settings, cache_source=cache_source, live_only=live_only)
+        return self._result_from_source(settings, score_alerts, source)
+
+    def _get_source(self, settings: DisplaySettings, *, cache_source: bool, live_only: bool = False,
+                    batch: dict | None = None, current: datetime | None = None) -> "_ScoreboardSource":
+
+        current = self._now() if current is None else current
         dates = _scoreboard_dates(settings.timezone, now=current)
         source_key = _source_key(self.scoreboard_urls, settings, dates)
         if cache_source:
             with self._source_cache_lock:
                 now = self._monotonic()
                 cached = self._source_cache.get(source_key)
-                if cached is not None and 0 <= now - cached[0] < 5.0:
-                    source = cached[1]
+                versions = self._source_versions(settings) if batch is None else {
+                    league: version for league, version in batch["versions"].items()
+                    if league in self.scoreboard_urls and settings.active_sports.get(league, True)}
+                if cached is not None and (live_only or 0 <= now - cached[0] < 5.0):
+                    if versions == cached[2]:
+                        source = cached[1]
+                    else:
+                        source = self._read_source(settings, current, dates, cache_schedule=True, live_only=True, batch=batch)
+                        source = replace(source, errors=cached[1].errors, failed_sources=cached[1].failed_sources,
+                                         invalid_sources=cached[1].invalid_sources)
+                        self._source_cache[source_key] = (cached[0], source, versions)
                 else:
                     source = self._read_source(settings, current, dates, cache_schedule=True)
-                    self._source_cache[source_key] = (self._monotonic(), source)
+                    self._source_cache[source_key] = (self._monotonic(), source, versions)
         else:
             source = self._read_source(settings, current, dates, cache_schedule=False)
+        return source
 
+    def _result_from_source(self, settings: DisplaySettings, score_alerts: ScoreAlertTracker,
+                            source: "_ScoreboardSource") -> ProviderResult:
         items = source.content
         score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
         request_failed = source.failed_sources > 0
@@ -393,8 +477,14 @@ class EspnScoreboardProvider:
             self._stale_cache.set(settings, result)
             return result
         if fully_failed:
-            return self._stale_result(settings, health.error or "all sources failed")
+            return self._stale_cache.stale_result(settings, health.error or "all sources failed", provider="espn")
         return result
+
+    def _source_versions(self, settings: DisplaySettings) -> dict[str, str]:
+        if self._fastcast is None:
+            return {}
+        return {league: version for league, version in self._fastcast.versions().items()
+                if league in self.scoreboard_urls and settings.active_sports.get(league, True)}
 
     def _read_source(
         self,
@@ -403,6 +493,8 @@ class EspnScoreboardProvider:
         dates: Sequence[date],
         *,
         cache_schedule: bool,
+        live_only: bool = False,
+        batch: dict | None = None,
     ) -> "_ScoreboardSource":
         """Read one shared ESPN source view for all tickers with matching source settings."""
 
@@ -428,7 +520,7 @@ class EspnScoreboardProvider:
             cache_key = (settings.timezone, league, schedule_day)
             cached = self._league_schedules.get(cache_key) if cache_schedule else None
             raw_schedule_events = (
-                self._fastcast_events(league, cached.events)
+                self._fastcast_events(league, cached.events, batch=batch)
                 if cached is not None and cache_schedule
                 else cached.events if cached is not None else ()
             )
@@ -437,6 +529,9 @@ class EspnScoreboardProvider:
                 raw_schedule_events,
                 settings.active_conferences,
             )
+            if live_only:
+                cached_events[league] = schedule_events
+                continue
             if cached is None:
                 refresh_leagues.append((league, url))
             elif monotonic_now - cached.discovery_at >= _FULL_SCOREBOARD_DISCOVERY_INTERVAL:
@@ -536,7 +631,7 @@ class EspnScoreboardProvider:
         ) as pool:
             rankings_future = (
                 pool.submit(self._read_college_football_rankings)
-                if any(league in COLLEGE_FOOTBALL_LEAGUES for league, _url in active_leagues)
+                if not live_only and any(league in COLLEGE_FOOTBALL_LEAGUES for league, _url in active_leagues)
                 else None
             )
             scoreboard_futures = {
@@ -673,15 +768,22 @@ class EspnScoreboardProvider:
                         schedule_day=schedule_day,
                         discovery_at=discovery_ages.get(league, self._monotonic()),
                     )
-            if _needs_ncaa_logo_lookup(active_leagues, events_by_league):
+            if not live_only and _needs_ncaa_logo_lookup(active_leagues, events_by_league):
                 ncaa_logo_future = pool.submit(self._read_ncaa_school_index)
 
-        ranking_names = rankings_future.result() if rankings_future is not None else {}
+        if batch is None:
+            for league, _url in active_leagues:
+                events_by_league[league] = self._fastcast_events(league, events_by_league.get(league, ()))
+        ranking_names = self._rankings_cache[1] if live_only and self._rankings_cache is not None else {}
+        if rankings_future is not None:
+            ranking_names = rankings_future.result()
         football_rankings = _resolve_college_football_rankings(
             ranking_names,
             events_by_league,
         )
-        ncaa_logo_index = ncaa_logo_future.result() if ncaa_logo_future is not None else {}
+        ncaa_logo_index = self._ncaa_school_index_cache[1] if live_only and self._ncaa_school_index_cache is not None else {}
+        if ncaa_logo_future is not None:
+            ncaa_logo_index = ncaa_logo_future.result()
         failed_sources = len(failed_leagues)
         suppressed_live_update_ids = {
             (league, str(event.get("id") or "").strip())
@@ -695,6 +797,11 @@ class EspnScoreboardProvider:
             key=lambda entry: _event_league_priority(entry[0]),
         )
         for league, _url in event_leagues:
+            context = (tuple(sorted(football_rankings.items())) if league in COLLEGE_FOOTBALL_LEAGUES else (),
+                       tuple(sorted(ncaa_logo_index.items())) if league in COLLEGE_FOOTBALL_LEAGUES else ())
+            if self._projection_contexts.get(league) != context:
+                self._projection_contexts[league] = context
+            context = self._projection_contexts[league]
             events = events_by_league.get(league, ())
             for event in events:
                 event_id = str(event.get("id") or "").strip()
@@ -709,11 +816,21 @@ class EspnScoreboardProvider:
                 ):
                     continue
                 try:
-                    item = self._display.project(
-                        _content_item(league, event, ncaa_logo_index=ncaa_logo_index),
-                        event,
-                        football_rankings=football_rankings,
-                    )
+                    key = (league, event_id)
+                    trace = _mapping(event.get("_source_timing")).get("trace_id")
+                    cached_item = self._projected_events.get(key) if trace else None
+                    if cached_item is not None and cached_item[0] == trace and cached_item[1] is context:
+                        item = cached_item[2]
+                        self._projected_events.move_to_end(key)
+                    else:
+                        item = self._display.project(
+                            _content_item(league, event, ncaa_logo_index=ncaa_logo_index), event,
+                            football_rankings=football_rankings)
+                        if trace:
+                            self._projected_events[key] = (trace, context, item)
+                            self._projected_events.move_to_end(key)
+                            while len(self._projected_events) > 4096:
+                                self._projected_events.popitem(last=False)
                     items.append(item)
                 except (KeyError, TypeError, ValueError) as exc:
                     invalid_leagues.add(league)
@@ -722,7 +839,7 @@ class EspnScoreboardProvider:
         return _ScoreboardSource(
             content=tuple(
                 sorted(
-                    self._enrich_live_items(
+                    self._enrich_nhl_live_items(items) if live_only else self._enrich_live_items(
                         items,
                         update_payloads=live_update_payloads,
                         attempted_update_ids=attempted_live_update_ids,
@@ -814,19 +931,31 @@ class EspnScoreboardProvider:
         self,
         league: str,
         fallback: Sequence[Mapping[str, Any]],
+        *,
+        batch: dict | None = None,
     ) -> tuple[Mapping[str, Any], ...]:
         """Merge one Fastcast snapshot over the last complete schedule."""
 
         if self._fastcast is None:
             return tuple(fallback)
-        snapshot = self._fastcast.snapshot(league)
+        key = (league, id(fallback))
+        if batch is not None and key in batch["merged"]:
+            return batch["merged"][key][1]
+        snapshot, timings = self._fastcast.timed_snapshot(league) if batch is None else batch["views"].get(league, (None, {}))
         if snapshot is None:
             return tuple(fallback)
         try:
             events = _events(snapshot)
         except (TypeError, ValueError):
             return tuple(fallback)
-        return _merge_event_collections(fallback, events, league=league)
+        merged = _merge_event_collections(fallback, events, league=league)
+        result = tuple(
+            {**event, "_source_timing": timings[str(event.get("id") or "")]} if str(event.get("id") or "") in timings else event
+            for event in merged
+        )
+        if batch is not None:
+            batch["merged"][key] = (fallback, result)
+        return result
 
     def _read_scoreboard(
         self,
@@ -1049,56 +1178,34 @@ class EspnScoreboardProvider:
 
     def _cached_scoreboard(self, request_url: str) -> _RawScoreboardResponse:
         """Read one scoreboard URL once per freshness window, including temporary failures."""
-
-        while True:
-            with self._raw_cache_lock:
-                now = self._monotonic()
-                cached = self._scoreboard_cache.get(request_url)
-                if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
-                    return cached
-                waiter = self._scoreboard_inflight.get(request_url)
-                if waiter is None:
-                    waiter = Event()
-                    self._scoreboard_inflight[request_url] = waiter
-                    break
-            waiter.wait()
-
-        response: _RawScoreboardResponse
-        try:
+        def load() -> _RawScoreboardResponse:
             try:
                 payload = self.client.get_json(request_url, timeout=self.timeout)
             except Exception as error:
-                response = _RawScoreboardResponse(
+                return _RawScoreboardResponse(
                     events=None,
                     error=str(error) or type(error).__name__,
                     request_failed=True,
                     completed_at=self._monotonic(),
                 )
-            else:
-                try:
-                    events = _events(payload)
-                except Exception as error:
-                    response = _RawScoreboardResponse(
-                        events=None,
-                        error=str(error) or type(error).__name__,
-                        request_failed=False,
-                        completed_at=self._monotonic(),
-                    )
-                else:
-                    response = _RawScoreboardResponse(
-                        events=events,
-                        error=None,
-                        request_failed=False,
-                        completed_at=self._monotonic(),
-                        payload=payload,
-                    )
-        finally:
-            with self._raw_cache_lock:
-                self._scoreboard_cache[request_url] = response
-                active = self._scoreboard_inflight.pop(request_url, None)
-                if active is not None:
-                    active.set()
-        return response
+            try:
+                events = _events(payload)
+            except Exception as error:
+                return _RawScoreboardResponse(
+                    events=None,
+                    error=str(error) or type(error).__name__,
+                    request_failed=False,
+                    completed_at=self._monotonic(),
+                )
+            return _RawScoreboardResponse(
+                events=events,
+                error=None,
+                request_failed=False,
+                completed_at=self._monotonic(),
+                payload=payload,
+            )
+
+        return self._scoreboard_cache.get(request_url, load)
 
     def _cached_event_scoreboard(
         self,
@@ -1107,66 +1214,22 @@ class EspnScoreboardProvider:
     ) -> _RawEventScoreboardResponse:
         """Read one event scoreboard once per freshness window, including failures."""
 
-        while True:
-            with self._raw_cache_lock:
-                now = self._monotonic()
-                cached = self._event_scoreboard_cache.get(key)
-                if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
-                    return cached
-                waiter = self._event_scoreboard_inflight.get(key)
-                if waiter is None:
-                    waiter = Event()
-                    self._event_scoreboard_inflight[key] = waiter
-                    break
-            waiter.wait()
-
-        response: _RawEventScoreboardResponse
-        try:
+        def load() -> _RawEventScoreboardResponse:
             try:
                 event = self._read_event_payload(key[0], key[1], request_url)
             except Exception as error:
-                response = _RawEventScoreboardResponse(
+                return _RawEventScoreboardResponse(
                     payload=None,
                     error=str(error) or type(error).__name__,
                     completed_at=self._monotonic(),
                 )
-            else:
-                response = _RawEventScoreboardResponse(
-                    payload=event,
-                    error=None,
-                    completed_at=self._monotonic(),
-                )
-        finally:
-            with self._raw_cache_lock:
-                self._event_scoreboard_cache[key] = response
-                active = self._event_scoreboard_inflight.pop(key, None)
-                if active is not None:
-                    active.set()
-        return response
-
-    def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
-        """Return last successful content with an unhealthy stale status."""
-
-        result = self._stale_cache.get(settings)
-        if result is None:
-            return ProviderResult(
-                health=ProviderHealth(
-                    healthy=False,
-                    provider="espn",
-                    error=f"stale: {error}",
-                )
+            return _RawEventScoreboardResponse(
+                payload=event,
+                error=None,
+                completed_at=self._monotonic(),
             )
-        return ProviderResult(
-            content=result.content,
-            alerts=result.alerts,
-            news=result.news,
-            observed_at=result.observed_at,
-            health=ProviderHealth(
-                healthy=False,
-                provider="espn",
-                error=f"stale: {error}",
-            ),
-        )
+
+        return self._event_scoreboard_cache.get(key, load)
 
     def _enrich_live_item(
         self,
@@ -1899,6 +1962,8 @@ def _content_item(
         "away_color": away_team["color"],
         "away_alt_color": away_team["alt_color"],
     }
+    if isinstance(event.get("_source_timing"), Mapping):
+        display_data["_source_timing"] = event["_source_timing"]
     if league in COLLEGE_FOOTBALL_LEAGUES:
         display_data.update(
             {
@@ -3640,8 +3705,6 @@ def _first_mapping(value: Any) -> Mapping[str, Any]:
     return {}
 
 
-def _mapping(value: Any) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
 
 
 def _text(value: Any, default: str = "") -> str:

@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import DisplaySettings
 
-from .http import JsonHttpClient, JsonHttpError, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
+from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, PooledJsonHttpClient, PooledTextHttpClient
 from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
 
 
@@ -138,8 +138,10 @@ class LiveRacingSource:
         socket_factory: Callable | None = None,
         weather_source: object | None = None,
     ) -> None:
-        self._client = client or UrllibJsonHttpClient()
-        self._text_client = text_client or UrllibTextHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._text_client_owner = OwnedClient(text_client, PooledTextHttpClient)
+        self._client = self._client_owner.client
+        self._text_client = self._text_client_owner.client
         self._timeout = float(timeout)
         if self._timeout <= 0:
             raise ValueError("timeout must be positive")
@@ -166,6 +168,12 @@ class LiveRacingSource:
             self._client, self._circuit_weather, now=self._now, clock=clock, timeout=self._timeout,
             **({"socket_factory": socket_factory} if socket_factory is not None else {}),
         )
+
+    def close(self) -> None:
+        try:
+            self._client_owner.close()
+        finally:
+            self._text_client_owner.close()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         """Return current sessions for the enabled racing series."""

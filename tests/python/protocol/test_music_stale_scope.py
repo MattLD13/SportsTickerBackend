@@ -29,3 +29,7 @@ def test_rate_limited_music_never_reuses_another_tickers_record():
     source.failed = True
     own_stale = provider.fetch_for_ticker("owner", settings)
     assert not own_stale.health.healthy and own_stale.content == first.content
+    assert own_stale.observed_at == first.observed_at
+    assert own_stale.health.provider == first.health.provider
+    assert own_stale.health.error == "stale: Spotify Web API rate limit cooldown is active"
+    assert own_stale.health.diagnostic["exception_type"] == "RuntimeError"

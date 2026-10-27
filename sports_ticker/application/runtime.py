@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
-from threading import Event, Lock
+from threading import Event, Lock, Thread
 from typing import Protocol, TypeAlias
 
 from .events import EventService
@@ -64,7 +64,32 @@ class BackendRuntime:
         self.poll_interval = interval
         self._monotonic = monotonic
         self._stop_event = Event()
+        self._wake_event = Event()
         self._wait = wait or self._stop_event
+        self._change_sources: dict[str, Callable] = {}
+        self._change_threads: list[Thread] = []
+
+    def add_change_source(self, name: str, source: Callable) -> None:
+        """Register one bounded source notification reader before runtime startup."""
+        self._change_sources[name] = source
+
+    def _watch_changes(self, name: str, source: Callable) -> None:
+        cursor = {}
+        last_error_at = float('-inf')
+        while not self._stop_event.is_set():
+            try:
+                versions = source(cursor, 2.0)
+            except Exception as error:
+                now = self._monotonic()
+                if self._incidents is not None and now - last_error_at >= 60:
+                    self._incidents.record("source_notification_failure", component=name, error=error)
+                    last_error_at = now
+                self._stop_event.wait(1.0)
+                continue
+            changed = {topic for topic, version in versions.items() if cursor.get(topic) != version}
+            if cursor and changed:
+                self.scheduler.request_refresh(name, changed)
+            cursor = versions
 
     def run_once(self) -> tuple[str, ...]:
         """Run one scheduler pass and remove expired durable events."""
@@ -95,12 +120,29 @@ class BackendRuntime:
 
         with self._lock:
             self._running = True
+        if self._change_sources:
+            self.scheduler.set_wake(self._wake_event.set)
+        else:
+            wake = getattr(self.scheduler, "set_wake", None)
+            if callable(wake):
+                wake(self._wake_event.set)
+        for name, source in self._change_sources.items():
+            thread = Thread(target=self._watch_changes, args=(name, source), name=f"{name}-changes", daemon=True)
+            self._change_threads.append(thread)
+            thread.start()
         try:
             while True:
+                self._wake_event.clear()
+                if self._stop_event.is_set():
+                    return
                 self.run_once()
                 if self._wait_for_next_pass():
                     return
         finally:
+            self._stop_event.set()
+            for thread in self._change_threads:
+                thread.join(timeout=4)
+            self._change_threads.clear()
             with self._lock:
                 self._running = False
 
@@ -125,9 +167,13 @@ class BackendRuntime:
         """Request shutdown when the runtime uses its default wait primitive."""
 
         self._stop_event.set()
+        self._wake_event.set()
 
     def _wait_for_next_pass(self) -> bool:
         wait = self._wait
+        if wait is self._stop_event:
+            self._wake_event.wait(self.poll_interval)
+            return self._stop_event.is_set()
         if callable(wait):
             return bool(wait(self.poll_interval))
         return bool(wait.wait(self.poll_interval))

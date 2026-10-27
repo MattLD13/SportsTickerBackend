@@ -18,7 +18,8 @@
         "observed_at": {
           "type": "string"
         },
-        "stale": {}
+        "stale": {},
+        "timing": {"$ref": "display-timing.json"}
       },
       "required": [
         "ticker_id",

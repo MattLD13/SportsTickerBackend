@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock, Thread
+from threading import Lock
 import time
 from typing import Any
 
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .background import BackgroundTask
+from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
+from .payloads import as_mapping as _mapping, mapping_values as _records
 from .sports_display import nhl_competition_stage
 
 
@@ -29,7 +31,9 @@ class NhlLiveSituationSource:
         background: bool = True,
         monotonic=time.monotonic,
     ) -> None:
-        self._client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._client = self._client_owner.client
+        self._worker = BackgroundTask(self._client_owner.close)
         self._timeout = max(1.0, float(timeout))
         self._refresh_seconds = max(1.0, float(refresh_seconds))
         self._cache_seconds = max(self._refresh_seconds, float(cache_seconds))
@@ -41,6 +45,9 @@ class NhlLiveSituationSource:
         self._last_started = float("-inf")
         self._refreshing = False
         self._lock = Lock()
+
+    def close(self) -> None:
+        self._worker.close()
 
     def snapshot(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Return cached live situations and refresh them outside the caller."""
@@ -61,7 +68,8 @@ class NhlLiveSituationSource:
                 return
             self._last_started = now
             self._refreshing = True
-        Thread(target=self._refresh, name="nhl-situation-refresh", daemon=True).start()
+            if not self._worker.start(self._refresh, name="nhl-situation-refresh"):
+                self._refreshing = False
 
     def _refresh(self) -> None:
         if self._background:
@@ -262,14 +270,8 @@ def _game_events(game: Mapping[str, Any]) -> dict[str, Any]:
     return {"goals": goals, "shootout": shootout}
 
 
-def _records(value: object) -> tuple[Mapping[str, Any], ...]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        return ()
-    return tuple(record for record in value if isinstance(record, Mapping))
 
 
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
 
 
 __all__ = ["NhlLiveSituationSource", "nhl_team_key"]

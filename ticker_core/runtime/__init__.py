@@ -14,7 +14,7 @@ from .model import (
     UpdateRequest,
 )
 from .pacing import FramePacer
-from .state import CANONICAL_MODES, TickerRuntime, classify_content, remap_strip_offset
+from .state import CANONICAL_MODES, TickerRuntime, classify_content, prepare_content, remap_strip_offset
 
 __all__ = [
     "Content",
@@ -32,5 +32,6 @@ __all__ = [
     "TickerRuntime",
     "UpdateRequest",
     "classify_content",
+    "prepare_content",
     "remap_strip_offset",
 ]

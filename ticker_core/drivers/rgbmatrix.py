@@ -13,6 +13,16 @@ from PIL import Image
 from .memory import _brightness, _prepare_frame
 
 
+_TRANSFER_ROWS = 4
+
+
+def _set_image(canvas: Any, frame: Image.Image) -> None:
+    """Transfer four-row bands selected by the physical Pi framebuffer benchmark."""
+    for top in range(0, frame.height, _TRANSFER_ROWS):
+        band = frame.crop((0, top, frame.width, min(top + _TRANSFER_ROWS, frame.height)))
+        canvas.SetImage(band, 0, top)
+
+
 class RgbMatrixUnavailableError(RuntimeError):
     """Raised when the Pi RGB matrix library is unavailable."""
 
@@ -117,17 +127,17 @@ class RgbMatrixFrameSink:
         brightness: int = 100,
         inverted: bool = False,
     ) -> None:
-        frame = _prepare_frame(image, self.width, self.height, inverted)
+        frame = _prepare_frame(image, self.width, self.height, inverted, copy=False)
         target_brightness = _brightness(brightness)
         self.brightness = target_brightness
         self.inverted = inverted
         if self._canvas is not None:
             self._canvas.brightness = target_brightness
-            self._canvas.SetImage(frame)
+            _set_image(self._canvas, frame)
             self._canvas = self._matrix.SwapOnVSync(self._canvas)
             return
         self._matrix.brightness = target_brightness
-        self._matrix.SetImage(frame)
+        _set_image(self._matrix, frame)
 
     def clear(self) -> None:
         self.present(Image.new("RGB", (self.width, self.height)), brightness=self.brightness)

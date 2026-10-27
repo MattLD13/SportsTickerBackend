@@ -128,3 +128,29 @@ def test_team_name_map_resolves_names_without_changing_team_payloads() -> None:
         "abbr": "SEA",
         "logo": "",
     },)
+
+
+def test_catalog_cache_uses_read_start_time_and_retries_failed_reads(monkeypatch) -> None:
+    clock = [0.0]
+    monkeypatch.setattr("sports_ticker.providers.catalog.monotonic", lambda: clock[0])
+
+    class Client:
+        calls = 0
+
+        def get_json(self, url, *, timeout):
+            self.calls += 1
+            if self.calls == 2:
+                raise ValueError("temporary failure")
+            clock[0] += 2.0
+            return {"items": [{"$ref": f"https://example.com/teams/{self.calls}"}]}
+
+    client = Client()
+    catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS, client=client, cache_seconds=5)
+    assert catalog._college_team_ids(2026, "80") == frozenset({"1"})
+    clock[0] = 4.9
+    assert catalog._college_team_ids(2026, "80") == frozenset({"1"})
+    clock[0] = 5.0
+    with pytest.raises(ValueError, match="temporary failure"):
+        catalog._college_team_ids(2026, "80")
+    assert catalog._college_team_ids(2026, "80") == frozenset({"3"})
+    assert client.calls == 3

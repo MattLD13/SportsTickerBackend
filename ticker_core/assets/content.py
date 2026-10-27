@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-from threading import Condition, Thread
+from threading import Condition, Lock, Thread
 from time import time
 from typing import Any
 from uuid import uuid4
@@ -43,6 +43,7 @@ class ShortTermContentCache:
         self.ttl = ttl
         self._clock = clock
         self._memory: CachedContent | None = None
+        self._memory_lock = Lock()
         self._write_condition = Condition()
         self._pending_write: CachedContent | None = None
         self._write_active = False
@@ -55,29 +56,37 @@ class ShortTermContentCache:
         frozen_payload = _thaw_mapping(payload)
         entry = CachedContent(frozen_payload, saved_at, saved_at + self.ttl)
         # Keep disk work outside the frame loop because removable storage can stall.
-        if self._memory is None or self._memory.payload != frozen_payload:
+        previous = self._memory
+        changed = previous is None or previous.payload != frozen_payload
+        with self._memory_lock:
+            self._memory = entry
+        if changed:
             self._queue_write(entry)
-        self._memory = entry
         return entry
 
     def refresh(self) -> CachedContent | None:
         """Extend an unchanged in-memory payload without copying or disk I/O."""
-        if self._memory is None:
-            return None
-        saved_at = self._clock()
-        self._memory = CachedContent(self._memory.payload, saved_at, saved_at + self.ttl)
-        return self._memory
+        with self._memory_lock:
+            if self._memory is None:
+                return None
+            saved_at = self._clock()
+            self._memory = CachedContent(self._memory.payload, saved_at, saved_at + self.ttl)
+            return self._memory
 
     def load(self) -> CachedContent | None:
         """Return valid cached content or no content after expiry."""
-        entry = self._memory or self._read()
+        entry = self._memory
         if entry is None:
-            return None
-        if entry.expires_at <= self._clock():
-            self._memory = None
-            return None
-        self._memory = entry
-        return entry
+            entry = self._read()
+        with self._memory_lock:
+            entry = self._memory or entry
+            if entry is None:
+                return None
+            if entry.expires_at <= self._clock():
+                self._memory = None
+                return None
+            self._memory = entry
+            return entry
 
     def remaining(self, entry: CachedContent) -> float:
         """Return remaining validity for one cached entry."""

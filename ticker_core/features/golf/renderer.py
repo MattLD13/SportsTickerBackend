@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, hybrid_text, normal_text, tiny_text
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
+from ticker_core.rendering.templates import ImageTemplates
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ class GolfRenderer:
 
     def __init__(self, fonts: FontSet) -> None:
         self._fonts = fonts
+        self._scroll_templates = ImageTemplates()
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render the mode-selected golf view."""
@@ -50,18 +52,22 @@ class GolfRenderer:
         match = re.search(r"\d+", round_label)
         header = f"{event} R{match.group() if match else '-'}"
         width = max(128, len(header) * 5 + 4)
-        image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
-        x = max(1, (width - len(header) * 5) // 2)
-        hybrid_text(draw, x + 1, 2, header, (8, 8, 8, 180), self._fonts.tiny)
-        hybrid_text(draw, x, 1, header, (255, 240, 150, 255), self._fonts.tiny)
-        draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
         total_x = width - 27
         total_center = width - 15
         today_x = width - 55
         today_center = width - 43
-        tiny_text(draw, today_x, 8, "TODAY", (80, 95, 130), self._fonts.tiny)
-        tiny_text(draw, total_x, 8, "TOTAL", (80, 95, 130), self._fonts.tiny)
+        def static_layer():
+            image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
+            draw = ImageDraw.Draw(image)
+            x = max(1, (width - len(header) * 5) // 2)
+            hybrid_text(draw, x + 1, 2, header, (8, 8, 8, 180), self._fonts.tiny)
+            hybrid_text(draw, x, 1, header, (255, 240, 150, 255), self._fonts.tiny)
+            draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
+            tiny_text(draw, today_x, 8, "TODAY", (80, 95, 130), self._fonts.tiny)
+            tiny_text(draw, total_x, 8, "TOTAL", (80, 95, 130), self._fonts.tiny)
+            return image
+        image = self._scroll_templates.render((width, header), static_layer)
+        draw = ImageDraw.Draw(image)
         players = self._players(payload, compact=True)[:3]
         pars = payload.get("pars", []) if isinstance(payload.get("pars"), list) else []
         if not players:
@@ -161,16 +167,20 @@ class GolfRenderer:
         result_width = max([30, *(len(result) * 5 for _, result, _ in rows)])
         longest_label = max((len(label) for label, _, _ in rows), default=8)
         width = max(128, len(title) * 5 + 4, longest_label * 5 + result_width + 22)
-        image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
-        x = max(1, (width - len(title) * 5) // 2)
-        hybrid_text(draw, x + 1, 2, title, (8, 8, 8, 180), self._fonts.tiny)
-        hybrid_text(draw, x, 1, title, (255, 240, 150, 255), self._fonts.tiny)
-        draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
         result_x = width - result_width - 2
-        tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
         heading_x = result_x + (result_width - len("RESULT") * 5) // 2
-        tiny_text(draw, heading_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
+        def static_layer():
+            image = Image.new("RGBA", (width, PANEL_H), (0, 0, 0, 255))
+            draw = ImageDraw.Draw(image)
+            x = max(1, (width - len(title) * 5) // 2)
+            hybrid_text(draw, x + 1, 2, title, (8, 8, 8, 180), self._fonts.tiny)
+            hybrid_text(draw, x, 1, title, (255, 240, 150, 255), self._fonts.tiny)
+            draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
+            tiny_text(draw, 18, 8, "MATCH", (80, 95, 130), self._fonts.tiny)
+            tiny_text(draw, heading_x, 8, "RESULT", (80, 95, 130), self._fonts.tiny)
+            return image
+        image = self._scroll_templates.render((width, title, result_width, 'match'), static_layer)
+        draw = ImageDraw.Draw(image)
         for index, (label, result, winner) in enumerate(rows):
             score_color = (255, 215, 0) if winner else (150, 150, 150)
             tiny_text(draw, 1, (14, 20, 26)[index], label, "white", self._fonts.tiny)

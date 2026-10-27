@@ -9,7 +9,7 @@ from typing import Any, Protocol, TypeAlias
 
 from sports_ticker.domain import DisplaySettings
 
-from .contracts import Provider, ProviderHealth, ProviderResult
+from .contracts import Provider, ProviderResult
 from .normalization import normalize_provider_result
 from .stale_cache import SettingsResultCache
 
@@ -59,6 +59,18 @@ class _FeatureProvider:
             raise TypeError("source must provide fetch(settings)")
         self._source = source
         self._stale_cache = SettingsResultCache()
+        self._owned_source = None
+
+    def own_source(self) -> None:
+        """Transfer source ownership to this provider during composition."""
+        self._owned_source = self._source
+
+    def close(self) -> None:
+        source, self._owned_source = self._owned_source, None
+        if source is not None:
+            close = getattr(source, "close", None)
+            if callable(close):
+                close()
 
     def _fetch_normalized(
         self,
@@ -81,34 +93,10 @@ class _FeatureProvider:
             if result.health.healthy:
                 self._stale_cache.set(settings, result, scope=cache_scope)
                 return result
-            return self._stale_result(settings, result.health.error or "source unhealthy", cache_scope=cache_scope)
+            return self._stale_cache.stale_result(settings, result.health.error or "source unhealthy", provider=self.provider_name, scope=cache_scope)
         except Exception as error:
-            return self._stale_result(settings, str(error) or type(error).__name__, cache_scope=cache_scope,
+            return self._stale_cache.stale_result(settings, str(error) or type(error).__name__, provider=self.provider_name, scope=cache_scope,
                                       diagnostic={"exception_type": type(error).__name__, "traceback": "".join(traceback.format_exception(error))})
-
-    def _stale_result(self, settings: DisplaySettings, error: str, *, cache_scope: str = "", diagnostic=None) -> ProviderResult:
-        result = self._stale_cache.get(settings, scope=cache_scope)
-        if result is None:
-            return ProviderResult(
-                health=ProviderHealth(
-                    healthy=False,
-                    provider=self.provider_name,
-                    error=f"stale: {error}",
-                    diagnostic=diagnostic,
-                )
-            )
-        return ProviderResult(
-            content=result.content,
-            alerts=result.alerts,
-            news=result.news,
-            observed_at=result.observed_at,
-            health=ProviderHealth(
-                healthy=False,
-                provider=self.provider_name,
-                error=f"stale: {error}",
-                    diagnostic=diagnostic,
-            ),
-        )
 
 
 def _content_payload(

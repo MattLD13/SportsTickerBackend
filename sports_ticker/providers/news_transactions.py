@@ -11,7 +11,7 @@ from threading import Lock
 from time import monotonic
 from typing import Protocol
 
-from .http import TextHttpClient, UrllibTextHttpClient
+from .http import TextHttpClient, OwnedClient, PooledTextHttpClient
 
 
 _TRACKER_ROW = re.compile(
@@ -89,12 +89,16 @@ class NhlTradeTrackerSource:
         max_age_days: int = 2,
     ) -> None:
         self._team_name_map = team_name_map
-        self._client = client or UrllibTextHttpClient()
+        self._client_owner = OwnedClient(client, PooledTextHttpClient)
+        self._client = self._client_owner.client
         self._cache_seconds = max(1.0, float(cache_seconds))
         self._clock = clock
         self._max_age_days = max(0, int(max_age_days))
         self._cache: tuple[float, tuple[ConfirmedTransaction, ...]] | None = None
         self._lock = Lock()
+
+    def close(self) -> None:
+        self._client_owner.close()
 
     def confirm_transaction(
         self,

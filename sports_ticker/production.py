@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Final
 
@@ -53,6 +54,7 @@ def create_production_application(
     _provision_initial_ticker(repository)
     spotify = SpotifyIntegrationService(repository, SpotifyConfig.from_environment())
     catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS)
+    weather_resolver = WeatherLocationResolver()
     worker_directory = os.environ.get("TICKER_WORKER_DIRECTORY")
     providers = {
         name: WorkerProvider(name, Path(worker_directory)) if worker_directory else create_provider(name, spotify=spotify, catalog=catalog)
@@ -61,13 +63,16 @@ def create_production_application(
     snapshots = SnapshotStore()
     refresh = RefreshService(providers.values(), snapshots)
     incidents = IncidentStore(Path(os.environ.get("TICKER_INCIDENT_DIR", path.parent / "backend-incidents")))
-    scheduler = RefreshScheduler(refresh, incidents=incidents)
+    scheduler = RefreshScheduler(refresh, incidents=incidents,
+                                 executor=ThreadPoolExecutor(max_workers=len(_INTERVALS), thread_name_prefix="provider-read"))
     for name, provider in providers.items():
         scheduler.register_provider(
             name,
             _INTERVALS[name],
             _provider_fetch(provider),
             settings_key=_provider_settings_key(name),
+            refresh_changed=provider.fetch_live_for_ticker if name == "espn" else None,
+            refresh_batch=provider.fetch_batch_for_tickers if name == "espn" else None,
         )
     application = BackendApplication(
         repository,
@@ -75,17 +80,19 @@ def create_production_application(
         scheduler=scheduler,
         spotify_service=spotify,
         catalog=catalog,
-        weather_location_resolver=WeatherLocationResolver().resolve,
+        weather_location_resolver=weather_resolver.resolve,
+        owned_resources=(catalog, weather_resolver),
         mini_sprites=MiniSpriteService(Path(os.environ.get("TICKER_MINI_ASSET_CACHE", path.parent / "mini_sprites"))),
         mini_artwork=MiniArtworkService(),
     )
-    scheduler.set_refresh_policy(ProviderDemand(repository, application.schedule_service))
+    scheduler.set_provider_demand(ProviderDemand(repository, application.schedule_service))
     runtime = BackendRuntime(
         scheduler,
         application.event_service,
         incidents=incidents,
         poll_interval=_positive_float(os.environ.get("TICKER_REFRESH_TICK_SECONDS", "0.2")),
     )
+    runtime.add_change_source("espn", providers["espn"].wait_for_changes)
     firmware_manifest = FirmwareManifest.from_environment()
     firmware_directory = Path(
         os.environ.get("TICKER_FIRMWARE_DIR", path.parent / "firmware")

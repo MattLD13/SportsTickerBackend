@@ -1,0 +1,15 @@
+{
+  "snapshot_ready_ms": 1792979482200,
+  "items": {
+    "example-game": {
+      "trace_id": "example-topic:1:example-game",
+      "source": "espn_fastcast",
+      "input_boundary": "fastcast_socket_received",
+      "ingested_at_ms": 1792979481940,
+      "core_received_at_ms": 1792979482160,
+      "request_started_ms": 1792979482100,
+      "source_published_at_ms": 1792979481800,
+      "source_timestamp_kind": "publisher_envelope"
+    }
+  }
+}

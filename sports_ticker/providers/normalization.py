@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from sports_ticker.immutable import freeze as _freeze
+
 import hashlib
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
-from types import MappingProxyType
 from typing import Any
 
 from sports_ticker.domain import CONTENT_FAMILIES, ContentItem, DisplaySettings
@@ -447,18 +448,6 @@ def _text(value: Any, default: str = "") -> str:
     return default if value is None else str(value)
 
 
-def _freeze(value: Any) -> object:
-    if isinstance(value, Mapping):
-        return MappingProxyType({_freeze(key): _freeze(item) for key, item in value.items()})
-    if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze(item) for item in value)
-    if isinstance(value, bytearray):
-        return bytes(value)
-    return value
 
 
 __all__ = ["normalize_content", "normalize_provider_result", "normalize_settings"]

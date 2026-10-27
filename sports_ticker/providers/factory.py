@@ -12,8 +12,10 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         for league, path in ESPN_SCOREBOARD_PATHS.items():
             query = urlencode(dict(league_for(league).scoreboard_query))
             urls[league] = f"https://site.web.api.espn.com/apis/site/v2/sports/{path}/scoreboard" + ("?" + query if query else "")
-        return EspnScoreboardProvider(urls, fastcast=EspnFastcastSource({key: fastcast_topic(url) for key, url in urls.items()}),
-                                      nhl_situation_source=NhlLiveSituationSource())
+        provider = EspnScoreboardProvider(urls, fastcast=EspnFastcastSource({key: fastcast_topic(url) for key, url in urls.items()}),
+                                         nhl_situation_source=NhlLiveSituationSource())
+        provider.own_nhl_situation_source()
+        return provider
     if name == "fotmob":
         from .fotmob import FotMobSoccerProvider
         return FotMobSoccerProvider(FOTMOB_LEAGUES)
@@ -22,10 +24,19 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         from .live_sources import EspnNewsSource
         from .news import NewsProvider
         from .news_transactions import NhlTradeTrackerSource
-        catalog = catalog or EspnTeamCatalog(TEAM_CATALOG_PATHS)
-        return NewsProvider(EspnNewsSource({key: f"https://site.web.api.espn.com/apis/site/v2/sports/{path}/news" for key, path in TEAM_CATALOG_PATHS.items()},
-                                         team_color_lookup=catalog.team_colors,
-                                         transaction_confirmation_source=NhlTradeTrackerSource(catalog.team_name_map)))
+        owns_catalog = catalog is None
+        catalog = catalog if catalog is not None else EspnTeamCatalog(TEAM_CATALOG_PATHS)
+        transactions = NhlTradeTrackerSource(catalog.team_name_map)
+        source = EspnNewsSource({key: f"https://site.web.api.espn.com/apis/site/v2/sports/{path}/news" for key, path in TEAM_CATALOG_PATHS.items()},
+                                team_color_lookup=catalog.team_colors, transaction_confirmation_source=transactions)
+        source.own_dependency(transactions)
+        if isinstance(catalog, EspnTeamCatalog):
+            source.own_dependency(catalog.lease())
+        if owns_catalog:
+            source.own_dependency(catalog)
+        provider = NewsProvider(source)
+        provider.own_source()
+        return provider
     if name == "music":
         from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService, SpotifyMusicSource
         from sports_ticker.fleet import TickerRepository
@@ -39,15 +50,21 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
     if name == "racing":
         from .racing import RacingProvider
         from .racing_live import LiveRacingSource
-        return RacingProvider(LiveRacingSource())
+        provider = RacingProvider(LiveRacingSource())
+        provider.own_source()
+        return provider
     if name == "golf":
         from .golf import GolfProvider
         from .live_sources import EspnGolfSource
-        return GolfProvider(EspnGolfSource())
+        provider = GolfProvider(EspnGolfSource())
+        provider.own_source()
+        return provider
     if name == "stock":
         from .stocks import StockProvider
         from .live_sources import FinnhubStockSource
-        return StockProvider(FinnhubStockSource())
+        provider = StockProvider(FinnhubStockSource())
+        provider.own_source()
+        return provider
     if name == "flights":
         from .flights import FlightsProvider
         from .live_sources import FlightRadarSource

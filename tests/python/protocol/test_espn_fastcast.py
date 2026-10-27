@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import base64
 from collections import deque
+from collections.abc import Mapping
 import json
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 import zlib
+
+import pytest
 
 from sports_ticker.providers.espn_fastcast import (
     EspnFastcastSource,
@@ -30,6 +33,38 @@ def _snapshot() -> dict:
             }],
         }],
     }
+
+
+def _plain(value):
+    if isinstance(value, Mapping):
+        return {key: _plain(child) for key, child in value.items()}
+    if isinstance(value, tuple):
+        return [_plain(child) for child in value]
+    return value
+
+
+def test_source_versions_wake_waiters_and_change_after_worker_restart() -> None:
+    source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    source.prime("nfl", _snapshot())
+    before = source.versions()
+    result = []
+    ready = threading.Event()
+
+    def wait():
+        ready.set()
+        result.append(source.wait_for_changes(before, 2))
+
+    thread = threading.Thread(target=wait)
+    thread.start()
+    assert ready.wait(1)
+    source._handle_message({"op": "P", "tc": "scoreboard-football-nfl", "mid": 1,
+                            "pl": json.dumps([{"op": "replace", "path": "/events/0/competitions/0/competitors/0/score", "value": "7"}])})
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+    assert result == [source.versions()]
+    assert result[0] != before
+    restarted = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    assert restarted.wait_for_changes(source.versions(), 0) != source.versions()
 
 
 def test_fastcast_topic_uses_scoreboard_path_and_group() -> None:
@@ -162,8 +197,58 @@ def test_fastcast_source_ignores_non_patch_payloads() -> None:
         "pl": "0",
     })
 
-    assert source.snapshot("nfl") == _snapshot()
+    assert _plain(source.snapshot("nfl")) == _snapshot()
     assert source.error("nfl") is None
+
+
+def test_snapshot_views_detach_input_and_retain_unchanged_events() -> None:
+    document = _snapshot()
+    document["events"].append({"id": "402", "uid": "s:20~l:28~e:402", "name": "unchanged"})
+    source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    source.prime("nfl", document)
+    before = source.snapshot("nfl")
+    assert source.snapshot("nfl") is before
+    document["events"][0]["status"]["type"]["state"] = "caller-change"
+    assert before["events"][0]["status"]["type"]["state"] == "pre"
+    with pytest.raises(TypeError):
+        before["events"][0]["status"]["type"]["state"] = "reader-change"
+    source._handle_message({
+        "op": "P", "tc": "scoreboard-football-nfl",
+        "pl": json.dumps([{"op": "replace", "path": "/events/0/status/type/state", "value": "in"}]),
+    })
+    after = source.snapshot("nfl")
+    assert after["events"][0]["status"]["type"]["state"] == "in"
+    assert before["events"][0]["status"]["type"]["state"] == "pre"
+    assert after["events"][1] is before["events"][1]
+
+
+def test_failed_patch_batch_keeps_the_complete_previous_snapshot() -> None:
+    source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    source.prime("nfl", _snapshot())
+    before = source.snapshot("nfl")
+    source._handle_message({
+        "op": "P", "tc": "scoreboard-football-nfl",
+        "pl": json.dumps([
+            {"op": "replace", "path": "/events/0/status/type/state", "value": "in"},
+            {"op": "remove", "path": "/events/0/missing"},
+        ]),
+    })
+    assert source.snapshot("nfl") is before
+    assert _plain(before) == _snapshot()
+    assert source.error("nfl") is not None
+
+
+def test_patch_arrays_copy_move_test_and_escaped_paths() -> None:
+    original = {"a/b": [1, {"~key": [2, 3]}], "keep": {"value": ["unchanged"]}}
+    updated = _apply_fastcast_payload(original, [
+        {"op": "test", "path": "/a~1b/1/~0key", "value": [2, 3]},
+        {"op": "copy", "from": "/a~1b/1", "path": "/a~1b/-"},
+        {"op": "replace", "path": "/a~1b/1/~0key/0", "value": 8},
+        {"op": "move", "from": "/a~1b/0", "path": "/a~1b/1/~0key/-"},
+        {"op": "remove", "path": "/a~1b/0/~0key/1"},
+    ])
+    assert _plain(updated) == {"a/b": [{"~key": [8]}, {"~key": [2, 3, 1]}], "keep": {"value": ["unchanged"]}}
+    assert original == {"a/b": [1, {"~key": [2, 3]}], "keep": {"value": ["unchanged"]}}
 
 
 class _FakeSocket:

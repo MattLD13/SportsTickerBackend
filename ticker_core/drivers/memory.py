@@ -33,13 +33,15 @@ class MemoryFrameSink(FrameSink):
         self.present(Image.new("RGB", (self.width, self.height)), brightness=self.brightness)
 
 
-def _prepare_frame(image: Image.Image, width: int, height: int, inverted: bool) -> Image.Image:
+def _prepare_frame(
+    image: Image.Image, width: int, height: int, inverted: bool, *, copy: bool = True,
+) -> Image.Image:
     if image.size != (width, height):
         raise ValueError(f"Frame size must be {width}x{height}, not {image.width}x{image.height}.")
-    frame = image.convert("RGB")
+    frame = image if image.mode == "RGB" else image.convert("RGB")
     if inverted:
-        frame = frame.rotate(180)
-    return frame
+        return frame.rotate(180)
+    return frame.copy() if copy and frame is image else frame
 
 
 def _brightness(value: int) -> int:

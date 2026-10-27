@@ -70,6 +70,19 @@ def _event(source: object) -> tuple[str, Mapping[str, Any]]:
     return identifier, frozen_mapping(data)
 
 
+def prepare_content(items, previous: tuple[Content, ...] = (), changed_ids: frozenset[str] | None = None) -> tuple[Content, ...]:
+    """Prepare immutable runtime items while retaining unchanged game objects."""
+    retained = {item.id: item for item in previous}
+    result = []
+    for source in items:
+        identifier = str(_value(source, "id", ""))
+        if changed_ids is not None and identifier not in changed_ids and identifier in retained:
+            result.append(retained[identifier])
+        elif _mapping(source):
+            result.append(_content(source))
+    return tuple(result)
+
+
 def _fingerprint(response: object, content: tuple[Content, ...]) -> str:
     """Build a stable key when the protocol does not provide one."""
     provided = _value(response, "payload_key", None)
@@ -292,15 +305,17 @@ class TickerRuntime:
         if self._update_failure is not None and self._update_failure["id"] == identifier and self._update_failure_until == 0.0:
             self._update_failure_until = self._monotonic() + self.config.update_failure_duration
 
-    def accept_response(self, response: object) -> PayloadSnapshot:
+    def accept_response(self, response: object, *, prepared_content: tuple[Content, ...] | None = None) -> PayloadSnapshot:
         """Accept one parsed backend response without polling it."""
-        return self._accept_response(response, stale=False, stale_for=0.0, expires_in=None)
+        return self._accept_response(response, stale=False, stale_for=0.0, expires_in=None, prepared_content=prepared_content)
 
     def confirm_connection(self) -> None:
         """Keep current display state while recording a duplicate poll reply."""
         self._last_contact = self._monotonic()
         self._disconnected_at = None
         self._content_expires_at = None
+        if self._snapshot is not None and self._snapshot.stale:
+            self._snapshot = replace(self._snapshot, stale=False, cache_expires_at=None, source_received_at=self._last_contact)
 
     def mark_disconnected(self, *, expires_in: float) -> None:
         """Show connection loss while retaining valid content until expiry."""
@@ -332,6 +347,7 @@ class TickerRuntime:
         stale: bool,
         stale_for: float,
         expires_in: float | None,
+        prepared_content: tuple[Content, ...] | None = None,
     ) -> PayloadSnapshot:
         """Apply fresh or cached parsed data without external I/O."""
         now = self._monotonic()
@@ -344,7 +360,7 @@ class TickerRuntime:
         source_content = _value(response, "content", ())
         if isinstance(source_content, Mapping):
             source_content = source_content.get("sports", ())
-        content = tuple(_content(item) for item in source_content if _mapping(item))
+        content = prepare_content(source_content) if prepared_content is None else prepared_content
         previous_mode = self._mode
         previous_classification = self._classification
         server_mode = _canonical_mode(str(_value(settings, "mode", "sports")))

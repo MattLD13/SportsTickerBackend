@@ -101,27 +101,34 @@ def _boolean(value: Any, path: str, default: bool) -> bool:
 
 
 def _thaw(value: FrozenJson) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _thaw(child) for key, child in value.items()}
+    if value is None or isinstance(value, (str, int, float)):
+        return value
     if isinstance(value, tuple):
         return [_thaw(child) for child in value]
-    return value
+    return {key: _thaw(child) for key, child in value.items()}
 
 
 def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     """Return a stable hash for a JSON-compatible payload."""
 
     frozen = _mapping(payload, "payload")
-    return _json_payload_hash(_thaw(frozen))
+    return _json_payload_hash(frozen)
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    """Expose one frozen object to the JSON encoder without copying its children."""
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise TypeError(f"unsupported JSON value type {type(value).__name__}")
 
 
 def _json_payload_hash(payload: Any) -> str:
-    """Hash detached JSON values after the boundary validates their types."""
+    """Hash validated values without rebuilding the complete frozen tree."""
 
     try:
         encoded = json.dumps(
             payload, allow_nan=False, ensure_ascii=False,
-            separators=(",", ":"), sort_keys=True,
+            separators=(",", ":"), sort_keys=True, default=_json_object,
         ).encode("utf-8")
     except (TypeError, ValueError) as error:
         raise PayloadValidationError("payload is not canonical JSON") from error
@@ -131,11 +138,13 @@ def _json_payload_hash(payload: Any) -> str:
 def _display_payload_hash(payload: Mapping[str, Any]) -> str:
     """Hash display data while excluding transport-only snapshot fields."""
 
-    normalized = _thaw(payload)
+    normalized = dict(payload)
     snapshot = normalized.get("snapshot")
-    if isinstance(snapshot, dict):
-        snapshot.pop("observed_at", None)
-        snapshot.pop("revision", None)
+    if isinstance(snapshot, Mapping):
+        normalized["snapshot"] = {
+            key: value for key, value in snapshot.items()
+            if key not in {"observed_at", "revision", "timing"}
+        }
     return _json_payload_hash(normalized)
 
 

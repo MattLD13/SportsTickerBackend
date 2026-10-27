@@ -270,6 +270,27 @@ def _settings() -> DisplaySettings:
     return DisplaySettings(timezone="America/New_York")
 
 
+def test_fastcast_invalidates_the_shared_source_before_five_seconds_without_http(monkeypatch) -> None:
+    from sports_ticker.providers.espn_fastcast import EspnFastcastSource
+    import json
+
+    source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    monkeypatch.setattr(source, "start", lambda: None)
+    event = _event("game-1", "2026-08-16T18:00:00Z")
+    client = RecordingClient({"20260816-20260817": {"events": [event]}})
+    provider = EspnScoreboardProvider({"nfl": "https://example.test/football/nfl/scoreboard"}, client=client,
+                                     fastcast=source, now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+                                     monotonic=lambda: 1.0)
+    assert provider.fetch_for_ticker("one", _settings()).content[0].data["home_score"] == "0"
+    calls = tuple(client.urls)
+    source._handle_message({"op": "P", "tc": "scoreboard-football-nfl", "mid": 1,
+                            "pl": json.dumps([{"op": "replace", "path": "/events/0/competitions/0/competitors/0/score", "value": "7"}])})
+    result = provider.fetch_live_for_ticker("one", _settings())
+    assert result.content[0].data["home_score"] == "7"
+    assert result.content[0].data["_source_timing"]["source"] == "espn_fastcast"
+    assert tuple(client.urls) == calls
+
+
 def test_cfb_conference_filters_preserve_team_ids_and_keep_mixed_games() -> None:
     hidden = _event(
         "cfb-hidden",
@@ -1028,6 +1049,12 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
             del league
             return deepcopy(self.payload)
 
+        def timed_snapshot(self, league: str):
+            return self.snapshot(league), {}
+
+        def versions(self):
+            return {"nfl": repr(self.payload)}
+
         def active(self, league: str) -> bool:
             del league
             return self.started
@@ -1112,6 +1139,12 @@ def test_espn_stale_fastcast_game_uses_one_targeted_http_refresh() -> None:
         def snapshot(self, league: str):
             del league
             return deepcopy(self.payload)
+
+        def timed_snapshot(self, league: str):
+            return self.snapshot(league), {}
+
+        def versions(self):
+            return {"nfl": repr(self.payload)}
 
         def active(self, league: str) -> bool:
             del league

@@ -21,8 +21,8 @@ from .http import (
     JsonHttpClient,
     JsonHttpError,
     TextHttpClient,
-    UrllibJsonHttpClient,
-    UrllibTextHttpClient,
+    PooledJsonHttpClient,
+    PooledTextHttpClient,
 )
 from .music import MusicProvider
 from .normalization import normalize_content, normalize_provider_result, normalize_settings
@@ -64,8 +64,8 @@ __all__ = [
     "StockProvider",
     "StockSource",
     "TextHttpClient",
-    "UrllibJsonHttpClient",
-    "UrllibTextHttpClient",
+    "PooledJsonHttpClient",
+    "PooledTextHttpClient",
     "normalize_content",
     "normalize_provider_result",
     "normalize_settings",

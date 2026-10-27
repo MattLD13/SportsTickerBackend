@@ -13,6 +13,7 @@ from ticker_core.platform.wifi import WiFiSetupState
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 
 from ticker_core.rendering.style import STOCK_GAIN, STOCK_LOSS
+from ticker_core.rendering.templates import ImageTemplates, image_key
 
 from .primitives import PANEL_H, PANEL_W, tiny_text
 
@@ -50,6 +51,7 @@ class UtilityRenderer:
     def __init__(self, fonts: FontSet, logos: LogoSource | None = None) -> None:
         self._fonts = fonts
         self._logos = logos or EmptyLogoSource()
+        self._stock_templates = ImageTemplates()
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render a utility content item."""
@@ -66,8 +68,6 @@ class UtilityRenderer:
     def stock(self, item: object) -> Image.Image:
         """Render the compact stock card."""
         game = item if isinstance(item, dict) else {}
-        image = Image.new("RGBA", (128, PANEL_H), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
         symbol = str(game.get("home_abbr", "UNK"))
         if not symbol.startswith("$") and not any(char.isdigit() for char in symbol):
             symbol = "$" + symbol
@@ -85,10 +85,15 @@ class UtilityRenderer:
         logo = self._logos.get(game.get("home_logo"), (24, 24))
         is_up = not change_pct.startswith("-")
         color = STOCK_GAIN if is_up else STOCK_LOSS
-        if logo is not None:
-            image.paste(logo, (2, 4), logo)
         x_text_start = 28 if logo is not None else 2
-        draw.text((x_text_start, -2), symbol, font=self._fonts.big, fill="white")
+        def static_layer():
+            image = Image.new("RGBA", (128, PANEL_H), (0, 0, 0, 255))
+            if logo is not None:
+                image.paste(logo, (2, 4), logo)
+            ImageDraw.Draw(image).text((x_text_start, -2), symbol, font=self._fonts.big, fill="white")
+            return image
+        image = self._stock_templates.render((symbol, image_key(logo)), static_layer)
+        draw = ImageDraw.Draw(image)
         draw.text((x_text_start, 11), price, font=self._fonts.huge, fill=color)
         right = 126
         pct_width = draw.textlength(change_pct, font=self._fonts.medium)

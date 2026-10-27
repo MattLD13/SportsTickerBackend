@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from threading import Event, Lock, RLock
+from threading import Lock
 from time import monotonic as default_monotonic
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,7 +14,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
+from .payloads import as_mapping as _mapping
+from .singleflight import SingleFlightCache
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .stale_cache import SettingsResultCache
 from .sports_display import fotmob_competition_stage, normalize_soccer_clock, soccer_event
@@ -105,7 +107,8 @@ class FotMobSoccerProvider:
             for identifier, league_id in leagues.items()
             if str(identifier).strip()
         }
-        self._client = client or UrllibJsonHttpClient(user_agent="Mozilla/5.0")
+        self._client_owner = OwnedClient(client, lambda: PooledJsonHttpClient(user_agent="Mozilla/5.0"))
+        self._client = self._client_owner.client
         self._timeout = float(timeout)
         self._cache_seconds = float(cache_seconds)
         self._now = now or (lambda: datetime.now(timezone.utc))
@@ -113,14 +116,23 @@ class FotMobSoccerProvider:
         self._details: dict[str, _DetailCacheEntry] = {}
         self._details_lock = Lock()
         self._detail_executor: Executor | None = detail_executor
+        self._owns_detail_executor = detail_executor is None
         self._detail_inflight: set[str] = set()
-        self._matches_cache: dict[str, _RawMatchesResponse] = {}
-        self._matches_inflight: dict[str, Event] = {}
-        self._matches_cache_lock = RLock()
+        self._matches_cache = SingleFlightCache(
+            ttl=_SOURCE_CACHE_SECONDS, clock=self._monotonic
+        )
         self._stale_cache = SettingsResultCache()
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
         self._alert_baseline_after_failure: set[ScoreAlertTracker] = set()
+
+    def close(self) -> None:
+        with self._details_lock:
+            executor = self._detail_executor if self._owns_detail_executor else None
+            self._owns_detail_executor = False
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+        self._client_owner.close()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -194,7 +206,7 @@ class FotMobSoccerProvider:
         if health.healthy:
             self._stale_cache.set(settings, result)
             return result
-        return result if source.successes else self._stale_result(settings, health.error or "FotMob request failed")
+        return result if source.successes else self._stale_cache.stale_result(settings, health.error or "FotMob request failed", provider=self.provider_name)
 
     def _read_source(
         self,
@@ -299,29 +311,14 @@ class FotMobSoccerProvider:
                 return _RawMatchesResponse(None, str(error), self._monotonic())
             return _RawMatchesResponse(payload, None, self._monotonic())
 
-        while True:
-            with self._matches_cache_lock:
-                now = self._monotonic()
-                cached = self._matches_cache.get(url)
-                if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
-                    return cached
-                waiter = self._matches_inflight.get(url)
-                if waiter is None:
-                    waiter = Event()
-                    self._matches_inflight[url] = waiter
-                    break
-            waiter.wait()
+        def load() -> _RawMatchesResponse:
+            try:
+                payload = self._client.get_json(url, timeout=self._timeout)
+            except Exception as error:
+                return _RawMatchesResponse(None, str(error), self._monotonic())
+            return _RawMatchesResponse(payload, None, self._monotonic())
 
-        try:
-            payload = self._client.get_json(url, timeout=self._timeout)
-        except Exception as error:
-            response = _RawMatchesResponse(None, str(error), self._monotonic())
-        else:
-            response = _RawMatchesResponse(payload, None, self._monotonic())
-        with self._matches_cache_lock:
-            self._matches_cache[url] = response
-            self._matches_inflight.pop(url).set()
-        return response
+        return self._matches_cache.get(url, load)
 
     def _schedule_detail_warm(
         self, records: Sequence[tuple[str, Mapping[str, Any]]]
@@ -426,22 +423,6 @@ class FotMobSoccerProvider:
         with self._details_lock:
             self._details[match_id] = _DetailCacheEntry(completed, state, detail)
         return detail
-
-    def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
-        """Keep the matching ticker's last soccer result during an outage."""
-
-        cached = self._stale_cache.get(settings)
-        if cached is None:
-            return ProviderResult(
-                health=ProviderHealth(False, self.provider_name, f"stale: {error}")
-            )
-        return ProviderResult(
-            content=cached.content,
-            alerts=cached.alerts,
-            news=cached.news,
-            observed_at=cached.observed_at,
-            health=ProviderHealth(False, self.provider_name, f"stale: {error}"),
-        )
 
 
 def _matches_url(day) -> str:
@@ -754,8 +735,6 @@ def _integer(value: object, fallback: int = 0) -> int:
         return fallback
 
 
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
 
 
 __all__ = ["FotMobSoccerProvider"]

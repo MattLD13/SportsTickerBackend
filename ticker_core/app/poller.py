@@ -7,10 +7,11 @@ from dataclasses import dataclass
 import json
 from queue import Queue
 from threading import Event
-from time import monotonic
+from time import monotonic, time
 from typing import Any, Protocol
 
 import websocket
+from .latency import received_timing
 
 from ticker_core.protocol import (
     BackendClient,
@@ -37,6 +38,7 @@ class PollSucceeded:
     payload: DisplayPayload
     elapsed_ms: float = 0.0
     response_bytes: int | None = None
+    timing: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,8 +143,11 @@ class BackendPoller:
                     self._flush_update_result()
                 if not bootstrapped:
                     payload = self._client.fetch_data(self._device_id)
+                    completed = monotonic()
+                    timing = received_timing(payload, None, received_ms=time() * 1000.0, received_mono=completed,
+                                             decoded_mono=completed, queued_mono=completed, item_ids=(item.id for item in payload.content))
                     previous_payload = payload
-                    events.put(PollSucceeded(payload, (monotonic() - request_started) * 1000.0, self._client.last_response_bytes))
+                    events.put(PollSucceeded(payload, (monotonic() - request_started) * 1000.0, self._client.last_response_bytes, timing))
                     bootstrapped = True
                 cursor = stream_state.cursor
                 reconnect = stream_attempts > 0
@@ -193,11 +198,13 @@ class BackendPoller:
                             self._send_heartbeat()
                             next_heartbeat = now + self._heartbeat_interval
                         continue
+                    received_ms, received_mono = time() * 1000.0, monotonic()
                     if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2_000_000:
                         raise ValueError("device stream message is invalid or too large")
                     message_started = monotonic()
                     message = StreamMessage.from_payload(json.loads(raw))
                     current = stream_state.apply(message)
+                    decoded_mono = monotonic()
                     events.put(PollStreamEvent(
                         "message",
                         message_type=message.kind,
@@ -215,7 +222,13 @@ class BackendPoller:
                             events.put(PollConnected(elapsed_ms, len(raw)))
                         else:
                             event_payload = current if previous_payload is None else display_delta(previous_payload, current)
-                            events.put(PollSucceeded(event_payload, elapsed_ms, len(raw)))
+                            changed_ids = (item.id for item in (event_payload.changed if previous_payload is not None else current.content))
+                            timing = received_timing(current, message, received_ms=received_ms, received_mono=received_mono,
+                                                     decoded_mono=decoded_mono, queued_mono=monotonic(), item_ids=changed_ids)
+                            if previous_payload is not None:
+                                current_ids = {item.id for item in current.content}
+                                timing["removed_items"] = tuple(item.id for item in previous_payload.content if item.id not in current_ids)
+                            events.put(PollSucceeded(event_payload, elapsed_ms, len(raw), timing))
                             previous_payload = current
                     backoff = backoff.after_success()
                     now = monotonic()

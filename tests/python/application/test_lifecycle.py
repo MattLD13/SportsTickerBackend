@@ -85,7 +85,7 @@ class Viewport:
     def __init__(self) -> None:
         self.updates = 0
 
-    def update(self, *args):
+    def update(self, *args, **kwargs):
         self.updates += 1
         return None
 
@@ -144,6 +144,87 @@ class Commands:
 
     def run_update(self, command) -> None:
         pass
+
+
+def test_event_budget_keeps_remaining_events_in_order_for_the_next_frame(tmp_path, monkeypatch):
+    from queue import Empty
+    from ticker_core.app import application as application_module
+
+    wall = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    runtime = TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall)
+    application = TickerApplication(client=Client(), poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path/'content.json'), assets=Assets(), runtime=runtime,
+        viewport=Viewport(), frames=Frames(), pacer=FramePacer(lambda: 0.0), sink=Sink(),
+        commands=Commands(), device_id='ticker-1', repository=tmp_path, wall_clock=lambda: wall)
+    monkeypatch.setattr(application_module, 'monotonic', lambda: 0.0)
+    for index in range(25):
+        application._events.put(PollConnected(float(index)))
+    application.process_events()
+    remaining = []
+    while True:
+        try:
+            remaining.append(application._events.get_nowait().elapsed_ms)
+        except Empty:
+            break
+    assert remaining == list(range(16,25))
+    application.close()
+
+
+def test_scrolling_continues_while_a_delta_waits_for_background_asset_planning(tmp_path):
+    from threading import Thread
+    from ticker_core.runtime import StripLayout, StripSegment
+
+    class SlowAssets(Assets):
+        def __init__(self):
+            super().__init__()
+            self.started, self.release = Event(), Event()
+
+        def prefetch_payload(self, value):
+            super().prefetch_payload(value)
+            if len(self.payloads) == 2:
+                self.started.set()
+                assert self.release.wait(5)
+
+    class ScrollingViewport(Viewport):
+        def update(self, *args, **kwargs):
+            self.updates += 1
+            return StripLayout(100, (StripSegment('game',100),))
+
+    wall = datetime(2026,10,26,tzinfo=timezone.utc)
+    runtime = TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall)
+    assets = SlowAssets()
+    application = TickerApplication(client=Client(), poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path/'content.json'), assets=assets, runtime=runtime,
+        viewport=ScrollingViewport(), frames=Frames(), pacer=FramePacer(lambda: 0.0), sink=Sink(),
+        commands=Commands(), device_id='ticker-1', repository=tmp_path, wall_clock=lambda: wall)
+    initial = TickerResponse.from_payload(payload())
+    changed_payload = payload()
+    changed_payload['content']['sports'][0]['data']['home_score'] = '7'
+    changed = TickerResponse.from_payload(changed_payload)
+    producer = Thread(target=application._events.put, args=(PollSucceeded(display_delta(initial, changed)),))
+    drawing = Thread(target=application.step)
+    try:
+        application.start()
+        application._events.put(PollSucceeded(initial))
+        assert application.step().kind is FrameKind.SCROLL
+        producer.start()
+        assert assets.started.wait(2)
+        drawing.start()
+        drawing.join(timeout=0.5)
+        assert not drawing.is_alive()
+        assert not assets.release.is_set()
+        assets.release.set()
+        producer.join(timeout=2)
+        assert not producer.is_alive()
+        application.step()
+        assert runtime.snapshot.content[0].data['home_score'] == '7'
+    finally:
+        assets.release.set()
+        if producer.ident is not None:
+            producer.join(timeout=2)
+        if drawing.ident is not None:
+            drawing.join(timeout=2)
+        application.close()
 
 
 class OfflineWiFiRecovery:

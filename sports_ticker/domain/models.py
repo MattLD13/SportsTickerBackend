@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sports_ticker.immutable import freeze as _freeze
+
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -36,22 +38,6 @@ SPORTS_PRESENTATIONS: tuple[str, ...] = ("rotation", "pinned")
 SPORTS_FILTERS: tuple[str, ...] = ("all", "live", "my_teams")
 
 
-def _freeze(value: Any) -> object:
-    """Copy nested source values into immutable containers."""
-
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {_freeze(key): _freeze(item) for key, item in value.items()}
-        )
-    if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze(item) for item in value)
-    if isinstance(value, bytearray):
-        return bytes(value)
-    return value
 
 
 @dataclass(frozen=True, slots=True)

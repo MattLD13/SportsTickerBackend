@@ -8,17 +8,21 @@ from threading import Lock
 from time import monotonic
 from urllib.parse import urlencode
 
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
 
 
 class StockSymbolCatalog:
     """Cache bounded symbol searches without exposing the provider key to clients."""
 
     def __init__(self, client: JsonHttpClient | None = None, *, clock=monotonic) -> None:
-        self._client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._client = self._client_owner.client
         self._clock = clock
         self._cache = OrderedDict()
         self._lock = Lock()
+
+    def close(self) -> None:
+        self._client_owner.close()
 
     def search(self, query: str) -> list[dict[str, str]]:
         query = query.strip().upper()

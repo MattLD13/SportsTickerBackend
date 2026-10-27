@@ -11,6 +11,7 @@ import pytest
 from backend_ops.components import ALL, owners, package, source_owners
 from backend_ops.incidents import atomic_json
 from backend_ops.manager import Host as LinuxHost, Manager, read, switch
+from backend_ops.worker_contract import contract_id
 
 pytestmark = pytest.mark.critical
 OLD, NEW = "1" * 40, "2" * 40
@@ -67,6 +68,7 @@ def test_deployment_selects_the_fact_owner_and_shared_dependencies():
     assert owners("sports_ticker/api/routes.py") == {"core"}
     assert owners("sports_ticker/integrations/spotify.py") == {"core", "music"}
     assert owners("sports_ticker/tls.py") == set(ALL)
+    assert owners("sports_ticker/immutable.py") == set(ALL)
     assert owners("sports_ticker/domain/models.py") == set(ALL)
     assert owners("tests/python/test_modes.py") == set()
     source = Path("sports_ticker/providers/live_sources.py").read_text()
@@ -82,6 +84,7 @@ def test_deployment_packages_shared_tls_helper_for_each_process(tmp_path):
         "backend_ops/worker_contract.py",
         "sports_ticker/domain/models.py",
         "sports_ticker/providers/contracts.py",
+        "sports_ticker/immutable.py",
         "sports_ticker/tls.py",
     )
     for relative in required:
@@ -98,10 +101,39 @@ def test_deployment_packages_shared_tls_helper_for_each_process(tmp_path):
     subprocess.run(["git", "add", "."], cwd=root, check=True)
     subprocess.run(["git", "commit", "-m", "Create package fixture"], cwd=root, check=True, capture_output=True)
     output = tmp_path / "packages"
-    package(root, output, ["espn", "core"])
-    for component in ("espn", "core"):
+    package(root, output, ALL)
+    for component in ALL:
         with tarfile.open(output / f"{component}.tar.gz", "r:gz") as archive:
             assert "sports_ticker/tls.py" in archive.getnames()
+            assert "sports_ticker/immutable.py" in archive.getnames()
+
+
+def test_bootstrap_copies_actual_legacy_contract_without_new_helper(tmp_path, monkeypatch):
+    for name in ("backend_ops/worker_contract.py", "sports_ticker/domain/models.py",
+                 "sports_ticker/providers/contracts.py"):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((Path("tests/fixtures/backend_legacy") / name).read_bytes())
+    (tmp_path / "ticker_core").mkdir()
+    for name in ("requirements.txt", "requirements-backend.txt", "VERSION"):
+        (tmp_path / name).write_text("test\n", encoding="utf-8")
+    (tmp_path / "RELEASE_SHA").write_text(OLD, encoding="utf-8")
+
+    class BaselineHost:
+        def probe(self, component, release):
+            return {"release": OLD, "runtime": {"ready": True}}
+        def command(self, args):
+            pass
+
+    monkeypatch.setattr("backend_ops.manager.switch", lambda link, target: None)
+    manager = Manager(tmp_path, host=BaselineHost(), clock=lambda: 1000)
+    legacy_contract = contract_id(tmp_path)
+    state = manager.bootstrap()
+    for name in ALL:
+        release = manager.release(name, OLD)
+        assert not (release / "sports_ticker/immutable.py").exists()
+        assert read(release / "release-manifest.json")["contract"] == legacy_contract
+        assert state["components"][name]["active"] == OLD
 
 
 def test_activation_restarts_only_the_changed_component(tmp_path):

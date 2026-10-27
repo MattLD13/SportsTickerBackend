@@ -14,11 +14,16 @@ from ticker_core.features.status import ConnectionLostOverlay
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.rendering import ContentRendererCatalog, ContentScene
 from ticker_core.rendering import FrameGeometry
+from ticker_core.rendering.values import plain_mapping as _plain_mapping
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
 class ViewportSource(Protocol):
     """Provide a frame from the current card surfaces."""
+
+    @property
+    def revision(self) -> int:
+        """Identify the installed pane pixels."""
 
     def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
         """Return one scrolling viewport frame."""
@@ -58,6 +63,7 @@ class FrameBuilder:
             key.append(self._catalog.visual_key(context, scene, asset_revision))
         elif decision.kind is FrameKind.SCROLL:
             key.append(decision.scroll_offset)
+            key.append(self._viewport.revision)
         elif decision.kind is FrameKind.EMPTY:
             key.append(int(timestamp * self._geometry.width / 60.0))
         elif decision.kind is FrameKind.PAIRING:
@@ -173,11 +179,6 @@ class FrameBuilder:
         return self._viewport.frame(offset, width=self._geometry.width, height=self._geometry.height)
 
 
-def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Copy frozen protocol data into renderer-friendly JSON values."""
-    return {str(key): _plain(item) for key, item in value.items()}
-
-
 def _content_mapping(content: Content) -> dict[str, Any]:
     """Expose explicit content identity and family facts to the renderer boundary."""
     data = _plain_mapping(content.data)
@@ -185,17 +186,6 @@ def _content_mapping(content: Content) -> dict[str, Any]:
     data.setdefault("type", content.type)
     data.setdefault("sport", content.sport)
     return data
-
-
-def _plain(value: Any) -> Any:
-    """Convert immutable protocol containers without changing scalar values."""
-    if isinstance(value, Mapping):
-        return _plain_mapping(value)
-    if isinstance(value, tuple):
-        return [_plain(item) for item in value]
-    if isinstance(value, list):
-        return [_plain(item) for item in value]
-    return value
 
 
 def _stable_value(value: object) -> str:

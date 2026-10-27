@@ -152,6 +152,7 @@ def register_routes(
         )
 
     stock_catalog = StockSymbolCatalog()
+    application.own_resource(stock_catalog)
     app.extensions["sports_ticker.stock_catalog"] = stock_catalog
 
     @app.get("/api/v2/catalog/stocks")

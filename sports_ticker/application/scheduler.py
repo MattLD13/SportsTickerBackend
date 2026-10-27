@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from sports_ticker.immutable import freeze as _freeze
+
 import math
 import hashlib
 import inspect
 import time
 from inspect import Parameter, signature
 from collections.abc import Callable, Mapping
+from concurrent.futures import Executor, Future
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
+from threading import Lock
 from typing import Any, Protocol, TypeAlias
 
 from .provider_recovery import ProviderRecovery
@@ -21,6 +25,10 @@ from sports_ticker.providers import ProviderResult, normalize_settings
 
 MonotonicClock: TypeAlias = Callable[[], float]
 WallClock: TypeAlias = Callable[[], datetime]
+ProviderDemandCallable: TypeAlias = Callable[
+    [tuple[str, ...], Mapping[str, DisplaySettings], datetime],
+    Mapping[str, frozenset[str]],
+]
 SettingsResolver: TypeAlias = Callable[
     [str], DisplaySettings | Mapping[str, object] | None
 ]
@@ -62,6 +70,8 @@ class _ProviderJob:
     refresh: ProviderRefresh
     settings_key: ProviderSettingsKey
     next_due: float
+    refresh_changed: ProviderRefresh | None = None
+    refresh_batch: Callable | None = None
     data_by_ticker: Mapping[str, "_CachedProviderData"] = field(
         default_factory=dict
     )
@@ -92,22 +102,16 @@ def _all_settings_key(settings: DisplaySettings) -> DisplaySettings:
     return settings
 
 
-def _freeze(value: Any) -> object:
-    """Copy common mutable containers into immutable values."""
+def _all_provider_demand(
+    providers: tuple[str, ...],
+    settings_by_ticker: Mapping[str, DisplaySettings],
+    now: datetime,
+) -> Mapping[str, frozenset[str]]:
+    """Enable every registered ticker when the application sets no demand policy."""
+    identifiers = frozenset(settings_by_ticker)
+    return {name: identifiers for name in providers}
 
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {_freeze(key): _freeze(item) for key, item in value.items()}
-        )
-    if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze(item) for item in value)
-    if isinstance(value, bytearray):
-        return bytes(value)
-    return value
+
 
 
 def _error_text(error: object) -> str:
@@ -167,6 +171,7 @@ class RefreshScheduler:
         wall_clock: WallClock = _utc_now,
         incidents=None,
         recovery: ProviderRecovery | None = None,
+        executor: Executor | None = None,
     ) -> None:
         """Capture refresh and clock ports without starting background work."""
 
@@ -179,12 +184,27 @@ class RefreshScheduler:
         self._wall_clock = wall_clock
         self._providers: dict[str, _ProviderJob] = {}
         self._tickers: dict[str, _Ticker] = {}
-        self._refresh_policy: Callable[[str, str, DisplaySettings, datetime], bool] = lambda *args: True
+        self._provider_demand: ProviderDemandCallable = _all_provider_demand
         self._last_demand: dict[str, frozenset[str]] = {}
+        self._executor = executor
+        self._pending: dict[str, tuple[Future, dict[str, object]]] = {}
+        self._requested: dict[str, set[str]] = {}
+        self._request_lock = Lock()
+        self._wake: Callable[[], None] = lambda: None
 
-    def set_refresh_policy(self, policy: Callable[[str, str, DisplaySettings, datetime], bool]) -> None:
-        """Set the application-owned provider demand policy before runtime startup."""
-        self._refresh_policy = policy
+    def set_wake(self, wake: Callable[[], None]) -> None:
+        """Wake the runtime when source changes or provider results arrive."""
+        self._wake = wake
+
+    def request_refresh(self, name: str, topics: set[str]) -> None:
+        """Coalesce source notifications until the next scheduler pass."""
+        with self._request_lock:
+            self._requested.setdefault(name, set()).update(topics)
+        self._wake()
+
+    def set_provider_demand(self, policy: ProviderDemandCallable) -> None:
+        """Set the application policy that selects demand once per scheduler pass."""
+        self._provider_demand = policy
 
 
     def register_provider(
@@ -194,6 +214,8 @@ class RefreshScheduler:
         refresh: ProviderRefresh,
         *,
         settings_key: ProviderSettingsKey | None = None,
+        refresh_changed: ProviderRefresh | None = None,
+        refresh_batch: Callable | None = None,
     ) -> None:
         """Register one named settings-aware provider refresh job."""
 
@@ -217,6 +239,8 @@ class RefreshScheduler:
             refresh=refresh,
             settings_key=settings_key or _all_settings_key,
             next_due=now,
+            refresh_changed=refresh_changed,
+            refresh_batch=refresh_batch,
             health=SchedulerHealth(next_due=wall_now),
         )
 
@@ -274,6 +298,16 @@ class RefreshScheduler:
         """Run due jobs once and return ticker IDs published in this pass."""
 
         current = self._monotonic() if now is None else float(now)
+        completed = {}
+        for name, (future, keys) in tuple(self._pending.items()):
+            if future.done():
+                completed[name] = (future.result(), keys)
+                del self._pending[name]
+        with self._request_lock:
+            requested = {name: topics for name, topics in self._requested.items()
+                         if name not in self._pending and name not in completed}
+            for name in requested:
+                del self._requested[name]
         self.last_progress_at = self._monotonic()
         settings_by_ticker: dict[str, DisplaySettings] = {}
         settings_failures: set[str] = set()
@@ -300,17 +334,18 @@ class RefreshScheduler:
             return settings_key_cache[cache_key]
 
         wall_now = self._wall_clock()
-        active_by_name = {
-            job.name: frozenset(identifier for identifier, settings in settings_by_ticker.items()
-                                if self._refresh_policy(job.name, identifier, settings, wall_now))
-            for job in self._providers.values()
-        }
+        active_by_name = self._provider_demand(tuple(self._providers), settings_by_ticker, wall_now)
         due_by_name = {
             job.name: job
             for job in self._providers.values()
             if current >= job.next_due
+            and job.name not in self._pending
         }
         for job in self._providers.values():
+            if job.name in self._pending:
+                continue
+            if job.name in requested or job.name in completed:
+                due_by_name[job.name] = job
             if active_by_name[job.name] - self._last_demand.get(job.name, frozenset()):
                 due_by_name[job.name] = job
             for ticker_id, settings in settings_by_ticker.items():
@@ -327,34 +362,70 @@ class RefreshScheduler:
             return ()
 
         wall_now = self._wall_clock()
+        publish_targets: set[str] = set()
 
         for job in due:
-            advanced = _advance_due(job.next_due, current, job.interval)
+            topics = requested.get(job.name)
+            changed_only = bool(topics) and current < job.next_due
+            advanced = job.next_due if job.name in completed or changed_only else _advance_due(job.next_due, current, job.interval)
             wall_due = wall_now + timedelta(seconds=advanced - current)
             updated = replace(
                 job,
                 next_due=advanced,
                 health=replace(job.health, next_due=wall_due),
             )
+            selected = {
+                ticker_id: settings for ticker_id, settings in settings_by_ticker.items()
+                if ticker_id in active_by_name[job.name]
+                and (not changed_only or any(settings.active_sports.get(topic, True) for topic in topics))
+            }
+            if self._executor is not None and job.name not in completed:
+                keys = {ticker_id: settings_key_for(job, ticker_id, settings) for ticker_id, settings in selected.items()
+                        if self.recovery.permitted(job.name, ticker_id, settings_key_for(job, ticker_id, settings), current)}
+                selected = {ticker_id: selected[ticker_id] for ticker_id in keys}
+                if not selected:
+                    self._providers[job.name] = updated
+                    continue
+                refresh = job.refresh_changed if changed_only and job.refresh_changed is not None else job.refresh
+                future = self._executor.submit(_read_provider_batch, refresh, selected,
+                                               batch=job.refresh_batch, live_only=changed_only)
+                self._pending[job.name] = (future, keys)
+                self._providers[job.name] = updated
+                future.add_done_callback(lambda done: self._wake())
+                continue
             data_by_ticker = dict(job.data_by_ticker)
             errors: list[tuple[str, str]] = []
             warnings: list[tuple[str, str]] = []
             success_count = 0
             attempted = skipped = 0
             for ticker_id, settings in settings_by_ticker.items():
-                if ticker_id not in active_by_name[job.name]:
+                if ticker_id not in selected:
                     skipped += 1
                     continue
                 key = settings_key_for(job, ticker_id, settings)
+                if job.name in completed:
+                    results, keys = completed[job.name]
+                    if ticker_id not in keys:
+                        continue
+                    if keys[ticker_id] != key:
+                        self.request_refresh(job.name, set())
+                        continue
                 if not self.recovery.permitted(job.name, ticker_id, key, current):
                     skipped += 1
                     continue
                 attempted += 1
+                publish_targets.add(ticker_id)
                 result = None
                 self.active_provider = job.name
                 self.last_progress_at = self._monotonic()
                 try:
-                    result = _run_provider_refresh(job.refresh, ticker_id, settings)
+                    if job.name in completed:
+                        result = results[ticker_id]
+                        if isinstance(result, Exception):
+                            raise result
+                    else:
+                        refresh = job.refresh_changed if changed_only and job.refresh_changed is not None else job.refresh
+                        result = _run_provider_refresh(refresh, ticker_id, settings)
                     ok, error = _refresh_succeeded(result)
                     if not ok:
                         raise RuntimeError(error or "provider refresh failed")
@@ -422,6 +493,8 @@ class RefreshScheduler:
         published: list[str] = []
         for ticker in self._tickers.values():
             ticker_id = ticker.ticker_id
+            if ticker_id not in publish_targets:
+                continue
             settings = settings_by_ticker.get(ticker_id)
             if settings is None or ticker_id in settings_failures:
                 continue
@@ -479,9 +552,31 @@ class RefreshScheduler:
     def close(self) -> None:
         """Close the refresh service and its owned providers."""
 
+        if self._executor is not None:
+            self._executor.shutdown(wait=True, cancel_futures=True)
         close = getattr(self._refresh_service, "close", None)
         if callable(close):
             close()
+
+
+def _read_provider_batch(refresh: ProviderRefresh, settings_by_ticker: Mapping[str, DisplaySettings], *,
+                         batch: Callable | None = None, live_only: bool = False) -> dict[str, object]:
+    """Read one provider batch outside the scheduler state owner."""
+    if batch is not None:
+        try:
+            result = batch(settings_by_ticker, live_only=live_only)
+            if not isinstance(result, Mapping) or set(result) != set(settings_by_ticker):
+                raise ValueError("provider batch returned the wrong ticker identifiers")
+            return dict(result)
+        except Exception as error:
+            return {ticker_id: error for ticker_id in settings_by_ticker}
+    results = {}
+    for ticker_id, settings in settings_by_ticker.items():
+        try:
+            results[ticker_id] = _run_provider_refresh(refresh, ticker_id, settings)
+        except Exception as error:
+            results[ticker_id] = error
+    return results
 
 
 def _advance_due(next_due: float, now: float, interval: float) -> float:

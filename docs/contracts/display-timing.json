@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "snapshot_ready_ms": {"type": ["number", "null"]},
+    "items": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "trace_id": {"type": "string"},
+          "source": {"type": "string"},
+          "input_boundary": {"type": "string"},
+          "ingested_at_ms": {"type": "number"},
+          "core_received_at_ms": {"type": "number"},
+          "request_started_ms": {"type": "number"},
+          "source_published_at_ms": {"type": "number"},
+          "source_timestamp_kind": {"type": "string"}
+        },
+        "required": ["trace_id", "source", "ingested_at_ms"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["snapshot_ready_ms", "items"],
+  "additionalProperties": false
+}

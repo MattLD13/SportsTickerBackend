@@ -14,7 +14,8 @@ from urllib.parse import urlencode
 from sports_ticker.domain import ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
+from .payloads import as_mapping as _mapping
 from .stale_cache import SettingsResultCache
 
 
@@ -41,10 +42,14 @@ class WeatherLocationResolver:
         *,
         timeout: float = 10.0,
     ) -> None:
-        self.client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self.client = self._client_owner.client
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
+
+    def close(self) -> None:
+        self._client_owner.close()
 
     def resolve(self, value: str) -> Mapping[str, object] | None:
         """Return canonical city and coordinates when ``value`` is a U.S. ZIP code."""
@@ -95,11 +100,15 @@ class OpenMeteoWeatherProvider:
         timeout: float = 10.0,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self.client = self._client_owner.client
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
         self._stale_cache = SettingsResultCache()
+
+    def close(self) -> None:
+        self._client_owner.close()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Return fresh weather content or the provider's immutable stale result."""
@@ -143,7 +152,7 @@ class OpenMeteoWeatherProvider:
                 self._stale_cache.set(settings, result)
             return result
         except Exception as exc:
-            return self._stale_result(settings, exc)
+            return self._stale_cache.stale_result(settings, exc, provider="weather")
 
     def _fetch_aqi(self, settings: DisplaySettings) -> tuple[Any, str | None]:
         """Fetch AQI separately because Open-Meteo exposes it on another host."""
@@ -191,25 +200,6 @@ class OpenMeteoWeatherProvider:
 
         value, _ = self._fetch_aqi(settings)
         return value
-
-    def _stale_result(
-        self,
-        settings: DisplaySettings,
-        error: Exception,
-    ) -> ProviderResult:
-        message = f"stale: {error}"
-        result = self._stale_cache.get(settings)
-        if result is None:
-            return ProviderResult(
-                health=ProviderHealth(healthy=False, provider="weather", error=message)
-            )
-        return ProviderResult(
-            content=result.content,
-            alerts=result.alerts,
-            news=result.news,
-            observed_at=result.observed_at,
-            health=ProviderHealth(healthy=False, provider="weather", error=message),
-        )
 
 
 def _content_item(
@@ -298,7 +288,8 @@ class HybridWeatherProvider:
         timeout: float = 10.0,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self.client = self._client_owner.client
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
@@ -313,6 +304,9 @@ class HybridWeatherProvider:
         self._nws_uvi_cache: dict[date, tuple[float, Mapping[str, int]]] = {}
         self._nws_uvi_lock = threading.RLock()
         self._nws_office_cache: dict[str, str] = {}
+
+    def close(self) -> None:
+        self._client_owner.close()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch one normalized result, routing by the supplied coordinates."""
@@ -757,8 +751,6 @@ def _query(base: str, **params: Any) -> str:
     return f"{base}?{urlencode(params)}"
 
 
-def _mapping(value: Any) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
 
 
 def _nws_source_time(

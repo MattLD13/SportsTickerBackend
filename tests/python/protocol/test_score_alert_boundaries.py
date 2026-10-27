@@ -10,7 +10,7 @@ from sports_ticker.projections import project_data_v2
 from sports_ticker.providers.score_alerts import ScoreAlertTracker
 from sports_ticker.providers.espn import _team
 from ticker_core.assets import AssetPlanner, AssetRequest, LogoAssetView
-from ticker_core.app.application import _delta_asset_source
+from ticker_core.app.updates import delta_asset_source
 from ticker_core.features.alerts import ScoreAlertRenderer
 from ticker_core.platform import AssetCoordinator
 from ticker_core.protocol import TickerResponse, display_delta
@@ -308,7 +308,7 @@ def test_display_delta_prepares_and_renders_alert_logo_without_a_game_card(tmp_p
     tracker.ingest([touchdown(game)])
     current = response(tracker.recent())
     delta = display_delta(previous, current)
-    source = _delta_asset_source(delta)
+    source = delta_asset_source(delta)
     assert not delta.changed
     assert source[0]["data"] == "RUSH 4YD"
     logo_bytes = (Path(__file__).parents[2] / "fixtures/render_baseline/nfl-nyg.png").read_bytes()

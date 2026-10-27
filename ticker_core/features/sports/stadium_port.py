@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP, PANE as PF
 from ticker_core.rendering.style import STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED, sports_rule_color
+from ticker_core.rendering.templates import ImageTemplates, image_key
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import SCROLLING_TEAM_LOGO_SIZE, get_prepared_team_logo, team_logo_layout
@@ -259,9 +260,6 @@ class StadiumRenderer:
         rule_color = sports_rule_color(g.get('competition_stage'))
 
         CW = calc_card_width(g)
-        img = Image.new('RGBA', (CW, H), (0, 0, 0, 255))
-        d = ImageDraw.Draw(img, 'RGBA')
-
         sport = g['sport'].lower()
         is_active = g['state'] == 'in'
         is_mlb  = 'baseball' in sport or 'mlb'    in sport
@@ -308,15 +306,6 @@ class StadiumRenderer:
                 return 'away'
             return None
 
-        # ── Background + header line ──────────────────────────────────────────
-        fi(d, 0, 0, CW, H,  0, 0, 0)
-        fi(d, 0, 7, CW, 1, *rule_color)
-
-        st = status[:12]
-        if not (is_mlb and show_inning):
-            self._draw_header_text(img, CW, st)
-            fi(d, 0, 7, CW, 1, *rule_color)
-
         # ── Logos ─────────────────────────────────────────────────────────────
         a_logo_x = 1
         h_logo_x = CW - LOGO_SZ - 1
@@ -324,31 +313,11 @@ class StadiumRenderer:
 
         a_logo = self._get_logo(g.get('away_logo'), g.get('away_logo_rendering'))
         h_logo = self._get_logo(g.get('home_logo'), g.get('home_logo_rendering'))
-
-        if a_logo:
-            self._paste_logo(img, a_logo, a_logo_x, logo_y)
-        else:
-            draw_missing_team_badge(img, (a_logo_x, logo_y), LOGO_SZ, ac, g.get('away_abbr') or g.get('away', ''))
-
-        if h_logo:
-            self._paste_logo(img, h_logo, h_logo_x, logo_y)
-        else:
-            draw_missing_team_badge(img, (h_logo_x, logo_y), LOGO_SZ, hc, g.get('home_abbr') or g.get('home', ''))
-
-        if sport in {'ncf_fbs', 'ncf_fcs'}:
-            for rank, logo_x, right_aligned in (
-                (g.get('away_rank'), a_logo_x, False),
-                (g.get('home_rank'), h_logo_x, True),
-            ):
-                label = str(rank or '').strip()
-                if not label:
-                    continue
-                rank_width = pf_w(label)
-                rank_x = logo_x + LOGO_SZ - rank_width - 1 if right_aligned else logo_x + 1
-                rank_y = logo_y + LOGO_SZ - 6
-                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                    pf_text(d, label, rank_x + dx, rank_y + dy, 0, 0, 0)
-                pf_text(d, label, rank_x, rank_y, *FOOTBALL_RANK_COLOR)
+        img = self._card_base(g, CW, rule_color, a_logo, h_logo)
+        d = ImageDraw.Draw(img, 'RGBA')
+        if not (is_mlb and show_inning):
+            self._draw_header_text(img, CW, status[:12])
+            fi(d, 0, 7, CW, 1, *rule_color)
 
         # ── Content safe zone ─────────────────────────────────────────────────
         cL  = a_logo_x + LOGO_SZ + LOGO_PAD
@@ -516,6 +485,36 @@ class StadiumRenderer:
 
         return img, CW
 
+    def _card_base(self, game, width, rule_color, away_logo, home_logo):
+        """Build the fixed game-specific background and logo layer."""
+        image = Image.new('RGBA', (width, H), (0, 0, 0, 255))
+        self._draw_base(image, game, width, rule_color, away_logo, home_logo)
+        return image
+
+    def _draw_base(self, image, game, width, rule_color, away_logo, home_logo):
+        """Draw fixed team marks, rankings, and the status rule."""
+        draw = ImageDraw.Draw(image, 'RGBA')
+        fi(draw, 0, 0, width, H, 0, 0, 0)
+        fi(draw, 0, 7, width, 1, *rule_color)
+        away_x, home_x, logo_y = 1, width - LOGO_SZ - 1, H - LOGO_SZ - 1
+        for side, x, logo, color in (('away', away_x, away_logo, game['ac']), ('home', home_x, home_logo, game['hc'])):
+            if logo:
+                self._paste_logo(image, logo, x, logo_y)
+            else:
+                draw_missing_team_badge(image, (x, logo_y), LOGO_SZ, color,
+                                        game.get(f'{side}_abbr') or game.get(side, ''))
+        if game['sport'].lower() in {'ncf_fbs', 'ncf_fcs'}:
+            for rank, logo_x, right_aligned in ((game.get('away_rank'), away_x, False), (game.get('home_rank'), home_x, True)):
+                label = str(rank or '').strip()
+                if not label:
+                    continue
+                rank_width = pf_w(label)
+                rank_x = logo_x + LOGO_SZ - rank_width - 1 if right_aligned else logo_x + 1
+                rank_y = logo_y + LOGO_SZ - 6
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    pf_text(draw, label, rank_x + dx, rank_y + dy, 0, 0, 0)
+                pf_text(draw, label, rank_x, rank_y, *FOOTBALL_RANK_COLOR)
+
     def _draw_header_text(self, img, card_w, text):
         """Draw header with the hybrid bitmap renderer style."""
         label = str(text or '')[:12].upper()
@@ -596,6 +595,14 @@ class PreparedStadiumRenderer(StadiumRenderer):
     def __init__(self, logos):
         super().__init__({})
         self._logos = logos
+        self._card_templates = ImageTemplates(max_bytes=4 * 1024 * 1024)
+
+    def _card_base(self, game, width, rule_color, away_logo, home_logo):
+        key = (width, rule_color, game['sport'].lower(), tuple(game['ac']), tuple(game['hc']),
+               str(game.get('away_abbr') or game.get('away', '')), str(game.get('home_abbr') or game.get('home', '')),
+               str(game.get('away_rank') or ''), str(game.get('home_rank') or ''), image_key(away_logo), image_key(home_logo))
+        return self._card_templates.render(key, lambda: super(PreparedStadiumRenderer, self)._card_base(
+            game, width, rule_color, away_logo, home_logo))
 
     def _get_logo(self, url, rendering=None):
         """Return one prepared logo from the injected source."""

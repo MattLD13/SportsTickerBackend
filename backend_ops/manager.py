@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import socket
 import sqlite3
 import subprocess
 import sys
@@ -19,7 +18,7 @@ from urllib.request import urlopen
 
 from .incidents import IncidentStore, atomic_json
 from .reporting import failure as report_failure, recovered as report_recovered
-from .worker_contract import MAX_MESSAGE, PROVIDERS
+from .worker_contract import MAX_MESSAGE, PROVIDERS, exchange
 
 COMPONENTS = ("core", *PROVIDERS)
 CODE_ERRORS = frozenset(("TypeError", "KeyError", "AttributeError", "AssertionError", "NameError", "UnboundLocalError", "ImportError", "SyntaxError"))
@@ -74,12 +73,8 @@ class Host:
         return health
 
     def rpc(self, path, message, timeout=3):
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(timeout)
-            connection.connect(str(path))
-            connection.sendall(json.dumps(message, separators=(",", ":")).encode() + b"\n")
-            with connection.makefile("rb") as source:
-                data = source.readline(MAX_MESSAGE + 1)
+        body = json.dumps(message, separators=(",", ":")).encode() + b"\n"
+        data = exchange(path, body, timeout=timeout)
         if len(data) > MAX_MESSAGE or not data.endswith(b"\n"):
             raise ValueError("invalid worker response size")
         return json.loads(data)

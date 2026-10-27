@@ -71,6 +71,24 @@ def test_payload_hash_matches_canonical_wire_data_and_rejects_nonfinite_values()
             TickerResponse.from_payload(payload)
 
 
+def test_frozen_hashing_matches_wire_bytes_without_thawing_the_tree(monkeypatch) -> None:
+    import ticker_core.protocol.model as model
+
+    payload = _payload()
+    payload["extra"] = {"unicode": "é雪", "escaped": "line\n\"", "values": [None, False, 0, -0.0, 1.25, {"z": []}]}
+    expected = deepcopy(payload)
+    expected["snapshot"].pop("revision")
+    expected["snapshot"].pop("observed_at")
+    digest = hashlib.sha256(json.dumps(expected, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+
+    def forbidden(value):
+        raise AssertionError("Fingerprinting rebuilt the complete payload")
+
+    monkeypatch.setattr(model, "_thaw", forbidden)
+    assert TickerResponse.from_payload(payload).payload_key == digest
+    assert canonical_payload_hash(payload) == hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+
+
 def test_payload_boundary_detaches_nested_values_inside_external_mapping_proxies() -> None:
     payload = _payload()
     values = ["nba:NY"]

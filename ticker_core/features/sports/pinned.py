@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageStat
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 from ticker_core.rendering.style import TOURNAMENT_SEED
+from ticker_core.rendering.templates import ImageTemplates
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo, team_logo_layout
@@ -153,17 +154,31 @@ class SportsMixin:
             hT     = H * (70.75 / 160)     # upper hash row
             hB     = H * (89.25 / 160)     # lower hash row
 
-            # 1 · Grass bands (10 alternating strips)
-            for i in range(10):
-                bx = ezW + i * playW / 10
-                d.rectangle([bx, 0, bx + playW / 10, H],
-                            fill=(22, 52, 18) if i % 2 == 0 else (27, 64, 24))
-
-            # 2 · End zones  HOME=left  AWAY=right
-            d.rectangle([0, 0, ezW, H], fill=home_ez)
-            d.rectangle([W - ezW, 0, W, H], fill=away_ez)
-            d.line([(ezW, 0), (ezW, H)],         fill=(255, 255, 255, 230))
-            d.line([(W - ezW, 0), (W - ezW, H)], fill=(255, 255, 255, 230))
+            def football_field():
+                field = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+                draw = ImageDraw.Draw(field, "RGBA")
+                for i in range(10):
+                    bx = ezW + i * playW / 10
+                    draw.rectangle([bx, 0, bx + playW / 10, H],
+                                   fill=(22, 52, 18) if i % 2 == 0 else (27, 64, 24))
+                draw.rectangle([0, 0, ezW, H], fill=home_ez)
+                draw.rectangle([W - ezW, 0, W, H], fill=away_ez)
+                draw.line([(ezW, 0), (ezW, H)], fill=(255, 255, 255, 230))
+                draw.line([(W - ezW, 0), (W - ezW, H)], fill=(255, 255, 255, 230))
+                for i in range(11):
+                    lx = ezW + i * playW / 10
+                    opacity = 115 if i == 5 else 64
+                    draw.line([(lx, 0), (lx, H)], fill=(255, 255, 255, opacity))
+                for y in range(1, 100):
+                    hx = ezW + y / 100 * playW
+                    is_five = y % 5 == 0
+                    length = H * 0.042 if is_five else H * 0.022
+                    opacity = 128 if is_five else 66
+                    draw.line([(hx, hT - length), (hx, hT + length)], fill=(255, 255, 255, opacity))
+                    draw.line([(hx, hB - length), (hx, hB + length)], fill=(255, 255, 255, opacity))
+                return field
+            img = self._field_templates.render(('football', W, H, home_ez, away_ez), football_field)
+            d = ImageDraw.Draw(img, 'RGBA')
 
             # Mark possession above the team badge in its end zone.
             active_team = str(sit.get('activeTeam', '')).strip().upper()
@@ -176,21 +191,6 @@ class SportsMixin:
                 d.polygon([(possession_x - 5, 1), (possession_x + 5, 1),
                            (possession_x, 5)], fill=(255, 235, 80),
                           outline=(0, 0, 0, 255))
-
-            # 3 · 10-yard stripe lines
-            for i in range(11):
-                lx = ezW + i * playW / 10
-                op = 115 if i == 5 else 64
-                d.line([(lx, 0), (lx, H)], fill=(255, 255, 255, op))
-
-            # 4 · Hash marks
-            for y in range(1, 100):
-                hx = ezW + y / 100 * playW
-                is5 = (y % 5 == 0)
-                hl  = H * 0.042 if is5 else H * 0.022
-                op  = 128 if is5 else 66
-                d.line([(hx, hT - hl), (hx, hT + hl)], fill=(255, 255, 255, op))
-                d.line([(hx, hB - hl), (hx, hB + hl)], fill=(255, 255, 255, op))
 
             # 5 · Line of scrimmage and yards-to-go.
             #     `los` is this card's own axis: 0 = left goal line, 100 = right.
@@ -327,28 +327,29 @@ class SportsMixin:
             home_pitch = self.get_team_color(game, 'home')
             away_pitch = self.get_team_color(game, 'away')
 
-            # Pitch background with subtle stripes and center circle.
-            d.rectangle([0, 0, W, H], fill=(18, 96, 36))
-            for i in range(8):
-                x0 = int(i * W / 8)
-                x1 = int((i + 1) * W / 8)
-                shade = (22, 104, 40) if i % 2 == 0 else (18, 96, 36)
-                d.rectangle([x0, 0, x1, H], fill=shade)
-            d.rectangle([1, 1, W - 2, H - 2], outline=(245, 245, 245, 210), width=1)
-            d.line([(W // 2, 0), (W // 2, H)], fill=(245, 245, 245, 180), width=1)
-            d.ellipse([W // 2 - 13, H // 2 - 13, W // 2 + 13, H // 2 + 13], outline=(245, 245, 245, 180), width=1)
-            d.rectangle([1, 8, 10, H - 8], fill=(245, 245, 245, 28))
-            d.rectangle([W - 11, 8, W - 2, H - 8], fill=(245, 245, 245, 28))
-
-            # Fade the edges like the basketball/hockey cards so text and logos stay readable.
-            scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-            sd = ImageDraw.Draw(scrim)
-            SOLID, FADE = 45, 80
-            for x in range(SOLID + FADE):
-                a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
-                sd.line([(x, 0), (x, H)], fill=(0, 0, 0, a))
-                sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
-            img.alpha_composite(scrim)
+            def soccer_field():
+                image = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+                draw = ImageDraw.Draw(image, 'RGBA')
+                draw.rectangle([0, 0, W, H], fill=(18, 96, 36))
+                for i in range(8):
+                    x0, x1 = int(i * W / 8), int((i + 1) * W / 8)
+                    draw.rectangle([x0, 0, x1, H], fill=(22, 104, 40) if i % 2 == 0 else (18, 96, 36))
+                draw.rectangle([1, 1, W - 2, H - 2], outline=(245, 245, 245, 210), width=1)
+                draw.line([(W // 2, 0), (W // 2, H)], fill=(245, 245, 245, 180), width=1)
+                draw.ellipse([W // 2 - 13, H // 2 - 13, W // 2 + 13, H // 2 + 13], outline=(245, 245, 245, 180), width=1)
+                draw.rectangle([1, 8, 10, H - 8], fill=(245, 245, 245, 28))
+                draw.rectangle([W - 11, 8, W - 2, H - 8], fill=(245, 245, 245, 28))
+                scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                sd = ImageDraw.Draw(scrim)
+                solid, fade = 45, 80
+                for x in range(solid + fade):
+                    alpha = 250 if x < solid else max(0, int(250 * (solid + fade - x) / fade))
+                    sd.line([(x, 0), (x, H)], fill=(0, 0, 0, alpha))
+                    sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, alpha))
+                image.alpha_composite(scrim)
+                return image
+            img = self._field_templates.render(('soccer', W, H), soccer_field)
+            d = ImageDraw.Draw(img, 'RGBA')
 
             # Team-colored side bars and score placements.
             d.rectangle([0, 0, 3, H], fill=home_pitch)
@@ -459,7 +460,13 @@ class SportsMixin:
         if is_nhl:
             self._draw_hockey_rink(d, W, H)
         elif is_mlb:
-            self._draw_baseball_diamond(d, W, H, sit)
+            bases = tuple(bool(sit.get(name, False)) for name in ('onFirst', 'onSecond', 'onThird'))
+            def baseball_field():
+                image = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+                self._draw_baseball_diamond(ImageDraw.Draw(image, 'RGBA'), W, H, sit)
+                return image
+            img = self._field_templates.render(('baseball', W, H, bases), baseball_field)
+            d = ImageDraw.Draw(img, 'RGBA')
         else:
             self._draw_basketball_court(d, W, H)
 
@@ -1150,6 +1157,7 @@ class PreparedSportsFullRenderer(SportsMixin):
         self.micro = fonts.micro
         self.font = fonts.normal
         self._logos = logos
+        self._field_templates = ImageTemplates(capacity=16, max_bytes=1024 * 1024)
 
     def get_logo(self, url, size, rendering=None):
         """Return a prepared logo and never fetch from the renderer."""

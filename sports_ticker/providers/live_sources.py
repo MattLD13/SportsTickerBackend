@@ -19,9 +19,11 @@ from sports_ticker.domain import DisplaySettings
 from sports_ticker.markets import MARKET_GROUPS
 
 from .espn import _display_timezone, _event_time
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .background import BackgroundTask
+from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
 from .market_sessions import us_equity_session
 from .news_transactions import ConfirmedTransaction, TransactionConfirmationSource
+from .payloads import as_mapping as _mapping, mapping_values as _mappings
 from .sports_display import golf_competition_stage
 
 
@@ -164,11 +166,15 @@ class EspnGolfSource:
         timeout: float = 10.0,
         now: Callable[[], datetime] | None = None,
     ) -> None:
-        self._client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._client = self._client_owner.client
         self._timeout = _timeout(timeout)
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._cache_lock = Lock()
         self._cache: tuple[float, tuple[str, object], Mapping[str, object]] | None = None
+
+    def close(self) -> None:
+        self._client_owner.close()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         now = self._now()
@@ -235,7 +241,9 @@ class FinnhubStockSource:
         refresh_seconds: float = 30.0,
         market_session: callable = us_equity_session,
     ) -> None:
-        self._client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._client = self._client_owner.client
+        self._worker = BackgroundTask(self._client_owner.close, thread_factory=lambda **kwargs: Thread(**kwargs))
         self._timeout = _timeout(timeout)
         self._keys = tuple(dict.fromkeys(
             value
@@ -268,6 +276,9 @@ class FinnhubStockSource:
         self._custom_requests: dict[tuple[str, ...], float] = {}
         self._urgent_symbols: list[str] = []
         self._custom_attempts: dict[str, float] = {}
+
+    def close(self) -> None:
+        self._worker.close()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         with self._refresh_lock:
@@ -306,7 +317,9 @@ class FinnhubStockSource:
             f"open:{datetime.fromtimestamp(self._clock(), timezone.utc).date().isoformat()}"
             if market.open else f"close:{market.closed_session}"
         )
-        Thread(target=self._refresh_all_markets, args=(market.closed_session, selection_session, custom_symbols), name="ticker-stock-refresh", daemon=True).start()
+        if not self._worker.start(self._refresh_all_markets, args=(market.closed_session, selection_session, custom_symbols), name="ticker-stock-refresh"):
+            with self._refresh_lock:
+                self._refreshing = False
 
     def _refresh_all_markets(self, closed_session: str | None = None, selection_session: str | None = None, custom_symbols: Sequence[str] = ()) -> None:
         """Refresh every quote in the source-owned market cache."""
@@ -643,7 +656,10 @@ class EspnNewsSource:
         background: bool = True,
     ) -> None:
         self._news_urls = dict(news_urls)
-        self._client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._client = self._client_owner.client
+        self._owned_dependencies = []
+        self._worker = BackgroundTask(self._close_resources, thread_factory=lambda **kwargs: Thread(**kwargs))
         self._team_color_lookup = team_color_lookup
         self._transaction_confirmation_source = transaction_confirmation_source
         self._timeout = _timeout(timeout)
@@ -653,6 +669,22 @@ class EspnNewsSource:
         self._last_started: dict[tuple[str, ...], float] = {}
         self._refreshing: set[tuple[str, ...]] = set()
         self._lock = Lock()
+
+    def own_dependency(self, resource) -> None:
+        self._owned_dependencies.append(resource)
+
+    def _close_resources(self) -> None:
+        errors = []
+        for resource in (self._client_owner, *self._owned_dependencies):
+            try:
+                resource.close()
+            except Exception as error:
+                errors.append(error)
+        if errors:
+            raise errors[0]
+
+    def close(self) -> None:
+        self._worker.close()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         """Return cached followed-team headlines and refresh them outside polling."""
@@ -676,7 +708,9 @@ class EspnNewsSource:
                 return
             self._last_started[cache_key] = now
             self._refreshing.add(cache_key)
-        Thread(target=self._refresh, name="ticker-news-refresh", daemon=True).start()
+        if not self._worker.start(self._refresh, name="ticker-news-refresh"):
+            with self._lock:
+                self._refreshing.discard(("all",))
 
     def _refresh(self) -> None:
         try:
@@ -2362,10 +2396,6 @@ def _golf_match_play(event: Mapping[str, Any], competition: Mapping[str, Any]) -
     }
 
 
-def _mappings(value: object) -> tuple[Mapping[str, Any], ...]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        return ()
-    return tuple(item for item in value if isinstance(item, Mapping))
 
 
 def _first_mapping(value: object) -> Mapping[str, Any]:
@@ -2373,8 +2403,6 @@ def _first_mapping(value: object) -> Mapping[str, Any]:
     return values[0] if values else {}
 
 
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
 
 
 def _timeout(value: float) -> float:

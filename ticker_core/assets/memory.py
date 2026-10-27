@@ -125,8 +125,16 @@ class PreparedAssetStore(AssetView):
                 self._write_disk(request, prepared)
             self._items.move_to_end(request)
             self._trim()
-            if previous_ready != (prepared is not None):
+            if (previous_ready != (prepared is not None) or
+                    (previous_ready and prepared is not None and
+                     (previous.image.size != prepared.size or previous.image.tobytes() != prepared.tobytes()))):
                 self._revision += 1
+
+    def clear_memory(self) -> None:
+        """Discard decoded images without removing persistent prepared files."""
+        with self._lock:
+            self._items.clear()
+            self._revision += 1
 
     def _remember(self, request: AssetRequest, image: Image.Image) -> None:
         """Add one persistent image to the in-memory working set."""

@@ -8,7 +8,8 @@ Connect to `WS /api/v2/tickers/<ticker_id>/stream` with the `ticker-v2` WebSocke
 
 Send both `stream_id` and `after_seq` query values to resume. Omit both values for a new session.
 
-The server accepts only registered ticker IDs. This route uses the same read access as the current public data snapshot route. Device-specific credentials remain future security work.
+The server accepts only registered ticker IDs with a valid `X-Device-Token` header.
+It checks authorization before sending the snapshot and later updates.
 
 ## Envelope
 
@@ -17,6 +18,34 @@ Each JSON message contains `protocol_version`, `type`, `stream_id`, `seq`, `base
 `protocol_version` is `1`. `stream_id` changes when the backend process restarts. Sequence values increase per ticker within one stream.
 
 `server_time` uses UTC ISO 8601. Clients use sequence values for order and timestamps for age.
+
+An optional `timing.projected_at_ms` value records when the projection entered stream preparation.
+It uses UTC Unix milliseconds. It does not affect sequence order or the display fingerprint.
+The optional `payload.snapshot.timing` object follows `display-timing.json`.
+It carries snapshot commit time and available per-item source input traces.
+The compact Mini projection omits this metadata.
+Private `_source_timing` values carry provenance inside the provider and worker boundary.
+The API moves those values into snapshot timing and omits them from renderer data.
+
+Fastcast source traces can include `source_published_at_ms` from the nested publication wrapper's `ts` field.
+`source_timestamp_kind: publisher_envelope` identifies that timestamp basis.
+It does not establish the time of the real-world play.
+
+`ingested_at_ms` uses the boundary named by `input_boundary`.
+`fastcast_socket_received` marks the complete Fastcast socket receive, before wrapper decoding and patch application.
+`http_snapshot_applied` marks an HTTP snapshot applied to the provider cache.
+`core_worker_result_received` marks receipt of canonical data from a fetcher worker when no earlier trace exists.
+`core_received_at_ms` and `request_started_ms` retain the core worker handoff and request boundaries when available.
+Missing upstream times remain absent. They do not become invented live-event timestamps.
+
+The Pi writes `kind: latency` records to its bounded performance log.
+It measures only the first successful presentation of each source trace per item and device.
+Scrolling updates require a current pane version with changed pixels inside the visible viewport.
+Superseded updates and unchanged pixels do not produce a first-display latency.
+The end boundary is frame-sink return. The physical matrix sink returns after its vertical-sync swap.
+Clock-order failures remain explicit. Cross-host UTC differences require synchronized clocks.
+
+Use `tools/diagnostics/latency_report.py --log capture.jsonl --output previews/latency/report.json` to summarize captured history.
 
 ## Message types
 

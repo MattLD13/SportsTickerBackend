@@ -16,11 +16,14 @@ def project_device_data(payload: Mapping[str, Any], *, mini: bool = False) -> di
 
 def compact_mini_data(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Apply the Mini wire fields after asset facts have been projected."""
-    return {**payload, "content": {
+    result = {**payload, "content": {
         family: [{**item, "data": select_fields(item["data"], SPORTS_FIELDS)} for item in items]
                 if family == "sports" else [card for item in items for card in mini_racing_cards(item)] if family == "racing" else items
         for family, items in payload["content"].items()
     }}
+    if isinstance(payload.get("snapshot"), Mapping):
+        result["snapshot"] = {key: value for key, value in payload["snapshot"].items() if key != "timing"}
+    return result
 
 
 def select_fields(value, specification):

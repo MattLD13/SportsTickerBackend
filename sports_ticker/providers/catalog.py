@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from time import monotonic
+from typing import TypeVar, cast
 from urllib.parse import urlparse
 
 from sports_ticker.leagues import LEAGUES, league_for
 from sports_ticker.markets import MARKET_OPTIONS
 
-from .http import JsonHttpClient, UrllibJsonHttpClient
+from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
 from .logo_overrides import corrected_logo
 
 
@@ -27,6 +28,38 @@ _MODE_SYMBOLS = {
     "weather": "cloud.sun.fill",
     "clock": "clock.fill",
 }
+
+_T = TypeVar("_T")
+
+
+class _CatalogCache:
+    """Cache successful reads using their start time and allow concurrent loads."""
+
+    def __init__(self, ttl: float) -> None:
+        self._ttl = ttl
+        self._values: dict[Hashable, tuple[float, object]] = {}
+        self._lock = Lock()
+
+    def get(self, key: Hashable, load: Callable[[], _T]) -> _T:
+        now = monotonic()
+        with self._lock:
+            cached = self._values.get(key)
+            if cached is not None and now - cached[0] < self._ttl:
+                return cast(_T, cached[1])
+        value = load()
+        with self._lock:
+            self._values[key] = (now, value)
+        return value
+
+
+class _CatalogLease:
+    def __init__(self, catalog):
+        self._catalog = catalog
+
+    def close(self):
+        catalog, self._catalog = self._catalog, None
+        if catalog is not None:
+            catalog._release()
 
 
 class EspnTeamCatalog:
@@ -45,14 +78,35 @@ class EspnTeamCatalog:
             for league, path in scoreboard_paths.items()
             if str(league).strip() and str(path).strip()
         }
-        self._client = client or UrllibJsonHttpClient()
+        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
+        self._client = self._client_owner.client
+        self._lifecycle_lock = Lock()
+        self._leases = 0
+        self._closing = False
         self._timeout = float(timeout)
-        self._cache_seconds = float(cache_seconds)
-        self._cache: dict[str, tuple[float, tuple[dict[str, str], ...]]] = {}
-        self._college_payload: tuple[float, object] | None = None
-        self._college_group_ids: dict[tuple[int, str], tuple[float, frozenset[str]]] = {}
-        self._college_conferences: tuple[float, Mapping[str, tuple[dict[str, object], ...]]] | None = None
-        self._lock = Lock()
+        self._cache = _CatalogCache(float(cache_seconds))
+
+    def close(self) -> None:
+        with self._lifecycle_lock:
+            self._closing = True
+            ready = self._leases == 0
+        if ready:
+            self._client_owner.close()
+
+    def lease(self):
+        """Retain the client until a dependent background source stops."""
+        with self._lifecycle_lock:
+            if self._closing:
+                raise RuntimeError("catalog is closed")
+            self._leases += 1
+        return _CatalogLease(self)
+
+    def _release(self):
+        with self._lifecycle_lock:
+            self._leases -= 1
+            ready = self._closing and self._leases == 0
+        if ready:
+            self._client_owner.close()
 
     def leagues(self) -> tuple[dict[str, object], ...]:
         """Return the configured sports leagues in a stable controller format."""
@@ -155,11 +209,9 @@ class EspnTeamCatalog:
         path = self._paths.get(identifier)
         if not path:
             raise KeyError(identifier)
-        now = monotonic()
-        with self._lock:
-            cached = self._cache.get(identifier)
-            if cached is not None and now - cached[0] < self._cache_seconds:
-                return cached[1]
+        return self._cache.get(("teams", identifier), lambda: self._load_team_records(identifier, path, definition))
+
+    def _load_team_records(self, identifier, path, definition):
         if identifier in _COLLEGE_GROUPS:
             teams = self._college_teams(identifier, definition)
         else:
@@ -169,8 +221,6 @@ class EspnTeamCatalog:
                 for team in _teams(payload, identifier)
                 if definition.allows_team(team["abbr"])
             )
-        with self._lock:
-            self._cache[identifier] = (now, teams)
         return teams
 
     def _college_teams(self, identifier: str, definition) -> tuple[dict[str, str], ...]:
@@ -189,11 +239,9 @@ class EspnTeamCatalog:
     def _college_conference_options(self) -> Mapping[str, tuple[dict[str, object], ...]]:
         """Return current FBS and FCS conferences from ESPN's season group catalog."""
 
-        now = monotonic()
-        with self._lock:
-            cached = self._college_conferences
-            if cached is not None and now - cached[0] < self._cache_seconds:
-                return cached[1]
+        return self._cache.get(("conferences",), self._load_college_conferences)
+
+    def _load_college_conferences(self) -> Mapping[str, tuple[dict[str, object], ...]]:
         season = _college_season(self._college_team_payload())
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="espn-conference-groups") as pool:
             child_futures = {
@@ -230,8 +278,6 @@ class EspnTeamCatalog:
             identifier: tuple(values)
             for identifier, values in options.items()
         }
-        with self._lock:
-            self._college_conferences = (now, result)
         return result
 
     def _college_child_group_ids(self, season: int, group: str) -> tuple[str, ...]:
@@ -287,36 +333,26 @@ class EspnTeamCatalog:
     def _college_team_payload(self) -> object:
         """Fetch the full NCAA team catalog once for both divisions."""
 
-        now = monotonic()
-        with self._lock:
-            cached = self._college_payload
-            if cached is not None and now - cached[0] < self._cache_seconds:
-                return cached[1]
-        payload = self._client.get_json(
-            f"{_ESPN_BASE}/football/college-football/teams?limit=1000",
-            timeout=self._timeout,
+        return self._cache.get(
+            ("college_payload",),
+            lambda: self._client.get_json(
+                f"{_ESPN_BASE}/football/college-football/teams?limit=1000",
+                timeout=self._timeout,
+            ),
         )
-        with self._lock:
-            self._college_payload = (now, payload)
-        return payload
 
     def _college_team_ids(self, season: int, group: str) -> frozenset[str]:
         """Read one NCAA division from ESPN's group endpoint."""
 
-        key = (season, group)
-        now = monotonic()
-        with self._lock:
-            cached = self._college_group_ids.get(key)
-            if cached is not None and now - cached[0] < self._cache_seconds:
-                return cached[1]
+        return self._cache.get(("college_group", season, group), lambda: self._load_college_team_ids(season, group))
+
+    def _load_college_team_ids(self, season: int, group: str) -> frozenset[str]:
         url = (
             f"{_ESPN_CORE_COLLEGE_BASE}/seasons/{season}/types/2/groups/{group}/teams"
             "?lang=en&region=us&limit=1000"
         )
         payload = self._client.get_json(url, timeout=self._timeout)
         team_ids = _source_team_ids(payload)
-        with self._lock:
-            self._college_group_ids[key] = (now, team_ids)
         return team_ids
 
 

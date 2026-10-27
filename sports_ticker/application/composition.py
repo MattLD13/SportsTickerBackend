@@ -43,6 +43,7 @@ class BackendApplication:
         pairing_code_ttl_seconds: float = 600.0,
         mini_sprites: object | None = None,
         mini_artwork: object | None = None,
+        owned_resources: tuple[object, ...] = (),
     ) -> None:
         """Capture infrastructure through dependency injection."""
 
@@ -62,6 +63,7 @@ class BackendApplication:
         self._close_lock = Lock()
         self._pairing_refresh_lock = Lock()
         self._closed = False
+        self._owned_resources = list(owned_resources)
         self.schedule_service = schedule_service or ScheduleService(
             repository,
             snapshot_store,
@@ -725,6 +727,14 @@ class BackendApplication:
         )
         return max((delay for delay in delays if isfinite(delay) and delay >= 0), default=0.0)
 
+    def own_resource(self, resource: object) -> None:
+        """Register one resource created by application composition."""
+        with self._close_lock:
+            if self._closed:
+                raise RuntimeError("application is closed")
+            if all(item is not resource for item in self._owned_resources):
+                self._owned_resources.append(resource)
+
     def close(self) -> None:
         """Stop owned work and close the owned repository once."""
 
@@ -734,7 +744,7 @@ class BackendApplication:
             self._closed = True
 
         failures: list[Exception] = []
-        for component in (self.runtime, self.scheduler, self.mini_sprites, self.mini_artwork):
+        for component in (self.runtime, self.scheduler, self.mini_sprites, self.mini_artwork, *self._owned_resources):
             if component is None:
                 continue
             stop = getattr(component, "stop", None)

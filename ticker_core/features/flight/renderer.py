@@ -10,6 +10,7 @@ from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, tiny_text
 from ticker_core.features.utility.renderer import EmptyLogoSource, LogoSource
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
+from ticker_core.rendering.templates import ImageTemplates
 
 
 BOARD_ROWS = 4
@@ -34,6 +35,7 @@ class FlightRenderer:
     def __init__(self, fonts: FontSet, logos: LogoSource | None = None) -> None:
         self._fonts = fonts
         self._logos = logos or EmptyLogoSource()
+        self._airport_templates = ImageTemplates(capacity=16, max_bytes=1024 * 1024)
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render one flight content item."""
@@ -97,26 +99,32 @@ class FlightRenderer:
         weather_item = weather if isinstance(weather, dict) else {}
         inbound = arrivals if isinstance(arrivals, list) else []
         outbound = departures if isinstance(departures, list) else []
-        image = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
         code = str(weather_item.get("iata") or weather_item.get("home_abbr", "")).strip().upper()[:10]
         city = str(weather_item.get("city", "")).strip().upper()[:12]
-        x = 3
-        if code:
-            tiny_text(draw, x, 0, code, self._blue, self._fonts.tiny)
-            x += len(code) * 5 + 5
-        if city:
-            tiny_text(draw, x, 0, city, self._blue, self._fonts.tiny)
-            x += len(city) * 5 + 5
-        tiny_text(draw, x, 0, "INBOUND", self._green, self._fonts.tiny)
-        tiny_text(draw, 196, 0, "OUTBOUND", self._red, self._fonts.tiny)
+        label = ''
         if weather_item:
             label = f"{weather_item.get('away_abbr', '--')} {weather_item.get('status', '')}".strip().upper()
             if len(label) > BOARD_WX_CHARS:
                 label = label[:BOARD_WX_CHARS].rsplit(" ", 1)[0]
-            tiny_text(draw, PANEL_W - len(label) * 5 - 3, 0, label, BOARD_WX, self._fonts.tiny)
-        draw.rectangle((0, 6, PANEL_W, 6), fill=BOARD_RULE)
-        draw.rectangle((190, 8, 190, 31), fill=BOARD_RULE)
+        def static_layer():
+            image = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
+            draw = ImageDraw.Draw(image)
+            x = 3
+            if code:
+                tiny_text(draw, x, 0, code, self._blue, self._fonts.tiny)
+                x += len(code) * 5 + 5
+            if city:
+                tiny_text(draw, x, 0, city, self._blue, self._fonts.tiny)
+                x += len(city) * 5 + 5
+            tiny_text(draw, x, 0, "INBOUND", self._green, self._fonts.tiny)
+            tiny_text(draw, 196, 0, "OUTBOUND", self._red, self._fonts.tiny)
+            if weather_item:
+                tiny_text(draw, PANEL_W - len(label) * 5 - 3, 0, label, BOARD_WX, self._fonts.tiny)
+            draw.rectangle((0, 6, PANEL_W, 6), fill=BOARD_RULE)
+            draw.rectangle((190, 8, 190, 31), fill=BOARD_RULE)
+            return image
+        image = self._airport_templates.render((code, city, bool(weather_item), label), static_layer)
+        draw = ImageDraw.Draw(image)
         self._side(draw, inbound, 3, 188, self._green, "NO INBOUND")
         self._side(draw, outbound, 196, 381, self._red, "NO OUTBOUND")
         return image

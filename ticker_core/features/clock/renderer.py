@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from ...context import RenderContext
 from .scene import ClockScene
 from ticker_core.rendering.style import CLOCK_DATE, SCORE_TEXT, CLOCK_RAIL, CLOCK_PROGRESS
+from ticker_core.rendering.templates import ImageTemplates
 
 
 PANEL_WIDTH = 384
@@ -25,6 +26,7 @@ class ClockRenderer:
     def __init__(self, tiny_font: Font, clock_font: Font) -> None:
         self._tiny_font = tiny_font
         self._clock_font = clock_font
+        self._date_templates = ImageTemplates(capacity=2, max_bytes=128 * 1024)
 
     def render(self, context: RenderContext, scene: ClockScene) -> Image.Image:
         """Render a 384 by 32 RGBA clock frame for the context time."""
@@ -37,17 +39,15 @@ class ClockRenderer:
 
     def _render_clock_at(self, now: datetime) -> Image.Image:
         """Render the normal clock frame for one injected local time."""
-        image = Image.new("RGBA", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(image)
-
         date_text = now.strftime("%A %B %d").upper()
-        date_width = draw.textlength(date_text, font=self._tiny_font)
-        draw.text(
-            ((PANEL_WIDTH - date_width) / 2, -1),
-            date_text,
-            font=self._tiny_font,
-            fill=DATE_COLOR,
-        )
+        def static_layer():
+            image = Image.new("RGBA", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0, 255))
+            draw = ImageDraw.Draw(image)
+            date_width = draw.textlength(date_text, font=self._tiny_font)
+            draw.text(((PANEL_WIDTH - date_width) / 2, -1), date_text, font=self._tiny_font, fill=DATE_COLOR)
+            return image
+        image = self._date_templates.render(date_text, static_layer)
+        draw = ImageDraw.Draw(image)
 
         time_text = now.strftime("%I:%M:%S").lstrip("0")
         time_width = draw.textlength(time_text, font=self._clock_font)

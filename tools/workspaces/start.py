@@ -34,6 +34,8 @@ def edit_owners(manifest: dict, targets: list[str], shared: bool) -> set[str]:
 
 def inventory(root: Path, manifest: dict, revision: str) -> dict[str, str]:
     tracked = tree(root, revision)
+    deleted = set(git(root, "ls-files", "--deleted", "-z").split("\0"))
+    tracked = {path: mode for path, mode in tracked.items() if path not in deleted}
     # Include explicit new instruction and tool files during local implementation.
     for component in manifest["components"].values():
         for pattern in component.get("context", []) + component.get("build", []):

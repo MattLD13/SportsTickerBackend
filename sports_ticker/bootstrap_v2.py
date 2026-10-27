@@ -37,12 +37,14 @@ def create_backend_application(
     if scheduler is None:
         scheduler = RefreshScheduler(refresh_service)
 
+    weather_resolver = WeatherLocationResolver()
     application = BackendApplication(
         repository,
         snapshot_store,
         scheduler=scheduler,
         spotify_service=spotify_service,
-        weather_location_resolver=WeatherLocationResolver().resolve,
+        weather_location_resolver=weather_resolver.resolve,
+        owned_resources=(weather_resolver,),
         clock=clock,
         mini_sprites=mini_sprites or MiniSpriteService(Path(database_path).parent / "mini_sprites", clock=clock),
         mini_artwork=mini_artwork,

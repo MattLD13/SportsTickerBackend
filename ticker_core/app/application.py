@@ -9,7 +9,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from multiprocessing import get_context
 from threading import Event, Thread, current_thread
-from time import monotonic
+from time import monotonic, time as wall_time
 import os
 import shlex
 import sys
@@ -25,13 +25,16 @@ from ticker_core.platform import (
     WiFiRecoveryService,
     WiFiSetupState,
 )
-from ticker_core.protocol import BackendClient, DisplayDelta, TickerResponse, apply_display_delta
+from ticker_core.protocol import BackendClient, TickerResponse
 from ticker_core.platform.frame_health import PresentedFrameHealth
+from ticker_core.platform.affinity import pin_to_cpu
 from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
 from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded, PollUpdateResult
 from .viewport import CardViewport
+from .latency import DisplayLatencyTracker
+from .updates import PreparedEventQueue, PreparedUpdate, RejectedUpdate
 
 
 class PollWorker(Protocol):
@@ -116,13 +119,15 @@ class TickerApplication:
         self._poll_cpu = poll_cpu
         if self._poll_in_process:
             self._process_context = get_context("fork")
-            self._events = self._process_context.Queue()
+            self._incoming_events = self._process_context.Queue()
             self._stop = self._process_context.Event()
         else:
             self._process_context = None
-            self._events: Queue[PollEvent] = Queue()
+            self._incoming_events = None
             self._stop = Event()
         self._poll_thread: Thread | object | None = None
+        self._event_reader: Thread | None = None
+        self._events = PreparedEventQueue(cache=cache, assets=assets)
         self._wifi_thread: Thread | None = None
         self._wifi_portal_thread: Thread | None = None
         self._wifi_state: WiFiSetupState | None = None
@@ -135,6 +140,7 @@ class TickerApplication:
         self._asset_revision = self._asset_revision_now()
         self._last_response: TickerResponse | None = None
         self._logger = logger or _NullPiLogger()
+        self._latency = DisplayLatencyTracker(self._record_latency)
         set_issue_handler = getattr(self._viewport, "set_issue_handler", None)
         if callable(set_issue_handler):
             set_issue_handler(self._record_viewport_issue)
@@ -166,17 +172,19 @@ class TickerApplication:
             return
         self._started = True
         self._logger.start()
-        _pin_to_cpu(self._render_cpu)
+        pin_to_cpu(self._render_cpu)
         self._start_wifi_lifecycle()
         if self._poll_in_process:
             assert self._process_context is not None
             self._poll_thread = self._process_context.Process(
                 target=_run_poll_process,
-                args=(self._poller, self._stop, self._events, self._poll_cpu),
+                args=(self._poller, self._stop, self._incoming_events, self._poll_cpu),
                 name="ticker-backend-poll",
                 daemon=True,
             )
             self._poll_thread.start()
+            self._event_reader = Thread(target=self._read_poll_events, name="ticker-event-prepare", daemon=True)
+            self._event_reader.start()
         else:
             self._poll_thread = Thread(target=self._poller.run, args=(self._stop, self._events), name="ticker-backend-poll", daemon=True)
             self._poll_thread.start()
@@ -248,12 +256,21 @@ class TickerApplication:
             present_started_at = monotonic()
             self._sink.present(frame, brightness=decision.brightness, inverted=decision.inverted)
             finished_at = monotonic()
+            finished_ms = wall_time() * 1000.0
         except Exception as error:
             self._logger.record_issue("frame", error, kind=str(decision.kind), mode=decision.mode)
             self._present_retry = True
             self._record_tick(decision, presented=False)
             self._complete_step(decision)
             return decision
+        if self._latency.pending_ids and decision.news is None and decision.update_failure is None:
+            visible = {}
+            if decision.kind is FrameKind.SCROLL:
+                visible = self._viewport.visible_updates(decision.scroll_offset or 0, self._latency.pending_ids, getattr(self._sink, "width", 384))
+            elif decision.kind is FrameKind.STATIC and decision.content is not None:
+                visible = {decision.content.id: {"changed_visible": self._last_frame is None or self._last_frame.tobytes() != frame.tobytes(),
+                                                  "installed_mono": present_started_at}}
+            self._latency.presented(visible, at_ms=finished_ms, at_mono=finished_at, present_started=present_started_at)
         if self._frame_health is not None:
             self._frame_health.record(frame, decision.kind)
         if decision.update_failure is not None:
@@ -323,35 +340,27 @@ class TickerApplication:
         self._launch_requested_reboot()
 
     def process_events(self) -> None:
-        """Apply all completed poll events on the application thread."""
-        while True:
+        """Apply ordered events within a small drawing-loop budget."""
+        deadline = monotonic() + 0.004
+        processed = 0
+        while processed < 16 and (not processed or monotonic() < deadline):
             try:
                 event = self._events.get_nowait()
             except Empty:
                 return
-            if isinstance(event, PollSucceeded):
-                self._logger.record_poll(success=True, elapsed_ms=event.elapsed_ms, response_bytes=event.response_bytes)
-                response = event.payload
-                if isinstance(response, Mapping):
-                    response = TickerResponse.from_payload(response)
-                if isinstance(response, DisplayDelta):
-                    if self._last_response is None:
-                        self._logger.record_issue("poll_delta", RuntimeError("Received a delta before a display snapshot."))
-                        continue
-                    previous_response = self._last_response
-                    current_response = apply_display_delta(previous_response, response)
-                    asset_source = (
-                        current_response
-                        if response.settings_changed
-                        else _delta_asset_source(response)
-                    )
-                    self._accept_fresh(
-                        current_response,
-                        persist=False,
-                        asset_source=asset_source,
-                    )
-                else:
-                    self._accept_fresh(response)
+            processed += 1
+            if isinstance(event, RejectedUpdate):
+                self._logger.record_issue("poll_prepare", event.error)
+                continue
+            if isinstance(event, PreparedUpdate):
+                event_mono = monotonic()
+                self._logger.record_poll(success=True, elapsed_ms=event.event.elapsed_ms, response_bytes=event.event.response_bytes)
+                for source, error in event.issues:
+                    self._logger.record_issue(source, error)
+                self._accept_fresh(event.response, persist=False, prepared=event)
+                settings = self._last_response.settings.data if self._last_response is not None else {}
+                self._latency.accept(event.event.timing, event_mono=event_mono, accepted_mono=monotonic(),
+                                     delay_seconds=float(settings.get("live_delay_seconds") or 0) if settings.get("live_delay_mode") else 0)
             elif isinstance(event, PollConnected):
                 self._runtime.confirm_connection()
                 self._disconnected = False
@@ -386,6 +395,20 @@ class TickerApplication:
         """Queue one local mode change and one backend setting push."""
         self._runtime.request_mode(mode)
 
+    def _read_poll_events(self) -> None:
+        """Restore and prepare process messages outside the drawing thread."""
+        pin_to_cpu(self._poll_cpu)
+        while not self._stop.is_set():
+            try:
+                event = self._incoming_events.get(timeout=0.1)
+            except Empty:
+                continue
+            except (EOFError, OSError, ValueError) as error:
+                if not self._stop.is_set():
+                    self._events.put(RejectedUpdate(error))
+                return
+            self._events.put(event)
+
     def close(self) -> None:
         """Stop owned workers and close owned external resources."""
         if self._stop.is_set() and not self._started:
@@ -396,7 +419,16 @@ class TickerApplication:
             self._wifi_thread = None
         if self._poll_thread is not None and self._poll_thread is not current_thread():
             self._poll_thread.join(timeout=6)
+            if self._poll_in_process and self._poll_thread.is_alive():
+                self._poll_thread.terminate()
+                self._poll_thread.join(timeout=2)
             self._poll_thread = None
+        if self._event_reader is not None and self._event_reader is not current_thread():
+            self._event_reader.join(timeout=6)
+            self._event_reader = None
+        if self._incoming_events is not None:
+            self._incoming_events.close()
+            self._incoming_events.join_thread()
         close_cache = getattr(self._cache, "close", None)
         if callable(close_cache):
             close_cache()
@@ -409,6 +441,9 @@ class TickerApplication:
             close_sink()
         self._logger.close()
         self._started = False
+
+    def _record_latency(self, value: Mapping[str, object]) -> None:
+        self._logger.record_latency({**value, "device_id": self._device_id, "output_driver": type(self._sink).__name__})
 
     def _record_viewport_issue(self, details: Mapping[str, object]) -> None:
         """Forward card renderer failures to the application health stream."""
@@ -479,6 +514,7 @@ class TickerApplication:
         *,
         persist: bool = True,
         asset_source: object | None = None,
+        prepared: PreparedUpdate | None = None,
     ) -> None:
         """Persist, prefetch, accept, and render one validated backend response."""
         previous = self._runtime.snapshot
@@ -492,14 +528,15 @@ class TickerApplication:
         if persist:
             self._cache.store(response.data)
         self._logger.record_payload(response)
-        self._assets.prefetch_payload(response if asset_source is None else asset_source)
-        current = self._runtime.accept_response(response)
+        if prepared is None:
+            self._assets.prefetch_payload(response if asset_source is None else asset_source)
+        current = self._runtime.accept_response(response, prepared_content=prepared.content if prepared is not None else None)
         self._prefetch_runtime_assets(current)
         self._disconnected = False
         self._pending_reboot_id = response.reboot_request_id
         self._last_response = response
         del previous
-        self._refresh_viewport(current)
+        self._refresh_viewport(current, changed_ids=prepared.changed_ids if prepared is not None and not prepared.settings_changed else None)
 
     def _refresh_local_hardware_content(self) -> None:
         """Refresh local calendar-controlled cards before the next frame."""
@@ -528,7 +565,7 @@ class TickerApplication:
             expires_in = self._runtime.config.offline_after
         self._runtime.mark_disconnected(expires_in=expires_in)
 
-    def _refresh_viewport(self, snapshot=None) -> None:
+    def _refresh_viewport(self, snapshot=None, *, changed_ids: frozenset[str] | None = None) -> None:
         """Queue changed card scenes without composing a long strip image."""
         current = snapshot or self._runtime.snapshot
         if current is None:
@@ -537,6 +574,7 @@ class TickerApplication:
             self._runtime.classification.scrolling,
             RenderContext(self._wall_clock()),
             self._runtime.mode,
+            changed_ids=changed_ids,
         )
         self._runtime.install_strip(current.strip_key, layout)
 
@@ -612,7 +650,7 @@ class TickerApplication:
 def _run_poll_process(poller: PollWorker, stop, events, cpu: int | None) -> None:
     """Run network polling outside the renderer process."""
 
-    _pin_to_cpu(cpu)
+    pin_to_cpu(cpu)
     try:
         poller.run(stop, _ProcessPollEvents(events))
     finally:
@@ -629,23 +667,12 @@ class _ProcessPollEvents:
 
     def put(self, event: PollEvent) -> None:
         if isinstance(event, PollSucceeded):
-            self._target.put(PollSucceeded(event.payload, event.elapsed_ms, event.response_bytes))
+            self._target.put(PollSucceeded(event.payload, event.elapsed_ms, event.response_bytes, event.timing))
             return
         if isinstance(event, PollFailed):
             self._target.put(PollFailed(RuntimeError(str(event.error)), event.retry_in, event.elapsed_ms))
             return
         self._target.put(event)
-
-
-def _pin_to_cpu(cpu: int | None) -> None:
-    """Limit this process to one configured Linux CPU when available."""
-
-    if cpu is None or not hasattr(os, "sched_setaffinity"):
-        return
-    try:
-        os.sched_setaffinity(0, {cpu})
-    except OSError:
-        return
 
 
 class _NullPiLogger:
@@ -672,17 +699,11 @@ class _NullPiLogger:
     def record_payload(self, response) -> None:
         del response
 
+    def record_latency(self, value) -> None:
+        del value
+
     def record_issue(self, source, error, **details) -> None:
         del source, error, details
-
-
-def _delta_asset_source(delta: DisplayDelta) -> tuple[Mapping[str, Any], ...]:
-    """Return only renderer scenes that can introduce assets in one delta."""
-
-    records: list[Mapping[str, Any]] = [item.data for item in delta.changed]
-    records.extend(data for _, _, data in delta.alerts)
-    records.extend(data for _, _, data in delta.news)
-    return tuple(records)
 
 
 def _unintended_black(frame: object, decision: FrameDecision) -> bool:

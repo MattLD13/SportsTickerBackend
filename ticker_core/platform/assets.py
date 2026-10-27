@@ -164,8 +164,9 @@ class AssetCoordinator(AssetView):
 
     def start(self) -> None:
         """Start asset workers after the application owns their lifetime."""
-        if self._executor is None:
-            self._executor = ThreadPoolExecutor(max_workers=self._workers, thread_name_prefix="ticker-assets")
+        with self._lock:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=self._workers, thread_name_prefix="ticker-assets")
 
     def prefetch(self, requests: Iterable[AssetRequest]) -> tuple[Future[Image.Image | None], ...]:
         """Schedule unique asset preparation work without waiting for it."""
@@ -174,9 +175,10 @@ class AssetCoordinator(AssetView):
 
     def close(self) -> None:
         """Finish queued work and stop coordinator workers."""
-        if self._executor is not None:
-            self._executor.shutdown(wait=True, cancel_futures=False)
-            self._executor = None
+        with self._lock:
+            executor, self._executor = self._executor, None
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=False)
 
     def _schedule(self, request: AssetRequest) -> Future[Image.Image | None]:
         if self.long_term.prepared.contains_memory(request):

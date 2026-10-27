@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
+from ticker_core.rendering.templates import ImageTemplates
 from ticker_core.rendering.pixels import TINY as TINY_FONT_MAP
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
@@ -60,6 +61,7 @@ class RacingRenderer:
     fonts: FontSet
     assets: RacingAssetService
     _strip_cache: dict[tuple[object, ...], tuple[tuple[Image.Image, ...], Image.Image, int]] = field(default_factory=dict)
+    _scroll_templates: ImageTemplates = field(default_factory=ImageTemplates, init=False, repr=False)
     _driver_card_cache: OrderedDict[tuple[object, ...], Image.Image] = field(default_factory=OrderedDict, init=False, repr=False)
     _visual_item: Mapping[str, Any] | None = field(default=None, init=False, repr=False)
     _visual_item_json: str | None = field(default=None, init=False, repr=False)
@@ -103,8 +105,6 @@ class RacingRenderer:
             return empty
         strip = Image.new("RGBA", (128 * len(cards) + 6 * (len(cards) - 1), PANEL_HEIGHT), (0, 0, 0, 255))
         for index, card in enumerate(cards):
-            image = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
-            draw = ImageDraw.Draw(image)
             signals = card.get("signals") or [racing_signal("UNKNOWN", "")]
             signal = signals[int(max(0, elapsed) // 2) % len(signals)]
             suffix = str(card.get("class_label") or "")
@@ -113,9 +113,20 @@ class RacingRenderer:
             name = str(card.get("race_name") or "RACING").upper()
             while name and _tiny_width(name + " " + suffix) > 112:
                 name = name[:-1]
-            draw_tiny_text(draw, 1, 1, (name + " " + suffix).strip(), (255, 240, 150))
-            _draw_mini_flag(draw, 116, 0, _pulse_flag(signal, elapsed))
-            draw.line([(0, 7), (127, 7)], fill=(55, 76, 130))
+            header = (name + " " + suffix).strip()
+            visible_signal = _pulse_flag(signal, elapsed)
+            key = (header, json.dumps(visible_signal, sort_keys=True, default=str))
+
+            def build_header():
+                image = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
+                draw = ImageDraw.Draw(image)
+                draw_tiny_text(draw, 1, 1, header, (255, 240, 150))
+                _draw_mini_flag(draw, 116, 0, visible_signal)
+                draw.line([(0, 7), (127, 7)], fill=(55, 76, 130))
+                return image
+
+            image = self._scroll_templates.render(key, build_header)
+            draw = ImageDraw.Draw(image)
             rows = card.get("rows") or []
             if not rows:
                 draw_tiny_text(draw, 3, 14, str(card.get("session") or "WAITING")[:28], (180, 210, 255))
