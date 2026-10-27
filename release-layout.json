@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "python_roots": ["."],
+  "runtime_packages": ["ticker_core", "sports_ticker"]
+}

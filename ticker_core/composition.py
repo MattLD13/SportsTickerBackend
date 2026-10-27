@@ -35,7 +35,7 @@ from ticker_core.runtime import FramePacer, TickerRuntime
 
 def create_application() -> TickerApplication:
     """Create one fully composed ticker application from environment values."""
-    repository = Path(__file__).resolve().parent.parent
+    repository = Path(os.environ.get("TICKER_REPOSITORY_DIR", Path(__file__).resolve().parent.parent))
     data_directory = Path(os.environ.get("TICKER_DATA_DIR", "~/ticker")).expanduser()
     device_id = load_device_id(data_directory)
     health = HealthCollector(repository)

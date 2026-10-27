@@ -82,9 +82,8 @@ def _checkout_release(revision: str) -> Path:
 
 def _validate_release(release: Path) -> None:
     """Compile the release packages before activation so syntax errors never become active code."""
-    packages = [path for path in (release / "ticker_core", release / "sports_ticker") if path.is_dir()]
-    if not packages:
-        raise FileNotFoundError(f"Release contains no runtime packages: {release}")
+    from run import release_paths
+    packages = release_paths(release, "runtime_packages")
     subprocess.run([sys.executable, "-m", "compileall", "-q", *(str(path) for path in packages)], check=True)
 
 
@@ -234,6 +233,8 @@ def _recover_pending_boot(journal, client, ticker_id: str) -> int:
 
 def main() -> int:
     """Install one assigned release and persist its verified boot result."""
+    from run import configure_paths
+    configure_paths(PROJECT_DIR)
     from ticker_core.platform.update_journal import UpdateJournal
     from ticker_core.platform.device_credentials import load_device_token
     from ticker_core.protocol import BackendClient
