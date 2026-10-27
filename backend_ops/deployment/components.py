@@ -9,13 +9,13 @@ from pathlib import Path
 import subprocess
 import tarfile
 
-from .worker_contract import PROVIDERS, contract_id
+from ..worker_contract import PROVIDERS, contract_id
 
 ALL = ("core", *PROVIDERS)
 OWNERS = {
-    "golf_source.py": ("golf",), "stock_source.py": ("stock",),
-    "flight_source.py": ("flights",), "news_source.py": ("news",), "clock.py": ("clock",),
-    "source_values.py": ("golf", "stock", "flights", "news"),
+    "sources/golf.py": ("golf",), "sources/stocks.py": ("stock",),
+    "sources/flights.py": ("flights",), "sources/news.py": ("news",), "clock.py": ("clock",),
+    "sources/values.py": ("golf", "stock", "flights", "news"),
     "racing_session.py": ("core", "racing"),
     "espn.py": ("espn", "golf", "news"),
     "espn*": ("espn",), "nhl_live.py": ("espn",), "score_alerts.py": ("espn", "fotmob"),
@@ -32,7 +32,7 @@ def owners(path):
     if path.startswith(("sports_ticker/integrations/", "sports_ticker/fleet/")):
         return {"core", "music"}
     if path.startswith("sports_ticker/providers/"):
-        name = path.rsplit("/", 1)[-1]
+        name = path.removeprefix("sports_ticker/providers/")
         for pattern, components in OWNERS.items():
             if fnmatch.fnmatchcase(name, pattern):
                 return set(components)

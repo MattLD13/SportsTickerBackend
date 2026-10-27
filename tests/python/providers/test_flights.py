@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.providers.flights import FlightsProvider
-from sports_ticker.providers.flight_source import FlightRadarSource
+from sports_ticker.providers.sources.flights import FlightRadarSource
 from sports_ticker.providers.contracts import ProviderHealth
 from sports_ticker.projections import project_data_v2
 from ticker_core.context import RenderContext

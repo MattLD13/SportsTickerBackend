@@ -346,7 +346,7 @@ jobs:
       env:
         BASE_REVISION: ${{ steps.base.outputs.revision }}
       run: |
-        python -m backend_ops.components --base "$BASE_REVISION" --output deployment-staging
+        python -m backend_ops.deployment.components --base "$BASE_REVISION" --output deployment-staging
         cp deploy/backend/* deployment-staging/
         cp -R backend_ops deployment-staging/bootstrap-ops
         find deployment-staging/bootstrap-ops -type d -name __pycache__ -prune -exec rm -rf '{}' +

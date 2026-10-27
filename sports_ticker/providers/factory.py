@@ -21,7 +21,7 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         return FotMobSoccerProvider(FOTMOB_LEAGUES)
     if name == "news":
         from .catalog import EspnTeamCatalog
-        from .news_source import EspnNewsSource
+        from .sources.news import EspnNewsSource
         from .news import NewsProvider
         from .news_transactions import NhlTradeTrackerSource
         owns_catalog = catalog is None
@@ -55,19 +55,19 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         return provider
     if name == "golf":
         from .golf import GolfProvider
-        from .golf_source import EspnGolfSource
+        from .sources.golf import EspnGolfSource
         provider = GolfProvider(EspnGolfSource())
         provider.own_source()
         return provider
     if name == "stock":
         from .stocks import StockProvider
-        from .stock_source import FinnhubStockSource
+        from .sources.stocks import FinnhubStockSource
         provider = StockProvider(FinnhubStockSource())
         provider.own_source()
         return provider
     if name == "flights":
         from .flights import FlightsProvider
-        from .flight_source import FlightRadarSource
+        from .sources.flights import FlightRadarSource
         return FlightsProvider(FlightRadarSource())
     if name == "clock":
         from .clock import ClockProvider

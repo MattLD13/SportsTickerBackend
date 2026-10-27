@@ -66,7 +66,7 @@ Live validation also produced Vegas at Nashville `5v4` and Calgary at Anaheim `5
 Edmonton at Los Angeles produced an empty label for normal 5v5.
 Real 384x32 previews are saved under `previews/nhl/`.
 
-Run `python -m pytest tests/python/protocol/test_nhl_live.py tests/python/protocol/test_sports_display.py tests/python/protocol/test_espn_provider.py -q`.
+Run `python -m pytest tests/python/providers/test_nhl_live.py tests/python/protocol/test_sports_display.py tests/python/providers/test_espn_provider.py -q`.
 
 ## Rangers PP replay
 

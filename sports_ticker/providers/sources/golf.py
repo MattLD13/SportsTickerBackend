@@ -8,11 +8,11 @@ from threading import Lock
 from time import monotonic
 from typing import Any, Callable
 from sports_ticker.domain import DisplaySettings
-from .espn import _display_timezone, _event_time
-from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
-from .payloads import as_mapping as _mapping, mapping_values as _mappings
-from .sports_display import golf_competition_stage
-from .source_values import _timeout
+from ..espn import _display_timezone, _event_time
+from ..http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
+from ..payloads import as_mapping as _mapping, mapping_values as _mappings
+from ..sports_display import golf_competition_stage
+from .values import _timeout
 
 
 ESPN_GOLF_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"

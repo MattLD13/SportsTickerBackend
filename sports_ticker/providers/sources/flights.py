@@ -8,8 +8,8 @@ from math import atan2, cos, isfinite, radians, sin, sqrt
 from time import time
 from typing import Any, Callable
 from sports_ticker.domain import DisplaySettings
-from .payloads import as_mapping as _mapping
-from .source_values import _number
+from ..payloads import as_mapping as _mapping
+from .values import _number
 
 
 _KNOTS_TO_MPH = 1.15078

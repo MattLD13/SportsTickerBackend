@@ -10,7 +10,7 @@ from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import TickerRepository
 from sports_ticker.providers.market_sessions import us_equity_session
-from sports_ticker.providers import stock_source
+from sports_ticker.providers.sources import stocks
 
 pytestmark = pytest.mark.critical
 
@@ -144,15 +144,15 @@ def test_closed_market_fetches_once_and_retains_close_after_restart(tmp_path, mo
             return {"c": 100, "d": 1, "dp": 1, "pc": 99, "t": clock[0]}
 
     monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
-    monkeypatch.setattr(stock_source, "Thread", ImmediateThread)
-    monkeypatch.setattr(stock_source, "MARKET_GROUPS", (SimpleNamespace(id="test", label="Test", symbols=("AAA",)),))
-    source = stock_source.FinnhubStockSource(Quotes(), cache_path=tmp_path / "close.json", clock=lambda: clock[0],
+    monkeypatch.setattr(stocks, "Thread", ImmediateThread)
+    monkeypatch.setattr(stocks, "MARKET_GROUPS", (SimpleNamespace(id="test", label="Test", symbols=("AAA",)),))
+    source = stocks.FinnhubStockSource(Quotes(), cache_path=tmp_path / "close.json", clock=lambda: clock[0],
                                            monotonic_clock=lambda: clock[0], sleeper=lambda duration: None)
     for _ in range(240):
         result = source.fetch(DisplaySettings(mode="stock"))
         clock[0] += 30
     assert len(calls) == 1
     assert result["content"][0]["home_score"] == "100.00"
-    restarted = stock_source.FinnhubStockSource(Quotes(), cache_path=tmp_path / "close.json", clock=lambda: clock[0])
+    restarted = stocks.FinnhubStockSource(Quotes(), cache_path=tmp_path / "close.json", clock=lambda: clock[0])
     assert restarted.fetch(DisplaySettings(mode="stock"))["content"][0]["home_score"] == "100.00"
     assert len(calls) == 1

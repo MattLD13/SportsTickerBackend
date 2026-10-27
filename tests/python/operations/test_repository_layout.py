@@ -55,3 +55,19 @@ def test_entry_tools_resolve_the_current_display_fixture():
     expected = Path("tests/fixtures/display/v2_render_snapshot.json").resolve()
     assert benchmark_fixture == expected and benchmark_fixture.is_file()
     assert lab_fixture == expected and lab_fixture.is_file()
+
+
+def test_installed_recovery_command_and_nested_selector_remain_executable(tmp_path):
+    import json
+    import sys
+
+    status = subprocess.run(
+        [sys.executable, "-m", "backend_ops.manager", "status", "--home", str(tmp_path)],
+        capture_output=True, text=True, check=True,
+    )
+    assert json.loads(status.stdout) == {}
+    selector = subprocess.run(
+        [sys.executable, "-m", "backend_ops.deployment.components", "--help"],
+        capture_output=True, text=True, check=True,
+    )
+    assert "--base" in selector.stdout and "--output" in selector.stdout

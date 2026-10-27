@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
-from backend_ops.components import changed_components
+from backend_ops.deployment.components import changed_components
 
 
 def _git(root, *args: str) -> str:

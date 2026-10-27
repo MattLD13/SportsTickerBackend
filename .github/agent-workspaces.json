@@ -60,7 +60,8 @@
         "ticker_core/_enum.py",
         "ticker_core/context.py",
         "ticker_core/registry.py",
-        "ticker_core/scene.py"
+        "ticker_core/scene.py",
+        "sports_ticker/providers/sources/*.py"
       ],
       "checks": []
     },
@@ -121,7 +122,7 @@
         "tests/python/protocol/test_mini_fields.py",
         "tests/python/protocol/test_sports_display.py",
         "tests/python/protocol/test_sports_lifecycle.py",
-        "tests/python/protocol/test_nhl_live.py",
+        "tests/python/providers/test_nhl_live.py",
         "tests/fixtures/display/*.json",
         "tools/mini/generate_mini_fields.py",
         "tools/mini/generate_mini_ui.py",
@@ -248,7 +249,7 @@
       ],
       "build": [
         "ticker_core/features/music/*",
-        "tests/python/protocol/test_music_stale_scope.py",
+        "tests/python/providers/test_music_stale_scope.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
@@ -273,7 +274,7 @@
       ],
       "build": [
         "ticker_core/features/weather/*",
-        "tests/python/protocol/test_weather_provider.py",
+        "tests/python/providers/test_weather_provider.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py",
         "tests/python/features/weather/*"
@@ -323,7 +324,7 @@
       ],
       "build": [
         "ticker_core/features/flight/*",
-        "tests/python/protocol/test_flights.py",
+        "tests/python/providers/test_flights.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
@@ -346,7 +347,7 @@
       ],
       "build": [
         "ticker_core/features/flight/*",
-        "tests/python/protocol/test_flights.py",
+        "tests/python/providers/test_flights.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
@@ -369,7 +370,7 @@
       ],
       "build": [
         "ticker_core/features/golf/*",
-        "tests/python/protocol/test_golf_provider.py",
+        "tests/python/providers/test_golf_provider.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
@@ -394,7 +395,7 @@
       ],
       "build": [
         "ticker_core/features/racing/*",
-        "tests/python/protocol/test_racing_live_source.py",
+        "tests/python/providers/test_racing_live_source.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
@@ -419,7 +420,7 @@
       ],
       "build": [
         "ticker_core/features/alerts/*",
-        "tests/python/protocol/test_news_distribution.py",
+        "tests/python/providers/test_news_distribution.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
       ],
@@ -487,14 +488,16 @@
       "owned": [
         "backend_ops/*",
         "deploy/backend/*",
-        "tools/deployment/*"
+        "tools/deployment/*",
+        "backend_ops/deployment/*"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [
         "backend_ops/manager.py",
-        "backend_ops/components.py",
+        "backend_ops/deployment/manager.py",
+        "backend_ops/deployment/components.py",
         "backend_ops/reporting.py",
         "docs/operations/backend-recovery.md"
       ],
@@ -503,7 +506,8 @@
         "deploy/backend/*",
         "tools/deployment/*.py",
         "tests/python/operations/test_backend*.py",
-        "tests/python/operations/test_runtime_reporting.py"
+        "tests/python/operations/test_runtime_reporting.py",
+        "backend_ops/deployment/*.py"
       ],
       "checks": []
     },
@@ -875,7 +879,7 @@
         "tests/python/protocol/test_mini_fields.py",
         "tests/python/protocol/test_sports_display.py",
         "tests/python/protocol/test_sports_lifecycle.py",
-        "tests/python/protocol/test_nhl_live.py"
+        "tests/python/providers/test_nhl_live.py"
       ],
       "files": [
         "tests/python/protocol/test_hockey_shootout_alert.py",
@@ -883,7 +887,7 @@
         "tests/python/protocol/test_mini_fields.py",
         "tests/python/protocol/test_sports_display.py",
         "tests/python/protocol/test_sports_lifecycle.py",
-        "tests/python/protocol/test_nhl_live.py"
+        "tests/python/providers/test_nhl_live.py"
       ]
     },
     "mini-fields": {
@@ -935,10 +939,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_music_stale_scope.py"
+        "tests/python/providers/test_music_stale_scope.py"
       ],
       "files": [
-        "tests/python/protocol/test_music_stale_scope.py"
+        "tests/python/providers/test_music_stale_scope.py"
       ]
     },
     "weather-domain": {
@@ -947,10 +951,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_weather_provider.py"
+        "tests/python/providers/test_weather_provider.py"
       ],
       "files": [
-        "tests/python/protocol/test_weather_provider.py"
+        "tests/python/providers/test_weather_provider.py"
       ]
     },
     "stocks-domain": {
@@ -971,10 +975,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_flights.py"
+        "tests/python/providers/test_flights.py"
       ],
       "files": [
-        "tests/python/protocol/test_flights.py"
+        "tests/python/providers/test_flights.py"
       ]
     },
     "airports-domain": {
@@ -983,10 +987,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_flights.py"
+        "tests/python/providers/test_flights.py"
       ],
       "files": [
-        "tests/python/protocol/test_flights.py"
+        "tests/python/providers/test_flights.py"
       ]
     },
     "golf-domain": {
@@ -995,10 +999,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_golf_provider.py"
+        "tests/python/providers/test_golf_provider.py"
       ],
       "files": [
-        "tests/python/protocol/test_golf_provider.py"
+        "tests/python/providers/test_golf_provider.py"
       ]
     },
     "racing-domain": {
@@ -1007,10 +1011,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_racing_live_source.py"
+        "tests/python/providers/test_racing_live_source.py"
       ],
       "files": [
-        "tests/python/protocol/test_racing_live_source.py"
+        "tests/python/providers/test_racing_live_source.py"
       ]
     },
     "news-domain": {
@@ -1019,10 +1023,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_news_distribution.py"
+        "tests/python/providers/test_news_distribution.py"
       ],
       "files": [
-        "tests/python/protocol/test_news_distribution.py"
+        "tests/python/providers/test_news_distribution.py"
       ]
     },
     "agent-setup": {

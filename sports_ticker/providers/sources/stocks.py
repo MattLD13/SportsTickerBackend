@@ -12,10 +12,10 @@ from time import monotonic, sleep, time
 from urllib.parse import urlencode
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.markets import MARKET_GROUPS
-from .background import BackgroundTask
-from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
-from .market_sessions import us_equity_session
-from .source_values import _number, _timeout
+from ..background import BackgroundTask
+from ..http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
+from ..market_sessions import us_equity_session
+from .values import _number, _timeout
 
 
 FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"

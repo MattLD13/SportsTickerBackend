@@ -106,7 +106,7 @@ def acknowledge(state, value):
 
 
 def main():
-    from .manager import Manager, read
+    from .deployment.manager import Manager, read
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("export", "ack", "seed-test"))
     parser.add_argument("--home", type=Path, default=Path("/home/ubuntu"))

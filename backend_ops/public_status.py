@@ -1,7 +1,7 @@
 """Expose deployment identities and quarantine decisions without private evidence."""
 from pathlib import Path
 
-from .manager import read
+from .deployment.manager import read
 
 
 def summary(data_directory):

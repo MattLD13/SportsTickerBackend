@@ -2,12 +2,15 @@
 
 Sports Ticker serves V2 content to Pi displays, ESP32 displays, the dashboard, and the iOS controller.
 
-Read the [project map and cleanup plan](project-map.md) for component boundaries, confirmed overlaps, deployment links, and the complete file inventory.
+Read the [project map and cleanup plan](reviews/2026-10-27/project-map.md) for component boundaries, confirmed overlaps, deployment links, and the complete file inventory.
+
+Read the [repository organization design](repository-layout.md) for current folder groups and stable entry points.
 
 ## Ownership
 
 | Path | Responsibility |
 |---|---|
+| `sports_ticker/providers/sources/` | Read upstream data through injected source adapters. |
 | `sports_ticker/providers/` | Read upstream sources and normalize provider content. |
 | `sports_ticker/providers/sports_display.py` | Project shared sports display facts. |
 | `sports_ticker/domain/` | Define immutable content, settings, schedules, and events. |
@@ -62,7 +65,9 @@ Read [the agent guide](../../AGENTS.md) for domain ownership and change rules.
 
 ## Deployment ownership
 
-`backend_ops/` owns component selection, immutable backend releases, recovery, and encrypted evidence collection workflows.
+`backend_ops/deployment/` owns component selection, immutable backend releases, and recovery.
+`backend_ops/manager.py` retains the installed command entry point.
+Other `backend_ops/` modules own workers, diagnostics, and reporting.
 The core and ten provider workers have separate service processes and release identities.
 `deploy/backend/` stores their service units and the external recovery timer.
 Read [backend recovery](../operations/backend-recovery.md) for activation, quarantine, and rollback rules.

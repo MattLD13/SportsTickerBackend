@@ -77,7 +77,7 @@ def collect(home: Path, *, probe=None, component=None):
         services[name] = {"state": command_output(["systemctl", "show", unit, "--property=ActiveState,SubState,NRestarts,MainPID,MemoryCurrent"]),
                           "log": log_tail(home / ("ticker-backend.log" if name == "core" else f"ticker-fetcher-{name}.log"))}
         try:
-            from .manager import Host
+            from .deployment.manager import Host
             services[name]["health"] = Host(home).probe(name, home / "backend-components" / name / "releases" / record["active"])
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             services[name]["health"] = {"probe_error": type(error).__name__}

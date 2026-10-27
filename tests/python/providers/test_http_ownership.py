@@ -8,7 +8,7 @@ from sports_ticker.providers.weather import (
     HybridWeatherProvider, OpenMeteoWeatherProvider, WeatherLocationResolver,
 )
 from sports_ticker.providers.stock_catalog import StockSymbolCatalog
-from sports_ticker.providers.golf_source import EspnGolfSource
+from sports_ticker.providers.sources.golf import EspnGolfSource
 
 
 class Client:
@@ -29,7 +29,7 @@ class Client:
     (lambda client=None: HybridWeatherProvider(client), "weather"),
     (lambda client=None: WeatherLocationResolver(client), "weather"),
     (lambda client=None: StockSymbolCatalog(client), "stock_catalog"),
-    (lambda client=None: EspnGolfSource(client), "golf_source"),
+    (lambda client=None: EspnGolfSource(client), "sources.golf"),
 ])
 def test_default_client_closes_once_and_injected_client_remains_open(monkeypatch, factory, module):
     monkeypatch.setattr(f"sports_ticker.providers.{module}.PooledJsonHttpClient", Client)
@@ -77,7 +77,7 @@ def test_factory_owns_golf_source_but_injected_source_stays_open(monkeypatch):
     from sports_ticker.providers.factory import create_provider
     from sports_ticker.providers.golf import GolfProvider
 
-    monkeypatch.setattr("sports_ticker.providers.golf_source.PooledJsonHttpClient", Client)
+    monkeypatch.setattr("sports_ticker.providers.sources.golf.PooledJsonHttpClient", Client)
     provider = create_provider("golf")
     client = provider._source._client
     provider.close()
