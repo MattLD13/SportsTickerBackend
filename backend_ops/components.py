@@ -17,7 +17,7 @@ OWNERS = {
     "flight_source.py": ("flights",), "news_source.py": ("news",), "clock.py": ("clock",),
     "source_values.py": ("golf", "stock", "flights", "news"),
     "racing_session.py": ("core", "racing"),
-    "espn.py": ("espn", "golf", "news"),
+    "espn_events.py": ("espn", "golf"),
     "espn*": ("espn",), "nhl_live.py": ("espn",), "score_alerts.py": ("espn", "fotmob"),
     "fotmob.py": ("fotmob",), "golf.py": ("golf",), "stocks.py": ("stock",),
     "market_sessions.py": ("stock",), "flights.py": ("flights",), "music.py": ("music",),

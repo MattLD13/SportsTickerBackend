@@ -10,7 +10,7 @@ import pytest
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.projections import project_data_v2
 from sports_ticker.projections.device_data import project_device_data
-from sports_ticker.providers.espn import _content_item
+from sports_ticker.providers.espn_events import _content_item
 from sports_ticker.providers.fotmob import _content_item as soccer_item
 from sports_ticker.providers.sports_display import SportsDisplayProjector, espn_competition_stage
 from ticker_core.protocol import PayloadValidationError, TickerResponse

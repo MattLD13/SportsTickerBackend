@@ -8,7 +8,7 @@ import pytest
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.projections import project_data_v2
 from sports_ticker.providers.score_alerts import ScoreAlertTracker
-from sports_ticker.providers.espn import _team
+from sports_ticker.providers.espn_events import _team
 from ticker_core.assets import AssetPlanner, AssetRequest, LogoAssetView
 from ticker_core.app.updates import delta_asset_source
 from ticker_core.features.alerts import ScoreAlertRenderer

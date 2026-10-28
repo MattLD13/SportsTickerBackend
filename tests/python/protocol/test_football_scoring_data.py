@@ -7,7 +7,7 @@ import pytest
 
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.projections import project_data_v2
-from sports_ticker.providers.espn import _event_scoring_details
+from sports_ticker.providers.espn_details import _event_scoring_details
 from sports_ticker.providers.score_alerts import ScoreAlertTracker
 from ticker_core.protocol import TickerResponse
 
