@@ -338,9 +338,9 @@ struct AirportScheduleFeedCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.caption2.weight(.bold)).foregroundStyle(color)
-                Text(flights.first?.home_abbr ?? "No scheduled flights")
+                Text(headline)
                     .font(.headline).foregroundStyle(.white).lineLimit(1)
-                Text(destinationText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(detailText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
             Text("\(flights.count)").font(.title3.weight(.bold)).foregroundStyle(color)
@@ -351,9 +351,16 @@ struct AirportScheduleFeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private var destinationText: String {
+    private var headline: String {
+        guard let first = flights.first else { return "No scheduled flights" }
+        let parts = [first.flight_number, first.airport_code].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? "Scheduled flight" : parts.joined(separator: " ")
+    }
+
+    private var detailText: String {
         guard let first = flights.first else { return "Waiting for schedule" }
-        return first.other_iata ?? first.altitude ?? "Airport schedule"
+        let parts = [first.airport_city, first.status].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? "Airport schedule" : parts.joined(separator: " · ")
     }
 }
 
@@ -572,10 +579,6 @@ struct GameRow: View {
             )
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.orange.opacity(0.4), Color.white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
-
-        } else if game.type == "flight_weather" || game.type == "flight_arrival" || game.type == "flight_departure" {
-            // The feed has no row for airport board items.
-            EmptyView()
 
         } else if game.type == "leaderboard" {
             // MARK: - LEADERBOARD CARD

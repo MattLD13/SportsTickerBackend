@@ -48,7 +48,7 @@ class AssetPlanner:
             for next_song in _records(item.get("next_songs")):
                 _add(requests, next_song.get("cover"), "logo", (42, 42))
             return
-        if item_type in {"flight_visitor", "flight_airport_hud", "flight_arrival", "flight_departure"} or sport in {"flight", "flights"} or family in {"flight", "flights"}:
+        if item_type in {"flight_visitor", "flight_airport_hud"} or sport in {"flight", "flights"} or family in {"flight", "flights"}:
             # The flight renderer draws only the backend airline logo, at 22x22.
             _add(requests, str(item.get("airline_logo") or "").strip(), "logo", (22, 22))
             return

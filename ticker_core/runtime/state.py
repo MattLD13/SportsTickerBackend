@@ -107,45 +107,21 @@ def classify_content(
         entry if isinstance(entry, Content) else _content(entry)
         for entry in items
     )
-    normalized = tuple(item for item in normalized if item.is_shown)
-    weather: Content | None = None
-    arrivals: list[Content] = []
-    departures: list[Content] = []
-    others: list[Content] = []
-    for item in normalized:
-        if item.type == "flight_weather":
-            weather = item
-        elif item.type == "flight_arrival":
-            arrivals.append(item)
-        elif item.type == "flight_departure":
-            departures.append(item)
-        else:
-            others.append(item)
-
-    if weather or arrivals or departures:
-        aggregate = {
-            "id": "airport_hud",
-            "type": "flight_airport_hud",
-            "sport": "flight",
-            "weather": weather.data if weather else None,
-            "arrivals": tuple(item.data for item in arrivals),
-            "departures": tuple(item.data for item in departures),
-        }
-        others.append(Content("airport_hud", "flight_airport_hud", "flight", frozen_mapping(aggregate)))
+    shown = tuple(item for item in normalized if item.is_shown)
 
     if selected_mode == "weather":
-        return ContentClassification((), tuple(item for item in others if _is_weather(item)))
+        return ContentClassification((), tuple(item for item in shown if _is_weather(item)))
     if selected_mode == "music":
-        return ContentClassification((), tuple(item for item in others if _is_music(item)))
+        return ContentClassification((), tuple(item for item in shown if _is_music(item)))
     if selected_mode == "flights":
-        return ContentClassification((), tuple(item for item in others if _is_visitor_flight(item)))
+        return ContentClassification((), tuple(item for item in shown if _is_visitor_flight(item)))
     if selected_mode == "airports":
-        return ContentClassification((), tuple(item for item in others if _is_airport(item)))
+        return ContentClassification((), tuple(item for item in shown if _is_airport(item)))
     if selected_mode == "stock":
-        return ContentClassification(tuple(item for item in others if _is_stock(item)), ())
+        return ContentClassification(tuple(item for item in shown if _is_stock(item)), ())
     if selected_mode == "clock":
-        return ContentClassification((), tuple(item for item in others if _is_clock(item)))
-    sports = tuple(item for item in others if _is_sports(item))
+        return ContentClassification((), tuple(item for item in shown if _is_clock(item)))
+    sports = tuple(item for item in shown if _is_sports(item))
     if selected_mode == "sports" and sports_presentation == "pinned":
         pinned = tuple(item for item in sports if item.id == pinned_content_id)
         selected = pinned or sports[:1]

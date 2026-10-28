@@ -67,6 +67,26 @@ final class ContractModelsTests: XCTestCase {
         XCTAssertThrowsError(try decoder.decode(CompetitionStage.self, from: Data("3".utf8)))
     }
 
+    func testAirportBoardRowsDecodeTheServerScheduleFields() throws {
+        let data = Data("""
+        {"id":"airport:EWR","family":"airports","kind":"flight_airport_hud","is_shown":true,
+         "data":{"type":"flight_airport_hud","sport":"airport",
+          "weather":{"iata":"EWR","city":"Newark","away_abbr":"72F","status":"CLEAR"},
+          "arrivals":[{"flight_number":"UA123","airport_code":"LAX","airport_city":"Los Angeles","status":"ARRIVING"}],
+          "departures":[]}}
+        """.utf8)
+        let item = try JSONDecoder().decode(V2ContentItem.self, from: data)
+        let game = try XCTUnwrap(Game(content: item))
+        XCTAssertEqual(game.type, "flight_airport_hud")
+        XCTAssertEqual(game.airportWeather?.iata, "EWR")
+        let arrival = try XCTUnwrap(game.arrivals?.first)
+        XCTAssertEqual(arrival.flight_number, "UA123")
+        XCTAssertEqual(arrival.airport_code, "LAX")
+        XCTAssertEqual(arrival.airport_city, "Los Angeles")
+        XCTAssertEqual(arrival.status, "ARRIVING")
+        XCTAssertEqual(game.departures?.count, 0)
+    }
+
     func testScheduleContractRoundTrip() throws {
         let decoder = JSONDecoder()
         let response = try decoder.decode(TickerScheduleResponse.self, from: fixture("schedule-response"))

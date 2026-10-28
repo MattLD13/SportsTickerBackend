@@ -219,6 +219,16 @@ def test_flight_source_supplies_live_and_airport_contract_facts() -> None:
     assert airport["departures"][0]["delay_min"] == 30
 
 
+
+# AirportFlight in TickerControlApp/TickerControl/Models/TickerContentModels.swift reads these keys.
+CONTROLLER_AIRPORT_ROW_KEYS = ("flight_number", "airport_code", "airport_city", "status")
+
+
+def test_airport_rows_carry_the_controller_board_fields() -> None:
+    airport = FlightRadarSource(FlightRadarFixture(), clock=lambda: NOW).fetch(_settings())["content"][1]
+    for row in (*airport["arrivals"], *airport["departures"]):
+        assert all(isinstance(row[key], str) and row[key] for key in CONTROLLER_AIRPORT_ROW_KEYS)
+
 def test_flight_search_does_not_select_a_nearby_flight_number() -> None:
     source = FlightRadarSource(NearMissFlightRadarFixture(), clock=lambda: NOW)
     visitor = source.fetch(_settings())["content"][0]

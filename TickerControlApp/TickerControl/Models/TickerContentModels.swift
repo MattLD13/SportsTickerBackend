@@ -24,10 +24,10 @@ struct AirportWeather: Decodable, Hashable, Sendable {
     let status: String?
 }
 struct AirportFlight: Decodable, Hashable, Sendable {
-    let away_abbr: String?
-    let home_abbr: String?
-    let other_iata: String?
-    let altitude: String?
+    let flight_number: String?
+    let airport_code: String?
+    let airport_city: String?
+    let status: String?
 }
 struct WeatherForecast: Decodable, Hashable, Sendable {
     let day: String?
