@@ -77,18 +77,6 @@ class OverlayEvent:
         object.__setattr__(self, "delivery_state", state)
 
     @property
-    def created_time(self) -> float:
-        """Return the event creation timestamp."""
-
-        return self.created_at  # type: ignore[return-value]
-
-    @property
-    def expiry_time(self) -> float:
-        """Return the event expiry timestamp."""
-
-        return self.expires_at  # type: ignore[return-value]
-
-    @property
     def event_type(self) -> str:
         """Return the projection channel for this event."""
 

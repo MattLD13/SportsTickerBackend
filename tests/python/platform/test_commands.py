@@ -9,13 +9,12 @@ from ticker_core.platform import SubprocessPlatformCommands, WiFiNetwork
 
 def test_platform_commands_delegate_to_injected_subprocesses() -> None:
     runs: list[tuple[list[str], dict]] = []
-    spawned: list[list[str]] = []
 
     def run(command: list[str], **kwargs: object) -> SimpleNamespace:
         runs.append((command, kwargs))
         return SimpleNamespace(stdout="Zulu\nAlpha\nZulu\n")
 
-    commands = SubprocessPlatformCommands(run=run, spawn=lambda command: spawned.append(command))
+    commands = SubprocessPlatformCommands(run=run)
 
     assert commands.list_wifi_networks() == [WiFiNetwork("Alpha"), WiFiNetwork("Zulu")]
     commands.connect_wifi("Ticker", "secret")
@@ -37,14 +36,13 @@ def test_platform_commands_delegate_to_injected_subprocesses() -> None:
         "password",
         "setup1234",
     ]
-    assert not spawned
     assert runs[-2][0][:3] == ["systemd-run", "--collect", "--unit=sports-ticker-updater"]
     assert runs[-2][0][-2:] == ["python", "updater.py"]
     assert runs[-1][0] == ["systemctl", "--no-block", "reboot"]
 
 
 def test_update_command_requires_an_executable() -> None:
-    commands = SubprocessPlatformCommands(spawn=lambda command: None)
+    commands = SubprocessPlatformCommands()
 
     with pytest.raises(ValueError, match="Update command"):
         commands.run_update([])

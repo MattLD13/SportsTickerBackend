@@ -80,12 +80,6 @@ class BackendApplication:
                 self._register_scheduler_ticker(ticker.ticker_id)
 
     @property
-    def ticker_repository(self) -> TickerRepository:
-        """Return the owned ticker repository."""
-
-        return self.repository
-
-    @property
     def store(self) -> SnapshotStore:
         """Return the owned snapshot store."""
 

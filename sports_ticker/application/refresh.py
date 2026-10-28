@@ -27,13 +27,6 @@ class RefreshOutcome:
     health: ProviderHealth
     error: str | None = None
 
-    @property
-    def error_text(self) -> str | None:
-        """Return the refresh error text for callers using an explicit name."""
-
-        return self.error
-
-
 class RefreshService:
     """Build and atomically publish complete snapshots from injected providers."""
 
@@ -137,17 +130,6 @@ class RefreshService:
                 close()
 
 
-def refresh_ticker(
-    ticker_id: str,
-    providers: Iterable[Provider],
-    settings: DisplaySettings | Mapping[str, object] | None,
-    store: SnapshotStore,
-) -> RefreshOutcome:
-    """Refresh one ticker using explicit provider, settings, and store dependencies."""
-
-    return RefreshService(providers, store).refresh(ticker_id, settings)
-
-
 def _fetch_provider(
     provider: Provider,
     ticker_id: str,
@@ -161,4 +143,4 @@ def _fetch_provider(
     return provider.fetch(settings)
 
 
-__all__ = ["RefreshOutcome", "RefreshService", "refresh_ticker"]
+__all__ = ["RefreshOutcome", "RefreshService"]

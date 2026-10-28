@@ -6,7 +6,6 @@ from .espn import EspnScoreboardProvider
 from .fotmob import FotMobSoccerProvider
 from .features import (
     FeaturePayload,
-    FeatureProviders,
     FeatureSource,
     FlightsSource,
     GolfSource,
@@ -42,7 +41,6 @@ __all__ = [
     "FotMobSoccerProvider",
     "EspnTeamCatalog",
     "FeaturePayload",
-    "FeatureProviders",
     "FeatureSource",
     "FlightsProvider",
     "FlightsSource",

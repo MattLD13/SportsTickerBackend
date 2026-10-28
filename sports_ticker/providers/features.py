@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
 import traceback
 from typing import Any, Protocol, TypeAlias
 
 from sports_ticker.domain import DisplaySettings
 
-from .contracts import Provider, ProviderResult
+from .contracts import ProviderResult
 from .normalization import normalize_provider_result
 from .stale_cache import SettingsResultCache
 
@@ -241,46 +240,8 @@ def _first(mapping: Mapping[str, Any], *keys: str) -> Any:
     return None
 
 
-@dataclass(frozen=True, slots=True)
-class FeatureProviders:
-    """Compose explicitly supplied providers for all feature families."""
-
-    golf: Provider
-    racing: Provider
-    stock: Provider
-    flights: Provider
-    music: Provider
-    news: Provider
-
-    def __post_init__(self) -> None:
-        for provider in self.as_tuple():
-            if not callable(getattr(provider, "fetch", None)):
-                raise TypeError("feature providers must implement fetch(settings)")
-
-    @property
-    def stocks(self) -> Provider:
-        """Return the stock provider under its source-oriented plural name."""
-
-        return self.stock
-
-    def as_tuple(self) -> tuple[Provider, ...]:
-        """Return providers in stable refresh order."""
-
-        return (self.golf, self.racing, self.stock, self.flights, self.music, self.news)
-
-    @property
-    def providers(self) -> tuple[Provider, ...]:
-        """Return the composite as an iterable provider collection."""
-
-        return self.as_tuple()
-
-    def __iter__(self) -> Iterable[Provider]:
-        return iter(self.as_tuple())
-
-
 __all__ = [
     "FeaturePayload",
-    "FeatureProviders",
     "FeatureSource",
     "FlightsSource",
     "GolfSource",

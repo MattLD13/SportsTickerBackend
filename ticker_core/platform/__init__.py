@@ -7,7 +7,7 @@ from .identity import DeviceIdentityStore
 from .health import HealthCollector
 from .performance import TickerPiLogger
 from .update import OtaUpdaterService, UpdateState
-from .wifi import HotspotDetails, LocalProvisioningService, WiFiAvailability, WiFiRecoveryService, WiFiSetupState
+from .wifi import HotspotDetails, LocalProvisioningService, WiFiRecoveryService, WiFiSetupState
 from .ble import (
     BLE_CHALLENGE_UUID,
     BLE_CREDENTIALS_UUID,
@@ -36,7 +36,6 @@ __all__ = [
     "PersistentAssetStore",
     "SubprocessPlatformCommands",
     "WiFiNetwork",
-    "WiFiAvailability",
     "LocalProvisioningService",
     "WiFiRecoveryService",
     "WiFiSetupState",

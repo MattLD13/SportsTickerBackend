@@ -1,7 +1,7 @@
 """Application services for the canonical ticker backend."""
 
 from .composition import BackendApplication
-from .refresh import RefreshOutcome, RefreshService, refresh_ticker
+from .refresh import RefreshOutcome, RefreshService
 from .runtime import BackendRuntime, WaitStop, WaitStopPrimitive
 from .scheduler import RefreshScheduler, SchedulerHealth
 from .schedule import ScheduleService
@@ -18,5 +18,4 @@ __all__ = [
     "SnapshotStore",
     "WaitStop",
     "WaitStopPrimitive",
-    "refresh_ticker",
 ]

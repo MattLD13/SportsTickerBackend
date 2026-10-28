@@ -101,7 +101,6 @@ class BackendClient:
         self._last_data_body: bytes | None = None
         self.last_response_bytes: int | None = None
         self._last_data_response: TickerResponse | None = None
-        self._settings_by_ticker: dict[str, dict[str, Any]] = {}
         if session is None:
             adapter = HTTPAdapter(pool_connections=1, pool_maxsize=1)
             self.session.mount("http://", adapter)
@@ -132,7 +131,6 @@ class BackendClient:
             raise BackendPayloadError(str(error)) from error
         self._last_data_body = body
         self._last_data_response = parsed
-        self._settings_by_ticker[device_id] = _thaw_settings(parsed.settings.data)
         return parsed
 
     def open_device_stream(
@@ -190,10 +188,9 @@ class BackendClient:
             raise BackendTransportError(f"WebSocket {url} failed: {error}") from error
 
     def remember_stream_response(self, device_id: str, response: TickerResponse) -> None:
-        """Keep HTTP setting mutations based on the latest streamed projection."""
+        """Keep the latest streamed projection as the current display response."""
         if not device_id.strip():
             raise ValueError("device_id must not be empty")
-        self._settings_by_ticker[device_id] = _thaw_settings(response.settings.data)
         self._last_data_response = response
         self._last_data_body = None
 
@@ -235,31 +232,6 @@ class BackendClient:
                 "device registration returned a ticker_id different from device_id"
             )
         return registration
-
-    def get_data(self, device_id: str) -> TickerResponse:
-        """Fetch display data for one version two ticker."""
-
-        return self.fetch_data(device_id)
-
-    def push_setting(self, device_id: str, key: str, value: Any) -> Mapping[str, Any]:
-        """Store one display setting through the version two ticker endpoint."""
-
-        if not device_id.strip() or not key.strip():
-            raise ValueError("device_id and key must not be empty")
-        settings = dict(self._settings_by_ticker.get(device_id, {}))
-        if not settings:
-            raise BackendPayloadError("fetch data before changing a ticker setting")
-        settings[key] = value
-        response = self._request(
-            "PATCH",
-            TICKER_ENDPOINT_TEMPLATE.format(device_id=device_id),
-            json={"display_settings": settings},
-        )
-        saved = self._json_object(response, "PATCH /api/v2/tickers/<id>")
-        display = saved.get("display_settings")
-        if isinstance(display, Mapping):
-            self._settings_by_ticker[device_id] = dict(display)
-        return saved
 
     def heartbeat(self, device_id: str, telemetry: Mapping[str, Any]) -> Mapping[str, Any]:
         """Send bounded device telemetry through the version two heartbeat route."""
@@ -319,18 +291,3 @@ class BackendClient:
         return payload
 
 
-def _thaw_settings(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Copy immutable parsed settings before a local settings mutation."""
-
-    result: dict[str, Any] = {}
-    for key, item in value.items():
-        if isinstance(item, Mapping):
-            result[key] = _thaw_settings(item)
-        elif isinstance(item, tuple):
-            result[key] = [
-                _thaw_settings(entry) if isinstance(entry, Mapping) else entry
-                for entry in item
-            ]
-        else:
-            result[key] = item
-    return result

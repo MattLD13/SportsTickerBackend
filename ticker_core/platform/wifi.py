@@ -17,7 +17,6 @@ from typing import Any, Protocol
 
 from flask import Flask, render_template_string, request
 
-from ticker_core._enum import StrEnum
 
 from .commands import PlatformCommands, WiFiNetwork
 
@@ -95,13 +94,6 @@ class HotspotDetails:
     interface: str = "wlan0"
 
 
-class WiFiAvailability(StrEnum):
-    """Name the display-relevant Wi-Fi lifecycle state."""
-
-    ONLINE = "online"
-    SETUP_REQUIRED = "setup_required"
-
-
 @dataclass(frozen=True, slots=True)
 class WiFiSetupState:
     """Report the current Wi-Fi recovery state."""
@@ -112,25 +104,12 @@ class WiFiSetupState:
     setup_url: str = "https://10.42.0.1"
     setup_code: str = "123456"
     ble_active: bool = False
-    ble_name: str = "SportsTicker Setup"
-    ble_service_uuid: str = "8f8b0001-6e2a-4d8a-9f31-8d4b77f0b001"
 
     @property
     def local_setup_active(self) -> bool:
         """Return true when either local setup transport accepts credentials."""
 
         return self.hotspot_active or self.ble_active
-
-    @property
-    def availability(self) -> WiFiAvailability:
-        """Return the typed availability state owned by the platform service."""
-
-        return (
-            WiFiAvailability.ONLINE
-            if self.internet_available
-            else WiFiAvailability.SETUP_REQUIRED
-        )
-
 
 class PortalRunner(Protocol):
     """Run the Flask portal after explicit setup starts."""

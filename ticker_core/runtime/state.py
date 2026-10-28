@@ -18,7 +18,6 @@ from .model import (
     ContentClassification,
     FrameDecision,
     FrameKind,
-    ModeRequest,
     PayloadSnapshot,
     RuntimeConfig,
     StripLayout,
@@ -211,8 +210,6 @@ class TickerRuntime:
         self._hardware_content_date: date | None = None
         self._classification = ContentClassification((), ())
         self._mode = "sports"
-        self._mode_override: str | None = None
-        self._mode_requests: deque[ModeRequest] = deque()
         self._update: UpdateRequest | None = None
         self._update_request_pending = False
         self._update_started_at = 0.0
@@ -220,7 +217,6 @@ class TickerRuntime:
         self._update_failure: Mapping[str, str] | None = None
         self._update_failure_until = 0.0
         self._strip: StripLayout | None = None
-        self._strip_key: str | None = None
         self._strip_offset = 0
         self._static_index = 0
         self._static_until = 0.0
@@ -260,25 +256,6 @@ class TickerRuntime:
         self._news.clear()
         self._active_alert = None
         self._active_news = None
-
-    def request_mode(self, mode: str) -> None:
-        """Select a mode locally and queue one backend request."""
-        selected = _canonical_mode(mode)
-        self._mode = selected
-        self._mode_override = selected
-        self._mode_requests.append(ModeRequest(selected))
-        if self._snapshot is not None:
-            self._classification = classify_content(
-                self._snapshot.content,
-                self._mode,
-                sports_presentation=self._sports_presentation,
-                pinned_content_id=self._pinned_content_id,
-            )
-        self._clear_strip()
-
-    def take_mode_request(self) -> ModeRequest | None:
-        """Return the next requested mode once."""
-        return self._mode_requests.popleft() if self._mode_requests else None
 
     def take_update_request(self) -> UpdateRequest | None:
         """Return the next updater request once."""
@@ -364,10 +341,7 @@ class TickerRuntime:
         previous_mode = self._mode
         previous_classification = self._classification
         server_mode = _canonical_mode(str(_value(settings, "mode", "sports")))
-        if self._mode_override is None:
-            self._mode = server_mode
-        elif server_mode == self._mode_override:
-            self._mode_override = None
+        self._mode = server_mode
         self._sports_presentation = str(_value(settings, "sports_presentation", "rotation")).lower()
         self._pinned_content_id = str(_value(settings, "pinned_content_id", ""))
         self._source_content = tuple(item for item in content if not is_hardware_ad(item))
@@ -478,11 +452,9 @@ class TickerRuntime:
             return False
         previous = self._strip
         if previous is None and strip is None:
-            self._strip_key = None
             return True
         previous_offset = self._strip_offset
         self._strip = strip
-        self._strip_key = self._snapshot.strip_key if strip else None
         if strip is None:
             self._strip_offset = 0
         elif previous is None:
@@ -633,13 +605,11 @@ class TickerRuntime:
             stale=snapshot.stale if snapshot else False,
             stale_for=max(0.0, self._monotonic() - snapshot.source_received_at) if snapshot else 0.0,
             connection_lost=self._disconnected_at is not None,
-            disconnected_for=max(0.0, self._monotonic() - self._disconnected_at) if self._disconnected_at is not None else 0.0,
             **values,
         )
 
     def _clear_strip(self) -> None:
         self._strip = None
-        self._strip_key = None
         self._strip_offset = 0
         self._static_index = 0
         self._active_static = None

@@ -19,8 +19,6 @@ class FontSet:
     tiny: ImageFont.ImageFont | ImageFont.FreeTypeFont
     tiny_small: ImageFont.ImageFont | ImageFont.FreeTypeFont
     micro: ImageFont.ImageFont | ImageFont.FreeTypeFont
-    nano: ImageFont.ImageFont | ImageFont.FreeTypeFont
-    score_default: ImageFont.ImageFont | ImageFont.FreeTypeFont
 
 
 FONT_DIRECTORY = Path(__file__).with_name("font_assets")
@@ -52,6 +50,4 @@ def load_default_font_set() -> FontSet:
         tiny=load_monospace_font(9),
         tiny_small=load_monospace_font(8),
         micro=load_monospace_font(7),
-        nano=load_monospace_font(5),
-        score_default=ImageFont.load_default(),
     )

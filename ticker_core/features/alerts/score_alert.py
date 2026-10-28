@@ -70,11 +70,6 @@ def _readable_team_color(color):
     return _mix(color, (255, 255, 255), blend)
 
 
-def score_alert_duration(alert):
-    """Total on-screen time for one alert, in seconds."""
-    return DEFAULT_SCORE_ALERT_DURATION
-
-
 def _compact_fact_name(value):
     """Keep a full surname when the metadata row needs a shorter name."""
     parts = str(value or "").upper().split()
@@ -447,7 +442,7 @@ class ScoreAlertMixin:
         entrance independent of what is being drawn, so a long headline and a
         short one slam in identically.
         """
-        total = score_alert_duration(alert)
+        total = DEFAULT_SCORE_ALERT_DURATION
         out_start = total - WIPE_OUT
 
         if elapsed < WIPE_IN:

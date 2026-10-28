@@ -29,7 +29,6 @@ SLIDE = 0.30            # seconds to arrive, and to leave
 HOLD_TRADE = 6.4
 HOLD_NEWS = 7.4         # a headline is three lines, so it needs longer
 
-AMBER = (255, 176, 20)      # sports news
 CYAN = (70, 175, 255)       # stock news
 UP = (60, 205, 95)
 DOWN = (235, 75, 75)

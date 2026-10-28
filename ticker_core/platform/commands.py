@@ -46,11 +46,9 @@ class SubprocessPlatformCommands:
         self,
         *,
         run: Callable[..., Any] = subprocess.run,
-        spawn: Callable[..., Any] = subprocess.Popen,
         reboot_command: Sequence[str] = ("systemctl", "--no-block", "reboot"),
     ) -> None:
         self._run = run
-        self._spawn = spawn
         self._reboot_command = tuple(reboot_command)
 
     def reboot(self) -> None:

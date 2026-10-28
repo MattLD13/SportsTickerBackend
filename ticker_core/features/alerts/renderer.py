@@ -9,15 +9,9 @@ from PIL import Image
 
 from ticker_core.features.sports.renderer import LogoSource
 from ticker_core.rendering import FontSet
-from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 
 from .news_banner import PreparedNewsBannerRenderer
 from .score_alert import PreparedScoreAlertRenderer
-
-
-def score_alert_duration(alert: Mapping[str, Any] | None) -> float:
-    """Return the full visible duration for one score alert."""
-    return DEFAULT_SCORE_ALERT_DURATION
 
 
 class ScoreAlertRenderer:

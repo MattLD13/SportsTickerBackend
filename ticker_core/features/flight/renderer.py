@@ -17,7 +17,6 @@ from ticker_core.rendering.templates import ImageTemplates
 BOARD_ROWS = 4
 CITY_CHARS = 22
 BOARD_RULE = (30, 60, 100)
-BOARD_ALT = (70, 90, 120)
 BOARD_WX = (90, 110, 140)
 BOARD_WX_CHARS = 24
 

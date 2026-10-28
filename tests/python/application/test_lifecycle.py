@@ -129,9 +129,6 @@ class Sink:
 class Client:
     """Supply the non-poll client methods used by the application."""
 
-    def push_setting(self, *args) -> None:
-        pass
-
     def close(self) -> None:
         pass
 

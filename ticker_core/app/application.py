@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -11,8 +11,6 @@ from multiprocessing import get_context
 from threading import Event, Thread, current_thread
 from time import monotonic, time as wall_time
 import os
-import shlex
-import sys
 from typing import Protocol
 
 from ticker_core.context import RenderContext
@@ -81,7 +79,6 @@ class TickerApplication:
         device_id: str,
         repository: Path | str,
         wall_clock: Callable[[], datetime],
-        update_command: Sequence[str] | None = None,
         update_service: OtaUpdaterService | None = None,
         wifi_recovery: WiFiRecoveryService | None = None,
         wifi_check_interval: float = 10.0,
@@ -109,7 +106,6 @@ class TickerApplication:
         self._device_id = device_id
         self._repository = Path(repository)
         self._wall_clock = wall_clock
-        self._update_command = tuple(update_command or _default_update_command(self._repository))
         self._update_service = update_service
         self._wifi_recovery = wifi_recovery
         self._wifi_check_interval = wifi_check_interval
@@ -220,7 +216,6 @@ class TickerApplication:
         installed_times = getattr(self._viewport, "installed_times", None)
         if self._latency.pending_ids and callable(installed_times):
             self._latency.ready(installed_times(self._latency.pending_ids))
-        self._push_requested_modes()
         decision = self._runtime.next_frame()
         wifi_state = self._wifi_state
         if wifi_state is not None and not wifi_state.internet_available and wifi_state.local_setup_active:
@@ -413,10 +408,6 @@ class TickerApplication:
         if decision.kind is FrameKind.STATIC and decision.content is not None:
             return frozenset((decision.content.id,))
         return None
-
-    def request_mode(self, mode: str) -> None:
-        """Queue one local mode change and one backend setting push."""
-        self._runtime.request_mode(mode)
 
     def _read_poll_events(self) -> None:
         """Restore and prepare process messages outside the drawing thread."""
@@ -626,14 +617,6 @@ class TickerApplication:
         value = getattr(self._assets, "revision", None)
         return int(value) if isinstance(value, int) else None
 
-    def _push_requested_modes(self) -> None:
-        while request := self._runtime.take_mode_request():
-            try:
-                self._client.push_setting(self._device_id, "mode", request.mode)
-            except Exception as error:
-                self._logger.record_issue("mode_push", error, mode=request.mode)
-                pass
-
     def _launch_requested_update(self) -> None:
         """Acknowledge one server request, then start the non-blocking updater."""
 
@@ -739,9 +722,3 @@ def _unintended_black(frame: object, decision: FrameDecision) -> bool:
     return getbbox() is None
 
 
-def _default_update_command(repository: Path) -> tuple[str, ...]:
-    """Read one safe updater command from the environment."""
-    configured = os.environ.get("TICKER_UPDATE_COMMAND", "").strip()
-    if configured:
-        return tuple(shlex.split(configured))
-    return (sys.executable, str(repository / "updater.py"), "--no-display")

@@ -1027,23 +1027,6 @@ class TickerRepository:
                 raise ValueError(f"event already exists: {event.event_id}") from exc
         return event
 
-    def publish(self, event: OverlayEvent) -> OverlayEvent:
-        """Persist one durable overlay event."""
-
-        return self.publish_event(event)
-
-    def publish_alert(self, event: ScoreAlertEvent) -> ScoreAlertEvent:
-        """Persist one score alert event."""
-
-        result = self.publish_event(event)
-        return result  # type: ignore[return-value]
-
-    def publish_news(self, event: NewsEvent) -> NewsEvent:
-        """Persist one news event."""
-
-        result = self.publish_event(event)
-        return result  # type: ignore[return-value]
-
     def read_pending_events(
         self,
         ticker_id: str,
@@ -1120,11 +1103,6 @@ class TickerRepository:
             )
             return True
 
-    def acknowledge(self, ticker_id: str, event_id: str, *, now: float | None = None) -> bool:
-        """Acknowledge one durable event for one ticker."""
-
-        return self.acknowledge_event(ticker_id, event_id, now=now)
-
     def remove_expired_events(self, *, now: float | None = None) -> int:
         """Delete expired events and their per-ticker delivery records."""
 
@@ -1135,11 +1113,6 @@ class TickerRepository:
                 (current_time,),
             )
             return int(cursor.rowcount)
-
-    def remove_expired(self, *, now: float | None = None) -> int:
-        """Delete expired durable events."""
-
-        return self.remove_expired_events(now=now)
 
     def save_group_spotify_connection(self, group_id: str, connection: SpotifyConnection) -> SpotifyConnection:
         """Create or update one encrypted Spotify connection shared by a controller group."""
@@ -1545,22 +1518,6 @@ class TickerRepository:
             target_ticker_ids=TickerRepository._event_targets(row),
             delivery_state=row["delivery_state"],
         )
-
-    def create(self, *args: Any, **kwargs: Any) -> TickerRecord:
-        return self.create_ticker(*args, **kwargs)
-
-    def get(self, ticker_id: str) -> TickerRecord | None:
-        return self.get_ticker(ticker_id)
-
-    def list(self) -> tuple[TickerRecord, ...]:
-        return self.list_tickers()
-
-    def update(self, *args: Any, **kwargs: Any) -> TickerRecord:
-        return self.update_ticker(*args, **kwargs)
-
-    def delete(self, ticker_id: str) -> bool:
-        return self.delete_ticker(ticker_id)
-
 
 def _ticker_schedule_block_from_row(row: sqlite3.Row) -> ScheduleBlock:
     """Build one ticker-owned schedule block from a database row."""

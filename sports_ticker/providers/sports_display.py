@@ -990,10 +990,6 @@ def soccer_event(
     return result
 
 
-def _boolean_any(source: Mapping[str, Any], *keys: str) -> bool:
-    return any(bool(source.get(key)) for key in keys)
-
-
 def _integer(value: object, default: int = 0) -> int:
     result = _integer_or_none(value)
     return default if result is None else result

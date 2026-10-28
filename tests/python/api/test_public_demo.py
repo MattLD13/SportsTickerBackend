@@ -117,7 +117,7 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
     try:
         from PIL import ImageFont
         fonts = load_default_font_set()
-        for name in ("normal", "medium", "big", "huge", "clock", "tiny", "micro", "nano"):
+        for name in ("normal", "medium", "big", "huge", "clock", "tiny", "micro"):
             assert getattr(fonts, name).layout_engine == ImageFont.Layout.BASIC
         client = app.test_client()
         with app.app_context():

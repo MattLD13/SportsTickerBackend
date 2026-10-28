@@ -124,7 +124,6 @@ class FrameDecision:
     stale: bool = False
     stale_for: float = 0.0
     connection_lost: bool = False
-    disconnected_for: float = 0.0
     wifi_state: WiFiSetupState | None = None
 
 
@@ -134,13 +133,6 @@ class UpdateRequest:
 
     version: str
     command_id: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class ModeRequest:
-    """Request one backend mode change."""
-
-    mode: str
 
 
 @dataclass(frozen=True, slots=True)
