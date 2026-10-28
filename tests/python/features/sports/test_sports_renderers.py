@@ -16,6 +16,7 @@ from ticker_core.features.sports import SportsRenderer
 from ticker_core.features.sports import pinned as sports_full_port
 from ticker_core.features.sports import stadium_port as sports_stadium_port
 from ticker_core.features.sports.logo_badge import draw_missing_team_badge
+from ticker_core.features.sports.logo_rendering import team_logo_layout
 from ticker_core.features.sports.logo_visibility import LogoOutlineMode, paste_team_logo
 from ticker_core.rendering import ContentScene, load_default_font_set
 
@@ -653,7 +654,7 @@ def test_hockey_power_play_renders_for_its_team_in_both_layouts(
     monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
     card = sports.render_card(game)
     assert "1:47 #55" in scroll_labels
-    logo_x = card.width - sports_stadium_port.LOGO_SZ - 1 if power_play_team == "NYI" else sports_stadium_port.team_logo_layout("scrolling", "nhl").x
+    logo_x = card.width - sports_stadium_port.LOGO_SZ - 1 if power_play_team == "NYI" else team_logo_layout("scrolling", "nhl").x
     badge_x = logo_x + sports_stadium_port.LOGO_SZ // 2 - sports_stadium_port.pf_w(badge) // 2
     assert (badge, badge_x, 2) in scroll_positions
     assert len([entry for entry in scroll_positions if entry[0] == badge]) == 1

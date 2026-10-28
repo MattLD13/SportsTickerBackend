@@ -852,17 +852,6 @@ def _idle_record() -> dict[str, Any]:
     }
 
 
-def _playback_record(playback: Mapping[str, Any] | None, queue: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Legacy playback builder maintained for direct callers."""
-
-    item = playback.get("item") if isinstance(playback, Mapping) else None
-    current = _extract_track(item) if isinstance(item, Mapping) else None
-    if current is None:
-        return _idle_record()
-    queued = _extract_queue_tracks(queue)
-    return _build_playback_record(playback, current, None, queued)
-
-
 def _connection_record(
     status: str, connection: SpotifyConnection | None = None
 ) -> dict[str, Any]:

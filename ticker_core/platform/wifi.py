@@ -258,17 +258,6 @@ class WiFiRecoveryService:
             "wifi_setup_active": self._hotspot_active or self._ble_active,
         }
 
-    def setup_state(self) -> WiFiSetupState:
-        """Return current setup data without starting recovery."""
-        return WiFiSetupState(
-            internet_available=self.is_internet_available(),
-            hotspot_active=self._hotspot_active,
-            hotspot=self._hotspot,
-            setup_url=self._setup_url,
-            setup_code=self._setup_code,
-            ble_active=self._ble_active,
-        )
-
     def scan_networks(self) -> list[WiFiNetwork]:
         """Return visible SSIDs for the setup page."""
         return self._commands.list_wifi_networks()

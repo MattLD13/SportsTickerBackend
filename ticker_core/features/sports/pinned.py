@@ -1,13 +1,11 @@
-import math
-import time
 from PIL import Image, ImageDraw, ImageStat
 
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.rendering.pixels import draw_tiny_text
 from ticker_core.rendering.style import TOURNAMENT_SEED
 from ticker_core.rendering.templates import ImageTemplates
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
-from .logo_rendering import get_prepared_team_logo, team_logo_layout
+from .logo_rendering import get_prepared_team_logo
 from .stadium_port import draw_hockey_so_column
 
 PANEL_W = 384
@@ -23,28 +21,6 @@ SIDE_SCRIM_SPAN = SIDE_SCRIM_SOLID + SIDE_SCRIM_FADE
 
 class SportsMixin:
 
-    def draw_hockey_stick(self, draw, cx, cy, size):
-        WOOD = (150, 75, 0); TAPE = (255, 255, 255)
-        pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
-                   [0,0,0,0,1,1,0,0],[1,2,2,1,1,1,0,0],[1,2,2,1,1,0,0,0],[0,0,0,0,0,0,0,0]]
-        sx, sy = cx - 4, cy - 4
-        for y in range(8):
-            for x in range(8):
-                if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
-                elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
-
-
-    def draw_soccer_shootout(self, draw, results, start_x, y):
-        display_results = results[-5:]
-        while len(display_results) < 5: display_results.append('pending')
-        x_off = start_x
-        if len(results) > 0: x_off -= 2
-        for res in display_results:
-            if res == 'pending': draw.rectangle((x_off, y, x_off+1, y+1), outline=(60,60,60))
-            elif res == 'miss': draw.point((x_off, y), fill=(255,0,0)); draw.point((x_off+1, y+1), fill=(255,0,0))
-            elif res == 'goal': draw.rectangle((x_off, y, x_off+1, y+1), fill=(0,255,0))
-            x_off += 4
-
     def _draw_soccer_so_col(self, draw, x, y, results):
         n_show = 5
         for i in range(n_show):
@@ -56,9 +32,6 @@ class SportsMixin:
                 draw.rectangle((x, dy, x+2, dy+2), fill=(220, 55, 55))
             else:
                 draw.rectangle((x, dy, x+2, dy+2), fill=(80, 80, 80))
-
-    def draw_baseball_hud(self, draw, x, y, o):
-        for i in range(3): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < o else (40, 40, 40)))
 
     def _draw_side_scrims(self, img, W, H, solid=SIDE_SCRIM_SOLID,
                           fade=SIDE_SCRIM_FADE, peak=252):
@@ -103,7 +76,6 @@ class SportsMixin:
         game = _g
 
         sport    = str(game.get('sport', '')).lower()
-        logo_layout = team_logo_layout("full_screen", sport)
         is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
         is_nhl   = 'hockey' in sport or 'nhl' in sport
         is_mlb   = 'baseball' in sport or 'mlb' in sport
@@ -393,8 +365,6 @@ class SportsMixin:
             time_w    = d.textlength(status_text[:12], font=self.big_font) if status_text else 0
             left_gap_end   = int(W // 2 - time_w / 2) - 4   # left edge of time text minus margin
             right_gap_start = int(W // 2 + time_w / 2) + 4  # right edge of time text plus margin
-            left_lane_x  = (int(h_sc_x + h_sc_w) + left_gap_end)  // 2   # centre of left gap
-            right_lane_x = (right_gap_start + int(a_sc_x - a_sc_w)) // 2  # centre of right gap
 
             CARD_W, CARD_GAP = 3, 4
             WHITE = (235, 235, 235)

@@ -543,29 +543,4 @@ def _news_impact(
     return min(score, 100), "NORMAL"
 
 
-def _article_abbreviations(article: Mapping[str, object]) -> tuple[str, ...]:
-    """Collect explicit ESPN team abbreviations without guessing from prose."""
-
-    teams = _article_team_records(article)
-    if teams:
-        return tuple(abbreviation for abbreviation, _name in teams)
-
-    values: set[str] = set()
-
-    def visit(value: object) -> None:
-        if isinstance(value, Mapping):
-            for key, child in value.items():
-                if str(key).lower() in {"abbreviation", "abbrev", "shortname", "short_name"}:
-                    text = str(child or "").strip().upper()
-                    if 2 <= len(text) <= 4 and text.isalnum():
-                        values.add(text)
-                visit(child)
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for child in value:
-                visit(child)
-
-    visit(article)
-    return tuple(sorted(values))
-
-
 __all__ = ['EspnNewsSource']

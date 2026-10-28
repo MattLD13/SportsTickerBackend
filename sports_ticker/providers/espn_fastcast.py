@@ -222,11 +222,6 @@ class EspnFastcastSource:
         with self._lock:
             return self._event_updated_at.get(key)
 
-    def event_timing(self, league: str, event_id: str) -> Mapping[str, Any] | None:
-        """Return the input timing for the exact retained event version."""
-        with self._lock:
-            return self._event_timings.get((str(league).strip().lower(), str(event_id).strip()))
-
     def timed_snapshot(self, league: str) -> tuple[Any, Mapping[str, Mapping[str, Any]]]:
         """Read one immutable snapshot and its matching input timings atomically."""
         identifier = str(league).strip().lower()

@@ -261,32 +261,6 @@ class BackendClient:
             self._settings_by_ticker[device_id] = dict(display)
         return saved
 
-    def push_flight_config(self, device_id: str, config: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Store flight or airport settings through the version two ticker endpoint."""
-
-        if not device_id.strip():
-            raise ValueError("device_id must not be empty")
-        settings = dict(self._settings_by_ticker.get(device_id, {}))
-        if not settings:
-            raise BackendPayloadError("fetch data before changing flight settings")
-        settings.update(config)
-        has_flight = bool(str(settings.get("track_flight_id", "")).strip())
-        has_airport = bool(str(settings.get("airport_code_iata", "")).strip())
-        if has_flight:
-            settings["mode"] = "flights"
-        elif has_airport:
-            settings["mode"] = "airports"
-        response = self._request(
-            "PATCH",
-            TICKER_ENDPOINT_TEMPLATE.format(device_id=device_id),
-            json={"display_settings": settings},
-        )
-        saved = self._json_object(response, "PATCH /api/v2/tickers/<id>")
-        display = saved.get("display_settings")
-        if isinstance(display, Mapping):
-            self._settings_by_ticker[device_id] = dict(display)
-        return saved
-
     def heartbeat(self, device_id: str, telemetry: Mapping[str, Any]) -> Mapping[str, Any]:
         """Send bounded device telemetry through the version two heartbeat route."""
 

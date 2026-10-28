@@ -19,7 +19,6 @@ import json
 
 from PIL import Image, ImageDraw
 
-from ticker_core.rendering.fonts import load_monospace_font
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
 
 PANEL_W = 384
@@ -170,13 +169,6 @@ def wrap_lines(text, cols=TEXT_COLS, max_lines=2):
 
 
 class NewsBannerMixin:
-
-    def _banner_fonts(self):
-        fonts = getattr(self, '_news_banner_fonts', None)
-        if fonts is None:
-            fonts = {size: load_monospace_font(size, bold=True) for size in (14, 16)}
-            self._news_banner_fonts = fonts
-        return fonts
 
     # ── pieces ───────────────────────────────────────────────────────────────
     def _draw_banner_arrow(self, d, x, y, length, start_color, end_color):

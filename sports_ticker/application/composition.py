@@ -564,11 +564,6 @@ class BackendApplication:
             event_payload[event.event_type].append(event_to_mapping(event))
         return compact_mini_data(data) if device_view and ticker.profile.product_family == "mini" else data
 
-    def get_data(self, ticker_id: str, meta: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        """Return one projected ticker data response."""
-
-        return self.project_data(ticker_id, meta)
-
     def publish_alert_event(self, payload: Mapping[str, Any], **values: Any):
         """Publish one score alert overlay."""
 

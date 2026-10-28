@@ -596,15 +596,6 @@ def _luminance(color: tuple[int, int, int]) -> float:
     return 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
 
 
-def _brighten_if_dark(color: tuple[int, int, int]) -> tuple[int, int, int]:
-    """Ensure text color is legible on a black matrix background without blurry outlines."""
-    lum = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
-    if lum < 90:
-        boost = int(90 - lum)
-        return (min(255, color[0] + boost), min(255, color[1] + boost), min(255, color[2] + boost))
-    return color
-
-
 def _wind(value: object) -> str:
     """Convert a wind bearing into a compass label."""
     try:

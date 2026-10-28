@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import sys
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,7 +17,3 @@ class TelemetrySnapshot:
     wifi_setup_active: bool | None = None
 
 
-def current_python_version() -> str:
-    """Return the runtime Python version in telemetry format."""
-
-    return sys.version.split()[0]

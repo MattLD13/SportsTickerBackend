@@ -8,7 +8,7 @@ import json
 from queue import Queue
 from threading import Event
 from time import monotonic, time
-from typing import Any, Protocol
+from typing import Any
 
 import websocket
 from .latency import received_timing
@@ -22,13 +22,6 @@ from ticker_core.protocol import (
     StreamMessage,
     display_delta,
 )
-
-
-class Waiter(Protocol):
-    """Wait until a delay ends or a stop arrives."""
-
-    def wait(self, timeout: float) -> bool:
-        """Return true when a stop interrupts the delay."""
 
 
 @dataclass(frozen=True, slots=True)

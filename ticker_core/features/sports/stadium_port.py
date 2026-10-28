@@ -8,7 +8,7 @@ from ticker_core.rendering.style import STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_
 from ticker_core.rendering.templates import ImageTemplates, image_key
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
-from .logo_rendering import SCROLLING_TEAM_LOGO_SIZE, get_prepared_team_logo, team_logo_layout
+from .logo_rendering import get_prepared_team_logo
 
 _HYBRID_SMALL_V = [0x0, 0x0, 0xA, 0x4, 0x0, 0x0]
 
@@ -29,14 +29,6 @@ def fi(d, x, y, w, h, r, g, b, a=255):
         return
     x, y, w, h = int(round(x)), int(round(y)), int(round(w)), int(round(h))
     d.rectangle([x, y, x + w - 1, y + h - 1], fill=(_clamp(r), _clamp(g), _clamp(b), _clamp(a)))
-
-def li(c, f=0.4):
-    """Lighten colour tuple."""
-    return tuple(min(255, int(v + (255 - v) * f)) for v in c)
-
-def da(c, f=0.5):
-    """Darken colour tuple."""
-    return tuple(int(v * (1 - f)) for v in c)
 
 def hex_to_rgb(hex_str):
     """Convert '#RRGGBB' or 'RRGGBB' to (r, g, b)."""
@@ -163,16 +155,6 @@ def draw_shootout_dot(d, x, y, result, size=5, stride=7):
         fi(d, x, y, size, size, 55, 55, 55)
         fi(d, x + 1, y + 1, size - 2, size - 2, 10, 10, 14)
 
-def draw_so_column(d, x, y, results, vertical=True, size=5, stride=7, max_show=5):
-    """Draw a column (or row) of shootout dots, always showing at least 3 slots."""
-    n_show = min(max(len(results), 3), max_show)
-    for i in range(n_show):
-        r = results[i] if i < len(results) else 'pending'
-        dx = x if vertical else x + i * stride
-        dy = y + i * stride if vertical else y
-        draw_shootout_dot(d, dx, dy, r, size=size, stride=stride)
-
-
 # ── Card width calculator ─────────────────────────────────────────────────────
 
 def calc_card_width(g):
@@ -271,8 +253,6 @@ class StadiumRenderer:
         shootout = sit.get('shootout')
         is_so   = bool(shootout)
 
-        ac = g['ac']
-        hc = g['hc']
         a_score = str(g['as'])
         h_score = str(g['hs'])
         status = g['status']
@@ -309,7 +289,6 @@ class StadiumRenderer:
         # ── Logos ─────────────────────────────────────────────────────────────
         a_logo_x = 1
         h_logo_x = CW - LOGO_SZ - 1
-        logo_y   = H - LOGO_SZ - 1
 
         a_logo = self._get_logo(g.get('away_logo'), g.get('away_logo_rendering'))
         h_logo = self._get_logo(g.get('home_logo'), g.get('home_logo_rendering'))
@@ -587,8 +566,6 @@ class StadiumRenderer:
         return out
 
 
-# ── Convenience: render strip of all games ────────────────────────────────────
-
 class PreparedStadiumRenderer(StadiumRenderer):
     """Use a prepared-logo source and never fetch during rendering."""
 
@@ -607,30 +584,6 @@ class PreparedStadiumRenderer(StadiumRenderer):
     def _get_logo(self, url, rendering=None):
         """Return one prepared logo from the injected source."""
         return get_prepared_team_logo(self._logos, str(url) if url else None, self.LOGO_SIZE, rendering)
-
-
-def build_strip(games, logo_cache=None, repeat=1):
-    """
-    Render a horizontal strip of game cards (optionally repeated for looping).
-    Returns a single PIL RGBA image.
-    """
-    renderer = StadiumRenderer(logo_cache=logo_cache)
-    cards = []
-    for g in games:
-        img, _ = renderer.render(g)
-        cards.append(img)
-
-    if not cards:
-        return Image.new('RGBA', (1, H), (0, 0, 0, 255))
-
-    all_cards = cards * repeat
-    total_w = sum(c.width for c in all_cards)
-    strip = Image.new('RGBA', (total_w, H), (0, 0, 0, 255))
-    x = 0
-    for c in all_cards:
-        strip.paste(c, (x, 0), c)
-        x += c.width
-    return strip
 
 
 def draw_hockey_so_column(draw, x, y, shootout, side):

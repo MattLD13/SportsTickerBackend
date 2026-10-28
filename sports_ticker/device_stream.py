@@ -191,10 +191,6 @@ class DeviceStreamHub:
         for subscriber in tuple(self._subscribers.get(ticker_id, ())):
             self._enqueue(subscriber, message, state)
 
-    async def refresh_active(self, projector) -> None:
-        """Refresh effective projections for active tickers outside the event loop."""
-        await self.refresh_tickers(projector, self.active_tickers)
-
     async def refresh_tickers(self, projector, ticker_ids) -> None:
         """Project a selected active ticker set outside the event loop."""
         active = set(self.active_tickers)
