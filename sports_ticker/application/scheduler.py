@@ -92,6 +92,78 @@ class _CachedProviderData:
     value: object
 
 
+@dataclass(slots=True)
+class _JobTally:
+    """Collect the per-ticker outcomes of one provider job in one pass."""
+
+    data_by_ticker: dict[str, _CachedProviderData]
+    published: list[str] = field(default_factory=list)
+    errors: list[tuple[str, str]] = field(default_factory=list)
+    warnings: list[tuple[str, str]] = field(default_factory=list)
+    successes: int = 0
+    skipped: int = 0
+
+
+class _PassSettingsKeys:
+    """Freeze each provider settings key once per scheduler pass."""
+
+    def __init__(self) -> None:
+        self._values: dict[tuple[str, str], object] = {}
+
+    def __call__(self, job: _ProviderJob, ticker_id: str, settings: DisplaySettings) -> object:
+        cache_key = (job.name, ticker_id)
+        if cache_key not in self._values:
+            self._values[cache_key] = _freeze(job.settings_key(settings))
+        return self._values[cache_key]
+
+
+@dataclass(frozen=True, slots=True)
+class _SchedulerPass:
+    """Hold the inputs that every job in one scheduler pass shares."""
+
+    current: float
+    settings_by_ticker: Mapping[str, DisplaySettings]
+    active_by_name: Mapping[str, frozenset[str]]
+    requested: Mapping[str, set[str]]
+    completed: Mapping[str, tuple[Mapping[str, object], Mapping[str, object]]]
+    settings_key_for: _PassSettingsKeys
+
+
+def _job_refresh(job: _ProviderJob, changed_only: bool) -> ProviderRefresh:
+    """Use the live-change refresh for a change-only pass when the job has one."""
+
+    return job.refresh_changed if changed_only and job.refresh_changed is not None else job.refresh
+
+
+def _job_health(
+    health: SchedulerHealth, tally: _JobTally, wall_now: datetime, wall_due: datetime,
+) -> SchedulerHealth:
+    """Return the job health after one pass from the prior health and the pass outcomes."""
+
+    attempted = len(tally.published)
+    if not attempted:
+        result = replace(health, next_due=wall_due)
+    elif tally.errors:
+        result = SchedulerHealth(
+            last_success=wall_now if tally.successes else health.last_success,
+            last_error=_format_ticker_messages(tally.errors + tally.warnings),
+            next_due=wall_due,
+            consecutive_failures=health.consecutive_failures + 1,
+        )
+    else:
+        result = SchedulerHealth(
+            last_success=wall_now,
+            last_error=_format_ticker_messages(tally.warnings),
+            next_due=wall_due,
+            consecutive_failures=0,
+        )
+    return replace(
+        result,
+        refresh_calls=health.refresh_calls + attempted,
+        paused_refreshes=health.paused_refreshes + tally.skipped,
+    )
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -110,8 +182,6 @@ def _all_provider_demand(
     """Enable every registered ticker when the application sets no demand policy."""
     identifiers = frozenset(settings_by_ticker)
     return {name: identifiers for name in providers}
-
-
 
 
 def _error_text(error: object) -> str:
@@ -177,15 +247,15 @@ class RefreshScheduler:
 
         self._incidents = incidents
         self.recovery = recovery or ProviderRecovery()
-        self.active_provider = None
-        self.last_progress_at = None
+        self.active_provider: str | None = None
+        self.last_progress_at: float | None = None
         self._refresh_service = refresh_service
         self._monotonic = monotonic
         self._wall_clock = wall_clock
         self._providers: dict[str, _ProviderJob] = {}
         self._tickers: dict[str, _Ticker] = {}
         self._provider_demand: ProviderDemandCallable = _all_provider_demand
-        self._last_demand: dict[str, frozenset[str]] = {}
+        self._last_demand: Mapping[str, frozenset[str]] = {}
         self._executor = executor
         self._pending: dict[str, tuple[Future, dict[str, object]]] = {}
         self._requested: dict[str, set[str]] = {}
@@ -205,7 +275,6 @@ class RefreshScheduler:
     def set_provider_demand(self, policy: ProviderDemandCallable) -> None:
         """Set the application policy that selects demand once per scheduler pass."""
         self._provider_demand = policy
-
 
     def register_provider(
         self,
@@ -298,219 +367,244 @@ class RefreshScheduler:
         """Run due jobs once and return ticker IDs published in this pass."""
 
         current = self._monotonic() if now is None else float(now)
-        completed = {}
-        for name, (future, keys) in tuple(self._pending.items()):
-            if future.done():
-                completed[name] = (future.result(), keys)
-                del self._pending[name]
-        with self._request_lock:
-            requested = {name: topics for name, topics in self._requested.items()
-                         if name not in self._pending and name not in completed}
-            for name in requested:
-                del self._requested[name]
+        completed = self._take_completed()
+        requested = self._take_requests(completed)
         self.last_progress_at = self._monotonic()
-        settings_by_ticker: dict[str, DisplaySettings] = {}
-        settings_failures: set[str] = set()
-        for ticker in self._tickers.values():
-            try:
-                settings_by_ticker[ticker.ticker_id] = normalize_settings(
-                    ticker.settings(ticker.ticker_id)
-                )
-            except Exception:
-                settings_failures.add(ticker.ticker_id)
-
-        settings_key_cache: dict[tuple[str, str], object] = {}
-
-        def settings_key_for(
-            job: _ProviderJob,
-            ticker_id: str,
-            settings: DisplaySettings,
-        ) -> object:
-            """Freeze one provider key once for this scheduler pass."""
-
-            cache_key = (job.name, ticker_id)
-            if cache_key not in settings_key_cache:
-                settings_key_cache[cache_key] = _freeze(job.settings_key(settings))
-            return settings_key_cache[cache_key]
-
-        wall_now = self._wall_clock()
-        active_by_name = self._provider_demand(tuple(self._providers), settings_by_ticker, wall_now)
-        due_by_name = {
-            job.name: job
-            for job in self._providers.values()
-            if current >= job.next_due
-            and job.name not in self._pending
-        }
-        for job in self._providers.values():
-            if job.name in self._pending:
-                continue
-            if job.name in requested or job.name in completed:
-                due_by_name[job.name] = job
-            if active_by_name[job.name] - self._last_demand.get(job.name, frozenset()):
-                due_by_name[job.name] = job
-            for ticker_id, settings in settings_by_ticker.items():
-                if ticker_id not in active_by_name[job.name]:
-                    continue
-                cached = job.data_by_ticker.get(ticker_id)
-                if cached is None and job.health.last_success is not None:
-                    due_by_name[job.name] = job
-                elif cached is not None and cached.settings_key != settings_key_for(job, ticker_id, settings):
-                    due_by_name[job.name] = job
-        self._last_demand = active_by_name
-        due = tuple(due_by_name.values())
+        settings_by_ticker = self._resolve_settings()
+        run = _SchedulerPass(
+            current=current,
+            settings_by_ticker=settings_by_ticker,
+            active_by_name=self._provider_demand(tuple(self._providers), settings_by_ticker, self._wall_clock()),
+            requested=requested,
+            completed=completed,
+            settings_key_for=_PassSettingsKeys(),
+        )
+        due = self._due_jobs(run)
+        self._last_demand = run.active_by_name
         if not due:
             return ()
 
         wall_now = self._wall_clock()
         publish_targets: set[str] = set()
-
         for job in due:
-            topics = requested.get(job.name)
+            topics = requested.get(job.name, set())
             changed_only = bool(topics) and current < job.next_due
-            advanced = job.next_due if job.name in completed or changed_only else _advance_due(job.next_due, current, job.interval)
-            wall_due = wall_now + timedelta(seconds=advanced - current)
-            updated = replace(
-                job,
-                next_due=advanced,
-                health=replace(job.health, next_due=wall_due),
+            advanced = (
+                job.next_due if job.name in completed or changed_only
+                else _advance_due(job.next_due, current, job.interval)
             )
+            wall_due = wall_now + timedelta(seconds=advanced - current)
+            updated = replace(job, next_due=advanced, health=replace(job.health, next_due=wall_due))
             selected = {
                 ticker_id: settings for ticker_id, settings in settings_by_ticker.items()
-                if ticker_id in active_by_name[job.name]
+                if ticker_id in run.active_by_name[job.name]
                 and (not changed_only or any(settings.active_sports.get(topic, True) for topic in topics))
             }
             if self._executor is not None and job.name not in completed:
-                keys = {ticker_id: settings_key_for(job, ticker_id, settings) for ticker_id, settings in selected.items()
-                        if self.recovery.permitted(job.name, ticker_id, settings_key_for(job, ticker_id, settings), current)}
-                selected = {ticker_id: selected[ticker_id] for ticker_id in keys}
-                if not selected:
-                    self._providers[job.name] = updated
-                    continue
-                refresh = job.refresh_changed if changed_only and job.refresh_changed is not None else job.refresh
-                future = self._executor.submit(_read_provider_batch, refresh, selected,
-                                               batch=job.refresh_batch, live_only=changed_only)
-                self._pending[job.name] = (future, keys)
-                self._providers[job.name] = updated
-                future.add_done_callback(lambda done: self._wake())
+                self._submit_job(self._executor, updated, selected, changed_only, run)
                 continue
-            data_by_ticker = dict(job.data_by_ticker)
-            errors: list[tuple[str, str]] = []
-            warnings: list[tuple[str, str]] = []
-            success_count = 0
-            attempted = skipped = 0
-            for ticker_id, settings in settings_by_ticker.items():
-                if ticker_id not in selected:
-                    skipped += 1
-                    continue
-                key = settings_key_for(job, ticker_id, settings)
-                if job.name in completed:
-                    results, keys = completed[job.name]
-                    if ticker_id not in keys:
-                        continue
-                    if keys[ticker_id] != key:
-                        self.request_refresh(job.name, set())
-                        continue
-                if not self.recovery.permitted(job.name, ticker_id, key, current):
-                    skipped += 1
-                    continue
-                attempted += 1
-                publish_targets.add(ticker_id)
-                result = None
-                self.active_provider = job.name
-                self.last_progress_at = self._monotonic()
-                try:
-                    if job.name in completed:
-                        result = results[ticker_id]
-                        if isinstance(result, Exception):
-                            raise result
-                    else:
-                        refresh = job.refresh_changed if changed_only and job.refresh_changed is not None else job.refresh
-                        result = _run_provider_refresh(refresh, ticker_id, settings)
-                    ok, error = _refresh_succeeded(result)
-                    if not ok:
-                        raise RuntimeError(error or "provider refresh failed")
-                    warning = _refresh_warning(result)
-                except Exception as error:
-                    message = _error_text(error)
-                    errors.append((ticker_id, message))
-                    retry_at = self.recovery.failed(job.name, ticker_id, key, current)
-                    if self._incidents is not None:
-                        diagnostic = getattr(getattr(result, "health", None), "diagnostic", None)
-                        self._incidents.record("provider_failure", component=job.name, error=error, context={
-                            "ticker_id": ticker_id, "settings_fingerprint": hashlib.sha256(repr(key).encode()).hexdigest(),
-                            "entrypoint": getattr(job.refresh, "__module__", "") + "." + getattr(job.refresh, "__qualname__", ""),
-                            "source_file": inspect.getsourcefile(job.refresh) if inspect.isfunction(job.refresh) or inspect.ismethod(job.refresh) else None,
-                            "retry_in_seconds": max(0, retry_at - current), "source_failure": dict(diagnostic) if diagnostic else None,
-                        })
-                else:
-                    recovered = self.recovery.succeeded(job.name, ticker_id, key)
-                    if recovered and self._incidents is not None:
-                        self._incidents.record("provider_recovered", component=job.name, context={"ticker_id": ticker_id})
-                    if warning:
-                        warnings.append((ticker_id, warning))
-                        if self._incidents is not None:
-                            self._incidents.record("provider_degraded", component=job.name, error=warning,
-                                                   context={"ticker_id": ticker_id, "entrypoint": getattr(job.refresh, "__qualname__", "")})
-                    data_by_ticker[ticker_id] = _CachedProviderData(
-                        settings_key=settings_key_for(job, ticker_id, settings),
-                        value=_freeze(result),
-                    )
-                    success_count += 1
-                finally:
-                    self.active_provider = None
-                    self.last_progress_at = self._monotonic()
-
-            if not attempted:
-                health = replace(job.health, next_due=wall_due)
-            elif errors:
-                health = SchedulerHealth(
-                    last_success=wall_now if success_count else job.health.last_success,
-                    last_error=_format_ticker_messages(errors + warnings),
-                    next_due=wall_due,
-                    consecutive_failures=job.health.consecutive_failures + 1,
-                )
-            elif warnings:
-                health = SchedulerHealth(
-                    last_success=wall_now,
-                    last_error=_format_ticker_messages(warnings),
-                    next_due=wall_due,
-                    consecutive_failures=0,
-                )
-            else:
-                health = SchedulerHealth(
-                    last_success=wall_now,
-                    last_error=None,
-                    next_due=wall_due,
-                    consecutive_failures=0,
-                )
+            tally = self._refresh_job(job, selected, changed_only, run)
+            publish_targets.update(tally.published)
             self._providers[job.name] = replace(
                 updated,
-                data_by_ticker=data_by_ticker,
-                health=replace(health, refresh_calls=job.health.refresh_calls + attempted,
-                               paused_refreshes=job.health.paused_refreshes + skipped),
+                data_by_ticker=tally.data_by_ticker,
+                health=_job_health(job.health, tally, wall_now, wall_due),
             )
+        return self._publish(publish_targets, due, run)
+
+    def _take_completed(self) -> dict[str, tuple[Mapping[str, object], dict[str, object]]]:
+        """Remove finished background reads and return their results and settings keys."""
+
+        completed = {}
+        for name, (future, keys) in tuple(self._pending.items()):
+            if future.done():
+                completed[name] = (future.result(), keys)
+                del self._pending[name]
+        return completed
+
+    def _take_requests(self, completed: Mapping[str, object]) -> dict[str, set[str]]:
+        """Remove the source notifications that this pass can serve."""
+
+        with self._request_lock:
+            requested = {name: topics for name, topics in self._requested.items()
+                         if name not in self._pending and name not in completed}
+            for name in requested:
+                del self._requested[name]
+        return requested
+
+    def _resolve_settings(self) -> dict[str, DisplaySettings]:
+        """Resolve each ticker's settings, and leave out tickers whose resolver fails."""
+
+        settings_by_ticker: dict[str, DisplaySettings] = {}
+        for ticker in self._tickers.values():
+            try:
+                settings_by_ticker[ticker.ticker_id] = normalize_settings(ticker.settings(ticker.ticker_id))
+            except Exception:
+                continue
+        return settings_by_ticker
+
+    def _due_jobs(self, run: _SchedulerPass) -> tuple[_ProviderJob, ...]:
+        """Select jobs that are due by time, by request, by new demand, or by changed settings."""
+
+        current, active_by_name = run.current, run.active_by_name
+        due_by_name = {
+            job.name: job
+            for job in self._providers.values()
+            if current >= job.next_due and job.name not in self._pending
+        }
+        for job in self._providers.values():
+            if job.name in self._pending:
+                continue
+            if job.name in run.requested or job.name in run.completed:
+                due_by_name[job.name] = job
+            if active_by_name[job.name] - self._last_demand.get(job.name, frozenset()):
+                due_by_name[job.name] = job
+            for ticker_id, settings in run.settings_by_ticker.items():
+                if ticker_id not in active_by_name[job.name]:
+                    continue
+                cached = job.data_by_ticker.get(ticker_id)
+                if cached is None and job.health.last_success is not None:
+                    due_by_name[job.name] = job
+                elif cached is not None and cached.settings_key != run.settings_key_for(job, ticker_id, settings):
+                    due_by_name[job.name] = job
+        return tuple(due_by_name.values())
+
+    def _submit_job(
+        self,
+        executor: Executor,
+        job: _ProviderJob,
+        selected: Mapping[str, DisplaySettings],
+        changed_only: bool,
+        run: _SchedulerPass,
+    ) -> None:
+        """Start one background provider read for the tickers that recovery permits."""
+
+        keys: dict[str, object] = {}
+        for ticker_id, settings in selected.items():
+            key = run.settings_key_for(job, ticker_id, settings)
+            if self.recovery.permitted(job.name, ticker_id, key, run.current):
+                keys[ticker_id] = key
+        if not keys:
+            self._providers[job.name] = job
+            return
+        future = executor.submit(
+            _read_provider_batch,
+            _job_refresh(job, changed_only),
+            {ticker_id: selected[ticker_id] for ticker_id in keys},
+            batch=job.refresh_batch,
+            live_only=changed_only,
+        )
+        self._pending[job.name] = (future, keys)
+        self._providers[job.name] = job
+        future.add_done_callback(lambda done: self._wake())
+
+    def _refresh_job(
+        self,
+        job: _ProviderJob,
+        selected: Mapping[str, DisplaySettings],
+        changed_only: bool,
+        run: _SchedulerPass,
+    ) -> _JobTally:
+        """Refresh one job for each selected ticker, or apply its finished background read."""
+
+        tally = _JobTally(data_by_ticker=dict(job.data_by_ticker))
+        refresh = _job_refresh(job, changed_only)
+        completed = run.completed.get(job.name)
+        for ticker_id, settings in run.settings_by_ticker.items():
+            if ticker_id not in selected:
+                tally.skipped += 1
+                continue
+            key = run.settings_key_for(job, ticker_id, settings)
+            results = None
+            if completed is not None:
+                results, keys = completed
+                if ticker_id not in keys:
+                    continue
+                if keys[ticker_id] != key:
+                    # The settings changed during the background read, so read again.
+                    self.request_refresh(job.name, set())
+                    continue
+            if not self.recovery.permitted(job.name, ticker_id, key, run.current):
+                tally.skipped += 1
+                continue
+            tally.published.append(ticker_id)
+            self._refresh_ticker(job, ticker_id, settings, key, refresh, results, run.current, tally)
+        return tally
+
+    def _refresh_ticker(
+        self,
+        job: _ProviderJob,
+        ticker_id: str,
+        settings: DisplaySettings,
+        key: object,
+        refresh: ProviderRefresh,
+        results: Mapping[str, object] | None,
+        current: float,
+        tally: _JobTally,
+    ) -> None:
+        """Read or apply one ticker's provider result and record its health."""
+
+        result = None
+        self.active_provider = job.name
+        self.last_progress_at = self._monotonic()
+        try:
+            if results is not None:
+                result = results[ticker_id]
+                if isinstance(result, Exception):
+                    raise result
+            else:
+                result = _run_provider_refresh(refresh, ticker_id, settings)
+            ok, error = _refresh_succeeded(result)
+            if not ok:
+                raise RuntimeError(error or "provider refresh failed")
+            warning = _refresh_warning(result)
+        except Exception as error:
+            tally.errors.append((ticker_id, _error_text(error)))
+            retry_at = self.recovery.failed(job.name, ticker_id, key, current)
+            if self._incidents is not None:
+                diagnostic = getattr(getattr(result, "health", None), "diagnostic", None)
+                self._incidents.record("provider_failure", component=job.name, error=error, context={
+                    "ticker_id": ticker_id, "settings_fingerprint": hashlib.sha256(repr(key).encode()).hexdigest(),
+                    "entrypoint": getattr(job.refresh, "__module__", "") + "." + getattr(job.refresh, "__qualname__", ""),
+                    "source_file": inspect.getsourcefile(job.refresh) if inspect.isfunction(job.refresh) or inspect.ismethod(job.refresh) else None,
+                    "retry_in_seconds": max(0, retry_at - current), "source_failure": dict(diagnostic) if diagnostic else None,
+                })
+        else:
+            recovered = self.recovery.succeeded(job.name, ticker_id, key)
+            if recovered and self._incidents is not None:
+                self._incidents.record("provider_recovered", component=job.name, context={"ticker_id": ticker_id})
+            if warning:
+                tally.warnings.append((ticker_id, warning))
+                if self._incidents is not None:
+                    self._incidents.record("provider_degraded", component=job.name, error=warning,
+                                           context={"ticker_id": ticker_id, "entrypoint": getattr(job.refresh, "__qualname__", "")})
+            tally.data_by_ticker[ticker_id] = _CachedProviderData(settings_key=key, value=_freeze(result))
+            tally.successes += 1
+        finally:
+            self.active_provider = None
+            self.last_progress_at = self._monotonic()
+
+    def _publish(
+        self,
+        publish_targets: set[str],
+        due: tuple[_ProviderJob, ...],
+        run: _SchedulerPass,
+    ) -> tuple[str, ...]:
+        """Publish one snapshot for each refreshed ticker from the provider data of its current settings."""
 
         published: list[str] = []
-        for ticker in self._tickers.values():
-            ticker_id = ticker.ticker_id
+        for ticker_id in self._tickers:
             if ticker_id not in publish_targets:
                 continue
-            settings = settings_by_ticker.get(ticker_id)
-            if settings is None or ticker_id in settings_failures:
-                continue
-
-            provider_data: dict[str, object] = {}
-            for name, job in self._providers.items():
-                cached = job.data_by_ticker.get(ticker_id)
-                if cached is None:
-                    continue
-                if cached.settings_key != settings_key_for(job, ticker_id, settings):
-                    continue
-                provider_data[name] = cached.value
-
+            settings = run.settings_by_ticker[ticker_id]
+            provider_data: dict[str, object] = {
+                name: cached.value
+                for name, job in self._providers.items()
+                if (cached := job.data_by_ticker.get(ticker_id)) is not None
+                and cached.settings_key == run.settings_key_for(job, ticker_id, settings)
+            }
             if not provider_data:
                 continue
-
             try:
                 self.last_progress_at = self._monotonic()
                 result = _run_snapshot_refresh(
@@ -526,7 +620,6 @@ class RefreshScheduler:
                 self._record_refresh_failure(due, error)
             else:
                 published.append(ticker_id)
-
         return tuple(published)
 
     def _record_refresh_failure(
