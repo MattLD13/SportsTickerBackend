@@ -11,7 +11,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from math import isfinite
 from threading import Lock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import DeviceMetadata, TickerProfile, TickerRecord, TickerRepository
@@ -23,6 +23,10 @@ from .events import EventService, event_to_mapping
 from .scheduler import RefreshScheduler, SchedulerHealth
 from .schedule import ScheduleService
 from .state_store import SnapshotStore
+
+if TYPE_CHECKING:
+    from sports_ticker.assets.mini_artwork import MiniArtworkService
+    from sports_ticker.assets.mini_service import MiniSpriteService
 
 
 class BackendApplication:
@@ -41,8 +45,8 @@ class BackendApplication:
         schedule_service: ScheduleService | None = None,
         clock: Callable[[], float] = time.time,
         pairing_code_ttl_seconds: float = 600.0,
-        mini_sprites: object | None = None,
-        mini_artwork: object | None = None,
+        mini_sprites: MiniSpriteService | None = None,
+        mini_artwork: MiniArtworkService | None = None,
         owned_resources: tuple[object, ...] = (),
     ) -> None:
         """Capture infrastructure through dependency injection."""
@@ -334,7 +338,7 @@ class BackendApplication:
                 schedule_override,
                 settings=ticker.display_settings,
             )
-        return self.repository.get_ticker(ticker.ticker_id)  # type: ignore[return-value]
+        return self.repository.get_ticker(ticker.ticker_id)
 
     def _resolve_weather_location(self, changes: Mapping[str, object]) -> dict[str, object]:
         """Canonicalize a ZIP code before the repository stores weather settings."""
@@ -504,27 +508,8 @@ class BackendApplication:
         )
         if device_view:
             data = project_device_data(data)
-        if (
-            self.mini_sprites is not None and ticker.profile.product_family == "mini"
-            and ticker.device.metadata.get("mini_sprite_protocol") == 1
-        ):
-            from sports_ticker.providers.logo_overrides import mini_logo_sources
-
-            for item in data["content"].get("sports", ()):
-                if not item.get("is_shown", True):
-                    continue
-                game = item["data"]
-                for side in ("away", "home"):
-                    game[f"{side}_logo_asset"] = self.mini_sprites.reference(*mini_logo_sources(game, side))
-            for item in data["content"].get("stock", ()):
-                if not item.get("is_shown", True):
-                    continue
-                stock = item["data"]
-                stock["home_logo_asset"] = self.mini_sprites.reference(stock.get("home_logo", ""))
-        if self.mini_artwork is not None and ticker.profile.product_family == "mini":
-            for item in data["content"].get("music", ()):
-                music = item["data"]
-                music.update(self.mini_artwork.music_references(music))
+        if ticker.profile.product_family == "mini":
+            self._attach_mini_assets(data["content"], ticker)
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),
@@ -536,19 +521,7 @@ class BackendApplication:
             "enabled": delayed,
             "seconds": effective_settings.live_delay_seconds if delayed else 0,
         }
-        commands = self._active_commands(ticker)
-        for command in commands:
-            command_type = str(command.get("type") or "").strip().lower()
-            command_id = str(command.get("id") or "").strip()
-            payload = command.get("payload")
-            if not command_id or not isinstance(payload, Mapping):
-                continue
-            if command_type == "update":
-                version = str(payload.get("version") or "").strip()
-                if version:
-                    data["meta"]["update"] = {"id": command_id, "version": version, "expires_at": command.get("expires_at")}
-            elif command_type == "reboot":
-                data["meta"]["reboot"] = {"id": command_id, "expires_at": command.get("expires_at")}
+        data["meta"].update(_command_meta(self._active_commands(ticker)))
         visible_at = self._clock() - effective_settings.live_delay_seconds if delayed else None
         events = self.event_service.pending(identifier, visible_at=visible_at)
         event_payload = data["events"]
@@ -557,6 +530,28 @@ class BackendApplication:
         for event in events:
             event_payload[event.event_type].append(event_to_mapping(event))
         return compact_mini_data(data) if device_view and ticker.profile.product_family == "mini" else data
+
+    def _attach_mini_assets(self, content: Mapping[str, Any], ticker: TickerRecord) -> None:
+        """Add Mini sprite and artwork references to the visible content of one Mini."""
+
+        if self.mini_sprites is not None and ticker.device.metadata.get("mini_sprite_protocol") == 1:
+            from sports_ticker.providers.logo_overrides import mini_logo_sources
+
+            for item in content.get("sports", ()):
+                if not item.get("is_shown", True):
+                    continue
+                game = item["data"]
+                for side in ("away", "home"):
+                    game[f"{side}_logo_asset"] = self.mini_sprites.reference(*mini_logo_sources(game, side))
+            for item in content.get("stock", ()):
+                if not item.get("is_shown", True):
+                    continue
+                stock = item["data"]
+                stock["home_logo_asset"] = self.mini_sprites.reference(stock.get("home_logo", ""))
+        if self.mini_artwork is not None:
+            for item in content.get("music", ()):
+                music = item["data"]
+                music.update(self.mini_artwork.music_references(music))
 
     def publish_alert_event(self, payload: Mapping[str, Any], **values: Any):
         """Publish one score alert overlay."""
@@ -780,6 +775,25 @@ class BackendApplication:
             healthy=not errors,
             error="; ".join(errors) if errors else None,
         )
+
+
+def _command_meta(commands: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Project the latest valid update and reboot commands into response metadata."""
+
+    meta: dict[str, Any] = {}
+    for command in commands:
+        command_type = str(command.get("type") or "").strip().lower()
+        command_id = str(command.get("id") or "").strip()
+        payload = command.get("payload")
+        if not command_id or not isinstance(payload, Mapping):
+            continue
+        if command_type == "update":
+            version = str(payload.get("version") or "").strip()
+            if version:
+                meta["update"] = {"id": command_id, "version": version, "expires_at": command.get("expires_at")}
+        elif command_type == "reboot":
+            meta["reboot"] = {"id": command_id, "expires_at": command.get("expires_at")}
+    return meta
 
 
 __all__ = ["BackendApplication"]
