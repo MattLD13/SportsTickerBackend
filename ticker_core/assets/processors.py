@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 
 from PIL import Image
-from sports_ticker.assets.images import prepare_contained, prepare_contained_native_grid
+from sports_ticker.assets.images import prepare_contained as prepare_contained, prepare_contained_native_grid as prepare_contained_native_grid
 
 
 def prepare_car(raw: bytes, size: tuple[int, int], *, mirror: bool = False) -> Image.Image:

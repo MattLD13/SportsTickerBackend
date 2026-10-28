@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
-from typing import Any
 
 from PIL import Image, ImageDraw, ImageOps
 

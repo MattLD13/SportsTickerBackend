@@ -1,7 +1,6 @@
 """Verify pinned Git workspaces, expansion records, and ordinary staging."""
 import json
 from pathlib import Path
-import subprocess
 import sys
 
 import pytest

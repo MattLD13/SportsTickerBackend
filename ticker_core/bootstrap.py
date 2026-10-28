@@ -1,6 +1,5 @@
 """Build the standard rewrite rendering services."""
 
-from collections.abc import Mapping
 from PIL import Image
 
 from .assets import LogoAssetView

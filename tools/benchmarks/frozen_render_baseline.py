@@ -12,7 +12,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from PIL import Image, __version__ as pillow_version, features
+from PIL import __version__ as pillow_version, features
 from ticker_core.assets import AssetPlanner
 from ticker_core.bootstrap import create_default_content_catalog
 from ticker_core.context import RenderContext

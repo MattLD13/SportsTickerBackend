@@ -114,7 +114,6 @@ def demo_app(tmp_path, monkeypatch):
 
 
 def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch, tmp_path):
-    from sports_ticker.dashboard_v2 import routes
     from ticker_core.features.utility import UtilityRenderer
     from ticker_core.platform import assets as asset_module
     from ticker_core.rendering import load_default_font_set

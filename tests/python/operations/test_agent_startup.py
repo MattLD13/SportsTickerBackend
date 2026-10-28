@@ -9,7 +9,7 @@ import sys
 import pytest
 
 from tools.workspaces.manage import MANIFEST, ROOT, WorkspaceError, git, manifest_read, safe_path
-from tools.workspaces.start import edit_owners, hook, inventory, main, prepare
+from tools.workspaces.start import edit_owners, hook, main, prepare
 from tools.workspaces.planner import MODEL, VERSION, PlannerFailure
 
 pytestmark = pytest.mark.critical

@@ -35,7 +35,7 @@ def test_device_poll_refreshes_presence_and_get_reads_preserve_it(tmp_path):
 
 def test_device_poll_omits_hidden_games_and_controller_read_retains_them(tmp_path):
     from datetime import datetime, timezone
-    from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
+    from sports_ticker.domain import ContentItem, TickerSnapshot
     flask = create_backend_application(tmp_path / "fleet.sqlite3", [], scheduler=None)
     application = flask.extensions["sports_ticker.backend_application"]
     client = flask.test_client()

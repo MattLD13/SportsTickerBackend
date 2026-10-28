@@ -10,7 +10,6 @@ import os
 import secrets
 import socket
 import subprocess
-import ssl
 from threading import Thread
 import time
 from pathlib import Path

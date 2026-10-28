@@ -1,6 +1,5 @@
 """Check bounded discovery commands and sparse bootstrap dependencies."""
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys

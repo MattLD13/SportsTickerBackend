@@ -13,9 +13,8 @@ from time import monotonic, time as wall_time
 import os
 import shlex
 import sys
-from typing import Any, Protocol
+from typing import Protocol
 
-from ticker_core.assets import ShortTermContentCache
 from ticker_core.context import RenderContext
 from ticker_core.drivers import FrameSink
 from ticker_core.platform import (
@@ -31,7 +30,7 @@ from ticker_core.platform.affinity import pin_to_cpu
 from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
-from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded, PollUpdateResult
+from .poller import PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded, PollUpdateResult
 from .viewport import CardViewport
 from .latency import DisplayLatencyTracker
 from .updates import PreparedEventQueue, PreparedUpdate, RejectedUpdate

@@ -713,10 +713,10 @@ class ScoreAlertTracker:
             side = alert["side"]
             other = "away" if side == "home" else "home"
             for prefix, team_side in (("team", side), ("opp", other)):
-                for field in ("logo", "color", "alt_color"):
-                    value = game.get(f"{team_side}_{field}")
+                for name in ("logo", "color", "alt_color"):
+                    value = game.get(f"{team_side}_{name}")
                     if value:
-                        alert[f"{prefix}_{field}"] = value
+                        alert[f"{prefix}_{name}"] = value
             scored_game = {**game, "home_score": alert["home_score"], "away_score": alert["away_score"]}
             old_score = int(alert[f"{side}_score"]) - int(alert["points"])
             play = _latest_scoring_play(scored_game, situation, side, previous_score=old_score)

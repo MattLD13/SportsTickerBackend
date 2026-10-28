@@ -1,5 +1,4 @@
 """Audit the flag vocabulary, series meanings, and native flag vectors."""
-from pathlib import Path
 import json
 
 import pytest

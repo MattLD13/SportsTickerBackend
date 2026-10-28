@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
+from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.projections.data_api import project_data_v2
 from sports_ticker.providers.espn import (
     _content_item, _event_plays, _event_scoring_details, _mlb_statsapi_summary,

@@ -23,7 +23,6 @@ from .model import (
     DeviceState,
     NewsItem,
     PayloadValidationError,
-    TickerSettings,
     TickerResponse,
     apply_display_delta,
     canonical_payload_hash,

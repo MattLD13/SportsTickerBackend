@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from sports_ticker.immutable import freeze as _freeze
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypeAlias

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 from datetime import datetime, timezone
-import hashlib
 import json
 import math
 import os
@@ -233,7 +232,6 @@ def _summarize(samples: list[dict[str, float]], started: float, ended: float) ->
 
 
 def _device_run(args: argparse.Namespace) -> dict[str, object]:
-    from ticker_core.app.viewport import CardViewport
     from ticker_core.bootstrap import create_default_frame_builder
     from ticker_core.context import RenderContext
     from ticker_core.drivers import RgbMatrixFrameSink

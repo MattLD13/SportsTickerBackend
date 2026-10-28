@@ -14,14 +14,12 @@ from cryptography.fernet import Fernet
 from PIL import Image
 import pytest
 
-from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import PairingState, SpotifyConnection, TickerRepository
 from sports_ticker.integrations.spotify import (
     SpotifyConfig,
     SpotifyIntegrationError,
     SpotifyHttpPort,
     SpotifyIntegrationService,
-    SpotifyMusicSource,
 )
 from sports_ticker.integrations import spotify as spotify_module
 from ticker_core.assets.planner import AssetPlanner

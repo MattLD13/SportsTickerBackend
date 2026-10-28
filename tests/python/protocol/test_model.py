@@ -1,6 +1,5 @@
 """Validate the version two display payload boundary."""
 
-from datetime import datetime, timezone
 from copy import deepcopy
 import hashlib
 import json

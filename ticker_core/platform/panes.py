@@ -16,7 +16,7 @@ from threading import Lock
 from uuid import uuid4
 
 import PIL
-from PIL import Image, features
+from PIL import features
 
 from ticker_core.assets import AssetPlanner
 from ticker_core.protocol.model import canonical_payload_hash

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
 import json
 from typing import Any
 
@@ -15,7 +14,7 @@ from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 from ticker_core.rendering.templates import ImageTemplates
 from ticker_core.rendering.pixels import TINY as TINY_FONT_MAP
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.rendering.pixels import draw_tiny_text, normalize_special_chars
 
 from .assets import RacingAssetService
 from sports_ticker.providers.racing_session import racing_timed_session

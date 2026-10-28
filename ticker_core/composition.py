@@ -23,7 +23,6 @@ from ticker_core.platform import (
     OtaUpdaterService,
     SubprocessPlatformCommands,
     TickerPiLogger,
-    WiFiRecoveryService,
 )
 from ticker_core.platform.frame_health import PresentedFrameHealth
 from ticker_core.platform.device_credentials import load_device_token

@@ -83,7 +83,7 @@ status, body = get("sessions", limit=3)
 # OpenF1 doesn't support limit in older versions; try a date 30 days back
 week_ago = (now - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
 status2, body2 = get(f"sessions?date_start>={week_ago}")
-show(f"sessions in the last 30 days", status2, body2, preview=3)
+show("sessions in the last 30 days", status2, body2, preview=3)
 
 if status2 == 200 and isinstance(body2, list) and body2:
     # Use the most recent session if we didn't find one above
@@ -157,7 +157,7 @@ if live_sk:
 print(f"\n{DIVIDER}")
 print("SUMMARY")
 print(f"  Session key used for tests 4-8: {live_sk}")
-print(f"  Run again during a live F1 session to test real-time data.")
-print(f"  If tests 4-5 return 200 with data, positions+gaps are free.")
-print(f"  If 401, a sponsor API key is needed for that endpoint/session_key.")
+print("  Run again during a live F1 session to test real-time data.")
+print("  If tests 4-5 return 200 with data, positions+gaps are free.")
+print("  If 401, a sponsor API key is needed for that endpoint/session_key.")
 print(DIVIDER)

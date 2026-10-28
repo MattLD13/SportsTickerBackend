@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from threading import Lock
-from typing import Any, Protocol, TypeAlias
+from typing import Protocol, TypeAlias
 
 from .provider_recovery import ProviderRecovery
 

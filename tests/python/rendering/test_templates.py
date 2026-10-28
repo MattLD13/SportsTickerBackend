@@ -9,7 +9,7 @@ from ticker_core.context import RenderContext
 from ticker_core.features.clock.renderer import ClockRenderer
 from ticker_core.features.flight.renderer import FlightRenderer
 from ticker_core.features.golf.renderer import GolfRenderer
-from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
+from ticker_core.features.music.renderer import MusicRenderer
 from ticker_core.features.racing.renderer import RacingRenderer
 from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
 from ticker_core.features.sports.pinned import PreparedSportsFullRenderer

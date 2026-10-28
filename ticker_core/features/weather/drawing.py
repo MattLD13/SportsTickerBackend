@@ -1,7 +1,7 @@
 import math
 from datetime import datetime
 from PIL import Image, ImageChops, ImageDraw
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.rendering.pixels import draw_tiny_text, normalize_special_chars
 
 PANEL_W = 384
 PANEL_H = 32
@@ -181,7 +181,7 @@ class PreparedWeatherRenderer:
             if val <= 100: return (255, 255, 0)
             if val <= 150: return (255, 126, 0)
             return (255, 0, 0)
-        except:
+        except (TypeError, ValueError, OverflowError):
             return (100, 100, 100)
 
     def draw_weather_detailed(self, game):
@@ -392,7 +392,7 @@ class PreparedWeatherRenderer:
             elif tv >= 55: temp_color = (95, 225, 105)
             elif tv >= 35: temp_color = (95, 190, 255)
             else:          temp_color = (190, 230, 255)
-        except:
+        except (TypeError, ValueError, OverflowError):
             temp_color = (240, 240, 245)
 
         tint = sky_tint(cur_icon)

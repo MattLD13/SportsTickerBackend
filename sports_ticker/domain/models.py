@@ -7,7 +7,6 @@ from sports_ticker.immutable import freeze as _freeze
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
 import re
 
 from sports_ticker.leagues import allows_my_team_selection, college_conference_settings
