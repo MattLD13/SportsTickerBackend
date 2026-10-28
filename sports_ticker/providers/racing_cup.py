@@ -2,14 +2,77 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import timedelta, timezone
+from functools import cache
+import json
+from pathlib import Path
+import re
 from typing import Any
 
-from .sports_display import nascar_competition_stage
+from .payloads import as_mapping as _mapping, mapping_values as _sequence
+from .sports_display import nascar_competition_stage, racing_short_name
 from .racing_live import (
-    _mapping, _sequence, _parse_datetime, _session_lifecycle_state, _format_local_time,
-    _format_qualifying_time, _nascar_driver, _nascar_short_event, _NASCAR_FLAGS, _CAUTION_FLAGS,
+    _parse_datetime, _session_lifecycle_state, _format_local_time, _format_qualifying_time, _CAUTION_FLAGS,
+    _driver_abbr, _integer, _normalize_racing_flag, _number,
 )
+
+
+_NASCAR_FLAGS = {
+    1: "GREEN",
+    2: "YELLOW",
+    3: "RED FLAG",
+    4: "CHECKERED",
+    6: "RED FLAG",
+    8: "NONE",
+    9: "NONE",
+}
+
+
+@cache
+def _nascar_cup_liveries() -> Mapping[str, str]:
+    """Read the bundled Cup car image URLs keyed by car number."""
+
+    entries = json.loads(Path(__file__).with_name("racing_grid_verified_db.json").read_text(encoding="utf-8"))
+    return entries.get("nascar", {}).get("cup", {})
+
+
+def _nascar_car_url(car_num: str) -> str:
+    return _nascar_cup_liveries().get(str(car_num or "").strip().lstrip("0") or "0", "")
+
+
+def _nascar_driver(vehicle: Mapping[str, Any]) -> dict[str, Any] | None:
+    pos = _integer(vehicle.get("running_position"))
+    if not pos:
+        return None
+    driver = _mapping(vehicle.get("driver"))
+    name = str(driver.get("full_name") or f"{driver.get('first_name', '')} {driver.get('last_name', '')}").strip()
+    name = re.sub(r"\s*\([A-Za-z]+\)$", "", name)
+    first = str(driver.get("first_name") or "")
+    last = re.sub(r"\s*\([A-Za-z]+\)$", "", str(driver.get("last_name") or ""))
+    if not last and name:
+        first, _, last = name.rpartition(" ")
+    car = str(vehicle.get("vehicle_number") or "").strip()
+    sponsor = str(vehicle.get("sponsor_name") or "").strip()
+    mfr = str(vehicle.get("vehicle_manufacturer") or "").strip()
+    delta = _number(vehicle.get("delta"))
+    gap = "Leader" if pos == 1 else f"+{delta:.3f}s" if delta is not None else ""
+    return {
+        "pos": pos,
+        "name": name or "Unknown",
+        "abbr": _driver_abbr(first, last),
+        "car": car,
+        "team": sponsor or mfr,
+        "team_logo": "",
+        "car_illustration": _nascar_car_url(car),
+        "livery_primary": "#FFD700",
+        "livery_secondary": "#111111",
+        "gap": gap,
+        "speed": str(vehicle.get("last_lap_speed") or ""),
+        "status": "Active" if vehicle.get("is_on_track") else "Out",
+        "on_track": bool(vehicle.get("is_on_track")),
+        "flag": _normalize_racing_flag(vehicle.get("flag")) if vehicle.get("flag") else "",
+    }
 
 
 class CupRacingSource:
@@ -92,7 +155,7 @@ class CupRacingSource:
                 elif state == "in" and not drivers:
                     state = "pre"
                 flag = "CHECKERED" if state == "post" else "NONE" if state == "pre" else _NASCAR_FLAGS.get(flag_number, "UNKNOWN")
-                event = _nascar_short_event(str(race["race_name"]), str(race["track_name"]))
+                event = racing_short_name("nascar", str(race["race_name"]), str(race["track_name"]))
                 records.append({
                     "id": f"nascar_{identifier}_{run_type}", "type": "racing", "sport": "nascar",
                     "competition_stage": nascar_competition_stage(race),

@@ -17,7 +17,7 @@ from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, Po
 from .display_time import display_timezone as _display_timezone
 from .payloads import as_mapping as _mapping, mapping_values as _sequence
 from .racing_session import racing_timed_session
-from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
+from .sports_display import racing_flag_code, RACING_CAUTION_FLAGS
 
 
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
@@ -499,7 +499,7 @@ class LiveRacingSource:
             return []
         games: list[dict[str, Any]] = []
         active_ids: set[str] = set()
-        for race, key, name, practice, start, end, state in sessions:
+        for race, key, name, _practice, start, end, state in sessions:
             identifier = f"indycar_{race['round']}_{key.lower()}"
             active_ids.add(identifier)
             game = self._build_indycar_game(
@@ -1014,74 +1014,6 @@ def _driver_abbr(first: object, last: object) -> str:
     if len(letters) >= 3:
         return letters[:3].upper()
     return (letters + "".join(char for char in str(first or "") if char.isalnum()))[:3].upper() or "???"
-
-
-_NASCAR_FLAGS = {
-    1: "GREEN",
-    2: "YELLOW",
-    3: "RED FLAG",
-    4: "CHECKERED",
-    6: "RED FLAG",
-    8: "NONE",
-    9: "NONE",
-}
-
-
-def _nascar_short_event(event_name: str, track_name: str) -> str:
-    return racing_short_name("nascar", event_name, track_name)
-
-
-_NASCAR_LIVERIES_CACHE: dict[str, str] = {}
-
-
-def _get_nascar_car_url(car_num: str) -> str:
-    global _NASCAR_LIVERIES_CACHE
-    if not _NASCAR_LIVERIES_CACHE:
-        try:
-            import json
-            from pathlib import Path
-            db_path = Path(__file__).parent / "racing_grid_verified_db.json"
-            if db_path.exists():
-                data = json.loads(db_path.read_text(encoding="utf-8"))
-                _NASCAR_LIVERIES_CACHE = data.get("nascar", {}).get("cup", {})
-        except Exception:
-            _NASCAR_LIVERIES_CACHE = {}
-    clean_num = str(car_num or "").strip().lstrip("0") or "0"
-    return _NASCAR_LIVERIES_CACHE.get(clean_num, "")
-
-
-def _nascar_driver(vehicle: Mapping[str, Any]) -> dict[str, Any] | None:
-    pos = _integer(vehicle.get("running_position"))
-    if not pos:
-        return None
-    driver = _mapping(vehicle.get("driver"))
-    name = str(driver.get("full_name") or f"{driver.get('first_name', '')} {driver.get('last_name', '')}").strip()
-    name = re.sub(r"\s*\([A-Za-z]+\)$", "", name)
-    first = str(driver.get("first_name") or "")
-    last = re.sub(r"\s*\([A-Za-z]+\)$", "", str(driver.get("last_name") or ""))
-    if not last and name:
-        first, _, last = name.rpartition(" ")
-    car = str(vehicle.get("vehicle_number") or "").strip()
-    sponsor = str(vehicle.get("sponsor_name") or "").strip()
-    mfr = str(vehicle.get("vehicle_manufacturer") or "").strip()
-    delta = _number(vehicle.get("delta"))
-    gap = "Leader" if pos == 1 else f"+{delta:.3f}s" if delta is not None else ""
-    return {
-        "pos": pos,
-        "name": name or "Unknown",
-        "abbr": _driver_abbr(first, last),
-        "car": car,
-        "team": sponsor or mfr,
-        "team_logo": "",
-        "car_illustration": _get_nascar_car_url(car),
-        "livery_primary": "#FFD700",
-        "livery_secondary": "#111111",
-        "gap": gap,
-        "speed": str(vehicle.get("last_lap_speed") or ""),
-        "status": "Active" if vehicle.get("is_on_track") else "Out",
-        "on_track": bool(vehicle.get("is_on_track")),
-        "flag": _normalize_racing_flag(vehicle.get("flag")) if vehicle.get("flag") else "",
-    }
 
 
 def _session_lifecycle_state(
