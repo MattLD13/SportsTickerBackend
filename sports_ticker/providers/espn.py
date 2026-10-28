@@ -550,19 +550,7 @@ class EspnScoreboardProvider:
                         monotonic_now,
                     )
                     if league == "nhl":
-                        live_refreshes.extend(
-                            _LiveRefresh(
-                                league=league,
-                                event=event,
-                                fastcast_updated_at=self._fastcast.event_updated_at(
-                                    league,
-                                    str(event.get("id") or "").strip(),
-                                )
-                                if self._fastcast is not None
-                                else None,
-                            )
-                            for event in live_events
-                        )
+                        live_refreshes.extend(self._live_refresh(league, event) for event in live_events)
                     else:
                         live_detail_suppressed.add(league)
                     if league == "nhl":
@@ -576,20 +564,8 @@ class EspnScoreboardProvider:
                         or len(stale_live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
                     ):
                         refresh_leagues.append((league, url))
-                    elif league != "nhl":
-                        live_refreshes.extend(
-                            _LiveRefresh(
-                                league=league,
-                                event=event,
-                                fastcast_updated_at=self._fastcast.event_updated_at(
-                                    league,
-                                    str(event.get("id") or "").strip(),
-                                )
-                                if self._fastcast is not None
-                                else None,
-                            )
-                            for event in stale_live_events
-                        )
+                    else:
+                        live_refreshes.extend(self._live_refresh(league, event) for event in stale_live_events)
                 elif self._event_detail_urls.get(league):
                     live_events = _unique_live_events(schedule_events, current)
                     if league == "nhl":
@@ -597,7 +573,7 @@ class EspnScoreboardProvider:
                         refresh_leagues.append((league, url))
                     elif len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
-                        if league != "mlb" and league != "nhl":
+                        if league != "mlb":
                             live_detail_suppressed.add(league)
                     else:
                         live_refreshes.extend(
@@ -695,16 +671,8 @@ class EspnScoreboardProvider:
                         if league != "nhl":
                             live_detail_suppressed.add(league)
                         elif self._event_detail_urls.get(league):
-                            for event in live_events:
-                                event_id = str(event.get("id") or "").strip()
-                                if event_id and (league, event_id) not in live_update_futures:
-                                    live_update_futures[(league, event_id)] = pool.submit(
-                                        self._read_event_scoreboard,
-                                        league,
-                                        event_id,
-                                        cache_source=cache_schedule,
-                                    )
-                                    live_update_expected_fastcast_at[(league, event_id)] = None
+                            self._submit_event_reads(pool, league, live_events, live_update_futures,
+                                                     live_update_expected_fastcast_at, cache_schedule)
                     elif self._event_detail_urls.get(league):
                         dense_live = len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
                         if dense_live and league != "mlb" and league != "nhl":
@@ -713,16 +681,8 @@ class EspnScoreboardProvider:
                             (not dense_live or league == "mlb" or league == "nhl")
                             and (cache_schedule or league == "nhl")
                         ):
-                            for event in live_events:
-                                event_id = str(event.get("id") or "").strip()
-                                if event_id and (league, event_id) not in live_update_futures:
-                                    live_update_futures[(league, event_id)] = pool.submit(
-                                        self._read_event_scoreboard,
-                                        league,
-                                        event_id,
-                                        cache_source=cache_schedule,
-                                    )
-                                    live_update_expected_fastcast_at[(league, event_id)] = None
+                            self._submit_event_reads(pool, league, live_events, live_update_futures,
+                                                     live_update_expected_fastcast_at, cache_schedule)
             for (league, event_id), future in live_update_futures.items():
                 attempted_live_update_ids.add((league, event_id))
                 try:
@@ -800,6 +760,8 @@ class EspnScoreboardProvider:
         for league, _url in event_leagues:
             context = (tuple(sorted(football_rankings.items())) if league in COLLEGE_FOOTBALL_LEAGUES else (),
                        tuple(sorted(ncaa_logo_index.items())) if league in COLLEGE_FOOTBALL_LEAGUES else ())
+            # Keep the stored context object while it is equal, because the
+            # projection cache compares contexts by identity.
             if self._projection_contexts.get(league) != context:
                 self._projection_contexts[league] = context
             context = self._projection_contexts[league]
@@ -855,6 +817,29 @@ class EspnScoreboardProvider:
             invalid_sources=len(invalid_leagues),
             observed_at=datetime.now(timezone.utc),
         )
+
+    def _live_refresh(self, league: str, event: Mapping[str, Any]) -> "_LiveRefresh":
+        """Pair one live event with the Fastcast update time its detail read must not overwrite."""
+        return _LiveRefresh(
+            league=league,
+            event=event,
+            fastcast_updated_at=self._fastcast.event_updated_at(league, str(event.get("id") or "").strip())
+            if self._fastcast is not None
+            else None,
+        )
+
+    def _submit_event_reads(self, pool, league, events, futures, expected_fastcast_at, cache_schedule) -> None:
+        """Submit one event scoreboard read for each live event that has no read yet."""
+        for event in events:
+            event_id = str(event.get("id") or "").strip()
+            if event_id and (league, event_id) not in futures:
+                futures[(league, event_id)] = pool.submit(
+                    self._read_event_scoreboard,
+                    league,
+                    event_id,
+                    cache_source=cache_schedule,
+                )
+                expected_fastcast_at[(league, event_id)] = None
 
     def _fastcast_active(self, league: str) -> bool:
         """Return whether one league can use its shared Fastcast state."""
