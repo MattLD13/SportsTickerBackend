@@ -1,3 +1,5 @@
+"""Draw pinned full-panel sports layouts for Ticker Six."""
+
 from PIL import Image, ImageDraw, ImageStat
 
 from ticker_core.rendering.pixels import draw_tiny_text
@@ -19,8 +21,441 @@ SIDE_SCRIM_SOLID = 8
 SIDE_SCRIM_FADE = 92
 SIDE_SCRIM_SPAN = SIDE_SCRIM_SOLID + SIDE_SCRIM_FADE
 
+# Soccer, hockey, and basketball use a wider linear fade behind their logos.
+EDGE_FADE_SOLID = 45
+EDGE_FADE_FADE = 80
 
-class SportsMixin:
+# Football field geometry follows the HTML footballField() proportions.
+END_ZONE_W = PANEL_W * (30 / 360)
+PLAY_W = PANEL_W * (300 / 360)
+HASH_TOP = PANEL_H * (70.75 / 160)
+HASH_BOTTOM = PANEL_H * (89.25 / 160)
+
+# Soccer, baseball, hockey, and basketball share one logo and score row.
+MARK_SIZE = 24
+MARK_Y = (PANEL_H - MARK_SIZE) // 2
+AWAY_MARK_X = PANEL_W - 3 - MARK_SIZE - 5
+
+WHITE = (255, 255, 255)
+SCORE_OUTLINE = (0, 0, 0, 200)
+STATUS_TEXT = (255, 240, 150)
+EMPTY_NET_TEXT = (255, 90, 90)
+POWER_PLAY_TEXT = (255, 204, 0)
+
+_NAME_SUFFIXES = {'JR', 'SR', 'II', 'III', 'IV', 'V', 'VI'}
+_MISSING_ERA = {'-', '-.--', 'N/A', 'n/a'}
+
+
+def _display_sides(game):
+    """Swap home and away fields: the full layout draws the away team on the left."""
+    result = {}
+    for key, value in game.items():
+        if key.startswith('home_'):
+            result['away_' + key[5:]] = value
+        elif key.startswith('away_'):
+            result['home_' + key[5:]] = value
+        else:
+            result[key] = value
+    return result
+
+
+def _draw_edge_fade(image):
+    """Composite a linear black fade over both panel edges."""
+    width, height = image.size
+    scrim = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(scrim)
+    span = EDGE_FADE_SOLID + EDGE_FADE_FADE
+    for x in range(span):
+        alpha = 250 if x < EDGE_FADE_SOLID else max(0, int(250 * (span - x) / EDGE_FADE_FADE))
+        draw.line([(x, 0), (x, height)], fill=(0, 0, 0, alpha))
+        draw.line([(width - 1 - x, 0), (width - 1 - x, height)], fill=(0, 0, 0, alpha))
+    image.alpha_composite(scrim)
+
+
+def _football_field(home_end_zone, away_end_zone):
+    """Draw the static striped field with both team end zones."""
+    W, H = PANEL_W, PANEL_H
+    field = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(field, "RGBA")
+    for i in range(10):
+        bx = END_ZONE_W + i * PLAY_W / 10
+        draw.rectangle([bx, 0, bx + PLAY_W / 10, H],
+                       fill=(22, 52, 18) if i % 2 == 0 else (27, 64, 24))
+    draw.rectangle([0, 0, END_ZONE_W, H], fill=home_end_zone)
+    draw.rectangle([W - END_ZONE_W, 0, W, H], fill=away_end_zone)
+    draw.line([(END_ZONE_W, 0), (END_ZONE_W, H)], fill=(255, 255, 255, 230))
+    draw.line([(W - END_ZONE_W, 0), (W - END_ZONE_W, H)], fill=(255, 255, 255, 230))
+    for i in range(11):
+        lx = END_ZONE_W + i * PLAY_W / 10
+        opacity = 115 if i == 5 else 64
+        draw.line([(lx, 0), (lx, H)], fill=(255, 255, 255, opacity))
+    for y in range(1, 100):
+        hx = END_ZONE_W + y / 100 * PLAY_W
+        is_five = y % 5 == 0
+        length = H * 0.042 if is_five else H * 0.022
+        opacity = 128 if is_five else 66
+        draw.line([(hx, HASH_TOP - length), (hx, HASH_TOP + length)], fill=(255, 255, 255, opacity))
+        draw.line([(hx, HASH_BOTTOM - length), (hx, HASH_BOTTOM + length)], fill=(255, 255, 255, opacity))
+    return field
+
+
+def _soccer_field():
+    """Draw the static striped pitch with its edge fade."""
+    W, H = PANEL_W, PANEL_H
+    image = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(image, 'RGBA')
+    draw.rectangle([0, 0, W, H], fill=(18, 96, 36))
+    for i in range(8):
+        x0, x1 = int(i * W / 8), int((i + 1) * W / 8)
+        draw.rectangle([x0, 0, x1, H], fill=(22, 104, 40) if i % 2 == 0 else (18, 96, 36))
+    draw.rectangle([1, 1, W - 2, H - 2], outline=(245, 245, 245, 210), width=1)
+    draw.line([(W // 2, 0), (W // 2, H)], fill=(245, 245, 245, 180), width=1)
+    draw.ellipse([W // 2 - 13, H // 2 - 13, W // 2 + 13, H // 2 + 13], outline=(245, 245, 245, 180), width=1)
+    draw.rectangle([1, 8, 10, H - 8], fill=(245, 245, 245, 28))
+    draw.rectangle([W - 11, 8, W - 2, H - 8], fill=(245, 245, 245, 28))
+    _draw_edge_fade(image)
+    return image
+
+
+def _line_of_scrimmage(situation, spot_text, left_team, right_team):
+    """Return the ball spot on the card axis: 0 is the left goal line, -1 is unknown.
+
+    ESPN measures situation.yardLine from the host goal line, which sits at the
+    right edge after the side swap, so the value is mirrored once.
+    """
+    yard_line = situation.get('yardLine')
+    if yard_line is not None:
+        return max(0, min(100, 100 - int(yard_line)))
+    if ' at ' not in spot_text:
+        return -1
+    # Payloads without the numeric field still read "... at CAR 33".
+    after = spot_text.split(' at ', 1)[1].strip().split()
+    if len(after) == 1 and after[0] == '50':
+        return 50
+    if len(after) >= 2:
+        team = after[0].upper()
+        try:
+            yard = int(after[1])
+        except ValueError:
+            return -1
+        return yard if team == left_team else (100 - yard if team == right_team else 50)
+    return -1
+
+
+def _yards_to_go(situation, down_text):
+    """Return the yards to the first-down marker."""
+    if situation.get('yardsToGo') is not None:
+        return max(1, int(situation['yardsToGo']))
+    if '&' in down_text:
+        raw = down_text.split('&', 1)[1].strip().split()[0].lower().rstrip('.,')
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return 10
+    return 10
+
+
+def _int_or_none(value):
+    """Return an integer count, or None for a value that is not a number."""
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _ordinal(number):
+    """Return an English ordinal such as 9th or 21st."""
+    number = int(number)
+    if 10 <= number % 100 <= 19:
+        return f"{number}th"
+    return f"{number}" + {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th')
+
+
+def _short_last_name(raw, max_chars=24):
+    """Return an upper-case family name and keep a generational suffix."""
+    text = str(raw or '').strip()
+    if not text:
+        return ''
+    parts = [part for part in text.replace('.', ' ').split() if part]
+    if len(parts) >= 2 and parts[-1].upper() in _NAME_SUFFIXES:
+        last = f"{parts[-2]} {parts[-1]}"
+    else:
+        last = parts[-1] if parts else text
+    return last.upper()[:max_chars]
+
+
+def _value_text(raw):
+    """Return a stripped text value, or an empty string for None."""
+    return '' if raw is None else str(raw).strip()
+
+
+def _compact_pitch_name(full_type, abbreviation):
+    """Return a short pitch name that fits the side lane."""
+    text = str(full_type or '').strip()
+    if text:
+        text = text.split('(', 1)[0].strip()
+        text = text.split('/', 1)[0].strip()
+    if not text:
+        return str(abbreviation or '').strip().upper()[:10]
+    if len(text) > 12:
+        words = text.replace('-', ' ').split()
+        if words:
+            text = words[-1]
+    return text.title()[:12]
+
+
+def _batter_lines(situation):
+    """Return the batter name, hits per at-bat, and average lines."""
+    average = _value_text(situation.get('batter_avg', ''))
+    if average.startswith('0.'):
+        average = average[1:]
+    hits = _value_text(situation.get('batter_h', ''))
+    at_bats = _value_text(situation.get('batter_ab', ''))
+    if hits or at_bats:
+        hits_line = f"{hits or '-'}/{at_bats or '-'}"
+    else:
+        hits_line = ''
+    return [situation.get('batter_name', ''), hits_line, average]
+
+
+def _pitcher_lines(situation):
+    """Return the pitcher name, pitch count, and last pitch or ERA lines."""
+    count = _value_text(situation.get('pitcher_pitches', ''))
+    speed = str(situation.get('last_pitch_speed', 0)).strip()
+    abbreviation = situation.get('last_pitch_type_abbr', '') or situation.get('last_pitch_type', '')
+    pitch_type = _compact_pitch_name(situation.get('last_pitch_type_full', ''), abbreviation)
+    if speed and speed != '0':
+        pitch_line = f"{situation.get('last_pitch_speed', 0)} {pitch_type}" if pitch_type else f"{situation.get('last_pitch_speed', 0)} MPH"
+    else:
+        pitch_line = pitch_type
+    era = _value_text(situation.get('pitcher_era'))
+    if era in _MISSING_ERA:
+        era = ''
+    if not pitch_line and era:
+        pitch_line = f"ERA:{era}"
+    return [situation.get('pitcher_name', ''), f"P:{count}" if count else '', pitch_line]
+
+
+class PreparedSportsFullRenderer:
+    """Render 384 by 32 pinned sports layouts from prepared logos."""
+
+    def __init__(self, fonts, logos):
+        self.big_font = fonts.big
+        self.clock_giant = fonts.clock
+        self.tiny = fonts.tiny
+        self.tiny_small = fonts.tiny_small
+        self.micro = fonts.micro
+        self.font = fonts.normal
+        self._logos = logos
+        self._field_templates = ImageTemplates(capacity=16, max_bytes=1024 * 1024)
+
+    def draw_sport_full_bleed(self, game, page_tick=0):
+        """Render one pinned game with the layout for its sport."""
+        game = _display_sides(game)
+        sport = str(game.get('sport', '')).lower()
+        if 'football' in sport or 'nfl' in sport or 'ncf' in sport:
+            return self._draw_football(game, sport)
+        if 'soccer' in sport:
+            return self._draw_soccer(game)
+        if 'baseball' in sport or 'mlb' in sport:
+            return self._draw_baseball(game)
+        return self._draw_rink_or_court(game, sport, page_tick)
+
+    # ── Shared layout ────────────────────────────────────────────────────────
+
+    def _draw_marks_and_scores(self, img, d, game, home_mark_x, home_color, away_color):
+        """Paste both team marks and draw both scores. Return the score anchors."""
+        home_logo = self.get_logo(game.get('home_logo'), (MARK_SIZE, MARK_SIZE), game.get('home_logo_rendering'))
+        away_logo = self.get_logo(game.get('away_logo'), (MARK_SIZE, MARK_SIZE), game.get('away_logo_rendering'))
+        self._paste_team_mark(img, home_logo, (home_mark_x, MARK_Y), str(game.get('home_abbr', '')).upper(), MARK_SIZE, home_color)
+        self._paste_team_mark(img, away_logo, (AWAY_MARK_X, MARK_Y), str(game.get('away_abbr', '')).upper(), MARK_SIZE, away_color)
+        home_score_x = home_mark_x + MARK_SIZE + 4
+        away_score_x = AWAY_MARK_X - 4
+        self.draw_outlined_text(d, home_score_x, PANEL_H // 2, str(game.get('home_score', '')),
+                                self.clock_giant, WHITE, SCORE_OUTLINE, anchor='lm')
+        self.draw_outlined_text(d, away_score_x, PANEL_H // 2, str(game.get('away_score', '')),
+                                self.clock_giant, WHITE, SCORE_OUTLINE, anchor='rm')
+        return home_score_x, away_score_x
+
+    # ── Football ─────────────────────────────────────────────────────────────
+
+    def _end_zone_color(self, game, side, fallback):
+        """Use a colorful alternate when the primary team color is effectively gray.
+
+        ESPN supplies primary and alternate colors for FBS and FCS teams. The logo
+        renderer then picks a contrasting keyline against this fill.
+        """
+        primary = self._parse_hex_color(game.get(f"{side}_color")) or fallback
+        alternate = self._parse_hex_color(game.get(f"{side}_alt_color"))
+        if max(primary) - min(primary) < 25 and alternate and max(alternate) - min(alternate) >= 25:
+            return alternate
+        return primary
+
+    def _draw_football(self, game, sport):
+        W, H = PANEL_W, PANEL_H
+        sit = game.get('situation', {}) or {}
+        home_ab = str(game.get('home_abbr', '')).upper()
+        away_ab = str(game.get('away_abbr', '')).upper()
+        poss_ab = str(sit.get('possession', '')).upper()
+        home_ez = self._end_zone_color(game, 'home', self.get_team_color(game, 'home'))
+        away_ez = self._end_zone_color(game, 'away', self.get_team_color(game, 'away'))
+        img = self._field_templates.render(('football', W, H, home_ez, away_ez), lambda: _football_field(home_ez, away_ez))
+        d = ImageDraw.Draw(img, 'RGBA')
+
+        # Mark possession above the team badge in its end zone.
+        active_team = str(sit.get('activeTeam', '')).strip().upper()
+        possession_x = None
+        if active_team and active_team == home_ab:
+            possession_x = int(END_ZONE_W / 2)
+        elif active_team and active_team == away_ab:
+            possession_x = W - int(END_ZONE_W / 2)
+        if possession_x is not None:
+            d.polygon([(possession_x - 5, 1), (possession_x + 5, 1), (possession_x, 5)],
+                      fill=(255, 235, 80), outline=(0, 0, 0, 255))
+
+        dd_text = sit.get('downDist', '') or sit.get('downDistFull', '')
+        spot_text = sit.get('downDistFull', '') or sit.get('ballOn', '') or dd_text
+        los = _line_of_scrimmage(sit, spot_text, home_ab, away_ab)
+        ytg = _yards_to_go(sit, dd_text)
+        # The left team after the side swap drives to the right.
+        drive_to_right = poss_ab != away_ab
+        if (bool(sit.get('isGoalToGo')) or 'goal' in dd_text.lower()) and los >= 0:
+            # First down is the goal line itself, however short the distance reads.
+            ytg = max(1, (100 - los) if drive_to_right else los)
+
+        is_rz = sit.get('isRedZone', False)
+        if is_rz:
+            overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay, "RGBA")
+            zone_x = END_ZONE_W + (0.8 if drive_to_right else 0.2) * PLAY_W
+            if drive_to_right:
+                overlay_draw.rectangle([END_ZONE_W + int(0.8 * PLAY_W), 0, W - END_ZONE_W, H], fill=(220, 0, 0, 128))
+            else:
+                overlay_draw.rectangle([END_ZONE_W, 0, END_ZONE_W + int(0.2 * PLAY_W), H], fill=(220, 0, 0, 128))
+            d.line([(zone_x, 0), (zone_x, H)], fill=(255, 34, 34, 200), width=2)
+            img.alpha_composite(overlay)
+
+        # The field has room for the spot ("1st & 10 at ARI 42"). The compact
+        # ticker row shows only "1st & 10".
+        period = self.shorten_status(game.get('status', ''), sport)
+        context = sit.get('downDistFull', '') or dd_text
+        if period or context:
+            self.draw_outlined_text(d, W // 2, int(H * 0.32) if context else int(H * 0.5), period,
+                                    self.big_font, WHITE, SCORE_OUTLINE)
+            if context:
+                self.draw_outlined_text(d, W // 2, int(H * 0.72), context, self.font,
+                                        (255, 136, 0) if is_rz else (240, 216, 0), SCORE_OUTLINE)
+
+        # Score positions come first so a logo can move above a score in its end zone.
+        logo_size = min(int(END_ZONE_W * 0.85), int(H * 0.65))
+        home_logo_cx = int(END_ZONE_W / 2)
+        away_logo_cx = W - int(END_ZONE_W / 2)
+        bbox = d.textbbox((0, 0), '00', font=self.big_font)
+        score_h = max(11, bbox[3] - bbox[1])
+        # Keep the taller glyphs off the bottom edge of the panel.
+        score_y = min(int(H * 0.82), H - (score_h // 2) - 1)
+        home_score_cx = int(END_ZONE_W + PLAY_W * 0.05)
+        away_score_cx = int(W - END_ZONE_W - PLAY_W * 0.05)
+        if is_rz:
+            if poss_ab == home_ab:
+                away_score_cx = away_logo_cx
+            elif poss_ab == away_ab:
+                home_score_cx = home_logo_cx
+        centered_top = (H - logo_size) // 2
+        raised_top = max(0, score_y - (score_h // 2) - logo_size - 1)
+        home_logo = self.get_logo(game.get('home_logo'), (24, 24), game.get('home_logo_rendering'))
+        away_logo = self.get_logo(game.get('away_logo'), (24, 24), game.get('away_logo_rendering'))
+        self._paste_team_mark(img, home_logo, (home_logo_cx - logo_size // 2, raised_top if home_score_cx == home_logo_cx else centered_top),
+                              home_ab, logo_size, home_ez)
+        self._paste_team_mark(img, away_logo, (away_logo_cx - logo_size // 2, raised_top if away_score_cx == away_logo_cx else centered_top),
+                              away_ab, logo_size, away_ez)
+        for score_cx, score in ((home_score_cx, str(game.get('home_score', ''))), (away_score_cx, str(game.get('away_score', '')))):
+            if score:
+                self.draw_outlined_text(d, score_cx, score_y, score, self.big_font, WHITE, (0, 0, 0, 235))
+
+        # First-down line, line of scrimmage, and ball.
+        if 0 <= los <= 100:
+            los_px = END_ZONE_W + los * PLAY_W / 100
+            first_down = min(100, los + ytg) if drive_to_right else max(0, los - ytg)
+            first_down_px = END_ZONE_W + first_down * PLAY_W / 100
+            d.line([(first_down_px, 0), (first_down_px, H)], fill=(240, 216, 0, 245), width=2)
+            d.line([(los_px, 0), (los_px, H)], fill=(30, 60, 180, 240), width=2)
+            brx = max(4, int(H * 0.13))
+            bry = max(2, int(H * 0.08))
+            by = H // 2
+            d.ellipse([los_px - brx, by - bry, los_px + brx, by + bry], fill=(139, 69, 19), outline=(61, 26, 6))
+            d.line([(los_px - int(brx * 0.7), by), (los_px + int(brx * 0.7), by)], fill=(255, 255, 255, 165))
+        return img
+
+    # ── Soccer ───────────────────────────────────────────────────────────────
+
+    def _draw_soccer(self, game):
+        W, H = PANEL_W, PANEL_H
+        sit = game.get('situation', {}) or {}
+        home_clr = self.get_team_color(game, 'home')
+        away_clr = self.get_team_color(game, 'away')
+        img = self._field_templates.render(('soccer', W, H), _soccer_field)
+        d = ImageDraw.Draw(img, 'RGBA')
+        d.rectangle([0, 0, 3, H], fill=home_clr)
+        d.rectangle([W - 4, 0, W, H], fill=away_clr)
+        home_score_x, away_score_x = self._draw_marks_and_scores(img, d, game, 6, home_clr, away_clr)
+
+        status_text = str(game.get('status', '')).strip()
+        if status_text:
+            self.draw_outlined_text(d, W // 2, H // 2, status_text[:12], self.big_font,
+                                    STATUS_TEXT, (0, 0, 0, 220), anchor='mm')
+
+        # Goals and red cards sit in the lane between each score and the centre time.
+        # After the side swap, is_home=False is the left lane.
+        goals = sit.get('goal_events') or []
+        cards = sit.get('red_cards') or []
+        lanes = {
+            home: [(event, False) for event in goals if bool(event.get('is_home')) == home]
+            + [(event, True) for event in cards if bool(event.get('is_home')) == home]
+            for home in (False, True)
+        }
+        home_score_w = d.textlength(str(game.get('home_score', '')) or '0', font=self.clock_giant)
+        away_score_w = d.textlength(str(game.get('away_score', '')) or '0', font=self.clock_giant)
+        time_w = d.textlength(status_text[:12], font=self.big_font) if status_text else 0
+        self._draw_event_lane(d, lanes[False], int(home_score_x + home_score_w), int(W // 2 - time_w / 2) - 4)
+        self._draw_event_lane(d, lanes[True], int(W // 2 + time_w / 2) + 4, int(away_score_x - away_score_w))
+
+        if sit.get('shootout'):
+            shootout = sit.get('shootout', {})
+            self._draw_soccer_so_col(d, AWAY_MARK_X + MARK_SIZE + 2, 8, shootout.get('home', []))
+            self._draw_soccer_so_col(d, 6 - 5, 8, shootout.get('away', []))
+        return img
+
+    def _draw_event_lane(self, d, lane, gap_left, gap_right):
+        """Center goal and card labels in one lane, in two columns when it is full."""
+        if not lane:
+            return
+        gap_w = gap_right - gap_left
+        if len(lane) <= 3:
+            columns = [(lane, gap_left + gap_w // 2)]
+            line_h, name_len = 9, 8
+        else:
+            # Earlier events go in the left column.
+            half = (len(lane) + 1) // 2
+            columns = [(lane[:half], gap_left + gap_w * 30 // 100), (lane[half:], gap_left + gap_w * 68 // 100)]
+            line_h, name_len = 8, 6
+        card_w, card_gap = 3, 4
+        bright, dim = (235, 235, 235), (150, 150, 150)
+        for column, cx in columns:
+            y0 = PANEL_H // 2 - (len(column) - 1) * line_h // 2
+            for i, (event, is_card) in enumerate(column):
+                y = y0 + i * line_h
+                own_goal = not is_card and event.get('own_goal')
+                label = f"{str(event.get('player') or '')[:name_len]} {str(event.get('time') or '')}{'(og)' if own_goal else ''}".strip()
+                if not label:
+                    continue
+                if is_card:
+                    total_w = card_w + card_gap + d.textlength(label, font=self.micro)
+                    rx = int(cx - total_w / 2)
+                    d.rectangle([rx, y - 4, rx + card_w, y + 2], fill=(220, 30, 30))
+                    self.draw_outlined_text(d, rx + card_w + card_gap, y, label, self.micro, bright, SCORE_OUTLINE, anchor='lm')
+                else:
+                    self.draw_outlined_text(d, cx, y, label, self.micro, dim if own_goal else bright, SCORE_OUTLINE, anchor='mm')
 
     def _draw_soccer_so_col(self, draw, x, y, results):
         n_show = 5
@@ -33,6 +468,214 @@ class SportsMixin:
                 draw.rectangle((x, dy, x+2, dy+2), fill=(220, 55, 55))
             else:
                 draw.rectangle((x, dy, x+2, dy+2), fill=(80, 80, 80))
+
+    # ── Baseball ─────────────────────────────────────────────────────────────
+
+    def _draw_baseball(self, game):
+        W, H = PANEL_W, PANEL_H
+        sit = game.get('situation', {}) or {}
+        home_clr = self.get_team_color(game, 'home')
+        away_clr = self.get_team_color(game, 'away')
+        bases = tuple(bool(sit.get(name, False)) for name in ('onFirst', 'onSecond', 'onThird'))
+
+        def baseball_field():
+            image = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+            self._draw_baseball_diamond(ImageDraw.Draw(image, 'RGBA'), W, H, sit)
+            return image
+        img = self._field_templates.render(('baseball', W, H, bases), baseball_field)
+        d = ImageDraw.Draw(img, 'RGBA')
+        self._draw_side_scrims(img, W, H)
+
+        # Situation fields keep source-team ownership. The side swap means the
+        # source away team owns the left challenge strip.
+        self._draw_challenge_bar(d, 0, 3, sit.get('away_challenges'), sit.get('away_challenges_used'),
+                                 self._resolve_challenge_strip_color(game, 'home', home_clr))
+        self._draw_challenge_bar(d, W - 4, W - 1, sit.get('home_challenges'), sit.get('home_challenges_used'),
+                                 self._resolve_challenge_strip_color(game, 'away', away_clr))
+        home_score_x, away_score_x = self._draw_marks_and_scores(img, d, game, 6, home_clr, away_clr)
+
+        inning = game.get('baseball_inning') or {}
+        if inning.get('phase') in {'paused', 'inactive'}:
+            label = str(game.get('status') or '')
+            x0, y0, x1, y1 = d.textbbox((W // 2, H // 2), label, font=self.tiny_small, anchor='mm')
+            d.rectangle((x0 - 3, y0 - 2, x1 + 3, y1 + 2), fill=(0, 0, 0, 235))
+            self.draw_outlined_text(d, W // 2, H // 2, label, self.tiny_small, STATUS_TEXT, (0, 0, 0, 220))
+            return img
+
+        # The inning and count sit close to the diamond so the side lanes can hold
+        # batter and pitcher details. The batting team's side holds the inning.
+        is_top = inning.get('half') == 'top'
+        is_bottom = inning.get('half') == 'bottom'
+        left_x, right_x = W // 2 - 40, W // 2 + 40
+        inning_cx, count_cx = (right_x, left_x) if is_bottom else (left_x, right_x)
+        ordinal = _ordinal(str(inning['number'])) if inning.get('number') else ''
+        self._draw_inning_indicator(d, inning_cx, H // 2, is_top, is_bottom, ordinal)
+        if inning.get('phase') == 'break':
+            return img
+        count_rows = (('B', str(sit.get('balls', 0)), (74, 175, 255)),
+                      ('S', str(sit.get('strikes', 0)), (255, 136, 0)),
+                      ('O', str(sit.get('outs', 0)), (224, 48, 48)))
+        for row, (label, value, color) in enumerate(count_rows):
+            draw_tiny_text(d, count_cx - 8, 4 + row * 8, label, (180, 180, 180))
+            draw_tiny_text(d, count_cx, 4 + row * 8, value, color)
+
+        if is_top:
+            home_score_w = d.textlength(str(game.get('home_score', '')), font=self.clock_giant)
+            self.draw_bat(d, int(home_score_x + home_score_w + 8), 7)
+        elif is_bottom:
+            away_score_w = d.textlength(str(game.get('away_score', '')), font=self.clock_giant)
+            self.draw_bat(d, int(away_score_x - away_score_w - 8), 7)
+
+        # Use the explicit batting ownership from the backend.
+        home_ab = str(game.get('home_abbr', '')).upper()
+        away_ab = str(game.get('away_abbr', '')).upper()
+        active_ab = str(sit.get('activeTeam', '')).upper()
+        home_batting = bool(home_ab and active_ab and active_ab == home_ab)
+        away_batting = bool(away_ab and active_ab and active_ab == away_ab)
+        batter, pitcher = _batter_lines(sit), _pitcher_lines(sit)
+        left_lines, right_lines = (batter, pitcher) if home_batting and not away_batting else (pitcher, batter)
+        self._draw_info_block(d, W // 2 - 92, left_lines)
+        self._draw_info_block(d, W // 2 + 92, right_lines)
+        return img
+
+    def _draw_challenge_bar(self, d, x0, x1, remaining, used, color):
+        """Draw a full-height team strip and carve one open slot for each lost challenge."""
+        d.rectangle([x0, 0, x1, PANEL_H - 1], fill=color)
+        used_count = _int_or_none(used)
+        remaining_count = _int_or_none(remaining)
+        if used_count is None and remaining_count is not None:
+            used_count = max(0, 2 - max(0, remaining_count))
+        if used_count is None:
+            return
+        lost = min(2, max(0, used_count))
+        box_w, box_h = 2, 14
+        box_x0 = x0 + ((x1 - x0 + 1) - box_w) // 2
+        box_x1 = box_x0 + box_w - 1
+        # Lost slots are fixed at the top and the bottom, never centered.
+        if lost >= 1:
+            d.rectangle([box_x0, 1, box_x1, box_h], fill=(0, 0, 0, 0))
+        if lost >= 2:
+            d.rectangle([box_x0, PANEL_H - 2 - box_h + 1, box_x1, PANEL_H - 2], fill=(0, 0, 0, 0))
+
+    def _draw_inning_indicator(self, d, cx, cy, is_top, is_bottom, ordinal):
+        """Draw the half-inning arrow, the bold inning number, and its suffix inline."""
+        if not ordinal:
+            return
+        number = ''.join(c for c in ordinal if c.isdigit())
+        suffix = ''.join(c for c in ordinal if not c.isdigit())
+        number_w = d.textlength(number, font=self.big_font)
+        suffix_w = d.textlength(suffix, font=self.micro)
+        arrow_w, gap, half_h = 8, 2, 4
+        x = int(cx - (arrow_w + gap + number_w + suffix_w) / 2)
+        mid_x = x + arrow_w // 2
+        if is_top:
+            d.polygon([(x - 1, cy + half_h + 1), (x + arrow_w + 1, cy + half_h + 1), (mid_x, cy - half_h - 1)], fill=(0, 0, 0))
+            d.polygon([(x, cy + half_h), (x + arrow_w, cy + half_h), (mid_x, cy - half_h)], fill=WHITE)
+        elif is_bottom:
+            d.polygon([(x - 1, cy - half_h - 1), (x + arrow_w + 1, cy - half_h - 1), (mid_x, cy + half_h + 1)], fill=(0, 0, 0))
+            d.polygon([(x, cy - half_h), (x + arrow_w, cy - half_h), (mid_x, cy + half_h)], fill=WHITE)
+        else:
+            d.rectangle([x, cy - 1, x + arrow_w, cy + 1], fill=(180, 180, 180))
+        x += arrow_w + gap
+        self.draw_outlined_text(d, x + int(number_w / 2), cy, number, self.big_font, WHITE, SCORE_OUTLINE)
+        x += int(number_w)
+        d.text((x, cy), suffix, font=self.micro, fill=(190, 190, 190), anchor='lm')
+
+    def _fit_player_name(self, d, raw, max_width=64):
+        """Use the small font for long names, then trim only as a last resort."""
+        text = _short_last_name(raw)
+        if not text:
+            return '', self.tiny_small
+        font = self.tiny_small
+        if d.textlength(text, font=font) > max_width:
+            font = self.micro
+        while len(text) > 1 and d.textlength(text, font=font) > max_width:
+            text = text[:-1].rstrip()
+        return text, font
+
+    def _draw_info_block(self, d, cx, lines):
+        """Draw one batter or pitcher block. The first line holds the player name."""
+        for index, line in enumerate(lines):
+            if index == 0:
+                text, font = self._fit_player_name(d, line)
+            else:
+                text, font = ('' if line is None else str(line).strip()[:15]), self.tiny_small
+            if text:
+                self.draw_outlined_text(d, int(cx), 7 + index * 9, text, font, WHITE, (0, 0, 0, 220), anchor='mm')
+
+    # ── Hockey and basketball ────────────────────────────────────────────────
+
+    def _draw_rink_or_court(self, game, sport, page_tick):
+        W, H = PANEL_W, PANEL_H
+        sit = game.get('situation', {}) or {}
+        is_nhl = 'hockey' in sport or 'nhl' in sport
+        home_clr = self.get_team_color(game, 'home')
+        away_clr = self.get_team_color(game, 'away')
+        img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img, "RGBA")
+        if is_nhl:
+            self._draw_hockey_rink(d, W, H)
+        else:
+            self._draw_basketball_court(d, W, H)
+        _draw_edge_fade(img)
+
+        period = self.shorten_status(game.get('status', ''), sport)
+        if period:
+            self.draw_outlined_text(d, W // 2, H // 2, period, self.big_font, WHITE, SCORE_OUTLINE)
+        d.rectangle([0, 0, 2, H], fill=home_clr)
+        d.rectangle([W - 3, 0, W, H], fill=away_clr)
+        home_score_x, away_score_x = self._draw_marks_and_scores(img, d, game, 8, home_clr, away_clr)
+        home_score_w = d.textlength(str(game.get('home_score', '')), font=self.clock_giant)
+        away_score_w = d.textlength(str(game.get('away_score', '')), font=self.clock_giant)
+
+        home_badge, away_badge = self._side_badges(game, sport, sit, is_nhl)
+        if home_badge:
+            self.draw_outlined_text(d, int(home_score_x + home_score_w + 9), 1, home_badge, self.tiny,
+                                    self._badge_color(sport, home_badge), (0, 0, 0, 220), anchor='mt')
+        if away_badge:
+            self.draw_outlined_text(d, int(away_score_x - away_score_w - 9), 1, away_badge, self.tiny,
+                                    self._badge_color(sport, away_badge), (0, 0, 0, 220), anchor='mt')
+
+        if is_nhl:
+            shootout = sit.get('shootout')
+            if shootout:
+                draw_hockey_so_column(d, int(home_score_x + home_score_w + 7), 6, shootout, 'away')
+                draw_hockey_so_column(d, int(away_score_x - away_score_w - 12), 6, shootout, 'home')
+                round_label = str(shootout.get('roundLabel') or '')
+                draw_tiny_text(d, W // 2 - len(round_label) * 5 // 2, 1, round_label, (20, 25, 35))
+            else:
+                self._draw_hockey_context(d, sit, page_tick)
+        return img
+
+    @staticmethod
+    def _side_badges(game, sport, sit, is_nhl):
+        """Return tournament seeds, or the hockey empty-net or power-play labels."""
+        home_badge = away_badge = ''
+        home_ab = str(game.get('home_abbr', '')).upper()
+        away_ab = str(game.get('away_abbr', '')).upper()
+        if sport == 'march_madness':
+            home_badge = str(game.get('home_seed') or '')
+            away_badge = str(game.get('away_seed') or '')
+        if is_nhl and sit.get('emptyNet'):
+            side, label = str(sit.get('emptyNetSide') or '').upper(), 'EN'
+        elif is_nhl and sit.get('powerPlay'):
+            side = str(sit.get('powerPlayTeam') or '').upper()
+            label = None
+        else:
+            return home_badge, away_badge
+        if side == home_ab:
+            home_badge = label if label is not None else str(sit.get('manpower', {}).get('powerPlayLabel') or '')
+        elif side == away_ab:
+            away_badge = label if label is not None else str(sit.get('manpower', {}).get('powerPlayLabel') or '')
+        return home_badge, away_badge
+
+    @staticmethod
+    def _badge_color(sport, badge):
+        if sport == 'march_madness':
+            return TOURNAMENT_SEED
+        return EMPTY_NET_TEXT if badge == 'EN' else POWER_PLAY_TEXT
+
+    # ── Backgrounds and overlays ─────────────────────────────────────────────
 
     def _draw_side_scrims(self, img, W, H, solid=SIDE_SCRIM_SOLID,
                           fade=SIDE_SCRIM_FADE, peak=252):
@@ -59,804 +702,6 @@ class SportsMixin:
             sd.line([(x, 0), (x, H)], fill=(0, 0, 0, a))
             sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
         img.alpha_composite(scrim)
-
-    def draw_sport_full_bleed(self, game, page_tick=0):
-        W = PANEL_W; H = PANEL_H
-        img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
-        d = ImageDraw.Draw(img, "RGBA")
-
-        # Display convention: away on left, home on right.
-        _g = {}
-        for k, v in game.items():
-            if k.startswith('home_'):
-                _g['away_' + k[5:]] = v
-            elif k.startswith('away_'):
-                _g['home_' + k[5:]] = v
-            else:
-                _g[k] = v
-        game = _g
-
-        sport    = str(game.get('sport', '')).lower()
-        is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
-        is_nhl   = 'hockey' in sport or 'nhl' in sport
-        is_mlb   = 'baseball' in sport or 'mlb' in sport
-        is_soc   = 'soccer' in sport
-        sit      = game.get('situation', {}) or {}
-        home_clr = self.get_team_color(game, 'home')
-        away_clr = self.get_team_color(game, 'away')
-        h_score  = str(game.get('home_score', ''))
-        a_score  = str(game.get('away_score', ''))
-        home_ab  = str(game.get('home_abbr', '')).upper()
-        away_ab  = str(game.get('away_abbr', '')).upper()
-        active_ab = str(sit.get('activeTeam', '')).upper()
-
-        # ── FOOTBALL: full field matching HTML footballField() ───────────────
-        if is_nfl:
-            poss_ab = str(sit.get('possession', '')).upper()
-            def _parse_hex_color(value):
-                try:
-                    c = str(value or '').strip().lstrip('#')
-                    if len(c) == 6:
-                        return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
-                except Exception:
-                    pass
-                return None
-
-            # ESPN supplies primary and alternate colors for the FBS and FCS teams.
-            # Keep a distinct primary hue, but use a colorful alternate instead of
-            # inventing a red or blue fallback for an effectively gray primary.
-            # The logo renderer then
-            # picks a contrasting black or white keyline against that fill.
-            def _resolve_endzone_color(side, fallback):
-                primary = _parse_hex_color(game.get(f"{side}_color")) or fallback
-                alternate = _parse_hex_color(game.get(f"{side}_alt_color"))
-                if (
-                    max(primary) - min(primary) < 25
-                    and alternate
-                    and max(alternate) - min(alternate) >= 25
-                ):
-                    return alternate
-                return primary
-
-            home_ez = _resolve_endzone_color("home", home_clr)
-            away_ez = _resolve_endzone_color("away", away_clr)
-
-            EZ_RATIO = 30 / 360
-            ezW    = W * EZ_RATIO          # ~32 px
-            playW  = W * (300 / 360)       # ~320 px
-            hT     = H * (70.75 / 160)     # upper hash row
-            hB     = H * (89.25 / 160)     # lower hash row
-
-            def football_field():
-                field = Image.new("RGBA", (W, H), (0, 0, 0, 255))
-                draw = ImageDraw.Draw(field, "RGBA")
-                for i in range(10):
-                    bx = ezW + i * playW / 10
-                    draw.rectangle([bx, 0, bx + playW / 10, H],
-                                   fill=(22, 52, 18) if i % 2 == 0 else (27, 64, 24))
-                draw.rectangle([0, 0, ezW, H], fill=home_ez)
-                draw.rectangle([W - ezW, 0, W, H], fill=away_ez)
-                draw.line([(ezW, 0), (ezW, H)], fill=(255, 255, 255, 230))
-                draw.line([(W - ezW, 0), (W - ezW, H)], fill=(255, 255, 255, 230))
-                for i in range(11):
-                    lx = ezW + i * playW / 10
-                    opacity = 115 if i == 5 else 64
-                    draw.line([(lx, 0), (lx, H)], fill=(255, 255, 255, opacity))
-                for y in range(1, 100):
-                    hx = ezW + y / 100 * playW
-                    is_five = y % 5 == 0
-                    length = H * 0.042 if is_five else H * 0.022
-                    opacity = 128 if is_five else 66
-                    draw.line([(hx, hT - length), (hx, hT + length)], fill=(255, 255, 255, opacity))
-                    draw.line([(hx, hB - length), (hx, hB + length)], fill=(255, 255, 255, opacity))
-                return field
-            img = self._field_templates.render(('football', W, H, home_ez, away_ez), football_field)
-            d = ImageDraw.Draw(img, 'RGBA')
-
-            # Mark possession above the team badge in its end zone.
-            active_team = str(sit.get('activeTeam', '')).strip().upper()
-            possession_x = None
-            if active_team and active_team == home_ab:
-                possession_x = int(ezW / 2)
-            elif active_team and active_team == away_ab:
-                possession_x = W - int(ezW / 2)
-            if possession_x is not None:
-                d.polygon([(possession_x - 5, 1), (possession_x + 5, 1),
-                           (possession_x, 5)], fill=(255, 235, 80),
-                          outline=(0, 0, 0, 255))
-
-            # 5 · Line of scrimmage and yards-to-go.
-            #     `los` is this card's own axis: 0 = left goal line, 100 = right.
-            #     Note the home_/away_ key swap at the top of this method — home_ab
-            #     here is the *visiting* team (drawn left), away_ab is the host.
-            #     ESPN's situation.yardLine is measured from the host's goal line
-            #     ("CAR 33" with ARI at home is 67), which sits at the right edge,
-            #     so the ESPN value is mirrored onto this axis exactly once.
-            dd_text = sit.get('downDist', '') or sit.get('downDistFull', '')
-            spot_text = sit.get('downDistFull', '') or sit.get('ballOn', '') or dd_text
-
-            los, ytg = -1, 10
-            espn_yl = sit.get('yardLine')
-            if espn_yl is not None:
-                los = max(0, min(100, 100 - int(espn_yl)))
-            elif ' at ' in spot_text:
-                # Fallback for payloads without the numeric field: "... at CAR 33".
-                after = spot_text.split(' at ', 1)[1].strip().split()
-                if len(after) == 1 and after[0] == '50':
-                    los = 50
-                elif len(after) >= 2:
-                    team = after[0].upper()
-                    try:
-                        yard = int(after[1])
-                        los = yard if team == home_ab else (100 - yard if team == away_ab else 50)
-                    except ValueError:
-                        pass
-
-            if sit.get('yardsToGo') is not None:
-                ytg = max(1, int(sit['yardsToGo']))
-            elif '&' in dd_text:
-                ytg_raw = dd_text.split('&', 1)[1].strip().split()[0].lower().rstrip('.,')
-                try: ytg = max(1, int(ytg_raw))
-                except ValueError: ytg = 10
-
-            # Each team attacks the opposite end zone, so the visiting team (home_ab
-            # after the swap, drawn on the left) drives to the right.
-            drive_to_right = poss_ab != away_ab
-
-            is_goal_to_go = bool(sit.get('isGoalToGo')) or 'goal' in dd_text.lower()
-            if is_goal_to_go and los >= 0:
-                # First down is the goal line itself, however short the distance reads.
-                ytg = max(1, (100 - los) if drive_to_right else los)
-
-            # 6 · Red zone tint
-            is_rz = sit.get('isRedZone', False)
-            if is_rz:
-                rz_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-                rz_d = ImageDraw.Draw(rz_overlay, "RGBA")
-                if drive_to_right:
-                    rz_d.rectangle([ezW + int(0.8 * playW), 0, W - ezW, H], fill=(220, 0, 0, 128))
-                    d.line([(ezW + 0.8 * playW, 0), (ezW + 0.8 * playW, H)], fill=(255, 34, 34, 200), width=2)
-                else:
-                    rz_d.rectangle([ezW, 0, ezW + int(0.2 * playW), H], fill=(220, 0, 0, 128))
-                    d.line([(ezW + 0.2 * playW, 0), (ezW + 0.2 * playW, H)], fill=(255, 34, 34, 200), width=2)
-                img.alpha_composite(rz_overlay)
-
-            # 7 · Center text overlay (period + context, matching HTML getBgText)
-            prd     = self.shorten_status(game.get('status', ''), sport)
-            # The field card has room for the spot ("1st & 10 at ARI 42"); the
-            # compact ticker row shows only the short "1st & 10".
-            ctx     = sit.get('downDistFull', '') or dd_text
-            if not ctx and dd_text and sit.get('ballOn'):
-                ctx = f"{dd_text} at {sit['ballOn']}"
-            ctx_clr = (255, 136, 0) if is_rz else (240, 216, 0)
-            cx_mid  = W // 2
-            if prd or ctx:
-                y_prd = int(H * 0.32) if ctx else int(H * 0.5)
-                self.draw_outlined_text(d, cx_mid, y_prd, prd, self.big_font, (255, 255, 255), (0, 0, 0, 200))
-                if ctx:
-                    self.draw_outlined_text(d, cx_mid, int(H * 0.72), ctx, self.font, ctx_clr, (0, 0, 0, 200))
-
-            # 8 · Logos in end zones
-            LOGO_SZ  = min(int(ezW * 0.85), int(H * 0.65))
-            logo_top_center = (H - LOGO_SZ) // 2   # vertically centred
-            h_logo_cx = int(ezW / 2)
-            a_logo_cx = W - int(ezW / 2)
-
-            # 9 · Score badges — determine positions first so logos can dodge them
-            # Real 14pt font instead of the 5×6 bitmap — the score is the thing
-            # you read from across the room, so it gets the height to earn that.
-            score_font = self.big_font
-            score_h    = 11
-            try:
-                _bb = d.textbbox((0, 0), '00', font=score_font)
-                score_h = max(score_h, _bb[3] - _bb[1])
-            except Exception:
-                pass
-            # Keep the taller glyphs off the bottom edge of the panel.
-            score_y   = min(int(H * 0.82), H - (score_h // 2) - 1)
-            slot_cx   = int(ezW + playW * 0.05)
-            aslot_cx  = int(W - ezW - playW * 0.05)
-            h_sc_cx   = slot_cx
-            a_sc_cx   = aslot_cx
-            if is_rz:
-                if poss_ab == home_ab:
-                    a_sc_cx = a_logo_cx   # away score moves into away endzone
-                elif poss_ab == away_ab:
-                    h_sc_cx = h_logo_cx   # home score moves into home endzone
-
-            # Push logo up when its score badge sits below it in the endzone
-            score_box_top = score_y - (score_h // 2)     # top edge of score badge
-            logo_top_up   = max(0, score_box_top - LOGO_SZ - 1)  # just above the badge
-            h_logo_top = logo_top_up if h_sc_cx == h_logo_cx else logo_top_center
-            a_logo_top = logo_top_up if a_sc_cx == a_logo_cx else logo_top_center
-
-            hl = self.get_logo(game.get('home_logo'), (24, 24), game.get('home_logo_rendering'))
-            al = self.get_logo(game.get('away_logo'), (24, 24), game.get('away_logo_rendering'))
-            self._paste_team_mark(img, hl, (h_logo_cx - LOGO_SZ // 2, h_logo_top), home_ab, LOGO_SZ, home_ez)
-            self._paste_team_mark(img, al, (a_logo_cx - LOGO_SZ // 2, a_logo_top), away_ab, LOGO_SZ, away_ez)
-
-            for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
-                if not sc: continue
-                self.draw_outlined_text(d, scx, score_y, str(sc), score_font,
-                                        (255, 255, 255), (0, 0, 0, 235))
-
-            # 10 · First-down line + LOS line + football
-            if 0 <= los <= 100:
-                los_px = ezW + los * playW / 100
-                fd_pct = min(100, los + ytg) if drive_to_right else max(0, los - ytg)
-                fd_px  = ezW + fd_pct * playW / 100
-                d.line([(fd_px, 0), (fd_px, H)],   fill=(240, 216, 0, 245), width=2)
-                d.line([(los_px, 0), (los_px, H)],  fill=(30, 60, 180, 240), width=2)
-                brx = max(4, int(H * 0.13))
-                bry = max(2, int(H * 0.08))
-                by  = H // 2
-                d.ellipse([los_px - brx, by - bry, los_px + brx, by + bry], fill=(139, 69, 19), outline=(61, 26, 6))
-                d.line([(los_px - int(brx * 0.7), by), (los_px + int(brx * 0.7), by)], fill=(255, 255, 255, 165))
-
-            return img
-
-        # ── SOCCER: full-width pitch layout ─────────────────────────────────
-        if is_soc:
-            home_pitch = self.get_team_color(game, 'home')
-            away_pitch = self.get_team_color(game, 'away')
-
-            def soccer_field():
-                image = Image.new("RGBA", (W, H), (0, 0, 0, 255))
-                draw = ImageDraw.Draw(image, 'RGBA')
-                draw.rectangle([0, 0, W, H], fill=(18, 96, 36))
-                for i in range(8):
-                    x0, x1 = int(i * W / 8), int((i + 1) * W / 8)
-                    draw.rectangle([x0, 0, x1, H], fill=(22, 104, 40) if i % 2 == 0 else (18, 96, 36))
-                draw.rectangle([1, 1, W - 2, H - 2], outline=(245, 245, 245, 210), width=1)
-                draw.line([(W // 2, 0), (W // 2, H)], fill=(245, 245, 245, 180), width=1)
-                draw.ellipse([W // 2 - 13, H // 2 - 13, W // 2 + 13, H // 2 + 13], outline=(245, 245, 245, 180), width=1)
-                draw.rectangle([1, 8, 10, H - 8], fill=(245, 245, 245, 28))
-                draw.rectangle([W - 11, 8, W - 2, H - 8], fill=(245, 245, 245, 28))
-                scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-                sd = ImageDraw.Draw(scrim)
-                solid, fade = 45, 80
-                for x in range(solid + fade):
-                    alpha = 250 if x < solid else max(0, int(250 * (solid + fade - x) / fade))
-                    sd.line([(x, 0), (x, H)], fill=(0, 0, 0, alpha))
-                    sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, alpha))
-                image.alpha_composite(scrim)
-                return image
-            img = self._field_templates.render(('soccer', W, H), soccer_field)
-            d = ImageDraw.Draw(img, 'RGBA')
-
-            # Team-colored side bars and score placements.
-            d.rectangle([0, 0, 3, H], fill=home_pitch)
-            d.rectangle([W - 4, 0, W, H], fill=away_pitch)
-
-            LOGO_SZ = 24
-            logo_y = (H - LOGO_SZ) // 2
-            h_logo_x = 6
-            a_logo_x = W - 3 - LOGO_SZ - 5
-            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ), game.get('home_logo_rendering'))
-            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ), game.get('away_logo_rendering'))
-            self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_pitch)
-            self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_pitch)
-
-            h_sc_x = h_logo_x + LOGO_SZ + 4
-            a_sc_x = a_logo_x - 4
-            self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
-                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
-            self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
-                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
-
-            # Status / match time — large and vertically centred, matching NHL/NBA
-            status_text = str(game.get('status', '')).strip()
-            if status_text:
-                self.draw_outlined_text(d, W // 2, H // 2, status_text[:12], self.big_font,
-                                        (255, 240, 150), (0, 0, 0, 220), anchor='mm')
-
-            # Goal scorers and red cards sit in the lane between each score and the centre time.
-            # After the home/away display swap: is_home=False → visual left; is_home=True → visual right.
-            raw_goals = sit.get('goal_events') or []
-            raw_cards = sit.get('red_cards') or []
-            left_events  = [(e, False) for e in raw_goals if not e.get('is_home')] + \
-                           [(e, True)  for e in raw_cards  if not e.get('is_home')]
-            right_events = [(e, False) for e in raw_goals if e.get('is_home')] + \
-                           [(e, True)  for e in raw_cards  if e.get('is_home')]
-
-            # Measure how wide each score and the time text actually are so events
-            # land in the true gap — not overlapping either element.
-            h_sc_w    = d.textlength(str(h_score or '0'), font=self.clock_giant)
-            a_sc_w    = d.textlength(str(a_score or '0'), font=self.clock_giant)
-            time_w    = d.textlength(status_text[:12], font=self.big_font) if status_text else 0
-            left_gap_end   = int(W // 2 - time_w / 2) - 4   # left edge of time text minus margin
-            right_gap_start = int(W // 2 + time_w / 2) + 4  # right edge of time text plus margin
-
-            CARD_W, CARD_GAP = 3, 4
-            WHITE = (235, 235, 235)
-            DIM   = (150, 150, 150)
-
-            left_gap_start  = int(h_sc_x + h_sc_w)
-            right_gap_end   = int(a_sc_x - a_sc_w)
-
-            for lane, gap_l, gap_r in [
-                (left_events,  left_gap_start, left_gap_end),
-                (right_events, right_gap_start, right_gap_end),
-            ]:
-                if not lane:
-                    continue
-                n = len(lane)
-                gap_w = gap_r - gap_l
-
-                if n <= 3:
-                    # Single centred column
-                    subcols = [(lane, gap_l + gap_w // 2)]
-                    LINE_H, name_len = 9, 8
-                else:
-                    # Two sub-columns: earlier goals on left, later on right
-                    half = (n + 1) // 2
-                    subcols = [
-                        (lane[:half], gap_l + gap_w * 30 // 100),
-                        (lane[half:], gap_l + gap_w * 68 // 100),
-                    ]
-                    LINE_H, name_len = 8, 6
-
-                for subcol, cx in subcols:
-                    nc = len(subcol)
-                    y0 = H // 2 - (nc - 1) * LINE_H // 2
-                    for i, (ev, is_card) in enumerate(subcol):
-                        y = y0 + i * LINE_H
-                        player = str(ev.get('player') or '')[:name_len]
-                        t = str(ev.get('time') or '')
-                        is_og = not is_card and ev.get('own_goal')
-                        label = f"{player} {t}{'(og)' if is_og else ''}".strip()
-                        if not label:
-                            continue
-                        col = DIM if is_og else WHITE
-                        if is_card:
-                            tw = d.textlength(label, font=self.micro)
-                            total_w = CARD_W + CARD_GAP + tw
-                            rx = int(cx - total_w / 2)
-                            d.rectangle([rx, y - 4, rx + CARD_W, y + 2], fill=(220, 30, 30))
-                            self.draw_outlined_text(d, rx + CARD_W + CARD_GAP, y, label,
-                                                    self.micro, WHITE, (0, 0, 0, 200), anchor='lm')
-                        else:
-                            self.draw_outlined_text(d, cx, y, label, self.micro,
-                                                    col, (0, 0, 0, 200), anchor='mm')
-
-            if sit.get('shootout'):
-                so_a = sit.get('shootout', {}).get('away', [])
-                so_h = sit.get('shootout', {}).get('home', [])
-                self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_h)
-                self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_a)
-
-            return img
-
-        # ── NON-FOOTBALL: sport background + side scrims ────────────────────
-        if is_nhl:
-            self._draw_hockey_rink(d, W, H)
-        elif is_mlb:
-            bases = tuple(bool(sit.get(name, False)) for name in ('onFirst', 'onSecond', 'onThird'))
-            def baseball_field():
-                image = Image.new("RGBA", (W, H), (0, 0, 0, 255))
-                self._draw_baseball_diamond(ImageDraw.Draw(image, 'RGBA'), W, H, sit)
-                return image
-            img = self._field_templates.render(('baseball', W, H, bases), baseball_field)
-            d = ImageDraw.Draw(img, 'RGBA')
-        else:
-            self._draw_basketball_court(d, W, H)
-
-        # ── MLB: special full-width layout matching HTML L1 getBgText() ──────
-        if is_mlb:
-            inning = game.get('baseball_inning') or {}
-            is_top_inn = inning.get('half') == 'top'
-            is_bot_inn = inning.get('half') == 'bottom'
-            is_mid_inn = not is_top_inn and not is_bot_inn
-            inn_num = str(inning['number']) if inning.get('number') else ''
-
-            def _ordinal(n):
-                n = int(n)
-                if 10 <= n % 100 <= 19: return f"{n}th"
-                return f"{n}" + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
-
-            inn_ordinal = _ordinal(inn_num) if inn_num else ''  # e.g. "9th"
-
-            balls   = sit.get('balls',   0)
-            strikes = sit.get('strikes', 0)
-            outs    = sit.get('outs',    0)
-
-            # ── Step 1: side scrims ─────────────────────────────────────────
-            self._draw_side_scrims(img, W, H)
-            # ── Step 2: challenge indicator bars ────────────────────────────────
-            # Full-mode MLB spec:
-            # - 4px-wide full-height connected team-color strip
-            # - each lost challenge draws a 2x14 box inside that strip
-            # Situation fields keep source-team ownership. The display swaps
-            # team fields above, so the source away team owns the left strip.
-            _left_rem  = sit.get('away_challenges')
-            _left_used = sit.get('away_challenges_used')
-            _right_rem  = sit.get('home_challenges')
-            _right_used = sit.get('home_challenges_used')
-
-            home_ch_clr = self._resolve_challenge_strip_color(game, 'home', home_clr)
-            away_ch_clr = self._resolve_challenge_strip_color(game, 'away', away_clr)
-
-            def _draw_challenge_bar(bx0, bx1, rem, used, team_clr):
-                # Base: always draw a full-height connected strip.
-                d.rectangle([bx0, 0, bx1, H - 1], fill=team_clr)
-
-                def _to_int(v):
-                    try:
-                        return int(v)
-                    except Exception:
-                        return None
-
-                rem_i = _to_int(rem)
-                used_i = _to_int(used)
-                if used_i is None and rem_i is not None:
-                    used_i = max(0, 2 - max(0, rem_i))
-                if used_i is None:
-                    return
-
-                lost_count = min(2, max(0, used_i))
-                if lost_count <= 0:
-                    return
-
-                # Lost markers are fixed top/bottom slots (never centered).
-                box_w = 2
-                box_h = 14
-                box_x0 = bx0 + ((bx1 - bx0 + 1) - box_w) // 2
-                box_x1 = box_x0 + box_w - 1
-                top_y0 = 1
-                top_y1 = top_y0 + box_h - 1
-                bot_y1 = H - 2
-                bot_y0 = bot_y1 - box_h + 1
-
-                # "Open" box = carved out from the strip so it's clearly not centered/filled.
-                if lost_count >= 1:
-                    d.rectangle([box_x0, top_y0, box_x1, top_y1], fill=(0, 0, 0, 0))
-                if lost_count >= 2:
-                    d.rectangle([box_x0, bot_y0, box_x1, bot_y1], fill=(0, 0, 0, 0))
-
-            _draw_challenge_bar(0,     3,   _left_rem, _left_used, home_ch_clr)
-            _draw_challenge_bar(W - 4, W - 1, _right_rem, _right_used, away_ch_clr)
-
-            # ── Step 3: logos ────────────────────────────────────────────────
-            LOGO_SZ  = 24
-            logo_y   = (H - LOGO_SZ) // 2
-            h_logo_x = 6
-            a_logo_x = W - 3 - LOGO_SZ - 5
-            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ), game.get('home_logo_rendering'))
-            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ), game.get('away_logo_rendering'))
-            self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_clr)
-            self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_clr)
-
-            # ── Step 4: scores ───────────────────────────────────────────────
-            h_sc_x = h_logo_x + LOGO_SZ + 4
-            a_sc_x = a_logo_x - 4
-            self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
-                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
-            h_sc_w = d.textlength(h_score, font=self.clock_giant)
-            self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
-                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
-            a_sc_w = d.textlength(a_score, font=self.clock_giant)
-
-            if inning.get('phase') in {'paused', 'inactive'}:
-                label = str(game.get('status') or '')
-                x0, y0, x1, y1 = d.textbbox((W // 2, H // 2), label, font=self.tiny_small, anchor='mm')
-                d.rectangle((x0 - 3, y0 - 2, x1 + 3, y1 + 2), fill=(0, 0, 0, 235))
-                self.draw_outlined_text(d, W // 2, H // 2, label,
-                                        self.tiny_small, (255, 240, 150), (0, 0, 0, 220))
-                return img
-
-            # ── Step 5: inning text + BSO (drawn AFTER scrim so they're on top) ──
-            # Pull these closer to the center diamond so side lanes can hold
-            # batter/pitcher detail blocks.
-            center_spread = 40
-            left_txt_x  = W // 2 - center_spread
-            right_txt_x = W // 2 + center_spread
-
-            bso_rows = [
-                ('B', str(balls),   (74,  175, 255)),
-                ('S', str(strikes), (255, 136,   0)),
-                ('O', str(outs),    (224,  48,  48)),
-            ]
-
-            if not is_mid_inn:
-                inn_cx  = left_txt_x  if is_top_inn else right_txt_x
-                bso_cx  = right_txt_x if is_top_inn else left_txt_x
-            else:
-                inn_cx  = left_txt_x
-                bso_cx  = right_txt_x
-
-            def draw_inning_indicator(cx, cy, is_top, is_bot, ordinal_str):
-                """Draw inning indicator: [▲/▼ arrow] [bold number] [suffix], all inline and centered."""
-                if not ordinal_str:
-                    return
-                f_num = self.big_font   # 14pt bold
-                f_sup = self.micro      # 7pt small suffix
-
-                num_part = ''.join(c for c in ordinal_str if c.isdigit())
-                suf_part = ''.join(c for c in ordinal_str if not c.isdigit())
-
-                num_w = d.textlength(num_part, font=f_num)
-                suf_w = d.textlength(suf_part, font=f_sup)
-                arrow_w = 8
-                gap     = 2
-                total_w = arrow_w + gap + num_w + suf_w
-                x = int(cx - total_w / 2)
-
-                # Arrow — vertically centered at cy with ±5px half-height
-                ah    = 4
-                mid_x = x + arrow_w // 2
-                if is_top:
-                    d.polygon([(x-1, cy+ah+1), (x+arrow_w+1, cy+ah+1), (mid_x, cy-ah-1)], fill=(0, 0, 0))
-                    d.polygon([(x,   cy+ah),   (x+arrow_w,   cy+ah),   (mid_x, cy-ah)],   fill=(255, 255, 255))
-                elif is_bot:
-                    d.polygon([(x-1, cy-ah-1), (x+arrow_w+1, cy-ah-1), (mid_x, cy+ah+1)], fill=(0, 0, 0))
-                    d.polygon([(x,   cy-ah),   (x+arrow_w,   cy-ah),   (mid_x, cy+ah)],   fill=(255, 255, 255))
-                else:
-                    d.rectangle([x, cy-1, x+arrow_w, cy+1], fill=(180, 180, 180))
-                x += arrow_w + gap
-
-                # Number — anchor='mm' truly centers it on cy
-                nx = x + int(num_w / 2)
-                for dx in [-1, 0, 1]:
-                    for dy in [-1, 0, 1]:
-                        if dx == 0 and dy == 0: continue
-                        d.text((nx+dx, cy+dy), num_part, font=f_num, fill=(0, 0, 0, 200), anchor='mm')
-                d.text((nx, cy), num_part, font=f_num, fill=(255, 255, 255), anchor='mm')
-                x += int(num_w)
-
-                # Suffix — inline with inning number (no superscript raise)
-                d.text((x, cy), suf_part, font=f_sup, fill=(190, 190, 190), anchor='lm')
-
-            draw_inning_indicator(inn_cx, H // 2, is_top_inn, is_bot_inn, inn_ordinal)
-            if inning.get('phase') == 'break':
-                return img
-            y_start = 4
-            for (lbl, val, col) in bso_rows:
-                draw_tiny_text(d, bso_cx - 8, y_start, lbl, (180, 180, 180))
-                draw_tiny_text(d, bso_cx,     y_start, val, col)
-                y_start += 8
-
-            # ── Step 6: bat icon ─────────────────────────────────────────────
-            if is_top_inn:
-                self.draw_bat(d, int(h_sc_x + h_sc_w + 8), 7)   # away (top) now on left
-            elif is_bot_inn:
-                self.draw_bat(d, int(a_sc_x - a_sc_w - 8), 7)   # home (bot) now on right
-
-            # ── Step 7: batter / pitcher detail blocks in side lanes ────────
-            def _short_last_name(raw, max_chars=24):
-                txt = str(raw or '').strip()
-                if not txt:
-                    return ''
-                parts = [p for p in txt.replace('.', ' ').split() if p]
-                _SUFFIXES = {'JR', 'SR', 'II', 'III', 'IV', 'V', 'VI'}
-                if len(parts) >= 2 and parts[-1].upper() in _SUFFIXES:
-                    last = f"{parts[-2]} {parts[-1]}"
-                else:
-                    last = parts[-1] if parts else txt
-                return last.upper()[:max_chars]
-
-            def _trim_line(raw, max_chars=15):
-                return '' if raw is None else str(raw).strip()[:max_chars]
-
-            def _value_text(raw):
-                return '' if raw is None else str(raw).strip()
-
-            def _compact_pitch_name(full_type, abbr_type):
-                txt = str(full_type or '').strip()
-                if txt:
-                    txt = txt.split('(', 1)[0].strip()
-                    txt = txt.split('/', 1)[0].strip()
-                if not txt:
-                    return str(abbr_type or '').strip().upper()[:10]
-                if len(txt) > 12:
-                    words = txt.replace('-', ' ').split()
-                    if words:
-                        txt = words[-1]
-                return txt.title()[:12]
-
-            def _fit_player_name(raw, max_width=64):
-                """Use the small font for long names, then trim only as a last resort."""
-                text = _short_last_name(raw)
-                if not text:
-                    return '', self.tiny_small
-
-                font = self.tiny_small
-                if d.textlength(text, font=font) > max_width:
-                    font = self.micro
-                while len(text) > 1 and d.textlength(text, font=font) > max_width:
-                    text = text[:-1].rstrip()
-                return text, font
-
-            def _draw_info_block(cx, lines, y0=None):
-                non_empty = sum(1 for l in lines if str(l or '').strip())
-                if non_empty >= 4:
-                    start = 4 if y0 is None else y0
-                    spacing = 8
-                else:
-                    start = 7 if y0 is None else y0
-                    spacing = 9
-                y = start
-                for index, line in enumerate(lines):
-                    line_txt = _trim_line(line)
-                    line_font = self.tiny_small
-                    if index == 0:
-                        line_txt, line_font = _fit_player_name(line)
-                    if line_txt:
-                        self.draw_outlined_text(
-                            d,
-                            int(cx),
-                            y,
-                            line_txt,
-                            line_font,
-                            (255, 255, 255),
-                            (0, 0, 0, 220),
-                            anchor='mm'
-                        )
-                    y += spacing
-
-            batter_name  = sit.get('batter_name', '')
-            pitcher_name = sit.get('pitcher_name', '')
-            batter_avg   = sit.get('batter_avg', '')
-            batter_h     = sit.get('batter_h', '')
-            batter_ab    = sit.get('batter_ab', '')
-            pit_pitches  = sit.get('pitcher_pitches', '')
-            pitcher_era  = sit.get('pitcher_era')
-            last_spd     = sit.get('last_pitch_speed', 0)
-            last_abbr    = sit.get('last_pitch_type_abbr', '') or sit.get('last_pitch_type', '')
-            last_full    = sit.get('last_pitch_type_full', '')
-
-            batter_avg_txt = _value_text(batter_avg)
-            if batter_avg_txt.startswith('0.'):
-                batter_avg_txt = batter_avg_txt[1:]
-
-            batter_h_txt = _value_text(batter_h)
-            batter_ab_txt = _value_text(batter_ab)
-            if batter_h_txt and batter_ab_txt:
-                batter_hits_ab_line = f"{batter_h_txt}/{batter_ab_txt}"
-            elif batter_h_txt:
-                batter_hits_ab_line = f"{batter_h_txt}/-"
-            elif batter_ab_txt:
-                batter_hits_ab_line = f"-/{batter_ab_txt}"
-            else:
-                batter_hits_ab_line = ''
-
-            if batter_avg_txt:
-                batter_avg_line = batter_avg_txt
-            else:
-                batter_avg_line = ''
-
-            pitch_count_txt = _value_text(pit_pitches)
-            pitch_count_line = f"P:{pitch_count_txt}" if pitch_count_txt else ''
-
-            pitch_type_line = _compact_pitch_name(last_full, last_abbr)
-            if str(last_spd).strip() and str(last_spd).strip() != '0' and pitch_type_line:
-                pitch_info_line = f"{last_spd} {pitch_type_line}"
-            elif str(last_spd).strip() and str(last_spd).strip() != '0':
-                pitch_info_line = f"{last_spd} MPH"
-            else:
-                pitch_info_line = pitch_type_line
-
-            era_txt = _value_text(pitcher_era)
-            if era_txt in {'-', '-.--', 'N/A', 'n/a'}:
-                era_txt = ''
-            if not pitch_info_line and era_txt:
-                pitch_info_line = f"ERA:{era_txt}"
-
-            # Use the explicit batting ownership from the backend.
-            home_batting = bool(home_ab and active_ab and active_ab == home_ab)
-            away_batting = bool(away_ab and active_ab and active_ab == away_ab)
-
-            info_lane_spread = 92
-            info_left_cx  = W // 2 - info_lane_spread
-            info_right_cx = W // 2 + info_lane_spread
-
-            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line]
-            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line]
-
-            if home_batting and not away_batting:
-                _draw_info_block(info_left_cx, bat_lines)
-                _draw_info_block(info_right_cx, pit_lines)
-            elif away_batting and not home_batting:
-                _draw_info_block(info_left_cx, pit_lines)
-                _draw_info_block(info_right_cx, bat_lines)
-            else:
-                _draw_info_block(info_left_cx, pit_lines)
-                _draw_info_block(info_right_cx, bat_lines)
-
-            return img
-
-        # ── NHL / NBA: side scrims (alpha_composite) then text on top ────────
-
-        # Hockey PP / EN badges
-        h_badge = a_badge = ''
-        if sport == 'march_madness':
-            h_badge = str(game.get('home_seed') or '')
-            a_badge = str(game.get('away_seed') or '')
-        if is_nhl and sit.get('emptyNet'):
-            empty_net_side = str(sit.get('emptyNetSide') or '').upper()
-            if empty_net_side == home_ab:
-                h_badge = 'EN'
-            elif empty_net_side == away_ab:
-                a_badge = 'EN'
-        elif is_nhl and sit.get('powerPlay'):
-            power_play_team = str(sit.get('powerPlayTeam') or '').upper()
-            if power_play_team == home_ab:
-                h_badge = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
-            elif power_play_team == away_ab:
-                a_badge = str(sit.get('manpower', {}).get('powerPlayLabel') or '')
-
-        # Side scrims via alpha_composite (correct blending)
-        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        sd = ImageDraw.Draw(scrim)
-        SOLID, FADE = 45, 80
-        for x in range(SOLID + FADE):
-            a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
-            sd.line([(x, 0), (x, H)],             fill=(0, 0, 0, a))
-            sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
-        img.alpha_composite(scrim)
-
-        # Centre text (period + context) — drawn AFTER scrim so it's visible
-        prd = self.shorten_status(game.get('status', ''), sport)
-        cx  = W // 2
-        if prd:
-            self.draw_outlined_text(d, cx, H // 2, prd,
-                                    self.big_font, (255, 255, 255), (0, 0, 0, 200))
-
-        # Team-color borders
-        d.rectangle([0, 0, 2, H],     fill=home_clr)
-        d.rectangle([W - 3, 0, W, H], fill=away_clr)
-
-        # Hockey badges: compact text-only labels (avoid full-height side blocks)
-        l_used = 3; r_used = 3
-
-        # Logos
-        LOGO_SZ  = 24
-        h_logo_x = l_used + 5
-        a_logo_x = W - r_used - LOGO_SZ - 5
-        logo_y   = (H - LOGO_SZ) // 2
-        hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ), game.get('home_logo_rendering'))
-        al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ), game.get('away_logo_rendering'))
-        self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_clr)
-        self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_clr)
-
-        # Scores
-        h_sc_x = h_logo_x + LOGO_SZ + 4
-        a_sc_x = a_logo_x - 4
-        self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
-                                self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
-        h_sc_w = d.textlength(h_score, font=self.clock_giant)
-        self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
-                                self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
-        a_sc_w = d.textlength(a_score, font=self.clock_giant)
-
-        if h_badge:
-            h_col = TOURNAMENT_SEED if sport == 'march_madness' else (255, 90, 90) if h_badge == 'EN' else (255, 204, 0)
-            h_badge_x = int(h_sc_x + h_sc_w + 9)
-            self.draw_outlined_text(d, h_badge_x, 1, h_badge,
-                                    self.tiny, h_col, (0, 0, 0, 220), anchor='mt')
-        if a_badge:
-            a_col = TOURNAMENT_SEED if sport == 'march_madness' else (255, 90, 90) if a_badge == 'EN' else (255, 204, 0)
-            a_badge_x = int(a_sc_x - a_sc_w - 9)
-            self.draw_outlined_text(d, a_badge_x, 1, a_badge,
-                                    self.tiny, a_col, (0, 0, 0, 220), anchor='mt')
-
-        if is_nhl:
-            shootout = sit.get('shootout')
-            if shootout:
-                left_x = int(h_sc_x + h_sc_w + 7)
-                right_x = int(a_sc_x - a_sc_w - 12)
-                draw_hockey_so_column(d, left_x, 6, shootout, 'away')
-                draw_hockey_so_column(d, right_x, 6, shootout, 'home')
-                round_label = str(shootout.get('roundLabel') or '')
-                draw_tiny_text(d, W // 2 - len(round_label) * 5 // 2, 1, round_label, (20, 25, 35))
-            else:
-                self._draw_hockey_context(d, sit, page_tick)
-
-        # No possession arrow for hockey/basketball full-bleed mode.
-
-        return img
-
-
-    # ── Sport background helpers — exact ports of the HTML JS functions ──────
 
     def _draw_hockey_rink(self, d, W, H):
         """
@@ -1070,37 +915,36 @@ class SportsMixin:
         # 1 · Floor (hardwood orange)
         d.rectangle([0, 0, W, H], fill=(200, 120, 58))
 
-          # 2 · Court boundary
+        # 2 · Court boundary
         d.rectangle([1, 1, W - 2, H - 2], outline=(255, 255, 255, 128))
 
-          # 3 · Half-court line + centre circle
+        # 3 · Half-court line + centre circle
         d.line([(W / 2, 0), (W / 2, H)], fill=(255, 255, 255, 115))
         cr = H * 0.33
         d.ellipse([W/2 - cr, H/2 - cr, W/2 + cr, H/2 + cr], outline=(255, 255, 255, 97))
 
-          # 4 · Paint lanes (left and right)
+        # 4 · Paint lanes (left and right)
         d.rectangle([0,      lY, lW,     lY + lH], fill=(160, 80, 32), outline=(255, 255, 255, 140))
         d.rectangle([W - lW, lY, W,      lY + lH], fill=(160, 80, 32), outline=(255, 255, 255, 140))
 
-          # 5 · Free-throw circles
+        # 5 · Free-throw circles
         ftc_r = lH * 0.26
         d.ellipse([lW - ftc_r, H/2 - ftc_r, lW + ftc_r, H/2 + ftc_r],
                   outline=(255, 255, 255, 97))
         d.ellipse([W - lW - ftc_r, H/2 - ftc_r, W - lW + ftc_r, H/2 + ftc_r],
                   outline=(255, 255, 255, 97))
 
-          # 6 · Three-point arcs
+        # 6 · Three-point arcs
         d.arc([0 - thR, lY - 4, thR,     lY + lH + 4], start=270, end=90,
               fill=(255, 255, 255, 97))
         d.arc([W - thR, lY - 4, W + thR, lY + lH + 4], start=90,  end=270,
               fill=(255, 255, 255, 97))
 
-          # 7 · Basket posts (vertical lines at ~45% of lane width from edge)
+        # 7 · Basket posts (vertical lines at ~45% of lane width from edge)
         px_l = lW * 0.45
         px_r = W - px_l
         d.line([(px_l, H * 0.33), (px_l, H * 0.67)], fill=(220, 220, 220, 165), width=1)
         d.line([(px_r, H * 0.33), (px_r, H * 0.67)], fill=(220, 220, 220, 165), width=1)
-
 
     def _draw_hockey_context(self, draw, situation, page_tick):
         """Draw every backend goal label across aligned team pages."""
@@ -1116,19 +960,7 @@ class SportsMixin:
                 self.draw_outlined_text(draw, cx, 8 + row * 8, str(goal.get('label') or ''), self.micro,
                                         (255, 255, 255), (0, 0, 0, 220))
 
-
-class PreparedSportsFullRenderer(SportsMixin):
-    """Provide the explicit dependencies for full sports rendering."""
-
-    def __init__(self, fonts, logos):
-        self.big_font = fonts.big
-        self.clock_giant = fonts.clock
-        self.tiny = fonts.tiny
-        self.tiny_small = fonts.tiny_small
-        self.micro = fonts.micro
-        self.font = fonts.normal
-        self._logos = logos
-        self._field_templates = ImageTemplates(capacity=16, max_bytes=1024 * 1024)
+    # ── Assets, text, and colors ─────────────────────────────────────────────
 
     def get_logo(self, url, size, rendering=None):
         """Return a prepared logo and never fetch from the renderer."""
