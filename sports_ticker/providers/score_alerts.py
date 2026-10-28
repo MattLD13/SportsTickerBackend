@@ -554,9 +554,9 @@ class ScoreAlertTracker:
         if family == "hockey" and situation.get("shootout_state") == "active":
             return
         if family == "hockey":
-            self._hydrate_hockey_alerts(game)
+            self._hydrate_hockey_alerts(game_id, game)
         elif family == "football":
-            self._hydrate_football_alerts(game, previous)
+            self._hydrate_football_alerts(game_id, game, previous)
         final_score = state in {"post", "final"} and previous[3] in _LIVE_STATES and (
             home > previous[0] or away > previous[1]
         ) and not (family == "hockey" and previous[2] == "S/O")
@@ -632,7 +632,7 @@ class ScoreAlertTracker:
                 continue
             score_event_id = ""
             if memory is not None:
-                merged = self._merge_football_conversion(game, side, old_score, new_score, scoring_play)
+                merged = self._merge_football_conversion(game_id, game, side, old_score, new_score, scoring_play)
                 duplicate = memory.observe_play(side, new_score, scoring_play, kind)
                 if merged or not duplicate:
                     memory.pending.pop(side, None)
@@ -705,7 +705,7 @@ class ScoreAlertTracker:
         )
 
     def _merge_football_conversion(
-        self, game: Mapping[str, Any], side: str, previous_score: int,
+        self, game_id: str, game: Mapping[str, Any], side: str, previous_score: int,
         target: int, play: Mapping[str, Any] | None,
     ) -> bool:
         """Update an observed touchdown when its conversion reaches the scoreboard."""
@@ -713,7 +713,7 @@ class ScoreAlertTracker:
         if delta != 1 and not (delta == 2 and play and play.get("conversion_type") == "two_point"):
             return False
         for alert in reversed(self._alerts):
-            if alert.get("game_id") != game.get("id") or alert.get("side") != side:
+            if alert.get("game_id") != game_id or alert.get("side") != side:
                 continue
             if int(alert.get("points") or 0) <= 0:
                 continue
@@ -726,17 +726,17 @@ class ScoreAlertTracker:
         return False
 
     def _hydrate_football_alerts(
-        self, game: Mapping[str, Any], previous: tuple[int, int, str, str],
+        self, game_id: str, game: Mapping[str, Any], previous: tuple[int, int, str, str],
     ) -> None:
         """Fill delayed football detail without replaying or retiming the alert."""
-        situation = game.get("situation") or {}
+        situation = _game_situation(game)
         play_owners = {
             (alert.get("side"), alert["scoring_play_id"]): alert["id"]
             for alert in self._alerts
-            if alert.get("game_id") == game.get("id") and alert.get("scoring_play_id")
+            if alert.get("game_id") == game_id and alert.get("scoring_play_id")
         }
         for alert in self._alerts:
-            if alert.get("game_id") != game.get("id") or int(alert.get("points") or 0) <= 0:
+            if alert.get("game_id") != game_id or int(alert.get("points") or 0) <= 0:
                 continue
             side = alert["side"]
             other = "away" if side == "home" else "home"
@@ -758,7 +758,7 @@ class ScoreAlertTracker:
                 continue
             previous_score = previous[0] if side == "home" else previous[1]
             current_score = _number(game.get(f"{side}_score"))
-            memory = self._football_scores.setdefault(str(game.get("id") or ""), _FootballScoreMemory())
+            memory = self._football_scores.setdefault(game_id, _FootballScoreMemory())
             pending = memory.pending.get(side)
             rising = current_score is not None and current_score > previous_score
             awaiting_identity = pending is not None and pending[1] == current_score
@@ -775,10 +775,9 @@ class ScoreAlertTracker:
             memory.observe_play(side, int(alert[f"{side}_score"]),
                                 {**play, "play_id": play_id or known_play_id}, kind)
 
-    def _hydrate_hockey_alerts(self, game: Mapping[str, Any]) -> None:
+    def _hydrate_hockey_alerts(self, game_id: str, game: Mapping[str, Any]) -> None:
         """Match delayed ESPN goal details to each alert's score and refresh assists."""
 
-        game_id = str(game.get("id") or "").strip()
         situation = _game_situation(game)
         for alert in reversed(self._alerts):
             if alert.get("game_id") != game_id:

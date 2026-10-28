@@ -226,3 +226,18 @@ def test_football_missing_logos_hydrate_without_replaying_or_retiming():
     assert hydrated["id"] == original["id"] and hydrated["ts"] == original["ts"]
     assert hydrated["team_logo"] == "sea.png" and hydrated["opp_logo"] == "den.png"
     assert hydrated["player"] == "Jason Myers"
+
+
+def test_football_detail_hydrates_when_the_provider_pads_the_game_id():
+    game, plays = captured("nfl")
+    game = {**game, "id": f"  {game['id']} "}
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([game])
+    scored = {**game, "away_score": 3, "situation": {"scoring_plays": plays[:1]}}
+    tracker.ingest([scored])
+    original, = tracker.recent()
+    assert original["game_id"] == "nfl"
+    tracker.ingest([{**scored, "away_logo": "sea.png", "situation": {}}])
+    hydrated, = tracker.recent()
+    assert hydrated["id"] == original["id"]
+    assert hydrated["team_logo"] == "sea.png"
