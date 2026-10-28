@@ -151,8 +151,6 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayAbbr: String { away_abbr ?? "" }
     var safeHomeLogo: String { home_logo ?? "" }
     var safeAwayLogo: String { away_logo ?? "" }
-    var safeHomeID: String { home_id ?? safeHomeAbbr }
-    var safeAwayID: String { away_id ?? safeAwayAbbr }
 
     enum CodingKeys: String, CodingKey {
         case competition_stage

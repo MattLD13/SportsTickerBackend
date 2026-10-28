@@ -81,10 +81,6 @@ struct FilterBtn: View {
     let title: String; let val: String; let cur: String; let act: () -> Void
     var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
 }
-struct ScrollBtn: View {
-    let title: String; let val: Bool; let cur: Bool; let act: () -> Void
-    var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
-}
 struct TeamLogoView: View {
     let url: String?; let abbr: String; let size: CGFloat
     var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { Text(abbr).font(.system(size: size * 0.4, weight: .bold)).foregroundColor(.white.opacity(0.8)) } }.frame(width: size, height: size) }
@@ -578,7 +574,7 @@ struct GameRow: View {
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
 
         } else if game.type == "flight_weather" || game.type == "flight_arrival" || game.type == "flight_departure" {
-            // Handled by AirportBoardView in HomeView — skip individual rendering
+            // The feed has no row for airport board items.
             EmptyView()
 
         } else if game.type == "leaderboard" {

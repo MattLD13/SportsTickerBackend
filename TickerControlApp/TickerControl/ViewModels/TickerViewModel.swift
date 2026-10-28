@@ -711,7 +711,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         startBurstPolling()
         saveSettings()
     }
-    func sendPinnedGames() { saveSettings() }
     // Serialize writes and combine pending edits before sending the next state.
     func saveSettings(scheduleOverride: Bool = false) {
         isEditing = true

@@ -177,8 +177,7 @@
         "esp32_hub75/src/mini/runtime/*",
         "esp32_hub75/src/mini/features/*",
         "esp32_hub75/src/mini/assets/*",
-        "esp32_hub75/src/main.cpp",
-        "esp32_hub75/src/team_logos.h"
+        "esp32_hub75/src/main.cpp"
       ],
       "checks": [
         "mini-fields"
