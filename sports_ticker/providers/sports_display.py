@@ -14,7 +14,7 @@ from typing import Any
 
 from sports_ticker.domain import ContentItem
 
-from .payloads import as_mapping as _mapping, mapping_values as _competitors
+from .payloads import as_mapping as _mapping, as_sequence as _sequence, mapping_values as _competitors
 
 
 _FOOTBALL = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
@@ -999,10 +999,6 @@ def _integer_or_none(value: object) -> int | None:
         return int(float(value))
     except (TypeError, ValueError):
         return None
-
-
-def _sequence(value: object) -> tuple[object, ...]:
-    return tuple(value) if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else ()
 
 
 def _find_side(competitors: Sequence[Mapping[str, Any]], side: str) -> Mapping[str, Any]:

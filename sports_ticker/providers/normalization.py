@@ -12,6 +12,7 @@ from typing import Any
 from sports_ticker.domain import CONTENT_FAMILIES, ContentItem, DisplaySettings
 from sports_ticker.domain.settings import settings_from_mapping
 
+from .payloads import as_text as _text
 from .contracts import ProviderHealth, ProviderResult
 from .logo_overrides import corrected_logo
 
@@ -407,12 +408,6 @@ def _datetime(value: Any) -> datetime | None:
 def _normalize_sport(value: Any) -> str:
     sport = _text(value).lower()
     return "mlb" if sport == "wbc" else sport
-
-
-def _text(value: Any, default: str = "") -> str:
-    return default if value is None else str(value)
-
-
 
 
 __all__ = ["normalize_content", "normalize_provider_result", "normalize_settings"]

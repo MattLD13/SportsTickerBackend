@@ -9,12 +9,12 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 from time import monotonic as default_monotonic
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
+from .display_time import display_timezone as _display_timezone
 from .payloads import as_mapping as _mapping
 from .singleflight import SingleFlightCache
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
@@ -685,13 +685,6 @@ def _kickoff(match: Mapping[str, Any]) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
-
-
-def _display_timezone(value: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(value.strip() or "America/New_York")
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("America/New_York")
 
 
 def _abbreviation(team: Mapping[str, Any]) -> str:

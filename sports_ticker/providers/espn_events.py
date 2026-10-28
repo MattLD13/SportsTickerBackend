@@ -8,11 +8,11 @@ import re
 from types import MappingProxyType
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import ContentItem
 from sports_ticker.leagues import COLLEGE_FOOTBALL_LEAGUES, allows_college_conferences
 
+from .display_time import display_timezone as _display_timezone
 from .payloads import (
     as_mapping as _mapping,
     as_sequence as _sequence,
@@ -471,15 +471,6 @@ def _scoreboard_url_for_dates(scoreboard_url: str, dates: Sequence[date]) -> str
         raise ValueError("dates must not be empty")
     query.extend(("dates", day.strftime("%Y%m%d")) for day in values)
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
-
-
-def _display_timezone(value: str) -> ZoneInfo:
-    """Use the ticker time zone or the established New York default."""
-
-    try:
-        return ZoneInfo(value.strip() or "America/New_York")
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("America/New_York")
 
 
 def _event_time(value: object) -> datetime | None:

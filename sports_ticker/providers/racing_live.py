@@ -9,11 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from urllib.parse import quote, urlencode
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, PooledJsonHttpClient, PooledTextHttpClient
+from .display_time import display_timezone as _display_timezone
 from .payloads import as_mapping as _mapping, mapping_values as _sequence
 from .racing_session import racing_timed_session
 from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
@@ -1113,13 +1114,6 @@ def _in_reset_window(start: datetime, now: datetime, timezone_name: str) -> bool
     if local_now < boundary:
         boundary -= timedelta(days=1)
     return start.astimezone(zone) >= boundary
-
-
-def _display_timezone(value: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(str(value).strip() or "America/New_York")
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("America/New_York")
 
 
 def _format_local_time(value: datetime, timezone_name: str) -> str:

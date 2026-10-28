@@ -8,7 +8,8 @@ from threading import Lock
 from time import monotonic
 from typing import Any, Callable
 from sports_ticker.domain import DisplaySettings
-from .espn_events import _display_timezone, _event_time
+from .display_time import display_timezone as _display_timezone
+from .espn_events import _event_time
 from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
 from .payloads import as_mapping as _mapping, mapping_values as _mappings
 from .sports_display import golf_competition_stage
