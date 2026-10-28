@@ -112,3 +112,19 @@ def test_production_catalog_keeps_the_loop_at_panel_size(tmp_path):
     ]
     assert images[0].size == (384, 32)
     assert images[0].tobytes() == images[1].tobytes()
+
+
+@pytest.mark.parametrize("days", [0, 2])
+def test_missing_forecast_days_show_no_invented_weather(fonts, days):
+    from ticker_core.features.weather.drawing import FORECAST_DAYS, _forecast_column
+
+    item = weather_item()
+    item["situation"]["forecast"] = item["situation"]["forecast"][:days]
+    frames = [panel(fonts, item, seconds).convert("RGB") for seconds in (0, 0.7, 1.9)]
+    for index in range(days, FORECAST_DAYS):
+        left, right = _forecast_column(index)
+        # The icon band of a missing day has one flat color and does not animate.
+        band = (left + 1, 10, right - 1, 24)
+        for frame in frames:
+            assert len(set(frame.crop(band).getdata())) == 1
+        assert frames[0].crop(band).tobytes() == frames[-1].crop(band).tobytes()

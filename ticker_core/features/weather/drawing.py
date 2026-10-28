@@ -67,14 +67,8 @@ CONDITION_ABBREVIATIONS = {
     'LIGHT RAIN': 'LGT RAIN',
 }
 
-# The layout shows this week when the backend sends no forecast.
-PLACEHOLDER_FORECAST = (
-    {'day': 'MON', 'icon': 'sun', 'high': 80, 'low': 70},
-    {'day': 'TUE', 'icon': 'rain', 'high': 75, 'low': 65},
-    {'day': 'WED', 'icon': 'cloud', 'high': 78, 'low': 68},
-    {'day': 'THU', 'icon': 'storm', 'high': 72, 'low': 60},
-    {'day': 'FRI', 'icon': 'sun', 'high': 82, 'low': 72},
-)
+FORECAST_DAYS = 5
+MISSING_FORECAST_TEXT = (70, 88, 120)
 
 
 def _phase(t):
@@ -208,6 +202,14 @@ def _forecast_column(index):
     """Return the left and right x of one of the five forecast columns."""
     left = FORECAST_X + index * FORECAST_COLUMN_W
     return left, (PANEL_W - 1 if index == 4 else left + FORECAST_COLUMN_W - 1)
+
+
+def _draw_high_low(d, left, width, high, low, high_color, low_color):
+    """Center one high and low temperature pair at the bottom of a forecast column."""
+    tx = left + max(0, (width - (len(high) * 5 + 5 + len(low) * 5)) // 2)
+    draw_tiny_text(d, tx, 26, high, high_color)
+    draw_tiny_text(d, tx + len(high) * 5, 26, "/", MISSING_FORECAST_TEXT)
+    draw_tiny_text(d, tx + len(high) * 5 + 5, 26, low, low_color)
 
 
 class PreparedWeatherRenderer:
@@ -471,12 +473,15 @@ class PreparedWeatherRenderer:
             ((74, 25, 121, 31), "WIND", wind_val[:3], (90, 200, 255), 2),
         ))
 
-        days = (forecast or PLACEHOLDER_FORECAST)[:5]
+        days = tuple(forecast or ())[:FORECAST_DAYS]
         # Draw every column background first, then the labels on top.
         for i, day in enumerate(days):
             self._draw_forecast_background(img, d, i, day, anim_t + i * 1.7)
         for i, day in enumerate(days):
             self._draw_forecast_labels(d, i, day, anim_t + i * 1.7)
+        # A day that the backend did not send shows its name and no values.
+        for i in range(len(days), FORECAST_DAYS):
+            self._draw_missing_forecast_day(d, i)
         return img
 
     @staticmethod
@@ -519,14 +524,23 @@ class PreparedWeatherRenderer:
     def _draw_forecast_labels(self, d, index, day, t):
         left, right = _forecast_column(index)
         width = right - left + 1
+        self._draw_day_heading(d, index, left, right)
+        self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), left + max(0, (width - 16) // 2), 9, t=t)
+        high = str(day.get('high', '--')).replace('°', '')
+        low = str(day.get('low', '--')).replace('°', '')
+        _draw_high_low(d, left, width, high, low, (255, 115, 75), (90, 165, 255))
+
+    def _draw_missing_forecast_day(self, d, index):
+        left, right = _forecast_column(index)
+        if index < FORECAST_DAYS - 1:
+            d.line((right, 3, right, 29), fill=DEEP_BLUE)
+        self._draw_day_heading(d, index, left, right)
+        _draw_high_low(d, left, right - left + 1, '--', '--', MISSING_FORECAST_TEXT, MISSING_FORECAST_TEXT)
+
+    def _draw_day_heading(self, d, index, left, right):
+        """Draw the day name and its underline at the top of one forecast column."""
+        width = right - left + 1
         day_text = 'TODAY' if index == 0 else (self._now + timedelta(days=index)).strftime('%a').upper()
         draw_tiny_text(d, left + max(0, (width - len(day_text) * 5) // 2), 2, day_text,
                        (255, 255, 255) if index == 0 else (110, 160, 220))
         d.line((left + 4, 8, right - 4, 8), fill=DEEP_BLUE)
-        self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), left + max(0, (width - 16) // 2), 9, t=t)
-        high = str(day.get('high', '--')).replace('°', '')
-        low = str(day.get('low', '--')).replace('°', '')
-        tx = left + max(0, (width - (len(high) * 5 + 5 + len(low) * 5)) // 2)
-        draw_tiny_text(d, tx, 26, high, (255, 115, 75))
-        draw_tiny_text(d, tx + len(high) * 5, 26, "/", (70, 88, 120))
-        draw_tiny_text(d, tx + len(high) * 5 + 5, 26, low, (90, 165, 255))
