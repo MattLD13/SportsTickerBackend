@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw, ImageStat
 
 from ticker_core.rendering.pixels import draw_tiny_text
+from ticker_core.rendering.colors import is_near_black, is_near_white, parse_hex_color
 from ticker_core.rendering.style import TOURNAMENT_SEED
 from ticker_core.rendering.templates import ImageTemplates
 from .logo_badge import draw_missing_team_badge
@@ -1163,33 +1164,9 @@ class PreparedSportsFullRenderer(SportsMixin):
             return tuple(int(value) for value in ImageStat.Stat(logo).mean[:3])
         return (60, 60, 60)
 
-    @staticmethod
-    def _parse_hex_color(value):
-        """Parse one RGB hex value."""
-        try:
-            value = str(value or "").strip().lstrip("#")
-            if len(value) == 6:
-                return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
-        except ValueError:
-            pass
-        return None
-
-    @staticmethod
-    def _is_near_black(color, lum_threshold=24, max_threshold=42, chroma_threshold=16):
-        """Identify colours that disappear on the panel."""
-        if not color or len(color) < 3:
-            return True
-        red, green, blue = (int(value) for value in color[:3])
-        luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-        return (max(red, green, blue) <= max_threshold and luma <= lum_threshold) or (max(red, green, blue) <= max_threshold + 6 and luma <= lum_threshold + 4 and max(red, green, blue) - min(red, green, blue) <= chroma_threshold)
-
-    @staticmethod
-    def _is_near_white(color, lum_threshold=236, min_channel_threshold=226):
-        """Identify colours that remove contrast."""
-        if not color or len(color) < 3:
-            return False
-        red, green, blue = (int(value) for value in color[:3])
-        return 0.2126 * red + 0.7152 * green + 0.0722 * blue >= lum_threshold or min(red, green, blue) >= min_channel_threshold
+    _parse_hex_color = staticmethod(parse_hex_color)
+    _is_near_black = staticmethod(is_near_black)
+    _is_near_white = staticmethod(is_near_white)
 
     def _resolve_challenge_strip_color(self, game, side, fallback):
         """Resolve one readable challenge strip colour."""
@@ -1237,4 +1214,3 @@ def hockey_page_count(situation):
     goals = situation.get('hockeyGoals', ())
     count = max(sum(goal.get('side') == side for goal in goals) for side in ('away', 'home'))
     return max(1, (count + 2) // 3)
-

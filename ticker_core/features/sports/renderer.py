@@ -165,4 +165,3 @@ class SportsRenderer:
         else:
             asset_state = asset_revision
         return ("scoreboard", self._visual_item_json, scene.mode, asset_state, phase)
-

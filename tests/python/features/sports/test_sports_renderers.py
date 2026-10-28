@@ -785,5 +785,3 @@ def test_full_hockey_card_uses_empty_net_side(
         assert labels[0] > 192
     else:
         assert labels[0] < 192
-
-

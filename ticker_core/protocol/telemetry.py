@@ -15,5 +15,3 @@ class TelemetrySnapshot:
     temperature_c: float | None = None
     wifi_available: bool | None = None
     wifi_setup_active: bool | None = None
-
-

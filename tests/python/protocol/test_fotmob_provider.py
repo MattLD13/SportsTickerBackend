@@ -746,4 +746,3 @@ def test_fotmob_dense_live_snapshot_drops_stale_details() -> None:
     clock[0] = 5.0
 
     assert provider._detail_snapshot(records) == {}
-

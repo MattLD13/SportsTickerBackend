@@ -4,28 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Any
 
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.immutable import freeze_text_keys as _freeze
 
 from .profiles import TickerProfile, profile_from_metadata
-
-
-def _freeze(value: Any) -> Any:
-    """Copy nested configuration values into immutable containers."""
-
-    if isinstance(value, Mapping):
-        return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
-    if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set):
-        return frozenset(_freeze(item) for item in value)
-    if isinstance(value, bytearray):
-        return bytes(value)
-    return value
 
 
 def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> DisplaySettings:

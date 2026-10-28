@@ -598,4 +598,3 @@ def draw_hockey_so_column(draw, x, y, shootout, side):
             draw_shootout_dot(draw, x, dy, result, size=5)
         if row.get('nextSide') == side:
             draw.rectangle((x - 1, dy - 1, x + 5, dy + 5), outline=(90, 190, 255))
-

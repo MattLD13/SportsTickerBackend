@@ -174,14 +174,14 @@ def _flight_logo_url(item: Mapping[str, Any]) -> str:
     for key in ("airline_iata", "airline_code", "airline_icao", "airline"):
         code = str(item.get(key) or "").strip().upper().replace(" ", "")
         if len(code) in (2, 3) and code.isalnum():
-            return f"https://www.google.com/s2/favicons?domain={_airline_domain(code)}&sz=64"
+            return f"https://www.google.com/s2/favicons?domain={airline_domain(code)}&sz=64"
     flight_id = str(item.get("away_abbr") or "").strip().upper().replace(" ", "")
     if len(flight_id) in (2, 3) and flight_id.isalnum():
-        return f"https://www.google.com/s2/favicons?domain={_airline_domain(flight_id)}&sz=64"
+        return f"https://www.google.com/s2/favicons?domain={airline_domain(flight_id)}&sz=64"
     return ""
 
 
-def _airline_domain(code: str) -> str:
+def airline_domain(code: str) -> str:
     """Map known airline codes to their public domains."""
     return {
         "UA": "united.com", "DL": "delta.com", "AA": "aa.com", "WN": "southwest.com",

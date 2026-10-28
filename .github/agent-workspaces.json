@@ -727,6 +727,7 @@
       "owner": "Ticker Six renderer contracts, catalog, preview tools, and generic renderer tests",
       "owned": [
         "ticker_core/rendering/catalog.py",
+        "ticker_core/rendering/colors.py",
         "ticker_core/rendering/fonts.py",
         "ticker_core/rendering/geometry.py",
         "ticker_core/rendering/model.py",

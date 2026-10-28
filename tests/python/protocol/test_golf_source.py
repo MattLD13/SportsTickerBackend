@@ -146,4 +146,3 @@ def test_golf_source_reads_once_for_many_tickers_in_one_refresh() -> None:
         source.fetch(settings)
 
     assert client.calls == 1
-

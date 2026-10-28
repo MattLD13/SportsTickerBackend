@@ -6,6 +6,8 @@ from enum import Enum
 
 from PIL import Image, ImageChops, ImageFilter
 
+from ticker_core.rendering.colors import relative_luminance
+
 
 _CONTRAST_RATIO_THRESHOLD = 2.0
 _COLOR_DISTANCE_THRESHOLD_SQUARED = 12 * 12
@@ -181,21 +183,11 @@ def _is_contrasting(
     return distance_squared >= minimum_distance_squared
 
 
-def _relative_luminance(color: tuple[int, int, int]) -> float:
-    """Return the standard linear-light luminance for one sRGB pixel."""
-
-    channels = []
-    for value in color:
-        channel = value / 255
-        channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
-    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-
-
 def _contrast_ratio(first: tuple[int, int, int], second: tuple[int, int, int]) -> float:
     """Return the WCAG luminance contrast ratio for two sRGB pixels."""
 
-    first_luminance = _relative_luminance(first)
-    second_luminance = _relative_luminance(second)
+    first_luminance = relative_luminance(first)
+    second_luminance = relative_luminance(second)
     lighter = max(first_luminance, second_luminance)
     darker = min(first_luminance, second_luminance)
     return (lighter + 0.05) / (darker + 0.05)

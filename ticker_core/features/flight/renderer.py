@@ -6,6 +6,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
+from ticker_core.assets.planner import airline_domain
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, tiny_text
 from ticker_core.features.utility.renderer import EmptyLogoSource, LogoSource
@@ -167,12 +168,8 @@ class FlightRenderer:
         for key in ("airline_iata", "airline_code", "airline_icao", "airline"):
             code = str(item.get(key) or "").strip().upper().replace(" ", "")
             if len(code) in (2, 3) and code.isalnum():
-                return f"https://www.google.com/s2/favicons?domain={FlightRenderer._domain(code)}&sz=64"
+                return f"https://www.google.com/s2/favicons?domain={airline_domain(code)}&sz=64"
         code = str(item.get("away_abbr") or "").strip().upper().replace(" ", "")
         if len(code) in (2, 3) and code.isalnum():
-            return f"https://www.google.com/s2/favicons?domain={FlightRenderer._domain(code)}&sz=64"
+            return f"https://www.google.com/s2/favicons?domain={airline_domain(code)}&sz=64"
         return ""
-
-    @staticmethod
-    def _domain(code: str) -> str:
-        return {"UA": "united.com", "DL": "delta.com", "AA": "aa.com", "WN": "southwest.com", "B6": "jetblue.com", "AS": "alaskaair.com", "AC": "aircanada.com", "BA": "britishairways.com", "LH": "lufthansa.com", "AF": "airfrance.us", "KL": "klm.com", "EK": "emirates.com"}.get(code, f"{code.lower()}.com")

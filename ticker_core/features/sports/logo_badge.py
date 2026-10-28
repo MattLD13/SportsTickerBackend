@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import draw_hybrid_text, normalize_special_chars
+from ticker_core.rendering.colors import relative_luminance
 
 _BADGE_MASK_SCALE = 4
 
@@ -25,7 +26,7 @@ def draw_missing_team_badge(
 
     x, y = int(xy[0]), int(xy[1])
     color = _rgb(team_color)
-    foreground = (250, 252, 255, 255) if _relative_luminance(color) < 0.18 else (8, 12, 18, 255)
+    foreground = (250, 252, 255, 255) if relative_luminance(color) < 0.18 else (8, 12, 18, 255)
     mask_size = size * _BADGE_MASK_SCALE
     mask = Image.new("L", (mask_size, mask_size), 0)
     mask_draw = ImageDraw.Draw(mask)
@@ -73,13 +74,3 @@ def _rgb(color: Sequence[int] | None) -> tuple[int, int, int]:
     if len(channels) != 3:
         return (86, 104, 132)
     return channels
-
-
-def _relative_luminance(color: tuple[int, int, int]) -> float:
-    """Measure badge fill luminance to select a readable acronym color."""
-
-    channels = []
-    for value in color:
-        channel = value / 255
-        channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
-    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]

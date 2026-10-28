@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import DisplaySettings
 
 from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, PooledJsonHttpClient, PooledTextHttpClient
+from .payloads import as_mapping as _mapping, mapping_values as _sequence
 from .racing_session import racing_timed_session
 from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
 
@@ -206,7 +207,7 @@ class LiveRacingSource:
     def _fetch_f1(self, settings: DisplaySettings) -> list[dict[str, Any]]:
         now = self._now().astimezone(timezone.utc)
         races = self._fetch_f1_schedule()
-        sessions = _f1_relevant_sessions(races, now, settings.timezone)
+        sessions = _relevant_sessions(races, now, settings.timezone)
         if not sessions:
             return []
         games: list[dict[str, Any]] = []
@@ -463,7 +464,7 @@ class LiveRacingSource:
     def _fetch_indycar(self, settings: DisplaySettings) -> list[dict[str, Any]]:
         now = self._now().astimezone(timezone.utc)
         races = self._fetch_indycar_schedule()
-        sessions = _indycar_relevant_sessions(races, now, settings.timezone)
+        sessions = _relevant_sessions(races, now, settings.timezone)
         if not sessions:
             if not races:
                 timing_payload = self._fetch_indycar_timing()
@@ -783,7 +784,7 @@ def _f1_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _f1_relevant_sessions(
+def _relevant_sessions(
     races: Sequence[Mapping[str, Any]],
     now: datetime,
     timezone_name: str,
@@ -893,35 +894,6 @@ def _parse_indycar_weekend_html(page: str, year: int) -> dict[str, tuple[datetim
                 duration = 90 if "practice" in lowered else 60 if "qual" in lowered else 30 if "warm" in lowered else 180
                 sessions[key] = (dt.astimezone(timezone.utc), duration, session_raw, practice)
     return sessions
-
-
-def _indycar_relevant_sessions(
-    races: Sequence[Mapping[str, Any]],
-    now: datetime,
-    timezone_name: str,
-) -> list[tuple[Mapping[str, Any], str, str, bool, datetime, datetime, str]]:
-    for race in sorted(
-        races,
-        key=lambda item: min(
-            (value[0] for value in _mapping(item.get("sessions")).values()),
-            default=datetime.max.replace(tzinfo=timezone.utc),
-        ),
-    ):
-        sessions = []
-        for key, start_data in _mapping(race.get("sessions")).items():
-            start, duration, label, practice = start_data
-            end = start + timedelta(minutes=duration)
-            sessions.append((key, label, practice, start, end))
-        if not sessions:
-            continue
-        relevant = []
-        for key, label, practice, start, end in sessions:
-            state = _session_lifecycle_state(start, end, now, timezone_name)
-            if state:
-                relevant.append((race, key, label, practice, start, end, state))
-        if relevant:
-            return sorted(relevant, key=lambda value: value[4])
-    return []
 
 
 def _indycar_short_event(event_name: str, track_name: str) -> str:
@@ -1178,16 +1150,6 @@ def _parse_datetime(value: object) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
-
-
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _sequence(value: object) -> tuple[Mapping[str, Any], ...]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        return ()
-    return tuple(item for item in value if isinstance(item, Mapping))
 
 
 def _number(value: object) -> float | None:
