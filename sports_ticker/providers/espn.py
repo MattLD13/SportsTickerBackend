@@ -35,7 +35,7 @@ from .sports_display import (
     nhl_shootout_display,
     assign_active_team,
     baseball_player_stats,
-    _baseball_player_name as baseball_player_name,
+    baseball_player_name as baseball_player_name,
     display_situation,
     football_red_zone_for_play,
     football_name_matches,

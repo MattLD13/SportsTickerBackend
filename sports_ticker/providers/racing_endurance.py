@@ -217,7 +217,7 @@ class EnduranceRacingSource:
             state = "post"
         drivers = imsa_drivers(data, timed=info.get("type") != "RACE")
         track = str(info.get("eventShortName") or "")
-        flag = racing_flag_code(status.get("currentFlag"), "imsa")
+        flag = racing_flag_code(status.get("currentFlag"))
         ref = _mapping(info_doc.get("session")).get("$value")
         return [self.record("imsa", ref, str(info.get("eventName") or info.get("eventShortName") or track), track,
                             str(info.get("name") or "Race"), state, start, end, drivers, flag, settings,

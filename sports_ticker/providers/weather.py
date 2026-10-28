@@ -98,7 +98,6 @@ class OpenMeteoWeatherProvider:
         client: JsonHttpClient | None = None,
         *,
         timeout: float = 10.0,
-        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._client_owner = OwnedClient(client, PooledJsonHttpClient)
         self.client = self._client_owner.client
@@ -352,7 +351,6 @@ class HybridWeatherProvider:
             supplemental_error = f"NWS UV: {exc}"
         item = _nws_content_item(
             settings,
-            point,
             forecast_payload,
             observation,
             aqi,
@@ -483,7 +481,6 @@ class HybridWeatherProvider:
 
 def _nws_content_item(
     settings: DisplaySettings,
-    point: Mapping[str, Any],
     forecast_payload: Any,
     observation: Mapping[str, Any],
     aqi: Any,

@@ -26,7 +26,7 @@ class UnknownContentRendererError(KeyError):
     """Report content without an installed renderer."""
 
 
-def content_family(item: Mapping[str, Any], mode: str) -> str:
+def content_family(item: Mapping[str, Any]) -> str:
     """Return the stable renderer family for one backend item."""
     item_type = str(item.get("type", "")).lower()
     sport = str(item.get("sport", "")).lower()
@@ -69,7 +69,7 @@ class ContentRendererCatalog:
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Resolve and render one content scene."""
-        family = content_family(scene.item, scene.mode)
+        family = content_family(scene.item)
         try:
             renderer = self._renderers[family]
         except KeyError as error:
@@ -78,7 +78,7 @@ class ContentRendererCatalog:
 
     def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
         """Return one renderer-owned key without rasterizing the scene."""
-        family = content_family(scene.item, scene.mode)
+        family = content_family(scene.item)
         try:
             renderer = self._renderers[family]
         except KeyError as error:

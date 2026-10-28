@@ -491,7 +491,7 @@ class LiveRacingSource:
                             },
                         }
                         game = self._build_indycar_game(
-                            race, session_name, session_name, "practice" in session_name.lower(), start, start + timedelta(minutes=180), "in", now, settings.timezone
+                            race, session_name, session_name, start, start + timedelta(minutes=180), "in", settings.timezone
                         )
                         if game is not None:
                             return [game]
@@ -502,7 +502,7 @@ class LiveRacingSource:
             identifier = f"indycar_{race['round']}_{key.lower()}"
             active_ids.add(identifier)
             game = self._build_indycar_game(
-                race, key, name, practice, start, end, state, now, settings.timezone
+                race, key, name, start, end, state, settings.timezone
             )
             if game is not None:
                 self._indy_games[identifier] = game
@@ -570,11 +570,9 @@ class LiveRacingSource:
         race: Mapping[str, Any],
         session_key: str,
         session_name: str,
-        practice: bool,
         start: datetime,
         end: datetime,
         state: str,
-        now: datetime,
         timezone_name: str,
     ) -> dict[str, Any] | None:
         identifier = f"indycar_{race['round']}_{session_key.lower()}"

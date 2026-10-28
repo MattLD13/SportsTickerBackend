@@ -35,7 +35,7 @@ def main() -> int:
     """Run requested diagnostics and return a shell-friendly status code."""
     args = parse_args()
     if args.force_wifi_setup:
-        return run_forced_wifi_setup(args)
+        return run_forced_wifi_setup()
     failures: list[str] = []
     results: list[dict[str, object]] = []
     print_report_header(args)
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_forced_wifi_setup(args: argparse.Namespace) -> int:
+def run_forced_wifi_setup() -> int:
     """Request the running ticker service to enter its real Wi-Fi setup mode."""
 
     data_directory = Path(os.environ.get("TICKER_DATA_DIR", "~/ticker")).expanduser()

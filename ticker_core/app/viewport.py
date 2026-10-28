@@ -807,7 +807,7 @@ def _render_catalog_job(catalog: ContentRendererCatalog, job: _CardJob, signatur
 def _cacheable(request: _CardRequest) -> bool:
     """Keep only time-independent scrolling sports cards in the durable pane cache."""
     return (request.mode == "sports" and request.item.type == "scoreboard"
-            and content_family(request.scene, request.mode) == "scoreboard"
+            and content_family(request.scene) == "scoreboard"
             and request.scene.get("sports_presentation") != "pinned")
 
 

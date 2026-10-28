@@ -14,6 +14,8 @@ from typing import Any
 
 from sports_ticker.domain import ContentItem
 
+from .payloads import as_mapping as _mapping, mapping_values as _competitors
+
 
 _FOOTBALL = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
 _COLLEGE_FOOTBALL = frozenset(("ncf_fbs", "ncf_fcs"))
@@ -120,7 +122,7 @@ _RACING_FLAG_ALIASES = {
 }
 
 
-def racing_flag_code(raw: object, series: str = "") -> str:
+def racing_flag_code(raw: object) -> str:
     """Resolve exact provider aliases. Never treat an unknown value as green."""
     value = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(raw or "").strip()).upper()
     value = " ".join(value.replace("_", " ").replace("-", " ").split())
@@ -137,7 +139,7 @@ def racing_flag_code(raw: object, series: str = "") -> str:
 
 def racing_signal(raw: object, series: str, *, scope: str = "track", car: object = "", sector: object = "") -> dict[str, Any]:
     """Project one reported signal with its scope and physical flag pattern."""
-    code = racing_flag_code(raw, series)
+    code = racing_flag_code(raw)
     short, meaning, pattern, ink, accent = RACING_FLAGS[code]
     annotated_sector = re.search(r"\bIN SECTOR\s+(\d+)$", str(raw).upper())
     if annotated_sector and not sector:
@@ -446,25 +448,13 @@ def _status(
     if league in _COLLEGE_FOOTBALL and period > 4:
         return _period_status("Q", period, "", overtime_base=4)
     if league in _FOOTBALL | _BASKETBALL and upper.startswith("END OF"):
-        if league == "march_madness" and period in {1, 2}:
-            return f"H{period} END"
-        return _period_status("Q", period, "END", overtime_base=2 if league == "march_madness" else 4)
-    if league in _FOOTBALL and period > 0 and _is_zero_clock(clock):
-        return _period_status("Q", period, "END", overtime_base=4)
+        return _quarter_or_half_status(league, period, "END")
+    if league in _FOOTBALL | _BASKETBALL and period > 0 and _is_zero_clock(clock):
+        return _quarter_or_half_status(league, period, "END")
     if league == "nhl" and period > 0 and _is_zero_clock(clock):
         return _period_status("P", period, "END", overtime_base=3)
-    if league in _BASKETBALL and period > 0 and _is_zero_clock(clock):
-        if league == "march_madness" and period in {1, 2}:
-            return f"H{period} END"
-        overtime_base = 2 if league == "march_madness" else 4
-        return _period_status("Q", period, "END", overtime_base=overtime_base)
-    if league in _FOOTBALL:
-        return _period_status("Q", period, clock, overtime_base=4)
-    if league in _BASKETBALL:
-        if league == "march_madness" and period in {1, 2}:
-            return f"H{period} {clock}".strip()
-        overtime_base = 2 if league == "march_madness" else 4
-        return _period_status("Q", period, clock, overtime_base=overtime_base)
+    if league in _FOOTBALL | _BASKETBALL:
+        return _quarter_or_half_status(league, period, clock)
     if league == "nhl":
         return _period_status("P", period, clock, overtime_base=3)
     if league.startswith("soccer"):
@@ -514,9 +504,9 @@ def display_situation(
             if pitcher_stats.get(key) not in (None, ""):
                 result[target] = pitcher_stats[key]
         for role in ("batter", "pitcher"):
-            name = _baseball_player_name(source.get(role))
+            name = baseball_player_name(source.get(role))
             if role == "batter" and not name:
-                name = _baseball_player_name(_first_mapping(source.get("dueUp")))
+                name = baseball_player_name(_first_mapping(source.get("dueUp")))
             if name:
                 result[f"{role}_name"] = name
         return result
@@ -526,8 +516,8 @@ def display_situation(
         return {
             "possession": possession,
             "shootout": _shootout(source.get("shootout") or source.get("shootoutDetails")),
-            "goal_events": _events(source.get("goalEvents") or source.get("goals"), home_abbr, away_abbr),
-            "red_cards": _events(source.get("redCards") or source.get("cards"), home_abbr, away_abbr),
+            "goal_events": _events(source.get("goalEvents") or source.get("goals"), home_abbr),
+            "red_cards": _events(source.get("redCards") or source.get("cards"), home_abbr),
         }
     return {"possession": possession}
 
@@ -618,7 +608,7 @@ def _baseball_batting_team(status: str, home_abbr: str, away_abbr: str) -> str:
     return away_abbr if half == "top" else home_abbr if half == "bottom" else ""
 
 
-def _baseball_player_name(value: Any) -> str:
+def baseball_player_name(value: Any) -> str:
     """Read one live MLB player name from the scoreboard situation."""
 
     player = _mapping(value)
@@ -733,6 +723,13 @@ def _final_status(league: str, detail: str, period: int) -> str:
     return "FINAL"
 
 
+def _quarter_or_half_status(league: str, period: int, clock: str) -> str:
+    """Label college basketball halves, then quarters and overtime for other leagues."""
+    if league == "march_madness" and period in {1, 2}:
+        return f"H{period} {clock}".strip()
+    return _period_status("Q", period, clock, overtime_base=2 if league == "march_madness" else 4)
+
+
 def _period_status(prefix: str, period: int, clock: str, *, overtime_base: int) -> str:
     if period > overtime_base:
         extra = period - overtime_base
@@ -823,25 +820,28 @@ def normalize_soccer_clock(value: object, *, period: int | None = None) -> str:
 
     minute_value = int(minute)
     seconds = match.group("seconds")
+
+    def stoppage(base: int, extra: int) -> str:
+        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
+        return f"{base}'+{added}'"
+
     if period == 1 and minute_value > 45:
-        extra = minute_value - 45
-        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
-        return f"45'+{added}'"
+        return stoppage(45, minute_value - 45)
     if minute_value > 120 or (period is not None and period >= 3 and minute_value > 15):
-        extra = minute_value - 120 if minute_value > 120 else minute_value - 15
-        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
-        return f"120'+{added}'"
+        return stoppage(120, minute_value - 120 if minute_value > 120 else minute_value - 15)
     if minute_value > 90:
-        extra = minute_value - 90
-        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
-        return f"90'+{added}'"
+        return stoppage(90, minute_value - 90)
     return f"{minute}'"
 
 
-def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
+def _home_away(competition: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """Return the home and away competitor records, or empty records."""
     competitors = _competitors(competition.get("competitors"))
-    home = _find_side(competitors, "home")
-    away = _find_side(competitors, "away")
+    return _find_side(competitors, "home"), _find_side(competitors, "away")
+
+
+def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
+    home, away = _home_away(competition)
     return {
         "home_seed": _seed(home),
         "away_seed": _seed(away),
@@ -854,9 +854,7 @@ def _football_ranks(
 ) -> dict[str, str]:
     """Project NCAA college football rankings into the shared display contract."""
 
-    competitors = _competitors(competition.get("competitors"))
-    home = _find_side(competitors, "home")
-    away = _find_side(competitors, "away")
+    home, away = _home_away(competition)
     return {
         "home_rank": _rank(home, football_rankings),
         "away_rank": _rank(away, football_rankings),
@@ -898,7 +896,8 @@ def _possession(value: object, competition: Mapping[str, Any], home_abbr: str, a
         return home_abbr
     if folded in {"away", "away_team"}:
         return away_abbr
-    for competitor, abbreviation in ((_find_side(_competitors(competition.get("competitors")), "home"), home_abbr), (_find_side(_competitors(competition.get("competitors")), "away"), away_abbr)):
+    home, away = _home_away(competition)
+    for competitor, abbreviation in ((home, home_abbr), (away, away_abbr)):
         team = _mapping(competitor.get("team"))
         if text == str(team.get("id") or "") or folded == abbreviation.casefold():
             return abbreviation
@@ -937,7 +936,7 @@ def _results(value: object) -> list[str]:
     return result
 
 
-def _events(value: object, home_abbr: str, away_abbr: str) -> list[dict[str, Any]]:
+def _events(value: object, home_abbr: str) -> list[dict[str, Any]]:
     """Project provider event records into the soccer renderer contract."""
 
     result: list[dict[str, Any]] = []
@@ -1002,16 +1001,8 @@ def _integer_or_none(value: object) -> int | None:
         return None
 
 
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
 def _sequence(value: object) -> tuple[object, ...]:
     return tuple(value) if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else ()
-
-
-def _competitors(value: object) -> tuple[Mapping[str, Any], ...]:
-    return tuple(item for item in _sequence(value) if isinstance(item, Mapping))
 
 
 def _find_side(competitors: Sequence[Mapping[str, Any]], side: str) -> Mapping[str, Any]:
@@ -1478,22 +1469,6 @@ def nhl_shootout_display(source: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
-__all__ = [
-    "SportsDisplayProjector",
-    "nhl_manpower_situation",
-    "nhl_goal_display",
-    "nhl_shootout_display",
-    "assign_active_team",
-    "display_situation",
-    "matches_followed_team",
-    "normalize_rank",
-    "normalize_soccer_clock",
-    "soccer_event",
-    "sport_family",
-    "sports_content_sort_key",
-]
-
-
 def football_name_matches(token: str, name: str) -> bool:
     """Match a full name or ESPN initials without losing the surname."""
 
@@ -1588,12 +1563,7 @@ def normalize_football_turnover_play(
         athlete = _mapping(record.get("athlete") or record.get("player") or record)
         catalog_record = _mapping(catalog.get(str(athlete.get("id") or "")))
         athlete = {**_mapping(catalog_record.get("athlete")), **athlete}
-        name = str(
-            athlete.get("displayName")
-            or athlete.get("fullName")
-            or athlete.get("shortName")
-            or ""
-        ).strip()
+        name = _athlete_name(athlete)
         team = _possession(
             athlete.get("team") or record.get("team") or catalog_record.get("team"),
             competition,
@@ -1624,7 +1594,7 @@ def normalize_football_turnover_play(
     catalog_candidates = []
     for record in player_catalog:
         athlete = _mapping(record.get("athlete"))
-        name = str(athlete.get("displayName") or athlete.get("fullName") or athlete.get("shortName") or "").strip()
+        name = _athlete_name(athlete)
         team = _possession(record.get("team") or athlete.get("team"), competition, home_abbr, away_abbr)
         if name:
             catalog_candidates.append((name, team, ""))
@@ -1738,6 +1708,10 @@ def normalize_football_turnover_play(
     return result
 
 
+def _athlete_name(athlete: Mapping[str, Any]) -> str:
+    return str(athlete.get("displayName") or athlete.get("fullName") or athlete.get("shortName") or "").strip()
+
+
 def football_red_zone_for_play(
     play: Mapping[str, Any],
     *,
@@ -1797,3 +1771,41 @@ def football_red_zone_for_play(
 
     current = situation.get("isRedZone")
     return bool(current) if current is not None else None
+
+
+__all__ = [
+    "RACING_CAUTION_FLAGS",
+    "RACING_FLAGS",
+    "SportsDisplayProjector",
+    "assign_active_team",
+    "baseball_inning_display",
+    "baseball_player_name",
+    "baseball_player_stats",
+    "display_situation",
+    "espn_competition_stage",
+    "football_name_matches",
+    "football_red_zone_for_play",
+    "fotmob_competition_stage",
+    "golf_competition_stage",
+    "matches_followed_team",
+    "nascar_competition_stage",
+    "nhl_competition_stage",
+    "nhl_goal_display",
+    "nhl_manpower_situation",
+    "nhl_shootout_display",
+    "normalize_competition_stage",
+    "normalize_football_turnover_play",
+    "normalize_rank",
+    "normalize_soccer_clock",
+    "project_baseball_display",
+    "project_sports_display",
+    "racing_flag_code",
+    "racing_flag_pixel",
+    "racing_number_style",
+    "racing_short_name",
+    "racing_signal",
+    "soccer_event",
+    "sport_family",
+    "sports_content_sort_key",
+    "sports_game_phase",
+]
