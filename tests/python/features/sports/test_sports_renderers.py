@@ -785,3 +785,13 @@ def test_full_hockey_card_uses_empty_net_side(
         assert labels[0] > 192
     else:
         assert labels[0] < 192
+
+
+@pytest.mark.parametrize("sport", ["soccer_epl", "soccer_mls", "soccer_champions_league"])
+def test_soccer_shootout_card_widens_for_the_penalty_columns(sport) -> None:
+    game = {"sport": sport, "away_score": 1, "home_score": 2, "as": 1, "hs": 2, "status": "PENS", "state": "in"}
+    shootout = {"situation": {"shootout": {"away": ["goal", "miss"], "home": ["goal", "goal"]}}}
+    plain = sports_stadium_port.calc_card_width(game)
+    widened = sports_stadium_port.calc_card_width({**game, **shootout})
+    assert widened > plain
+    assert widened == sports_stadium_port.calc_card_width({**game, **shootout, "sport": "nhl"})

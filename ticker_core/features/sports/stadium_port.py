@@ -2,6 +2,8 @@
 
 from PIL import Image, ImageDraw
 
+from sports_ticker.providers.sports_display import sport_family
+
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP, PANE as PF
 from ticker_core.rendering.style import STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED, sports_rule_color
 from ticker_core.rendering.templates import ImageTemplates, image_key
@@ -144,10 +146,10 @@ def draw_hockey_so_column(draw, x, y, shootout, side):
 
 def calc_card_width(g):
     """Return the smallest even card width that keeps content clear of both logos."""
-    sport = g.get('sport', '').lower()
-    is_mlb = 'baseball' in sport or 'mlb' in sport
-    is_nfl = 'football' in sport or 'nfl' in sport or 'ncf' in sport
-    is_nhl = 'hockey' in sport or 'nhl' in sport
+    family = sport_family(g.get('sport'))
+    is_mlb = family == 'baseball'
+    is_nfl = family == 'football'
+    is_nhl = family == 'hockey'
     sit = g.get('situation', {}) or {}
     dd = sit.get('downDist', '') or ''
 
@@ -159,7 +161,7 @@ def calc_card_width(g):
         center = max(score_w, pf_w(str(g.get('status', ''))))
     if is_nfl and g.get('state', '') == 'in' and dd:
         center = max(center, pf_w(dd))
-    if (is_nhl or sport == 'soccer') and sit.get('shootout'):
+    if (is_nhl or family == 'soccer') and sit.get('shootout'):
         center = max(center, score_w + 14)
     if is_nhl:
         center = max(center, pf_w(str(sit.get('manpower', {}).get('scrollLabel') or '')))
@@ -227,27 +229,25 @@ class PreparedStadiumRenderer:
         sit = g.get('sit', {})
         inning = g.get('baseball_inning') or {}
         show_inning = inning.get('phase') in {'playing', 'break'}
-        is_mlb = 'baseball' in sport or 'mlb' in sport
-        is_nhl = 'hockey' in sport or 'nhl' in sport
-        is_soccer = 'soccer' in sport
+        family = sport_family(sport)
 
         layout = _CardLayout(width)
         away_logo = self._get_logo(g.get('away_logo'), g.get('away_logo_rendering'))
         home_logo = self._get_logo(g.get('home_logo'), g.get('home_logo_rendering'))
         img = self._card_base(g, width, rule_color, away_logo, home_logo)
         d = ImageDraw.Draw(img, 'RGBA')
-        if not (is_mlb and show_inning):
+        if not (family == 'baseball' and show_inning):
             self._draw_header_text(img, width, g['status'][:12])
             fill_rect(d, 0, 7, width, 1, *rule_color)
             self._draw_score(img, layout, str(g['as']), str(g['hs']))
 
-        if ('football' in sport or 'nfl' in sport or 'ncf' in sport) and g['state'] == 'in':
+        if family == 'football' and g['state'] == 'in':
             self._draw_football_overlay(d, g, sit, layout)
-        if is_nhl:
+        if family == 'hockey':
             self._draw_hockey_overlay(d, g, sit, layout)
-        if is_mlb and show_inning:
+        if family == 'baseball' and show_inning:
             self._draw_baseball_overlay(d, g, sit, inning, layout, rule_color)
-        if is_soccer:
+        if family == 'soccer':
             self._draw_soccer_overlay(d, sit, layout)
         if 'march' in sport:
             self._draw_seed_overlay(d, g, width)
