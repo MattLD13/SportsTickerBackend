@@ -6,7 +6,6 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-from ticker_core.assets.planner import airline_domain
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, tiny_text
 from ticker_core.features.utility.renderer import EmptyLogoSource, LogoSource
@@ -74,7 +73,7 @@ class FlightRenderer:
         plane_color = self._red if delayed else self._green if live else self._amber
         self._plane(draw, 6, 2, plane_color)
         logo_width, logo_x = 22, PANEL_W - 28
-        logo_url = self._logo_url(game)
+        logo_url = str(game.get("airline_logo") or "").strip()
         logo = self._logos.get(logo_url, (logo_width, logo_width)) if logo_url else None
         if logo is not None:
             image.alpha_composite(logo, (logo_x, 1))
@@ -158,17 +157,3 @@ class FlightRenderer:
         for px, py in ((x + 2, y), (x + 1, y + 1), (x + 2, y + 1), (x + 3, y + 1), (x, y + 2), (x + 1, y + 2), (x + 2, y + 2), (x + 3, y + 2), (x + 4, y + 2), (x + 2, y + 3), (x + 1, y + 4), (x + 2, y + 4), (x + 3, y + 4)):
             if 0 <= px < PANEL_W and 0 <= py < PANEL_H:
                 draw.point((px, py), fill=color)
-
-    @staticmethod
-    def _logo_url(item: dict[str, Any]) -> str:
-        url = str(item.get("airline_logo") or "").strip()
-        if url:
-            return url
-        for key in ("airline_iata", "airline_code", "airline_icao", "airline"):
-            code = str(item.get(key) or "").strip().upper().replace(" ", "")
-            if len(code) in (2, 3) and code.isalnum():
-                return f"https://www.google.com/s2/favicons?domain={airline_domain(code)}&sz=64"
-        code = str(item.get("away_abbr") or "").strip().upper().replace(" ", "")
-        if len(code) in (2, 3) and code.isalnum():
-            return f"https://www.google.com/s2/favicons?domain={airline_domain(code)}&sz=64"
-        return ""

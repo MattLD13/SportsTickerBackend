@@ -336,7 +336,7 @@ def test_planner_extracts_every_family_without_mode_filtering() -> None:
     assert ("brand-logo", "logo", (18, 18)) in signatures
     assert ("album", "logo", (42, 42)) in signatures
     assert ("next-album", "logo", (42, 42)) in signatures
-    assert ("airline", "logo", (24, 24)) in signatures
+    assert ("airline", "logo", (22, 22)) in signatures
     assert ("team", "logo", (18, 18)) in signatures
     assert ("team", "logo", (21, 21)) in signatures
     assert ("https://nascar.com/car.jpg", "nascar_car", (130, 20)) in signatures
@@ -437,3 +437,15 @@ def test_v2_alert_only_logo_reaches_the_production_frame(tmp_path) -> None:
         assert frame.tobytes() != renderer.render({**parsed.data, "team_logo": ""}, 2.0).tobytes()
     finally:
         coordinator.close()
+
+
+def test_planner_requests_only_the_drawn_airline_logo() -> None:
+    content = [
+        {"id": "UA12", "type": "flight_visitor", "airline_logo": "united", "airline_iata": "UA"},
+        {"id": "hud", "type": "flight_airport_hud",
+         "arrivals": [{"airline_logo": "arrival-airline"}], "departures": [{"airline_logo": "departure-airline"}]},
+    ]
+
+    plan = AssetPlanner().plan(content)
+
+    assert {(request.url, request.size) for request in plan.requests} == {("united", (22, 22))}

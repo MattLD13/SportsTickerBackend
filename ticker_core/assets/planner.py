@@ -34,8 +34,6 @@ class AssetPlanner:
         if item.get("team_logo"):
             for size in ((16, 16), (24, 24)):
                 _add_team_logo(requests, item, "team_logo", size)
-        for key in ("from_logo", "to_logo"):
-            _add(requests, item.get(key), "logo", (24, 24))
         if item_type == "fan_duel_joke_ad":
             _add(requests, item.get("logo"), "logo", (18, 18))
             return
@@ -51,10 +49,8 @@ class AssetPlanner:
                 _add(requests, next_song.get("cover"), "logo", (42, 42))
             return
         if item_type in {"flight_visitor", "flight_airport_hud", "flight_arrival", "flight_departure"} or sport in {"flight", "flights"} or family in {"flight", "flights"}:
-            for record in (item, *_records(item.get("arrivals")), *_records(item.get("departures"))):
-                for key in ("airline_logo", "airline_image", "airline_logo_url", "carrier_logo", "home_logo", "away_logo"):
-                    _add(requests, record.get(key), "logo", (24, 24))
-                _add(requests, _flight_logo_url(record), "logo", (22, 22))
+            # The flight renderer draws only the backend airline logo, at 22x22.
+            _add(requests, str(item.get("airline_logo") or "").strip(), "logo", (22, 22))
             return
         if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar", "wec", "imsa"}:
             series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar")) or _mapping(item.get("wec")) or _mapping(item.get("imsa"))
@@ -163,28 +159,3 @@ def _add_team_logo(
     rendering = _mapping(item.get(f"{logo_key}_rendering"))
     processor = "logo_native_grid" if str(rendering.get("method") or "").lower() == "new" else "logo"
     _add(requests, item.get(logo_key), processor, size)
-
-
-def _flight_logo_url(item: Mapping[str, Any]) -> str:
-    """Return the same airline favicon URL used by the flight renderer."""
-    for key in ("airline_logo", "airline_image", "airline_logo_url", "carrier_logo"):
-        value = str(item.get(key) or "").strip()
-        if value:
-            return value
-    for key in ("airline_iata", "airline_code", "airline_icao", "airline"):
-        code = str(item.get(key) or "").strip().upper().replace(" ", "")
-        if len(code) in (2, 3) and code.isalnum():
-            return f"https://www.google.com/s2/favicons?domain={airline_domain(code)}&sz=64"
-    flight_id = str(item.get("away_abbr") or "").strip().upper().replace(" ", "")
-    if len(flight_id) in (2, 3) and flight_id.isalnum():
-        return f"https://www.google.com/s2/favicons?domain={airline_domain(flight_id)}&sz=64"
-    return ""
-
-
-def airline_domain(code: str) -> str:
-    """Map known airline codes to their public domains."""
-    return {
-        "UA": "united.com", "DL": "delta.com", "AA": "aa.com", "WN": "southwest.com",
-        "B6": "jetblue.com", "AS": "alaskaair.com", "AC": "aircanada.com", "BA": "britishairways.com",
-        "LH": "lufthansa.com", "AF": "airfrance.us", "KL": "klm.com", "EK": "emirates.com",
-    }.get(code, f"{code.lower()}.com")
