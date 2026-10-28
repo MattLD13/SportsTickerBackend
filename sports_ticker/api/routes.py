@@ -1,8 +1,8 @@
-"""Thin JSON routes for the rewrite backend."""
+"""Define V2 JSON routes, request authorization, and payload validation."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from hmac import compare_digest
 import os
@@ -41,8 +41,21 @@ def register_routes(
     firmware_manifest: FirmwareManifest | None = None,
     firmware_directory: str | Path | None = None,
 ) -> None:
-    """Register rewrite routes against one injected application."""
+    """Register every V2 route against one injected application."""
 
+    _register_error_handlers(app)
+    _register_asset_routes(app, application, firmware_manifest, firmware_directory)
+    _register_health_route(app, application)
+    _register_catalog_routes(app, application)
+    _register_fleet_routes(app, application)
+    _register_ticker_routes(app, application)
+    _register_update_routes(app, application, firmware_manifest)
+    _register_command_routes(app, application)
+    _register_spotify_routes(app, application)
+    _register_event_routes(app, application)
+
+
+def _register_error_handlers(app: Flask) -> None:
     @app.errorhandler(ApiError)
     def handle_api_error(error: ApiError):
         return _error_response(error.message, error.status_code, error.code)
@@ -72,35 +85,22 @@ def register_routes(
     def handle_method_not_allowed(error):
         return _error_response("method not allowed", 405, "method_not_allowed")
 
+
+def _register_asset_routes(
+    app: Flask,
+    application: BackendApplication,
+    firmware_manifest: FirmwareManifest | None,
+    firmware_directory: str | Path | None,
+) -> None:
     @app.get("/api/v2/assets/mini-sports/<asset_id>.mts")
     def mini_sports_sprite(asset_id: str):
         """Serve validated public team art under an immutable content identity."""
-        service = application.mini_sprites
-        sprite = None if service is None else service.read(asset_id)
-        if sprite is None:
-            raise ApiError("sprite is unavailable", 404, "not_found")
-        body, checksum = sprite
-        response = Response(body, mimetype="application/vnd.sportsticker.rgb565-mask")
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        response.headers["X-Content-SHA256"] = checksum
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.set_etag(checksum)
-        return response.make_conditional(request)
+        return _immutable_asset(application.mini_sprites, asset_id, "application/vnd.sportsticker.rgb565-mask", "sprite is unavailable")
 
     @app.get("/api/v2/assets/mini-artwork/<asset_id>.mta")
     def mini_album_artwork(asset_id: str):
         """Serve prepared cover bytes from the bounded memory cache."""
-        service = application.mini_artwork
-        artwork = None if service is None else service.read(asset_id)
-        if artwork is None:
-            raise ApiError("artwork is unavailable", 404, "not_found")
-        body, checksum = artwork
-        response = Response(body, mimetype="application/vnd.sportsticker.rgb565")
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        response.headers["X-Content-SHA256"] = checksum
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.set_etag(checksum)
-        return response.make_conditional(request)
+        return _immutable_asset(application.mini_artwork, asset_id, "application/vnd.sportsticker.rgb565", "artwork is unavailable")
 
     @app.get("/firmware/<path:filename>")
     def firmware_binary(filename: str):
@@ -124,6 +124,8 @@ def register_routes(
             conditional=True,
         )
 
+
+def _register_health_route(app: Flask, application: BackendApplication) -> None:
     @app.get("/api/v2/health")
     def health():
         scheduler_health = application.scheduler_health()
@@ -141,7 +143,7 @@ def register_routes(
                 "api_version": "v2",
                 "status": "degraded" if degraded or not runtime_health["ready"] else "ok",
                 "release": app.config.get("BACKEND_RELEASE", "development"),
-                  "deployment": app.extensions.get("sports_ticker.deployment_status", lambda: {})(),
+                "deployment": app.extensions.get("sports_ticker.deployment_status", lambda: {})(),
                 "runtime": runtime_health,
                 "diagnostics": {"stack_signal": app.config.get("STACK_DUMP_SIGNAL")},
                 "scheduler": {
@@ -152,6 +154,8 @@ def register_routes(
             }
         )
 
+
+def _register_catalog_routes(app: Flask, application: BackendApplication) -> None:
     stock_catalog = StockSymbolCatalog()
     application.own_resource(stock_catalog)
     app.extensions["sports_ticker.stock_catalog"] = stock_catalog
@@ -180,6 +184,8 @@ def register_routes(
         catalog = _catalog(application)
         return jsonify({"teams": list(catalog.teams(league_id))})
 
+
+def _register_fleet_routes(app: Flask, application: BackendApplication) -> None:
     @app.get("/api/v2/tickers")
     def list_tickers():
         token = _controller_token()
@@ -329,6 +335,8 @@ def register_routes(
             }
         )
 
+
+def _register_ticker_routes(app: Flask, application: BackendApplication) -> None:
     @app.get("/api/v2/tickers/<ticker_id>")
     def get_ticker(ticker_id: str):
         identifier = _device_or_controller_owner(application, ticker_id)
@@ -445,6 +453,8 @@ def register_routes(
         ticker = application.heartbeat(identifier, _json_object())
         return jsonify(_ticker_value(ticker, application))
 
+
+def _register_update_routes(app: Flask, application: BackendApplication, firmware_manifest: FirmwareManifest | None) -> None:
     @app.post("/api/v2/tickers/<ticker_id>/updates")
     def request_ticker_update(ticker_id: str):
         _require_deployment_token()
@@ -500,6 +510,8 @@ def register_routes(
         _require_deployment_token()
         return jsonify(application.repository.updates.history())
 
+
+def _register_command_routes(app: Flask, application: BackendApplication) -> None:
     @app.post("/api/v2/tickers/<ticker_id>/commands/reboot")
     def request_ticker_reboot(ticker_id: str):
         identifier = _controller_ticker_owner(application, ticker_id)
@@ -517,6 +529,8 @@ def register_routes(
             raise ApiError("id must be a non-empty string", 400, "invalid_request")
         return jsonify({"acknowledged": application.acknowledge_reboot(identifier, command_id)})
 
+
+def _register_spotify_routes(app: Flask, application: BackendApplication) -> None:
     @app.post("/api/v2/tickers/<ticker_id>/integrations/spotify/authorizations")
     def start_spotify_authorization(ticker_id: str):
         identifier = _controller_ticker_owner(application, ticker_id)
@@ -576,6 +590,8 @@ def register_routes(
         result = service.complete_authorization(code, state)
         return redirect(service.app_completion_uri(result["attempt_id"], result["status"]), code=303)
 
+
+def _register_event_routes(app: Flask, application: BackendApplication) -> None:
     @app.post("/api/v2/events/alerts")
     def publish_alert_event():
         _require_deployment_token()
@@ -603,6 +619,21 @@ def register_routes(
                 "ticker_id": identifier,
             }
         )
+
+
+def _immutable_asset(service: Any, asset_id: str, mimetype: str, missing_message: str) -> Response:
+    """Serve one content-addressed Mini asset with immutable cache headers."""
+    asset = None if service is None else service.read(asset_id)
+    if asset is None:
+        raise ApiError(missing_message, 404, "not_found")
+    body, checksum = asset
+    response = Response(body, mimetype=mimetype)
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    response.headers["X-Content-SHA256"] = checksum
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.set_etag(checksum)
+    return response.make_conditional(request)
+
 
 def _json_object() -> dict[str, Any]:
     if not request.is_json:
@@ -692,6 +723,90 @@ def _check_keys(payload: Mapping[str, Any], allowed: set[str]) -> None:
     unknown = sorted(set(payload) - allowed)
     if unknown:
         raise ApiError(f"unknown fields: {', '.join(unknown)}", 400, "invalid_request")
+
+
+def _invalid(message: str) -> ApiError:
+    return ApiError(message, 400, "invalid_request")
+
+
+def _string(key: str, value: Any) -> None:
+    if not isinstance(value, str):
+        raise _invalid(f"{key} must be a string")
+
+
+def _string_or_null(key: str, value: Any) -> None:
+    if value is not None and not isinstance(value, str):
+        raise _invalid(f"{key} must be a string or null")
+
+
+def _integer(key: str, value: Any) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _invalid(f"{key} must be an integer")
+
+
+def _boolean(key: str, value: Any) -> None:
+    if not isinstance(value, bool):
+        raise _invalid(f"{key} must be a boolean")
+
+
+def _weekdays(key: str, value: Any) -> None:
+    if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple, set)):
+        raise _invalid(f"{key} must be an array")
+    if not value or any(isinstance(item, bool) or not isinstance(item, int) for item in value):
+        raise _invalid(f"{key} must contain integers")
+
+
+_Field = tuple[str, Callable[[str, Any], None]]
+
+_SCHEDULE_BLOCK_FIELDS: tuple[_Field, ...] = (
+    ("days_of_week", _weekdays),
+    ("start_minute", _integer),
+    ("end_minute", _integer),
+    ("mode", _string),
+    ("sports_filter", _string_or_null),
+    ("enabled", _boolean),
+)
+_SCHEDULE_CONDITION_FIELDS: tuple[_Field, ...] = (
+    ("kind", _string),
+    ("threshold", _integer),
+    ("operator", _string),
+    ("when_mode", _string),
+    ("action_sports_filter", _string),
+    ("ignore_pinned", _boolean),
+    ("enabled", _boolean),
+)
+
+
+def _validated_fields(
+    payload: Mapping[str, Any],
+    fields: tuple[_Field, ...],
+    required: tuple[str, ...],
+    *,
+    require_all: bool,
+) -> dict[str, Any]:
+    """Reject unknown and missing fields, then check each present field in order."""
+    _check_keys(payload, {key for key, _ in fields})
+    if require_all:
+        missing = sorted(set(required) - set(payload))
+        if missing:
+            raise _invalid(f"missing fields: {', '.join(missing)}")
+    values: dict[str, Any] = {}
+    for key, check in fields:
+        if key in payload:
+            check(key, payload[key])
+            values[key] = list(payload[key]) if check is _weekdays else payload[key]
+    return values
+
+
+def _schedule_block_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
+    """Validate one ticker-owned recurring weekly block request."""
+    return _validated_fields(payload, _SCHEDULE_BLOCK_FIELDS, ("days_of_week", "start_minute", "end_minute", "mode"),
+                             require_all=require_all)
+
+
+def _schedule_condition_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
+    """Validate one ticker-owned live-game condition request."""
+    return _validated_fields(payload, _SCHEDULE_CONDITION_FIELDS, ("kind", "threshold"), require_all=require_all)
 
 
 def _ticker_id(value: object) -> str:
@@ -797,99 +912,6 @@ def _ticker_value(ticker: Any, application: BackendApplication) -> dict[str, Any
     }
 
 
-def _schedule_block_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
-    """Validate one ticker-owned recurring weekly block request."""
-
-    allowed = {
-        "days_of_week",
-        "start_minute",
-        "end_minute",
-        "mode",
-        "sports_filter",
-        "enabled",
-    }
-    _check_keys(payload, allowed)
-    required = {"days_of_week", "start_minute", "end_minute", "mode"}
-    if require_all:
-        missing = sorted(required - set(payload))
-        if missing:
-            raise ApiError(f"missing fields: {', '.join(missing)}", 400, "invalid_request")
-    values: dict[str, Any] = {}
-    if "days_of_week" in payload:
-        value = payload["days_of_week"]
-        if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple, set)):
-            raise ApiError("days_of_week must be an array", 400, "invalid_request")
-        if not value or any(isinstance(item, bool) or not isinstance(item, int) for item in value):
-            raise ApiError("days_of_week must contain integers", 400, "invalid_request")
-        values["days_of_week"] = list(value)
-    for key in ("start_minute", "end_minute"):
-        if key not in payload:
-            continue
-        value = payload[key]
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ApiError(f"{key} must be an integer", 400, "invalid_request")
-        values[key] = value
-    if "mode" in payload:
-        if not isinstance(payload["mode"], str):
-            raise ApiError("mode must be a string", 400, "invalid_request")
-        values["mode"] = payload["mode"]
-    if "sports_filter" in payload:
-        value = payload["sports_filter"]
-        if value is not None and not isinstance(value, str):
-            raise ApiError("sports_filter must be a string or null", 400, "invalid_request")
-        values["sports_filter"] = value
-    if "enabled" in payload:
-        if not isinstance(payload["enabled"], bool):
-            raise ApiError("enabled must be a boolean", 400, "invalid_request")
-        values["enabled"] = payload["enabled"]
-    return values
-
-
-def _schedule_condition_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
-    """Validate one ticker-owned live-game condition request."""
-
-    allowed = {
-        "kind",
-        "threshold",
-        "operator",
-        "when_mode",
-        "action_sports_filter",
-        "ignore_pinned",
-        "enabled",
-    }
-    _check_keys(payload, allowed)
-    required = {"kind", "threshold"}
-    if require_all:
-        missing = sorted(required - set(payload))
-        if missing:
-            raise ApiError(f"missing fields: {', '.join(missing)}", 400, "invalid_request")
-    values: dict[str, Any] = {}
-    if "kind" in payload:
-        if not isinstance(payload["kind"], str):
-            raise ApiError("kind must be a string", 400, "invalid_request")
-        values["kind"] = payload["kind"]
-    if "threshold" in payload:
-        value = payload["threshold"]
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ApiError("threshold must be an integer", 400, "invalid_request")
-        values["threshold"] = value
-    for key in ("operator", "when_mode", "action_sports_filter"):
-        if key not in payload:
-            continue
-        if not isinstance(payload[key], str):
-            raise ApiError(f"{key} must be a string", 400, "invalid_request")
-        values[key] = payload[key]
-    if "ignore_pinned" in payload:
-        if not isinstance(payload["ignore_pinned"], bool):
-            raise ApiError("ignore_pinned must be a boolean", 400, "invalid_request")
-        values["ignore_pinned"] = payload["ignore_pinned"]
-    if "enabled" in payload:
-        if not isinstance(payload["enabled"], bool):
-            raise ApiError("enabled must be a boolean", 400, "invalid_request")
-        values["enabled"] = payload["enabled"]
-    return values
-
-
 def _event_value(event: Any) -> dict[str, Any]:
     return {
         "event_id": event.event_id,
@@ -906,21 +928,18 @@ def _event_value(event: Any) -> dict[str, Any]:
 
 def _scheduler_health_value(health: Any) -> dict[str, Any]:
     if isinstance(health, Mapping):
-        last_success = health.get("last_success")
-        last_error = health.get("last_error")
-        next_due = health.get("next_due")
-        failures = health.get("consecutive_failures", 0)
+        read = health.get
     else:
-        last_success = getattr(health, "last_success", None)
-        last_error = getattr(health, "last_error", None)
-        next_due = getattr(health, "next_due", None)
-        failures = getattr(health, "consecutive_failures", 0)
+        def read(key: str, default: Any = None) -> Any:
+            return getattr(health, key, default)
+    last_error = read("last_error")
     return {
         "healthy": not bool(last_error),
-        "last_success": _json_value(last_success),
+        "last_success": _json_value(read("last_success")),
         "last_error": redact(_json_value(last_error)),
-        "next_due": _json_value(next_due),
-        "consecutive_failures": int(failures),
+        "next_due": _json_value(read("next_due")),
+        "consecutive_failures": int(read("consecutive_failures", 0)),
+        # These counters come only from scheduler health objects.
         "refresh_calls": int(getattr(health, "refresh_calls", 0)),
         "paused_refreshes": int(getattr(health, "paused_refreshes", 0)),
     }
