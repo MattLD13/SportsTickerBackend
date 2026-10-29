@@ -28,6 +28,14 @@ Run the controller contract harness:
 python tools\diagnostics\v2_control_harness.py --self-test
 ```
 
+Measure the upstream APIs, the ESPN Fastcast push, and each worker's production fetch:
+
+```bash
+python3 tools/diagnostics/upstream_probe.py --all
+```
+
+Run it on the backend host. Use `--http`, `--fastcast SECONDS`, or `--workers espn,racing` for one part. The tool writes a JSON report under `previews/upstream-probe/`. It reads Finnhub keys from the environment and never writes them to the report.
+
 Run the Pi manufacturing diagnostic with a persistent report:
 
 ```powershell
