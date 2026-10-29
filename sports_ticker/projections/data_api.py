@@ -74,7 +74,6 @@ def project_data_v2(
             "items": timings, "snapshot_ready_ms": snapshot.committed_at_ms,
         }
     return {
-        "api_version": "v2",
         "snapshot": snapshot_value,
         "settings": _settings_value(snapshot.effective_settings),
         "content": content,

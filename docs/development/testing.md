@@ -19,13 +19,13 @@ The tests live in `tests/python/`. They use temporary SQLite files, injected pro
 Use the renderer for display verification:
 
 ```powershell
-python tools\rendering\render_frame.py --snapshot tests\fixtures\display\v2_render_snapshot.json --mode sports --item-id mlb-live --pinned --no-prefetch --output previews\mlb.png
+python tools\rendering\render_frame.py --snapshot tests\fixtures\display\render_snapshot.json --mode sports --item-id mlb-live --pinned --no-prefetch --output previews\mlb.png
 ```
 
 Run the controller contract harness:
 
 ```powershell
-python tools\diagnostics\v2_control_harness.py --self-test
+python tools\diagnostics\control_harness.py --self-test
 ```
 
 Measure the upstream APIs, the ESPN Fastcast push, and each worker's production fetch:

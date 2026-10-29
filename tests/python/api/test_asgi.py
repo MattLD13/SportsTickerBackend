@@ -6,17 +6,27 @@ import asyncio
 import json
 import subprocess
 import sys
-from threading import Event, Lock, get_ident, enumerate as enumerate_threads
+from threading import Event, Lock, get_ident
+from threading import enumerate as enumerate_threads
 
-from asgiref.testing import ApplicationCommunicator
-from cryptography.fernet import Fernet
-from flask import Flask, request
 import pytest
+from asgiref.testing import ApplicationCommunicator
+from flask import request
 
-from sports_ticker import asgi, server
-from sports_ticker.bootstrap_v2 import create_backend_application
+from ticker3 import server
+from ticker3.api import asgi
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
+
+
+def _offline(path):
+    """Return an offline application. TickerASGI reads its backend application."""
+    return create_offline_application(path, [])
+
+
+def _no_engine(flask):
+    return lambda: None
 
 
 def _http_scope(method, path, headers=()):
@@ -43,10 +53,10 @@ async def _request(app, method, path, *, body=b"", headers=()):
 
 
 @pytest.mark.parametrize("limit", [2, 8])
-def test_asgi_runs_flask_requests_concurrently_with_a_bounded_limit(limit):
+def test_asgi_runs_flask_requests_concurrently_with_a_bounded_limit(limit, tmp_path):
     """Fill every HTTP slot, keep the next request queued, and preserve separate Flask request contexts."""
 
-    flask = Flask("concurrency")
+    flask = _offline(tmp_path / "concurrency.sqlite3")
     release = [Event() for _ in range(limit + 1)]
     lock = Lock()
     active = 0
@@ -75,7 +85,7 @@ def test_asgi_runs_flask_requests_concurrently_with_a_bounded_limit(limit):
                 with lock:
                     active -= 1
 
-        adapted = asgi.BackendASGI(flask, http_threads=limit)
+        adapted = asgi.TickerASGI(flask, start=_no_engine, http_threads=limit)
         real_http = adapted.http
 
         async def observe_http(scope, receive, send):
@@ -115,10 +125,10 @@ def test_asgi_runs_flask_requests_concurrently_with_a_bounded_limit(limit):
     asyncio.run(verify())
 
 
-def test_cancelled_http_request_keeps_its_slot_until_the_worker_stops(monkeypatch):
+def test_cancelled_http_request_keeps_its_slot_until_the_worker_stops(monkeypatch, tmp_path):
     """Keep the event loop responsive and retain the concurrency permit during cancelled worker cleanup."""
 
-    flask = Flask("cancelled-http")
+    flask = _offline(tmp_path / "cancelled.sqlite3")
     release = Event()
 
     async def verify():
@@ -146,7 +156,7 @@ def test_cancelled_http_request_keeps_its_slot_until_the_worker_stops(monkeypatc
         def next_request():
             return {"next": True}
 
-        adapted = asgi.BackendASGI(flask, http_threads=1)
+        adapted = asgi.TickerASGI(flask, start=_no_engine, http_threads=1)
         real_http = adapted.http
 
         async def observe_http(scope, receive, send):
@@ -186,44 +196,46 @@ def test_asgi_rejects_invalid_http_thread_settings_before_creating_state(monkeyp
     """Reject invalid concurrency settings before opening the production database."""
 
     monkeypatch.setenv("TICKER_HTTP_THREADS", value)
-    monkeypatch.setattr(asgi, "create_production_application", lambda path: pytest.fail("production factory ran"))
+    monkeypatch.setattr(server, "create_application", lambda path: pytest.fail("application factory ran"))
     with pytest.raises(ValueError):
-        asgi.create_asgi_application()
+        server.create_asgi_application()
 
 
-def test_asgi_factory_preserves_http_thread_environment_setting(monkeypatch):
-    """Pass the existing deployment concurrency setting into the bounded HTTP bridge."""
+def test_asgi_factory_preserves_http_thread_environment_setting(monkeypatch, tmp_path):
+    """Pass the deployment concurrency setting into the bounded HTTP bridge."""
 
     monkeypatch.setenv("TICKER_HTTP_THREADS", "3")
-    monkeypatch.setattr(asgi, "create_production_application", lambda path: Flask("factory"))
-    application = asgi.create_asgi_application()
-    assert application._http_slots._value == 3
+    monkeypatch.setattr(server, "create_application", lambda path: _offline(tmp_path / "factory.sqlite3"))
+    application = server.create_asgi_application()
+    assert application.slots._value == 3 and application.start is server.start_engine
 
 
 def test_asgi_preserves_http_health_security_and_mutation_contracts(tmp_path, monkeypatch):
     """Compare real Flask results with ASGI for health, authorization, and durable mutations."""
 
     monkeypatch.setenv("TICKER_DEPLOY_TOKEN", "deployment-secret")
-    monkeypatch.setattr("sports_ticker.api.routes.time.time", lambda: 1000)
-    flask = create_backend_application(tmp_path / "asgi.sqlite3", [], scheduler=None, clock=lambda: 1000)
-    adapted = asgi.BackendASGI(flask)
+    monkeypatch.setattr("sports_ticker.fleet.repository.time.time", lambda: 1000)
+    flask = create_offline_application(tmp_path / "asgi.sqlite3", [], clock=lambda: 1000)
+    adapted = asgi.TickerASGI(flask, start=_no_engine)
     client = flask.test_client()
-    registered = client.post("/api/v2/devices/register", json={"device_id": "asgi-device"}, headers={"X-Device-Token": "a" * 64}).get_json()
-    paired = client.post("/api/v2/pairings/exchange", json={"pairing_code": registered["pairing_code"]}).get_json()
+    registered = client.post("/register", json={"device_id": "asgi-device"}, headers={"X-Device-Token": "a" * 64}).get_json()
+    paired = client.post("/pair", json={"pairing_code": registered["pairing_code"]}).get_json()
     auth = ((b"authorization", f"Bearer {paired['controller_token']}".encode()),)
 
     async def verify():
         cases = [
-            ("GET", "/api/v2/health", b"", ()),
-            ("GET", "/api/v2/fleet/health", b"", ()),
-            ("GET", "/api/v2/fleet/health", b"", ((b"x-deployment-token", b"wrong"),)),
-            ("GET", "/api/v2/fleet/health", b"", ((b"x-deployment-token", b"deployment-secret"),)),
-            ("GET", "/api/v2/tickers", b"", ()),
-            ("GET", "/api/v2/tickers", b"", ((b"authorization", b"Bearer invalid"),)),
-            ("GET", "/api/v2/tickers", b"", auth),
-            ("GET", "/api/v2/tickers/asgi-device/data", b"", ()),
-            ("PATCH", "/api/v2/tickers/asgi-device", b'{"name":"Updated"}', auth),
-            ("POST", "/api/v2/devices/register", b"{invalid", ()),
+            ("GET", "/health", b"", ()),
+            ("GET", "/fleet", b"", ()),
+            ("GET", "/fleet", b"", ((b"x-deployment-token", b"wrong"),)),
+            ("GET", "/fleet", b"", ((b"x-deployment-token", b"deployment-secret"),)),
+            ("GET", "/tickers", b"", ()),
+            ("GET", "/tickers", b"", ((b"authorization", b"Bearer invalid"),)),
+            ("GET", "/tickers", b"", auth),
+            ("GET", "/tickers/asgi-device/data", b"", ()),
+            ("GET", "/data", b"", ((b"x-device-token", b"a" * 64),)),
+            ("GET", "/data", b"", ((b"x-device-token", b"b" * 64),)),
+            ("PATCH", "/tickers/asgi-device", b'{"name":"Updated"}', auth),
+            ("POST", "/register", b"{invalid", ()),
             ("GET", "/api/v2/unknown", b"", ()),
         ]
         for method, path, body, headers in cases:
@@ -237,70 +249,47 @@ def test_asgi_preserves_http_health_security_and_mutation_contracts(tmp_path, mo
                 assert json.loads(content) == expected.get_json()
             else:
                 assert content == expected.data
-        assert flask.extensions["sports_ticker.backend_application"].get_ticker("asgi-device").name == "Updated"
+        assert flask.extensions["ticker.application"].get_ticker("asgi-device").name == "Updated"
 
     try:
         asyncio.run(verify())
     finally:
-        flask.extensions["sports_ticker.backend_application"].close()
+        flask.extensions["ticker.application"].close()
 
 
-def test_production_asgi_lifespan_starts_and_stops_one_runtime(tmp_path, monkeypatch):
-    """Run the real production lifecycle with an empty isolated fleet."""
+def test_asgi_lifespan_starts_the_engine_and_the_stream_once(tmp_path):
+    """Start the engine and the stream projector at startup, and stop both at shutdown."""
 
-    monkeypatch.delenv("TICKER_INITIAL_TICKER_ID", raising=False)
-    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "asgi-test")
-    monkeypatch.setenv("SPOTIFY_CALLBACK_URI", "https://example.com/callback")
-    monkeypatch.setenv("SPOTIFY_APP_RETURN_URI", "sportsticker://spotify")
-    monkeypatch.setenv("SPOTIFY_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    application = asgi.create_asgi_application(tmp_path / "production.sqlite3")
-    runtime = application.flask_app.extensions["sports_ticker.runtime"]
-    assert application.flask_app.extensions["sports_ticker.backend_application"].runtime is None
-    assert not any(thread.name == "ticker-v2-refresh" for thread in enumerate_threads())
+    flask = _offline(tmp_path / "lifespan.sqlite3")
     calls = []
-    real_start = asgi.start_runtime
-    real_stop = runtime.stop
 
-    def stop_runtime():
-        calls.append("runtime.stop")
-        real_stop()
-
-    monkeypatch.setattr(runtime, "stop", stop_runtime)
-
-    def start(flask):
+    def start(app):
+        assert app is flask
         calls.append("start")
-        stop = real_start(flask)
+        return lambda: calls.append("stop")
 
-        def close():
-            calls.append("stop")
-            stop()
-
-        return close
-
-    monkeypatch.setattr(asgi, "start_runtime", start)
+    application = asgi.TickerASGI(flask, start=start)
 
     async def verify():
         communicator = ApplicationCommunicator(application, {"type": "lifespan"})
         await communicator.send_input({"type": "lifespan.startup"})
         assert await communicator.receive_output() == {"type": "lifespan.startup.complete"}
-        assert len([thread for thread in enumerate_threads() if thread.name == "ticker-v2-refresh"]) == 1
-        assert (await _request(application, "GET", "/api/v2/health"))[0] == 200
+        assert application.hub._wake is not None
+        assert (await _request(application, "GET", "/health"))[0] == 200
         await communicator.send_input({"type": "lifespan.shutdown"})
         assert await communicator.receive_output(timeout=10) == {"type": "lifespan.shutdown.complete"}
         await communicator.wait()
-        repeated = ApplicationCommunicator(application, {"type": "lifespan"})
-        await repeated.send_input({"type": "lifespan.startup"})
-        assert (await repeated.receive_output())["type"] == "lifespan.startup.failed"
-        await repeated.wait()
+        assert application.hub._wake is None
 
-    asyncio.run(verify())
-    assert calls == ["start", "stop", "runtime.stop"]
-    assert not any(thread.name == "ticker-v2-refresh" for thread in enumerate_threads())
-    assert application.flask_app.extensions["sports_ticker.backend_application"]._closed
+    try:
+        asyncio.run(verify())
+    finally:
+        flask.extensions["ticker.application"].close()
+    assert calls == ["start", "stop"]
 
 
 @pytest.mark.parametrize("failure", ["startup", "shutdown", "cancel"])
-def test_asgi_lifespan_reports_failures_and_cleans_up_once(monkeypatch, failure):
+def test_asgi_lifespan_reports_failures_and_cleans_up_once(tmp_path, failure):
     """Report lifecycle errors and stop an interrupted lifespan exactly once."""
 
     calls = []
@@ -317,10 +306,10 @@ def test_asgi_lifespan_reports_failures_and_cleans_up_once(monkeypatch, failure)
 
         return stop
 
-    monkeypatch.setattr(asgi, "start_runtime", start)
+    flask = _offline(tmp_path / "failure.sqlite3")
 
     async def verify():
-        communicator = ApplicationCommunicator(asgi.BackendASGI(Flask("test")), {"type": "lifespan"})
+        communicator = ApplicationCommunicator(asgi.TickerASGI(flask, start=start), {"type": "lifespan"})
         await communicator.send_input({"type": "lifespan.startup"})
         response = await communicator.receive_output()
         if failure == "startup":
@@ -334,7 +323,10 @@ def test_asgi_lifespan_reports_failures_and_cleans_up_once(monkeypatch, failure)
                 assert await communicator.receive_output() == {"type": "lifespan.shutdown.failed", "message": "shutdown rejected"}
         await communicator.wait()
 
-    asyncio.run(verify())
+    try:
+        asyncio.run(verify())
+    finally:
+        flask.extensions["ticker.application"].close()
     assert calls == (["start"] if failure == "startup" else ["start", "stop"])
 
 
@@ -344,9 +336,9 @@ def test_asgi_import_has_no_database_or_runtime_side_effects(tmp_path):
     script = (
         "import os, threading; from pathlib import Path; "
         f"os.environ['TICKER_DATABASE_PATH'] = {str(tmp_path / 'unused.sqlite3')!r}; "
-        "import sports_ticker.server, sports_ticker.asgi; "
+        "import ticker3.server, ticker3.api.asgi; "
         "assert not Path(os.environ['TICKER_DATABASE_PATH']).exists(); "
-        "assert not any(t.name == 'ticker-v2-refresh' for t in threading.enumerate())"
+        "assert threading.active_count() == 1"
     )
     subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
 
@@ -364,10 +356,11 @@ def test_server_bind_configuration_preserves_deployment_settings(monkeypatch, ho
 
 
 def test_server_main_loads_environment_and_serves_asgi(monkeypatch):
-    """Use the production factory after loading environment settings."""
+    """Use the ASGI factory after loading environment settings."""
 
     calls = []
-    application = asgi.BackendASGI(Flask("server-main"))
+    flask = _offline(":memory:")
+    application = asgi.TickerASGI(flask, start=_no_engine)
     monkeypatch.setattr(server.faulthandler, "enable", lambda: None)
     if hasattr(server.faulthandler, "register"):
         monkeypatch.setattr(server.faulthandler, "register", lambda *args, **kwargs: None)

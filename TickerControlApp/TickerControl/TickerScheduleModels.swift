@@ -230,7 +230,6 @@ struct TickerScheduleStatus: Codable, Hashable, Sendable {
 }
 
 struct TickerScheduleResponse: Codable, Hashable, Sendable {
-    let api_version: String
     let ticker_id: String
     let timezone: String
     let days: [TickerScheduleDay]

@@ -474,7 +474,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--report-file", type=Path)
     parser.add_argument("--frame-file", type=Path)
     parser.add_argument("--duration-seconds", type=int, default=60)
-    parser.add_argument("--backend-url", default="https://ticker.mattdicks.org/api/v2")
+    parser.add_argument("--backend-url", default="https://ticker.mattdicks.org")
     parser.add_argument("--ticker-id", default="722c59f4-fce3-4735-b072-faaa2f579a0a")
     parser.add_argument("--ssh-target", default="mld@ticker2.local")
     parser.add_argument("--ssh-key", type=Path, default=Path.home() / ".ssh" / "ticker2_codex")

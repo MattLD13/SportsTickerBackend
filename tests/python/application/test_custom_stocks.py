@@ -1,21 +1,27 @@
+import hashlib
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from sports_ticker.bootstrap_v2 import create_backend_application
+from sports_ticker.application.provider_keys import provider_settings_key
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import TickerRepository
 from sports_ticker.markets import MARKET_GROUPS, MARKET_OPTIONS, selected_market_groups
-from sports_ticker.application.provider_keys import provider_settings_key
 from sports_ticker.projections.data_api import project_data_v2, select_display_content
 from sports_ticker.providers import stock_source
 from sports_ticker.providers.market_sessions import MarketSession
 from sports_ticker.providers.normalization import normalize_settings
 from sports_ticker.providers.stocks import StockProvider
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
+
+
+def device_token(ticker_id: str) -> str:
+    """Return the device token of one test device. The token alone names the ticker."""
+    return hashlib.sha256(ticker_id.encode()).hexdigest()
 
 
 def test_custom_symbols_validate_normalize_and_persist_per_ticker(tmp_path):
@@ -92,14 +98,14 @@ def test_custom_source_shares_quotes_but_keeps_lists_and_order_separate(tmp_path
 
 
 def test_custom_list_patch_and_api_round_trip(tmp_path):
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
-        registration = client.post("/api/v2/devices/register", json={"device_id": "one"},
-                                   headers={"X-Device-Token": "a" * 64}).get_json()
-        pairing = client.post("/api/v2/pairings/exchange", json={"pairing_code": registration["pairing_code"]}).get_json()
+        registration = client.post("/register", json={"device_id": "one"},
+                                   headers={"X-Device-Token": device_token("one")}).get_json()
+        pairing = client.post("/pair", json={"pairing_code": registration["pairing_code"]}).get_json()
         headers = {"Authorization": f"Bearer {pairing['controller_token']}"}
-        endpoint = "/api/v2/tickers/one"
+        endpoint = "/tickers/one"
         settings = {"mode": "stock", "active_sports": {"stock_custom": True}, "custom_stock_symbols": ["nvda", "AAPL"]}
         response = client.patch(endpoint, json={"display_settings": settings}, headers=headers)
         assert response.status_code == 200
@@ -110,7 +116,7 @@ def test_custom_list_patch_and_api_round_trip(tmp_path):
         assert invalid.status_code == 400
         assert client.get(endpoint + "/data", headers=headers).get_json()["settings"]["custom_stock_symbols"] == ["NVDA", "AAPL"]
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()
 
 
 def test_custom_projection_keeps_more_than_ten_stocks_in_saved_order():

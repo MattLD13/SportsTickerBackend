@@ -12,7 +12,7 @@ from ticker_core.protocol import TickerResponse
 
 
 pytestmark = pytest.mark.critical
-SNAPSHOT = Path(__file__).resolve().parents[2] / "fixtures/display" / "v2_render_snapshot.json"
+SNAPSHOT = Path(__file__).resolve().parents[2] / "fixtures/display" / "render_snapshot.json"
 
 
 def _payload():
@@ -31,7 +31,6 @@ class FakeStream:
         self.stop.set()
         return json.dumps({
             "type": "snapshot",
-            "protocol_version": 1,
             "stream_id": "stream-1",
             "seq": 1,
             "base_seq": 1,

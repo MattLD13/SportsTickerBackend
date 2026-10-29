@@ -69,7 +69,4 @@ def create_provider(name, *, spotify=None, catalog=None, database_path=None):
         from .flights import FlightsProvider
         from .flight_source import FlightRadarSource
         return FlightsProvider(FlightRadarSource())
-    if name == "clock":
-        from .clock import ClockProvider
-        return ClockProvider()
     raise ValueError("unknown provider component")

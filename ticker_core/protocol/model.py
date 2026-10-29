@@ -305,7 +305,7 @@ class TickerSettings:
 
 @dataclass(frozen=True, slots=True)
 class TickerResponse:
-    """Represent one complete `/api/v2/tickers/<id>/data` response."""
+    """Represent one complete `/data` response."""
 
     status: DeviceState
     ticker_id: str
@@ -385,8 +385,6 @@ class TickerResponse:
 
     @classmethod
     def _from_frozen(cls, data: Mapping[str, FrozenJson]) -> "TickerResponse":
-        if data.get("api_version") != "v2":
-            raise PayloadValidationError("response.api_version must be v2")
         snapshot = _object(data.get("snapshot"), "response.snapshot")
         ticker_id = _string(snapshot.get("ticker_id"), "response.snapshot.ticker_id")
         if not ticker_id or not ticker_id.strip():

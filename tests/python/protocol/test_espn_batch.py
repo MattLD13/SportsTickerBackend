@@ -6,8 +6,6 @@ import json
 
 import pytest
 
-from backend_ops.worker import ProviderWorker
-from backend_ops.worker_contract import MAX_BATCH, contract_id, decode_batch, encode, encode_batch
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.espn import EspnScoreboardProvider
 from sports_ticker.providers.espn_fastcast import EspnFastcastSource
@@ -82,11 +80,6 @@ def test_150_game_batch_encodes_shared_content_once_and_reprojects_only_changed_
     assert len(client.calls) == calls
     assert all(len(value.content) == 150 for value in results.values())
     assert results['ticker-0'].content[0] is results['ticker-149'].content[0]
-    encoded = encode_batch(results)
-    assert len(encoded['items']) == 150
-    decoded = decode_batch(json.loads(json.dumps(encoded)), selected,
-                           receipt={'source': 'espn', 'request_started_ms': 1, 'core_received_at_ms': 2})
-    assert decoded['ticker-0'].content[0] is decoded['ticker-149'].content[0]
     projected.clear()
     update(source, 8, games=1)
     next_results = provider.fetch_batch_for_tickers(selected, live_only=True)
@@ -118,27 +111,6 @@ def test_batch_captures_one_version_and_keeps_conference_filters_separate(monkey
     assert {item.data['home_score'] for value in next_results.values() for item in value.content} == {'8'}
 
 
-def test_worker_batch_validates_bounds_and_has_one_shared_game_table():
-    provider, source, client = create(4)
-    worker = ProviderWorker('espn', provider)
-    message = {'protocol': 1, 'contract': contract_id(), 'op': 'fetch_batch', 'live_only': False,
-               'tickers': {'first': encode(settings()), 'second': encode(settings(score_alerts=False))}}
-    result = worker.handle(message)
-    assert len(result['batch']['items']) == 4
-    assert set(result['batch']['results']) == {'first', 'second'}
-    for value in ({}, {str(index): {} for index in range(MAX_BATCH + 1)}):
-        assert 'error' in worker.handle({**message, 'tickers': value})
-    assert 'error' in worker.handle({**message, 'live_only': 1})
-    response = result['batch']
-    for refs in ([True], [-1], [4]):
-        invalid = deepcopy(response)
-        invalid['results']['first']['content'] = refs
-        with pytest.raises(ValueError):
-            decode_batch(invalid, message['tickers'], receipt=None)
-    with pytest.raises(ValueError):
-        decode_batch(response, {'unexpected'}, receipt=None)
-
-
 def test_shared_batch_keeps_existing_new_and_muted_alert_histories_separate():
     provider, source, client = create(1)
     followed = {'my_teams': ('ncf_fbs:home0',)}
@@ -153,23 +125,3 @@ def test_shared_batch_keeps_existing_new_and_muted_alert_histories_separate():
     assert not results['new'].alerts
     assert not results['muted'].alerts
     assert results['existing'].content[0] is results['new'].content[0]
-
-
-def test_worker_client_splits_batches_at_the_contract_limit(monkeypatch, tmp_path):
-    import backend_ops.worker_contract as wire
-    from sports_ticker.domain import ContentItem
-    from sports_ticker.providers.contracts import ProviderResult
-
-    calls = []
-    item = ContentItem('shared', data={'sport': 'nfl'})
-
-    def request(path, message):
-        calls.append(message)
-        return {'batch': encode_batch({key: ProviderResult(content=(item,)) for key in message['tickers']})}
-
-    monkeypatch.setattr(wire, 'request', request)
-    selected = {str(index): settings() for index in range(MAX_BATCH + 1)}
-    results = wire.WorkerProvider('espn', tmp_path).fetch_batch_for_tickers(selected, live_only=True)
-    assert set(results) == set(selected)
-    assert [len(call['tickers']) for call in calls] == [MAX_BATCH, 1]
-    assert all(call['live_only'] is True for call in calls)

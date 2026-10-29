@@ -3,9 +3,6 @@
   "$id": "https://ticker.mattdicks.org/contracts/schedule-response.json",
   "type": "object",
   "properties": {
-    "api_version": {
-      "const": "v2"
-    },
     "ticker_id": {
       "type": "string"
     },
@@ -63,7 +60,6 @@
     }
   },
   "required": [
-    "api_version",
     "ticker_id",
     "timezone",
     "days",

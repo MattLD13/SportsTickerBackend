@@ -1,19 +1,25 @@
 """Validate saved V2 contracts without network calls or new dependencies."""
 
-from copy import deepcopy
+import hashlib
 import json
-from pathlib import Path
 import re
+from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
-from sports_ticker.bootstrap_v2 import create_backend_application
-from sports_ticker.fleet.profiles import TickerProfile
-from sports_ticker.firmware import FirmwareManifest
-from sports_ticker.domain import ScheduleBlock, ScheduleCondition
 from sports_ticker.application.schedule import block_to_mapping, condition_to_mapping
+from sports_ticker.domain import ScheduleBlock, ScheduleCondition
+from sports_ticker.firmware import FirmwareManifest
+from sports_ticker.fleet.profiles import TickerProfile
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
+
+
+def device_token(ticker_id: str) -> str:
+    """Return the device token of one test device. The token alone names the ticker."""
+    return hashlib.sha256(ticker_id.encode()).hexdigest()
 CONTRACTS = Path(__file__).resolve().parents[3] / "docs" / "contracts"
 FIXTURES = CONTRACTS / "fixtures"
 
@@ -126,7 +132,6 @@ def test_sports_projection_fixture_contains_content_and_overlays():
     ("firmware-manifest-response", "size", 2093057),
     ("firmware-manifest-response", "binary_url", "http://example.com/image.bin"),
     ("firmware-manifest-response", "sha256", "g" * 64),
-    ("display-response", "api_version", "v1"),
     ("display-response", "settings.mode", "pinned"),
     ("display-response", "events.news", [{}]),
 ])
@@ -142,8 +147,8 @@ def test_saved_negative_contract(name, path, value):
 
 
 def test_registration_contract_matches_route_defaults_and_normalization():
-    app = create_backend_application(":memory:", [], clock=lambda: 1786752000.0)
-    backend = app.extensions["sports_ticker.backend_application"]
+    app = create_offline_application(":memory:", [], clock=lambda: 1786752000.0)
+    backend = app.extensions["ticker.application"]
     try:
         client = app.test_client()
         requests = [
@@ -154,7 +159,8 @@ def test_registration_contract_matches_route_defaults_and_normalization():
         ]
         for request in requests:
             validate("device-registration-request", request)
-            response = client.post("/api/v2/devices/register", json=request, headers={"X-Device-Token": "a" * 64})
+            headers = {"X-Device-Token": device_token(request["device_id"])}
+            response = client.post("/register", json=request, headers=headers)
             assert response.status_code == 201
             document = response.get_json()
             validate("device-registration-response", document)
@@ -163,12 +169,12 @@ def test_registration_contract_matches_route_defaults_and_normalization():
             assert document["ticker"]["profile"]["product_family"] == (
                 "mini" if request["device_id"] == "mini-contract" else "full"
             )
-            validate("display-response", client.get(f"/api/v2/tickers/{document['ticker_id']}/data", headers={"X-Device-Token": "a" * 64}).get_json())
-        repeat = client.post("/api/v2/devices/register", json=requests[0], headers={"X-Device-Token": "a" * 64})
+            validate("display-response", client.get("/data", headers=headers).get_json())
+        repeat = client.post("/register", json=requests[0], headers={"X-Device-Token": device_token(requests[0]["device_id"])})
         assert repeat.status_code == 200
         validate("device-registration-response", repeat.get_json())
         for invalid in ({"device_id": " "}, {"device_id": "x", "unknown": True}, {"device_id": "x", "metadata": []}):
-            assert client.post("/api/v2/devices/register", json=invalid, headers={"X-Device-Token": "a" * 64}).status_code == 400
+            assert client.post("/register", json=invalid, headers={"X-Device-Token": device_token(" default-contract ")}).status_code == 400
             with pytest.raises(AssertionError):
                 validate("device-registration-request", invalid)
     finally:

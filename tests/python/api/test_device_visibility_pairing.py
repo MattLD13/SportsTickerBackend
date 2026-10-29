@@ -1,28 +1,28 @@
 """Check inactive fleet rows and current app pairing codes through V2 routes."""
-from datetime import datetime, timezone
 from copy import deepcopy
+from datetime import datetime, timezone
 
 import pytest
 
-from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import TickerRecord
 from sports_ticker.projections import project_data_v2
 from sports_ticker.projections.device_data import project_device_data
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
 
 
 def test_month_old_rows_hide_without_revoking_controller_or_device_state(tmp_path):
     now = [10_000_000.0]
-    app = create_backend_application(tmp_path / "fleet.sqlite3", [], clock=lambda: now[0])
-    application = app.extensions["sports_ticker.backend_application"]
+    app = create_offline_application(tmp_path / "fleet.sqlite3", [], clock=lambda: now[0])
+    application = app.extensions["ticker.application"]
     client = app.test_client()
     try:
-        registration = client.post("/api/v2/devices/register", json={"device_id":"mini", "name":"My Mini"}, headers={"X-Device-Token": "a" * 64}).get_json()
-        paired = client.post("/api/v2/pairings/exchange", json={"pairing_code":registration["pairing_code"]}).get_json()
+        registration = client.post("/register", json={"device_id":"mini", "name":"My Mini"}, headers={"X-Device-Token": "a" * 64}).get_json()
+        paired = client.post("/pair", json={"pairing_code":registration["pairing_code"]}).get_json()
         headers = {"Authorization":f'Bearer {paired["controller_token"]}'}
-        endpoint = "/api/v2/tickers"
+        endpoint = "/tickers"
         assert len(client.get(endpoint, headers=headers).get_json()["tickers"]) == 1
         now[0] += 30 * 86400 - 1
         assert len(client.get(endpoint, headers=headers).get_json()["tickers"]) == 1
@@ -44,19 +44,19 @@ def test_month_old_rows_hide_without_revoking_controller_or_device_state(tmp_pat
 
 def test_snapshot_refreshes_expired_code_without_rebooting_mini(tmp_path):
     now = [1000.0]
-    app = create_backend_application(tmp_path / "pairing.sqlite3", [], clock=lambda: now[0])
+    app = create_offline_application(tmp_path / "pairing.sqlite3", [], clock=lambda: now[0])
     client = app.test_client()
     try:
-        first = client.post("/api/v2/devices/register", json={"device_id":"mini"}, headers={"X-Device-Token": "a" * 64}).get_json()["pairing_code"]
+        first = client.post("/register", json={"device_id":"mini"}, headers={"X-Device-Token": "a" * 64}).get_json()["pairing_code"]
         now[0] += 601
-        second = client.get("/api/v2/tickers/mini/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]["pairing"]["code"]
+        second = client.get("/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]["pairing"]["code"]
         assert second and second != first
-        assert client.get("/api/v2/tickers/mini/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]["pairing"]["code"] == second
-        assert client.post("/api/v2/pairings/exchange", json={"pairing_code":first}).status_code == 400
-        assert client.post("/api/v2/pairings/exchange", json={"pairing_code":second}).status_code == 201
-        assert client.get("/api/v2/tickers/mini/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]["pairing"] == {"paired":True,"code":None}
+        assert client.get("/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]["pairing"]["code"] == second
+        assert client.post("/pair", json={"pairing_code":first}).status_code == 400
+        assert client.post("/pair", json={"pairing_code":second}).status_code == 201
+        assert client.get("/data", headers={"X-Device-Token": "a" * 64}).get_json()["meta"]["pairing"] == {"paired":True,"code":None}
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()
 
 
 @pytest.mark.parametrize("state,status,expected", [

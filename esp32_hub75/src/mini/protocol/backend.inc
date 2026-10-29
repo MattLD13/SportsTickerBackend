@@ -56,7 +56,7 @@ bool registerDevice() {
   serializeJson(request, body);
   auto* job = new (std::nothrow) NetworkJob(NetworkKind::Registration);
   if (!job) return false;
-  job->url = backendEndpoint("/api/v2/devices/register");
+  job->url = backendEndpoint("/register");
   job->request = body;
   return networkWorker.enqueue(job);
 }
@@ -81,7 +81,8 @@ void applyRegistrationResponse(const NetworkJob& job) {
   }
 
   tickerId = nextTickerId;
-  dataUrl = backendEndpoint("/api/v2/tickers/") + tickerId + "/data";
+  // The device token names the ticker, so the poll path has no ticker ID.
+  dataUrl = backendEndpoint("/poll");
   const bool backendPaired = response["paired"] | false;
   pairingMode = !backendPaired;
   savePairingCode(response["pairing_code"] | "");

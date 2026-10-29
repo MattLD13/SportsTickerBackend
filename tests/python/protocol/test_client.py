@@ -11,7 +11,6 @@ from ticker_core.protocol import BackendClient, BackendHttpError, BackendPayload
 
 def _payload() -> dict[str, Any]:
     return {
-        "api_version": "v2",
         "snapshot": {"ticker_id": "pi-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
         "settings": {"mode": "sports", "sports_presentation": "rotation", "pinned_content_id": "", "brightness": 100, "scroll_speed": 0.05, "inverted": False},
         "content": {"sports": []}, "events": {"alerts": [], "news": []},
@@ -57,7 +56,7 @@ def test_client_fetches_the_version_two_data_endpoint() -> None:
 
     assert response.ticker_id == "pi-1"
     method, url, options = session.calls[0]
-    assert (method, url) == ("GET", "https://ticker.test/api/v2/tickers/pi-1/data")
+    assert (method, url) == ("GET", "https://ticker.test/data")
     assert options["timeout"] == 7
     assert options["verify"] is True
 
@@ -82,7 +81,7 @@ def test_client_registers_before_the_first_display_poll() -> None:
     assert registration.ticker_id == "pi-1"
     assert registration.pairing_code == "123456"
     method, url, options = session.calls[0]
-    assert (method, url) == ("POST", "https://ticker.test/api/v2/devices/register")
+    assert (method, url) == ("POST", "https://ticker.test/register")
     assert options["json"] == {
         "device_id": "pi-1",
         "name": "Kitchen",
@@ -117,8 +116,8 @@ def test_client_builds_a_tls_verified_device_stream_resume_url() -> None:
     )
 
     assert connection is not None
-    assert captured["url"] == "wss://ticker.test/base/api/v2/tickers/pi%201/stream?stream_id=stream-a&after_seq=7"
-    assert captured["subprotocols"] == ["ticker-v2"]
+    assert captured["url"] == "wss://ticker.test/base/stream?stream_id=stream-a&after_seq=7"
+    assert captured["subprotocols"] == ["ticker"]
     assert captured["sslopt"]["cert_reqs"] == 2
     assert captured["sslopt"]["check_hostname"] is True
 

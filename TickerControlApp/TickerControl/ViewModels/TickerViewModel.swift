@@ -213,7 +213,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     private func tickerURL(_ tickerID: String, suffix: String = "") -> URL? {
         let identifier = tickerID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tickerID
-        return URL(string: "\(getBaseURL())/api/v2/tickers/\(identifier)\(suffix)")
+        return URL(string: "\(getBaseURL())/tickers/\(identifier)\(suffix)")
     }
 
     private func authorizedRequest(url: URL, method: String, tickerID: String? = nil) -> URLRequest? {
@@ -817,7 +817,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     // --- STANDARD HELPERS ---
 
     func searchStockSymbols(_ query: String) async throws -> [StockSymbolOption] {
-        guard var components = URLComponents(string: getBaseURL() + "/api/v2/catalog/stocks") else {
+        guard var components = URLComponents(string: getBaseURL() + "/stocks") else {
             throw URLError(.badURL)
         }
         components.queryItems = [URLQueryItem(name: "q", value: query)]
@@ -841,7 +841,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     func fetchLeagueOptions() {
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/v2/catalog/leagues") else { return }
+        guard let url = URL(string: "\(base)/leagues") else { return }
         httpClient.dataTask(with: url) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode(V2LeagueCatalog.self, from: d) {
                 DispatchQueue.main.async {
@@ -858,7 +858,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         if allTeams[leagueID] != nil { return }
         let base = getBaseURL()
         let identifier = leagueID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? leagueID
-        guard let url = URL(string: "\(base)/api/v2/catalog/leagues/\(identifier)/teams") else { return }
+        guard let url = URL(string: "\(base)/leagues/\(identifier)/teams") else { return }
         httpClient.dataTask(with: url) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode(V2TeamCatalog.self, from: d) {
                 DispatchQueue.main.async { self.allTeams[leagueID] = decoded.teams }
@@ -868,7 +868,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     func fetchModeOptions() {
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/v2/catalog/modes") else { return }
+        guard let url = URL(string: "\(base)/modes") else { return }
         httpClient.dataTask(with: url) { data, _, _ in
             if let data, let decoded = try? JSONDecoder().decode(V2ModeCatalog.self, from: data) {
                 DispatchQueue.main.async {
@@ -895,7 +895,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         let token = tickerID.flatMap(authorizationToken)
         guard let tickerID,
               let token,
-              let url = URL(string: "\(getBaseURL())/api/v2/tickers"),
+              let url = URL(string: "\(getBaseURL())/tickers"),
               let request = authorizedRequest(url: url, method: "GET", tickerID: tickerID) else {
             deviceListGate.invalidate()
             deviceListTask = nil
@@ -983,7 +983,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         onFailure: ((String) -> Void)? = nil
     ) {
             let base = getBaseURL()
-            guard let url = URL(string: "\(base)/api/v2/pairings/exchange") else {
+            guard let url = URL(string: "\(base)/pair") else {
                 self.pairError = "Invalid Server URL"
                 onFailure?("Invalid server URL")
                 return
@@ -1190,7 +1190,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     func fetchSpotifyStatus() {
         guard let tickerID = savedTickerID,
               let token = authorizationToken(for: tickerID),
-              let url = tickerURL(tickerID, suffix: "/integrations/spotify"),
+              let url = tickerURL(tickerID, suffix: "/spotify"),
               let request = authorizedRequest(url: url, method: "GET") else {
             spotifyStatus = "Connect a Ticker first"
             spotifyAccountName = nil
@@ -1223,7 +1223,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     func connectSpotify() {
         guard let tickerID = savedTickerID,
-              let url = tickerURL(tickerID, suffix: "/integrations/spotify/authorizations"),
+              let url = tickerURL(tickerID, suffix: "/spotify/login"),
               let request = authorizedRequest(url: url, method: "POST") else {
             spotifyError = "Pair with a Ticker before connecting Spotify."
             return
@@ -1280,7 +1280,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         guard let tickerID = savedTickerID,
               let url = tickerURL(
                 tickerID,
-                suffix: accountID.map { "/integrations/spotify/\($0)" } ?? "/integrations/spotify"
+                suffix: accountID.map { "/spotify/\($0)" } ?? "/spotify"
               ),
               let request = authorizedRequest(url: url, method: "DELETE") else { return }
         httpClient.dataTask(with: request) { _, response, _ in
@@ -1297,7 +1297,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     func setSpotifyPriority(accountID: String?) {
         guard let tickerID = savedTickerID,
-              let url = tickerURL(tickerID, suffix: "/integrations/spotify/priority"),
+              let url = tickerURL(tickerID, suffix: "/spotify/priority"),
               var request = authorizedRequest(url: url, method: "PATCH") else { return }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(
@@ -1348,7 +1348,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     // ==========================================
     func reboot() {
         guard let tickerID = savedTickerID,
-              let url = tickerURL(tickerID, suffix: "/commands/reboot"),
+              let url = tickerURL(tickerID, suffix: "/reboot"),
               let request = authorizedRequest(url: url, method: "POST") else {
             connectionStatus = "Pair this ticker before requesting a reboot."
             statusColor = .orange

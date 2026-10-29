@@ -7,7 +7,7 @@ on:
         description: Component name or all
         type: choice
         default: all
-        options: [all, core, espn, fotmob, weather, golf, racing, stock, flights, music, news, clock]
+        options: [all, core, espn, fotmob, weather, golf, racing, stock, flights, music, news]
 
 permissions:
   contents: read

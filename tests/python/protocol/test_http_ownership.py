@@ -90,13 +90,13 @@ def test_factory_owns_golf_source_but_injected_source_stays_open(monkeypatch):
 
 
 def test_bootstrap_closes_route_catalog_and_resolver(tmp_path, monkeypatch):
-    from sports_ticker.bootstrap_v2 import create_backend_application
+    from ticker3.offline import create_offline_application
 
     monkeypatch.setattr("sports_ticker.providers.weather_location.PooledJsonHttpClient", Client)
     monkeypatch.setattr("sports_ticker.providers.stock_catalog.PooledJsonHttpClient", Client)
-    app = create_backend_application(tmp_path / "fleet.db", [])
-    application = app.extensions["sports_ticker.backend_application"]
-    stock_client = app.extensions["sports_ticker.stock_catalog"]._client
+    app = create_offline_application(tmp_path / "fleet.db", [])
+    application = app.extensions["ticker.application"]
+    stock_client = app.extensions["ticker.stock_catalog"]._client
     weather_client = application.weather_location_resolver.__self__.client
     application.close()
     application.close()

@@ -31,7 +31,6 @@ def _response(
     ]
     return TickerResponse.from_payload(
         {
-            "api_version": "v2",
             "snapshot": {"ticker_id": "ticker-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
             "settings": {"mode": mode, "sports_presentation": presentation, "pinned_content_id": "game" if presentation == "pinned" else "", "live_delay_mode": live_delay_mode, "live_delay_seconds": live_delay_seconds, "brightness": 75, "scroll_speed": 0.04, "inverted": True},
             "content": {"sports": games},

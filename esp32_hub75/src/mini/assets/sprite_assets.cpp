@@ -211,7 +211,7 @@ bool SpriteAssets::load(const String& key, uint8_t* bytes) {
   if (!mini_sprite::parseReference(key.c_str(), reference)) return false;
   if (loadCached(key, bytes)) return true;
   AssetTransfer transfer;
-  const bool received = transport_.fetchAsset(String(backend_) + "/api/v2/assets/mini-sports/" + reference.id + ".mts", bytes, mini_sprite::kBytes, transfer);
+  const bool received = transport_.fetchAsset(String(backend_) + "/assets/sprites/" + reference.id + ".mts", bytes, mini_sprite::kBytes, transfer);
   metrics_.heapBeforeTls = transfer.heapBefore;
   metrics_.heapDuringTls = transfer.heapDuring;
   metrics_.largestDuringTls = transfer.largestDuring;

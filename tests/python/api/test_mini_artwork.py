@@ -1,16 +1,16 @@
 """Check album preparation, bounded RAM ownership, and the Mini music contract."""
-from datetime import datetime, timezone
 import hashlib
 import io
+from datetime import datetime, timezone
 
-from PIL import Image
 import pytest
+from PIL import Image
 
-from sports_ticker.assets.mini_artwork import MiniArtworkService, WIRE_BYTES, HEADER
+from sports_ticker.assets.mini_artwork import HEADER, WIRE_BYTES, MiniArtworkService
 from sports_ticker.assets.mini_service import SourceReply
-from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.fleet.device_credentials import device_token_hash
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
 
@@ -25,13 +25,14 @@ def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path
         return SourceReply(source.getvalue())
 
     service = MiniArtworkService(fetcher=fetch, clock=lambda: 100)
-    app = create_backend_application(tmp_path / "fleet.db", [], mini_artwork=service, clock=lambda: 100)
-    application = app.extensions["sports_ticker.backend_application"]
+    app = create_offline_application(tmp_path / "fleet.db", [], mini_artwork=service, clock=lambda: 100)
+    application = app.extensions["ticker.application"]
     client = app.test_client()
     try:
+        tokens = {"mini": "a" * 64, "six": "b" * 64}
         for identity, family in (("mini", "mini"), ("six", "full")):
             application.create_ticker(identity, display_settings=DisplaySettings(mode="music"),
-                                      pairing={"paired": True}, credential_hash=device_token_hash("a" * 64))
+                                      pairing={"paired": True}, credential_hash=device_token_hash(tokens[identity]))
             application.register_device(identity, profile={"product_family": family, "capabilities": {"modes": ["sports", "music"]}})
             application.snapshot_store.replace(TickerSnapshot(identity, 1, datetime.now(timezone.utc), (
                 ContentItem("track", "music", "spotify", True, {
@@ -40,12 +41,12 @@ def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path
                     "last_cover": "https://i.scdn.co/image/previous",
                     "next_covers": [f"https://i.scdn.co/image/next{index}" for index in range(4)],
                 }),), (), (), DisplaySettings(mode="music")))
-        headers = {"X-Device-Token": "a" * 64}
-        first = client.get("/api/v2/tickers/mini/data?mode=music", headers=headers)
+        headers = {"X-Device-Token": tokens["mini"]}
+        first = client.get("/data", headers=headers)
         assert first.status_code == 200
         assert first.get_json()["content"]["music"][0]["data"]["cover_asset"]["state"] == "pending"
         service.wait()
-        payload = client.get("/api/v2/tickers/mini/data?mode=music", headers=headers).get_json()
+        payload = client.get("/data", headers=headers).get_json()
         music = payload["content"]["music"][0]["data"]
         asset = music["cover_asset"]
         assert len(music["next_cover_assets"]) == 3
@@ -60,10 +61,10 @@ def test_music_cover_uses_real_projection_and_checked_memory_only_bytes(tmp_path
         assert HEADER.unpack_from(response.data) == (b"MTA1", 1, 1, 32, 32, 2048, 0, 0, 0)
         assert hashlib.sha256(response.data).hexdigest() == asset["sha256"] == asset["asset_id"]
         assert client.get(asset["url"], headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
-        assert "cover_asset" not in client.get("/api/v2/tickers/six/data?mode=music", headers=headers).get_json()["content"]["music"][0]["data"]
+        assert "cover_asset" not in client.get("/data", headers={"X-Device-Token": tokens["six"]}).get_json()["content"]["music"][0]["data"]
         assert calls == ["https://i.scdn.co/image/album", *[f"https://i.scdn.co/image/next{index}" for index in range(3)],
                          "https://i.scdn.co/image/previous"]
-        assert client.get("/api/v2/assets/mini-artwork/invalid.mta").status_code == 404
+        assert client.get("/assets/artwork/invalid.mta").status_code == 404
     finally:
         application.close()
 

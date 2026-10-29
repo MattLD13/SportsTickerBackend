@@ -1,6 +1,7 @@
 {
   "backend": [
     "sports_ticker/**",
+    "ticker3/**",
     "ticker_core/**",
     "esp32_hub75/src/mini/**",
     "esp32_hub75/platformio.ini",

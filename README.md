@@ -1,23 +1,25 @@
 # Sports Ticker
 
-Sports Ticker serves live content to 384x32 Raspberry Pi LED matrices. The backend and Pi controller use only API V2.
+Sports Ticker serves live content to 384x32 Raspberry Pi LED matrices (Ticker Six), 64x32 ESP32 panels (Ticker Mini), and an iOS controller app.
 
-Read [Architecture](docs/architecture/README.md), [Contributing](docs/development/README.md), [V2 contracts](docs/contracts/overview.md), the [revised SOW](docs/plans/engineering-sow.md), and its [feasibility review](docs/plans/feasibility.md).
+Read [Architecture](docs/architecture/README.md), [the API](docs/api.md), [Contributing](docs/development/README.md), [display contracts](docs/contracts/overview.md), the [revised SOW](docs/plans/engineering-sow.md), and its [feasibility review](docs/plans/feasibility.md).
 
 ## Architecture
 
 ```text
-Provider workers -> per-ticker scheduler -> V2 snapshot -> ticker_core runtime -> frame sink -> 384x32 panel
-                 |                       |
-                 |                       +-> dashboard and controller app
-                 +-> SQLite ticker settings, pairing, events, and integrations
+Provider workers -> core engine -> ticker snapshot -> /data, /poll, /stream -> Six and Mini runtimes -> panels
+      ^                 |                                   |
+      |                 |                                   +-> dashboard and controller app
+      +-- supervisor ---+-> SQLite ticker settings, pairing, events, and integrations
 ```
 
-`sports_ticker/` owns provider reads, per-ticker settings, snapshots, pairing, Spotify connections, events, and the Flask API.
+`ticker3/` owns the routes, the device stream, the engine, the worker supervisor, and the provider worker process.
 
-`ticker_core/` owns V2 transport, content caching, runtime scheduling, rendering, and matrix drivers.
+`sports_ticker/` owns provider reads, per-ticker settings, snapshots, projections, pairing, Spotify connections, and events.
 
-`TickerControlApp/` is the iOS controller app. It uses V2 controller credentials and never receives Spotify tokens.
+`ticker_core/` owns Six transport, content caching, runtime scheduling, rendering, and matrix drivers.
+
+`TickerControlApp/` is the iOS controller app. It uses controller tokens and never receives Spotify tokens.
 
 ## Modes
 
@@ -34,46 +36,35 @@ Provider workers -> per-ticker scheduler -> V2 snapshot -> ticker_core runtime -
 
 Alerts, news, connection loss, and updates render as overlays. They do not replace the active mode.
 
-## API V2
+## API
 
-The Pi reads one endpoint:
+Paths have no version prefix. A device token names its ticker, so device paths have no ticker ID.
 
 ```text
-GET /api/v2/tickers/<ticker-id>/data
+GET  /data      Six display data
+POST /poll      Mini telemetry and compact display data
+WS   /stream    Live display data for the Six
 ```
 
 The response contains a ticker-specific snapshot, effective display settings, overlays, health, and pairing state. The backend projects domain facts once. Clients render those facts and do not infer team ownership from status text.
 
-Useful endpoints:
-
-| Method | Endpoint | Use |
-|---|---|---|
-| `GET` | `/api/v2/health` | Scheduler health. |
-| `GET` | `/api/v2/tickers` | List provisioned tickers. |
-| `POST` | `/api/v2/tickers` | Provision a ticker. |
-| `PATCH` | `/api/v2/tickers/<ticker-id>` | Change ticker display settings. |
-| `POST` | `/api/v2/tickers/<ticker-id>/heartbeat` | Report Pi health. |
-| `POST` | `/api/v2/tickers/<ticker-id>/commands/reboot` | Request one paired ticker reboot. |
-| `POST` | `/api/v2/pairings/exchange` | Claim a pairing code and receive a controller token. |
-| `POST` | `/api/v2/tickers/<ticker-id>/integrations/spotify/authorizations` | Start Spotify authorization. |
-
-Read [API V2 route definitions](sports_ticker/api/routes.py) for validation rules and complete route coverage.
+Read [the API](docs/api.md) for every route, its authorization, and its error codes.
 
 ## Development
 
-Run the focused V2 suite:
+Run the test suite:
 
 ```powershell
 python -m pytest -q
 ```
 
-Render a deterministic V2 snapshot without hardware:
+Render a deterministic snapshot without hardware:
 
 ```powershell
-python tools\rendering\render_frame.py --snapshot tests\fixtures\display\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png
+python tools\rendering\render_frame.py --snapshot tests\fixtures\display\render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png
 ```
 
-Run the local V2 API, Pi WebSocket client, and matrix bench through online, disconnected, and recovered states:
+Run the local API, Pi WebSocket client, and matrix bench through online, disconnected, and recovered states:
 
 ```powershell
 python tools\diagnostics\virtual_hardware_lab.py
@@ -92,14 +83,14 @@ See [benchmark notes](tools/benchmarks/README.md) for measured results and limit
 Render from a running backend:
 
 ```powershell
-python tools\rendering\render_frame.py --url http://127.0.0.1:5000 --ticker-id <ticker-id> --mode sports --no-prefetch --output previews\live.png
+python tools\rendering\render_frame.py --url http://127.0.0.1:5000 --device-token-file <token-file> --mode sports --no-prefetch --output previews\live.png
 ```
 
 If a display change alters pixels, render a 384x32 PNG before you commit it.
 
 ## Data ownership
 
-Each fact has one owner. Providers normalize upstream data. `SportsDisplayProjector` assigns sports state such as `activeTeam`. The API projects canonical V2 data. The Pi and app consume that contract.
+Each fact has one owner. Providers normalize upstream data. `SportsDisplayProjector` assigns sports state such as `activeTeam`. The API projects canonical display data. The Pi and app consume that contract.
 
 Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace the incorrect boundary and delete its obsolete callers, tests, fixtures, and documentation.
 
@@ -107,12 +98,13 @@ Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace th
 
 | Folder | Owner |
 |---|---|
-| `sports_ticker/` | Server APIs, domain data, persistence, and providers. |
-| `backend_ops/` | Provider workers, component deployment, rollback, and diagnostics. |
+| `ticker3/` | Server routes, device stream, engine, worker supervisor, and provider workers. |
+| `sports_ticker/` | Domain data, projections, persistence, and providers. |
+| `backend_ops/` | Release packaging, core activation, rollback, and diagnostics. |
 | `ticker_core/` | Ticker Six runtime and rendering. |
 | `esp32_hub75/` | Ticker Mini firmware. |
 | `TickerControlApp/` | iOS controller app. |
-| `deploy/backend/` | Server and fetcher service units. |
+| `deploy/backend/` | Core service and guard timer units. |
 | `tests/` | Python tests, native firmware checks, and fixtures. |
 | `tools/` | Utilities grouped by purpose. |
 | `docs/` | Architecture, contracts, development, operations, plans, and research. |

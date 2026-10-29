@@ -1,6 +1,6 @@
-# V2 offline contracts
+# Offline contracts
 
-These schemas describe the current V2 boundary. They do not install runtime validation or generate clients.
+These schemas describe the current API boundary. `docs/api.md` lists the routes. They do not install runtime validation or generate clients.
 
 `device-registration-request.json` owns the registration request description. `device-registration.json` references that schema for the existing documentation path.
 The former schema required `name` and `metadata`. The route defaults those fields and accepts `pairing_code` and a null profile.
@@ -17,7 +17,7 @@ Schedule responses retain nullable filters, rule identifiers, condition identifi
 The schedule service owns interval ordering, overlap checks, capability checks, and changes that depend on existing rules.
 JSON Schema cannot compare two minute fields or query existing blocks. The offline tests exercise interval ordering through the domain model.
 
-The V2 display schema describes the shared envelope and content records. Pairing remains an effective mode.
+The display schema describes the shared envelope and content records. Pairing remains an effective mode.
 Family data, health errors, and snapshot staleness remain extensible because the current projection copies those values.
 The display schema accepts both the projection output and the enriched route output.
 Route metadata has typed profile, schedule, and pairing fields when present.

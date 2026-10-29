@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 
-from backend_ops.worker_contract import decode_result
+from ticker3.contract.results import decode_result
 from sports_ticker.providers.contracts import ProviderResult
 
 

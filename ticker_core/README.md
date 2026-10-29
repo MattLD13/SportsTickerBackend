@@ -72,9 +72,9 @@ Hardware profiles declare the logical frame geometry and supported modes. The fu
 
 ## Completion contract
 
-- The Pi uses `GET /api/v2/tickers/<ticker_id>/data` for boot state and `WS /api/v2/tickers/<ticker_id>/stream` for display updates.
-- The Pi keeps `PATCH /api/v2/tickers/<ticker_id>` and `POST /api/v2/tickers/<ticker_id>/heartbeat` for settings and telemetry.
-- The controller acknowledges reboot commands with `POST /api/v2/tickers/<ticker_id>/commands/reboot/ack` before it restarts.
+- The Pi uses `GET /data` for boot state and `WS /stream` for display updates. The device token names the ticker.
+- The Pi sends telemetry with `POST /heartbeat`. The app changes settings through the controller routes.
+- The controller acknowledges reboot commands with `POST /reboot-ack` before it restarts.
 - The app keeps mode, brightness, speed, inversion, pairing, sleep, reboot, and update behavior.
 - Every renderer returns the same panel pixels for equivalent deterministic inputs.
 - Animation receives explicit time values and never reads hidden controller clocks.

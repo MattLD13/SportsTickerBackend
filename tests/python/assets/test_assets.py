@@ -345,7 +345,6 @@ def test_planner_extracts_every_family_without_mode_filtering() -> None:
 def test_planner_reads_team_logos_from_v2_content_envelopes() -> None:
     jets_logo = "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/nyj.png"
     payload = {
-        "api_version": "v2",
         "content": {
             "sports": [
                 {
@@ -380,7 +379,7 @@ def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) 
             "pos": 1, "name": "George Russell", "abbr": "RUS", "team": "Mercedes", "car_illustration": url,
         }],
     }}
-    payload = {"api_version": "v2", "snapshot": {"ticker_id": "f1-six"}, "content": {"racing": [{
+    payload = {"snapshot": {"ticker_id": "f1-six"}, "content": {"racing": [{
         "id": "f1-fp2", "family": "racing", "kind": "f1", "data": data,
     }]}}
     response = TickerResponse.from_payload(payload)

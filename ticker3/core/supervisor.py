@@ -156,6 +156,12 @@ class Supervisor:
             return True
         if release in feature.bad:
             raise RuntimeError(f"release {release} of {name} is marked bad")
+        try:
+            folder = self.release_path(release)
+        except ValueError as error:
+            raise RuntimeError(str(error)) from error
+        if not folder.is_dir():
+            raise RuntimeError(f"release {release} has no folder")
         feature.candidate_release = release
         feature.trial = asyncio.get_running_loop().create_future()
         self._event(name, "deploy_started", release=release)
@@ -319,10 +325,12 @@ class Supervisor:
 
     async def _spawn(self, feature: _Feature, release: str) -> None:
         root = self.release_path(release)
+        # A release with its own dependency environment runs on that environment.
+        python = root / ".venv" / "bin" / "python"
         log = open(self.log_directory / f"{feature.spec.provider}.log", "ab")
         try:
             process = await asyncio.create_subprocess_exec(
-                self.python, "-m", "ticker3.worker", "--provider", feature.spec.provider, "--socket", str(self.socket_path),
+                str(python) if python.exists() else self.python, "-m", "ticker3.worker", "--provider", feature.spec.provider, "--socket", str(self.socket_path),
                 "--release", release, *self.worker_arguments,
                 cwd=root, env={**os.environ, "PYTHONPATH": str(root)}, stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL, stderr=log, start_new_session=True)

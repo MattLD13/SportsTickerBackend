@@ -219,7 +219,7 @@ def run_case(args) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", type=Path, default=ROOT / "tests/fixtures/display/v2_render_snapshot.json")
+    parser.add_argument("--snapshot", type=Path, default=ROOT / "tests/fixtures/display/render_snapshot.json")
     parser.add_argument("--output", type=Path, default=ROOT / "previews/benchmarks/pi-baseline")
     parser.add_argument("--frames", type=int, default=6000)
     parser.add_argument("--paced-frames", type=int, default=300)

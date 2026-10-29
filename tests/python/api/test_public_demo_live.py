@@ -6,15 +6,14 @@ from threading import Event
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from PIL import Image
 import pytest
+from PIL import Image
 
-from sports_ticker.bootstrap_v2 import create_backend_application
-from sports_ticker.dashboard_v2.live_demo import PublicDemoData
-from sports_ticker.dashboard_v2.preview import layout_case
 from sports_ticker.domain import ContentItem
 from sports_ticker.providers.contracts import ProviderHealth, ProviderResult
-
+from ticker3.offline import create_offline_application
+from ticker3.web.live_demo import PublicDemoData
+from ticker3.web.preview import layout_case
 
 pytestmark = pytest.mark.critical
 
@@ -100,17 +99,17 @@ def test_public_provider_failure_is_explicit_and_old_quotes_expire():
 
 @pytest.fixture
 def demo_app(tmp_path, monkeypatch):
-    from sports_ticker.dashboard_v2 import routes
+    from ticker3.web import routes
     from ticker_core.platform import assets as asset_module
     monkeypatch.setattr(asset_module, "_fetch_with_requests", lambda url: None)
     monkeypatch.setattr(routes, "time", lambda: 1792168467.0)
     monkeypatch.setattr(routes, "_SAMPLE_STARTED", 1792168355.0)
-    app = create_backend_application(tmp_path / "test.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "test.sqlite3", [])
     yield app
-    assets = app.extensions.get("sports_ticker.dashboard_preview_assets")
+    assets = app.extensions.get("ticker.dashboard_preview_assets")
     if assets:
         assets.close()
-    app.extensions["sports_ticker.backend_application"].close()
+    app.extensions["ticker.application"].close()
 
 
 def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch, tmp_path):
@@ -119,7 +118,7 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
     from ticker_core.rendering import load_default_font_set
 
     records = [{"data": {**dict(item.data), "situation": dict(item.data["situation"])}} for item in (stock("MSFT"), stock("NVDA"))]
-    demo_app.extensions["sports_ticker.public_demo_data"] = SimpleNamespace(content=lambda mode: ({mode: records}, "live"))
+    demo_app.extensions["ticker.public_demo"] = SimpleNamespace(content=lambda mode: ({mode: records}, "live"))
     logo = Image.new("RGBA", (24, 24), (255, 0, 255, 255))
     encoded = BytesIO()
     logo.save(encoded, format="PNG")
@@ -129,7 +128,7 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
         return encoded.getvalue()
     monkeypatch.setattr(asset_module, "_fetch_with_requests", fetch)
     demo_app.config["DASHBOARD_ASSET_CACHE"] = tmp_path / "assets"
-    response = demo_app.test_client().get("/api/v2/demo/frame.png?mode=stock")
+    response = demo_app.test_client().get("/demo/frame.png?mode=stock")
     assert response.headers["X-Ticker-Data"] == "live"
     actual = Image.open(BytesIO(response.data)).convert("RGBA")
     assert actual.size == (258, 32)
@@ -141,16 +140,16 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
 
 @pytest.mark.parametrize("mode", ["music", "weather"])
 def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
-    from sports_ticker.dashboard_v2 import routes
+    from ticker3.web import routes
     from ticker_core.context import RenderContext
     from ticker_core.features.weather import WeatherRenderer
     from ticker_core.rendering import load_default_font_set
 
     weather = layout_case("MD04")["game"]
-    demo_app.extensions["sports_ticker.public_demo_data"] = SimpleNamespace(content=lambda value: ({value: [{"data": weather}]}, "live"))
+    demo_app.extensions["ticker.public_demo"] = SimpleNamespace(content=lambda value: ({value: [{"data": weather}]}, "live"))
     client = demo_app.test_client()
     segment = 1792168467 // 3
-    response = client.get(f"/api/v2/demo/animation.png?mode={mode}&segment={segment}")
+    response = client.get(f"/demo/animation.png?mode={mode}&segment={segment}")
     assert response.status_code == 200
     assert response.headers["X-Ticker-Frames"] == "90"
     assert response.headers["X-Ticker-FPS"] == "30"
@@ -167,21 +166,21 @@ def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
             assets = routes._preview_assets()
             first = assets.renderer.animation([content["music"][0]["data"]], "music", datetime.fromtimestamp(segment * 3, timezone.utc))
         assert Image.open(BytesIO(first)).tobytes() == atlas.tobytes()
-    assert client.get(f"/api/v2/demo/animation.png?mode={mode}&segment={segment}", headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
-    assert client.get(f"/api/v2/demo/animation.png?mode={mode}&segment={segment + 2}").status_code == 400
-    assert client.get(f"/api/v2/demo/animation.png?mode={mode}&segment=bad").status_code == 400
-    assert client.get("/api/v2/demo/animation.png?mode=stock").status_code == 400
+    assert client.get(f"/demo/animation.png?mode={mode}&segment={segment}", headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
+    assert client.get(f"/demo/animation.png?mode={mode}&segment={segment + 2}").status_code == 400
+    assert client.get(f"/demo/animation.png?mode={mode}&segment=bad").status_code == 400
+    assert client.get("/demo/animation.png?mode=stock").status_code == 400
 
 
 def test_missing_public_feed_does_not_show_fake_flight_or_apple_quote(demo_app):
     for mode in ("stock", "flights", "airports"):
-        response = demo_app.test_client().get(f"/api/v2/demo/frame.png?mode={mode}")
+        response = demo_app.test_client().get(f"/demo/frame.png?mode={mode}")
         assert response.status_code == 200
         assert response.headers["X-Ticker-Data"] == "unavailable"
 
 
 def test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor(demo_app):
-    from sports_ticker.dashboard_v2 import routes
+    from ticker3.web import routes
     from ticker_core.bootstrap import CachedLogoView
     from ticker_core.context import RenderContext
     from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
@@ -208,6 +207,7 @@ def test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor(
 
 def test_fleet_modes_stock_options_and_device_specific_specs(demo_app, monkeypatch):
     import re
+
     from sports_ticker.domain import DISPLAY_MODES, DisplaySettings, TickerSnapshot
     from sports_ticker.fleet.models import DeviceMetadata, PairingState, TickerRecord
     from sports_ticker.fleet.profiles import TickerProfile
@@ -221,7 +221,7 @@ def test_fleet_modes_stock_options_and_device_specific_specs(demo_app, monkeypat
     six = ticker("six", "full", "sports", now, "six-device-build", 3600, {"stock_finance": True})
     mini = ticker("mini", "mini", "clock", now, "mini-device-build", 120, {"stock_momentum": True})
     offline = ticker("old", "full", "music", now - 180, "old-build", 10, {"stock_consumer": True})
-    backend = demo_app.extensions["sports_ticker.backend_application"]
+    backend = demo_app.extensions["ticker.application"]
     monkeypatch.setattr(backend, "list_tickers", lambda: (six, mini, offline))
     monkeypatch.setattr(backend.schedule_service, "effective_settings", lambda identifier, settings, **kwargs:
         DisplaySettings(mode="stock", active_sports=settings.active_sports) if identifier == "mini" else settings)
@@ -269,9 +269,9 @@ def test_empty_fleet_has_no_on_air_badge_and_shows_all_stock_options(demo_app):
 
 
 def test_live_provider_envelopes_keep_renderer_identity(demo_app):
-    from sports_ticker.dashboard_v2.routes import _preview_items
     from sports_ticker.providers.flights import FlightsProvider
     from sports_ticker.providers.stocks import StockProvider
+    from ticker3.web.routes import _preview_items
 
     quote = {**dict(stock("MSFT").data), "situation": {"change": "+1.52"}}
     airport = {"id": "airport:EWR", "type": "flight_airport_hud", "sport": "airport",
@@ -284,12 +284,12 @@ def test_live_provider_envelopes_keep_renderer_identity(demo_app):
     source._refresh("stock")
     source._refresh("flights")
     source.close()
-    demo_app.extensions["sports_ticker.public_demo_data"] = source
+    demo_app.extensions["ticker.public_demo"] = source
     for mode, expected in (("stock", "stock"), ("flights", "flight_visitor"), ("airports", "flight_airport_hud")):
         content, _ = source.content(mode)
         assert "type" not in content[mode][0]["data"]
         assert _preview_items(content)[0]["type"] == expected
-        response = demo_app.test_client().get(f"/api/v2/demo/frame.png?mode={mode}")
+        response = demo_app.test_client().get(f"/demo/frame.png?mode={mode}")
         assert response.status_code == 200
         assert response.headers["X-Ticker-Data"] == "live"
         assert response.headers["X-Ticker-Items"] == "1"
@@ -303,12 +303,13 @@ def test_live_provider_envelopes_keep_renderer_identity(demo_app):
     (None, "Not reported"), ("custom-build", "custom-build"),
 ])
 def test_device_build_labels_keep_existing_version_numbers(raw, label):
-    from sports_ticker.dashboard_v2.routes import _build_label
+    from ticker3.web.routes import _build_label
     assert _build_label(raw) == label
 
 
 def test_page_versions_stylesheet_and_preserves_full_device_build_on_hover(demo_app, monkeypatch):
     import re
+
     from sports_ticker.domain import DisplaySettings
     from sports_ticker.fleet.models import DeviceMetadata, PairingState, TickerRecord
     from sports_ticker.fleet.profiles import TickerProfile
@@ -317,7 +318,7 @@ def test_page_versions_stylesheet_and_preserves_full_device_build_on_hover(demo_
     records = [TickerRecord(name, name, DisplaySettings(), PairingState(paired=True), DeviceMetadata(now, {
         "profile": TickerProfile.from_mapping({"product_family": family}).to_mapping(), "build": build,
     })) for name, family, build in (("Six", "full", "r1757+558782a"), ("Mini", "mini", "mini-1.3.36"))]
-    backend = demo_app.extensions["sports_ticker.backend_application"]
+    backend = demo_app.extensions["ticker.application"]
     monkeypatch.setattr(backend, "list_tickers", lambda: records)
     monkeypatch.setattr(backend.schedule_service, "effective_settings", lambda identifier, settings, **kwargs: settings)
     demo_app.config["VERSION"] = "first"
@@ -325,15 +326,15 @@ def test_page_versions_stylesheet_and_preserves_full_device_build_on_hover(demo_
     assert 'title="r1757+558782a">Build 1757</span>' in first
     assert 'title="mini-1.3.36">Build 1.3.36</span>' in first
     assert re.search(r'data-active-mode-count[^>]*>1</div>', first)
-    assert '/dashboard/static/style.css?v=first' in first
+    assert '/static/style.css?v=first' in first
     demo_app.config["VERSION"] = "next"
     second = demo_app.test_client().get("/").get_data(as_text=True)
-    assert '/dashboard/static/style.css?v=next' in second
+    assert '/static/style.css?v=next' in second
 
 
 def test_markets_allow_multiple_green_groups_and_keep_unused_groups_orange():
-    from sports_ticker.dashboard_v2.routes import _market_rows
     from sports_ticker.domain import DisplaySettings
+    from ticker3.web.routes import _market_rows
 
     tickers = [SimpleNamespace(display_settings=DisplaySettings(active_sports={group: True}))
                for group in ("stock_finance", "stock_momentum", "stock_energy", "stock_consumer")]
@@ -363,7 +364,7 @@ def test_public_weather_uses_nyc_coordinates_without_ticker_settings():
 
 @pytest.mark.parametrize("mode,path", [("flights", "frame"), ("weather", "frame"), ("weather", "animation")])
 def test_live_pixels_are_not_stored_by_browsers_or_cdns(demo_app, mode, path):
-    response = demo_app.test_client().get(f"/api/v2/demo/{path}.png?mode={mode}")
+    response = demo_app.test_client().get(f"/demo/{path}.png?mode={mode}")
     assert response.status_code == 200
     assert response.cache_control.no_store
     assert response.cache_control.private

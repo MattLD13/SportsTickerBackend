@@ -118,7 +118,7 @@ def encrypt_credentials(setup_code: str, ssid: str, password: str, challenge: by
 
 
 def exchange_pairing_code(backend_url: str, pairing_code: str) -> dict[str, Any]:
-    url = backend_url.rstrip("/") + "/api/v2/pairings/exchange"
+    url = backend_url.rstrip("/") + "/pair"
     body = json.dumps({"pairing_code": pairing_code}).encode("utf-8")
     request = Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
     try:

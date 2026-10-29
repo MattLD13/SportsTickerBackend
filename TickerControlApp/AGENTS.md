@@ -1,6 +1,6 @@
 # iOS controller
 
-Use explicit V2 models and routes.
+Use explicit models and the routes in `docs/api.md`.
 If a shared payload changes, update its model and contract checks together.
 Read `TickerControl/Models/TickerContentModels.swift` and `TickerControlTests/ContractModelsTests.swift` for contract work.
 Preserve the selected mode, pinned game state, pairing flow, and overlay behavior.

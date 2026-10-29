@@ -3,36 +3,43 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from io import BytesIO
 
-from PIL import Image
 import pytest
+from PIL import Image
 
-from sports_ticker.bootstrap_v2 import create_backend_application
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
+
+
+def device_token(ticker_id: str) -> str:
+    """Return the device token of one test device. The token alone names the ticker."""
+    return hashlib.sha256(ticker_id.encode()).hexdigest()
 
 
 @pytest.fixture(autouse=True)
 def prepared_public_assets(monkeypatch):
     """Keep pixel boundary tests independent of external logo downloads."""
-    from sports_ticker.dashboard_v2 import routes
+    from ticker3.web import routes
     monkeypatch.setattr(routes._PreviewAssets, "prefetch", lambda self, content: None)
     monkeypatch.setattr(routes, "time", lambda: 1792168467.0)
     monkeypatch.setattr(routes, "_SAMPLE_STARTED", 1792168355.0)
 
 
 def _close(app):
-    assets = app.extensions.get("sports_ticker.dashboard_preview_assets")
+    assets = app.extensions.get("ticker.dashboard_preview_assets")
     if assets:
         assets.close()
-    app.extensions["sports_ticker.backend_application"].close()
+    app.extensions["ticker.application"].close()
 
 
 def test_public_coverage_separates_markets_and_uses_conference_names(tmp_path, monkeypatch) -> None:
     from types import SimpleNamespace
-    from sports_ticker.dashboard_v2.routes import _sports_rows
+
+    from ticker3.web.routes import _sports_rows
 
     catalog = (
         {"id": "nfl", "label": "NFL", "type": "sport"},
@@ -54,9 +61,9 @@ def test_public_coverage_separates_markets_and_uses_conference_names(tmp_path, m
     active["ncf_fbs"] = False
     assert "ncf_fbs:1" not in {row["id"] for row in _sports_rows(active, content, catalog)}
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         monkeypatch.setattr(backend, "catalog", SimpleNamespace(leagues=lambda: catalog))
         page = app.test_client().get("/").get_data(as_text=True)
         assert "7 ways to fill" in page
@@ -72,7 +79,8 @@ def test_public_coverage_separates_markets_and_uses_conference_names(tmp_path, m
 
 def test_public_fleet_reports_finite_chip_temperature() -> None:
     from types import SimpleNamespace
-    from sports_ticker.dashboard_v2.routes import _fleet_rows
+
+    from ticker3.web.routes import _fleet_rows
 
     for value, expected in ((48.3, "48C"), (None, "-"), (float("nan"), "-"), (float("inf"), "-"), (False, "-")):
         ticker = SimpleNamespace(
@@ -85,14 +93,15 @@ def test_public_fleet_reports_finite_chip_temperature() -> None:
 
 def test_public_page_survives_conference_provider_outage(tmp_path, monkeypatch) -> None:
     from types import SimpleNamespace
+
     from sports_ticker.providers.http import JsonHttpError
 
     def unavailable():
         raise JsonHttpError("Conference provider is unavailable")
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         monkeypatch.setattr(backend, "catalog", SimpleNamespace(leagues=unavailable))
         response = app.test_client().get("/")
         assert response.status_code == 200
@@ -106,14 +115,15 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
     """Prove that web frames use live renderers instead of stored main images."""
     from copy import deepcopy
     from datetime import datetime
-    from sports_ticker.dashboard_v2 import routes
-    from sports_ticker.dashboard_v2.preview import PreviewRenderer, layout_case, layout_library
+
+    from ticker3.web import routes
+    from ticker3.web.preview import PreviewRenderer, layout_case, layout_library
     from ticker_core.bootstrap import create_default_frame_builder
     from ticker_core.features.sports import SportsRenderer
     from ticker_core.rendering.fonts import load_default_font_set
     from ticker_core.runtime import Content, FrameDecision, FrameKind
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         from PIL import ImageFont
         fonts = load_default_font_set()
@@ -132,7 +142,7 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
                 now = datetime.fromisoformat(row.get("example_time", layout_library()["example_time"]))
                 item = Content(str(game.get("id") or "public-demo"), game.get("type", "scoreboard"), game.get("sport", row["mode"]), game)
                 expected = builder.build(FrameDecision(FrameKind.STATIC, 1/30, 100, False, now, row["mode"], content=item))
-                response = client.get(f"/api/v2/demo/frame.png?case={name}")
+                response = client.get(f"/demo/frame.png?case={name}")
                 assert Image.open(BytesIO(response.data)).convert("RGB").tobytes() == expected.convert("RGB").tobytes(), name
         finally:
             viewport.close()
@@ -145,12 +155,12 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
         monkeypatch.setattr(SportsRenderer, "render_full", changed_layout)
         assets.renderer.close()
         assets.renderer = PreviewRenderer(assets)
-        response = client.get("/api/v2/demo/frame.png?case=HK07")
+        response = client.get("/demo/frame.png?case=HK07")
         assert Image.open(BytesIO(response.data)).getpixel((383, 31)) == (255, 0, 255)
-        assert client.get("/api/v2/demo/frame.png?case=HK07", headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
+        assert client.get("/demo/frame.png?case=HK07", headers={"If-None-Match": response.headers["ETag"]}).status_code == 304
         for query in ("mode=invalid", "case=unknown", "case=SY05"):
-            assert client.get("/api/v2/demo/frame.png?" + query).status_code == 404
-        assert client.get("/api/v2/demo/frame.png?case=HK07&presentation=invalid").status_code == 400
+            assert client.get("/demo/frame.png?" + query).status_code == 404
+        assert client.get("/demo/frame.png?case=HK07&presentation=invalid").status_code == 400
     finally:
         _close(app)
 
@@ -159,13 +169,14 @@ def test_public_scroll_matches_real_card_viewport(tmp_path) -> None:
     """Keep real pane widths, dividers, and seamless repetition."""
     from datetime import datetime
     from time import monotonic, sleep
-    from sports_ticker.dashboard_v2 import routes
-    from sports_ticker.dashboard_v2.preview import case_items, layout_case, layout_library
+
+    from ticker3.web import routes
+    from ticker3.web.preview import case_items, layout_case, layout_library
     from ticker_core.bootstrap import create_default_frame_builder
     from ticker_core.context import RenderContext
     from ticker_core.runtime import Content
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         with app.app_context():
             assets = routes._preview_assets()
@@ -181,7 +192,7 @@ def test_public_scroll_matches_real_card_viewport(tmp_path) -> None:
                 viewport.install_completed()
                 sleep(.001)
             assert viewport.status["pending"] == 0
-            response = app.test_client().get("/api/v2/demo/frame.png?case=HK07&presentation=rotation")
+            response = app.test_client().get("/demo/frame.png?case=HK07&presentation=rotation")
             strip = Image.open(BytesIO(response.data)).convert("RGB")
             assert strip.width == viewport.layout.width
             for offset in (0, 1, strip.width - 1):
@@ -197,13 +208,13 @@ def test_public_scroll_matches_real_card_viewport(tmp_path) -> None:
 
 
 def test_public_demo_stays_available_without_controller_access(tmp_path) -> None:
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
         client.post(
-            "/api/v2/devices/register",
+            "/register",
             json={"device_id": "private-pi", "name": "Private", "metadata": {}},
-            headers={"X-Device-Token": "a" * 64},
+            headers={"X-Device-Token": device_token("private-pi")},
         )
 
         for route in ("/", "/demo", "/demo/portfolio"):
@@ -227,22 +238,22 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
         assert b">doing</span>" in home_page
         assert b"offline</span>" in home_page
         assert b"dark</span>" not in home_page
-        assert b'href="/api/v2/health"' in home_page
+        assert b'href="/health"' in home_page
         assert b"Explore big + Mini layouts" not in client.get("/demo").data
         assert b'"id": "music", "kind": "frame"' in client.get("/").data
 
         for asset in ("style.css", "led.js", "ticker-demo.js", "mr-blue-sky-cover.png"):
-            response = client.get(f"/dashboard/static/{asset}")
+            response = client.get(f"/static/{asset}")
             assert response.status_code == 200
 
-        demo_script = client.get("/dashboard/static/ticker-demo.js").get_data(as_text=True)
-        assert "/api/v2/demo/frame.png" in demo_script
+        demo_script = client.get("/static/ticker-demo.js").get_data(as_text=True)
+        assert "/demo/frame.png" in demo_script
         assert "drawMusicFrame" not in demo_script
         assert "drawClockFrame" not in demo_script
         assert "/api/spotify/now" not in demo_script
 
         for mode in ("sports", "weather", "flights", "airports"):
-            response = client.get(f"/api/v2/demo/frame.png?mode={mode}")
+            response = client.get(f"/demo/frame.png?mode={mode}")
             assert response.status_code == 200
             assert response.mimetype == "image/png"
             assert Image.open(BytesIO(response.data)).size[1] == 32
@@ -252,8 +263,8 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
 
 def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, monkeypatch) -> None:
     """Serve both board sizes and all modes without touching device records."""
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
-    backend = app.extensions["sports_ticker.backend_application"]
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
+    backend = app.extensions["ticker.application"]
     try:
         def reject_fleet_read():
             raise AssertionError("The sample explorer cannot read fleet state.")
@@ -272,8 +283,8 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
         for control in ("category", "search", "device", "layout", "pixels", "brightness", "play", "share", "zoom"):
             assert f'id="{control}"'.encode() in response.data
         for asset in ("layout-explorer.css", "layout-explorer.js"):
-            assert client.get(f"/dashboard/static/{asset}").status_code == 200
-        response = client.get("/dashboard/static/layout-gallery.json")
+            assert client.get(f"/static/{asset}").status_code == 200
+        response = client.get("/static/layout-gallery.json")
         assert response.status_code == 200
         data = response.get_json()
         assert data["schema_version"] == 3
@@ -306,7 +317,7 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
                         assert atlas.crop((0, 0, 64, 32)).tobytes() == mini.tobytes()
             assert "pinned" not in row["main"]
             if row["main"]["available"]:
-                response = client.get(f"/api/v2/demo/frame.png?case={row['name']}")
+                response = client.get(f"/demo/frame.png?case={row['name']}")
                 assert response.status_code == 200, row["name"]
                 with Image.open(BytesIO(response.data)) as main:
                     assert main.height == 32, row["name"]
@@ -314,7 +325,7 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
                     main.load()
             else:
                 assert row["main"]["note"]
-                assert client.get(f"/api/v2/demo/frame.png?case={row['name']}").status_code == 404
+                assert client.get(f"/demo/frame.png?case={row['name']}").status_code == 404
             assert not any(key.endswith("_sprite") for key in row)
             assert "ticker_id" not in row["game"]
             if row["group"] == "Other sports":
@@ -328,7 +339,7 @@ def test_public_layout_explorer_has_exact_frames_without_fleet_access(tmp_path, 
 
 def test_public_mini_animation_uses_complete_artwork_and_current_weather_contract():
     """Keep album art fixed while text scrolls and weather statistics change."""
-    from sports_ticker.dashboard_v2.preview import layout_library
+    from ticker3.web.preview import layout_library
     rows = {row["name"]: row for row in layout_library()["cases"]}
     for name in ("MD06", "MD10", "MD12"):
         row = rows[name]
@@ -360,21 +371,22 @@ def test_public_mini_gallery_rejects_stale_renderer_provenance(monkeypatch):
 
 def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_path) -> None:
     from datetime import datetime, timezone
+
     from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
         registration = client.post(
-            "/api/v2/devices/register",
+            "/register",
             json={"device_id": "test-device", "name": "Living Room", "metadata": {}},
-            headers={"X-Device-Token": "a" * 64},
+            headers={"X-Device-Token": device_token("test-device")},
         ).get_json()
         ticker_id = registration["ticker_id"]
 
         # User has their ticker set to weather mode and paired
         from sports_ticker.fleet import PairingState
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         backend.repository.update_ticker(
             ticker_id,
             display_settings=DisplaySettings(mode="weather", sports_filter="my_teams"),
@@ -412,7 +424,7 @@ def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_pa
         )
 
         # Demo preview for sports must retrieve real sports from the snapshot
-        response = client.get("/api/v2/demo/frame.png?mode=sports")
+        response = client.get("/demo/frame.png?mode=sports")
         assert response.status_code == 200
         assert response.mimetype == "image/png"
         img = Image.open(BytesIO(response.data))
@@ -424,20 +436,21 @@ def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_pa
 
 def test_public_demo_sports_keeps_hardware_ads_off_server(tmp_path) -> None:
     from datetime import datetime, timezone
-    from sports_ticker.dashboard_v2 import routes
+
     from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
     from sports_ticker.fleet import PairingState
+    from ticker3.web import routes
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
         registration = client.post(
-            "/api/v2/devices/register",
+            "/register",
             json={"device_id": "test-device", "name": "Living Room", "metadata": {}},
-            headers={"X-Device-Token": "a" * 64},
+            headers={"X-Device-Token": device_token("test-device")},
         ).get_json()
         ticker_id = registration["ticker_id"]
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         settings = DisplaySettings(
             mode="sports",
             live_delay_mode=True,
@@ -485,7 +498,7 @@ def test_public_demo_sports_keeps_hardware_ads_off_server(tmp_path) -> None:
             for item in content["sports"]
         )
 
-        response = client.get("/api/v2/demo/frame.png?mode=sports")
+        response = client.get("/demo/frame.png?mode=sports")
         assert response.status_code == 200
         assert Image.open(BytesIO(response.data)).size[1] == 32
     finally:

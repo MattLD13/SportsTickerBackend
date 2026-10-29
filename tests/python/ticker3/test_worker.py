@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from backend_ops.worker_contract import decode_result, encode
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.contracts import ProviderHealth, ProviderResult
 from ticker3.contract.messages import worker_message
+from ticker3.contract.results import decode_result, encode
 from ticker3.contract.wire import decode, encode as encode_line
 from ticker3.worker.runner import ProviderWorker
 
@@ -112,8 +112,11 @@ def test_unhealthy_reads_send_no_result_and_pause_with_the_old_recovery_rule():
     async def scenario(path):
         core, provider = FakeCore(path), Provider()
         provider.healthy = False
+        incidents = []
+        recorder = type("Incidents", (), {"record": lambda self, kind, **detail: incidents.append(kind)})()
         await core.start()
-        task = asyncio.create_task(ProviderWorker("news", provider, path, "r1", interval=0.05, health_seconds=0.05).run())
+        task = asyncio.create_task(ProviderWorker("news", provider, path, "r1", interval=0.05, health_seconds=0.05,
+                                                  incidents=recorder).run())
         await core.next("hello")
         await core.send({"t": "subscribe", "subs": {A: config("t1")}})
         health = await core.next("health", lambda message: message["recovery"].get("news", {}).get("open_circuits"))
@@ -123,6 +126,7 @@ def test_unhealthy_reads_send_no_result_and_pause_with_the_old_recovery_rule():
         await asyncio.sleep(0.3)
         assert len(provider.calls) == calls == 3
         assert all(message["t"] != "result" for message in list(core.messages._queue))
+        assert "provider_failure" in incidents
         await core.send({"t": "drain"})
         await task
     run(scenario)

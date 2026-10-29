@@ -63,7 +63,7 @@ class MiniArtworkService:
                         "width": SIZE, "height": SIZE, "length": WIRE_BYTES,
                         "format": "rgb565-le", "pipeline_version": 1,
                         "accent_rgb": list(self._bodies[identity][1]),
-                        "url": f"/api/v2/assets/mini-artwork/{identity}.mta"}
+                        "url": f"/assets/artwork/{identity}.mta"}
             if not self._closed and url not in self._pending and len(self._pending) < self._limit and self._clock() >= self._retry.get(url, 0):
                 self._pending[url] = self._worker.submit(self._prepare, url)
             return {"state": "pending" if url in self._pending else "unavailable"}

@@ -145,11 +145,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     health.raise_for_status()
     started_at = time.time()
     created = session.post(
-        f"{backend_url}/events/news",
+        f"{backend_url}/news",
         json={
             "kind": "news",
             "payload": {"text": marker, "sport": "nhl", "category": "TEST"},
-            "target_ticker_ids": [args.ticker_id],
+            "ticker_ids": [args.ticker_id],
             "ttl_seconds": args.ttl_seconds,
         },
         timeout=15,
@@ -235,7 +235,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend-url", default="https://ticker.mattdicks.org/api/v2")
+    parser.add_argument("--backend-url", default="https://ticker.mattdicks.org")
     parser.add_argument("--ticker-id", required=True)
     parser.add_argument("--ssh-target", required=True)
     parser.add_argument("--ssh-key", required=True, type=Path)

@@ -25,13 +25,13 @@ def worker_message(message: dict[str, Any]) -> dict[str, Any]:
         if isinstance(message["pid"], bool) or not isinstance(message["pid"], int) or message["pid"] < 1:
             raise ContractError("hello needs a process ID")
     elif kind == "result":
-        # The result is one ProviderResult in the backend_ops.worker_contract encoding.
+        # The result is one ProviderResult in the ticker3.contract.results encoding.
         _fields(message, {"t", "sub", "result", "started_ms"})
         _sub(message["sub"])
         if not isinstance(message["result"], dict):
             raise ContractError("result must be an encoded provider result object")
     elif kind == "health":
-        # job holds the SchedulerHealth fields of the provider job. recovery holds its paused circuits.
+        # job holds the JobHealth fields of the provider job. recovery holds its paused circuits.
         _fields(message, {"t", "ok", "errors", "rss_mb", "busy_seconds", "job", "recovery"})
         if not isinstance(message["job"], dict) or not isinstance(message["recovery"], dict):
             raise ContractError("health needs job and recovery objects")

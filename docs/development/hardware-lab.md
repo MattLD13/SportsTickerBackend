@@ -1,6 +1,6 @@
 # Virtual Hardware Lab
 
-The lab runs the real V2 Flask routes through Hypercorn ASGI. It also runs the Pi HTTP bootstrap, WebSocket stream client, poller, runtime, renderer, and 384x32 memory matrix sink.
+The lab runs the real Flask routes through Hypercorn ASGI. It also runs the Pi HTTP bootstrap, WebSocket stream client, poller, runtime, renderer, and 384x32 memory matrix sink.
 
 Run it from the repository root:
 
@@ -21,7 +21,7 @@ All network traffic uses loopback only. The lab injects one WebSocket transport 
 ## Coverage
 
 - Hypercorn ASGI lifespan, local HTTP routes, and device WebSocket serving.
-- Real V2 device registration and data routes.
+- Real device registration and data routes.
 - Backend snapshot projection and display content filtering.
 - Poller state changes during success, transport loss, and recovery.
 - Stream subprotocol negotiation, sequence delta application, and reconnect replay.

@@ -34,14 +34,14 @@ jobs:
               identity, version = os.environ["TICKER_ID"].strip(), os.environ["VERSION"].strip()
               if not identity or not version:
                   raise SystemExit("An update request requires a device and published version")
-              request = urllib.request.Request(base + "/api/v2/tickers/" + urllib.parse.quote(identity, safe="") + "/updates", data=json.dumps({"version": version}).encode(), headers=headers)
+              request = urllib.request.Request(base + "/tickers/" + urllib.parse.quote(identity, safe="") + "/update", data=json.dumps({"version": version}).encode(), headers=headers)
               with urllib.request.urlopen(request, timeout=20) as response:
                   result = json.load(response)
               commands = result["device"]["metadata"]["pending_commands"]
               command = next(item for item in commands if item["type"] == "update")
               print(json.dumps({"ticker_id": identity, "version": version, "command_id": command["id"], "accepted": True}))
           else:
-              request = urllib.request.Request(base + "/api/v2/fleet/updates", headers=headers)
+              request = urllib.request.Request(base + "/fleet/updates", headers=headers)
               with urllib.request.urlopen(request, timeout=20) as response:
                   result = json.load(response)
               print(json.dumps({"releases": result["releases"], "events": result["events"][:20]}, indent=2))

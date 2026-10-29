@@ -121,7 +121,7 @@ bool FirmwareUpdater::fetchFirmwareManifest(const String& requestedVersion, Firm
   http.setReuse(false);
   http.setConnectTimeout(4000);
   http.setTimeout(config_.httpTimeoutMs);
-  String url = (baseUrl_ + "/api/v2/tickers/") + tickerId_ + "/firmware?version=" + requestedVersion;
+  String url = baseUrl_ + "/firmware?version=" + requestedVersion;
   if (!http.begin(client, url)) {
     return false;
   }
@@ -387,7 +387,7 @@ bool FirmwareUpdater::confirmServerAttempt(const String& version) {
   http.setReuse(false);
   http.setConnectTimeout(4000);
   http.setTimeout(config_.httpTimeoutMs);
-  if (!http.begin(client, baseUrl_ + "/api/v2/tickers/" + tickerId_ + "/updates/result")) return false;
+  if (!http.begin(client, baseUrl_ + "/update-result")) return false;
   http.addHeader("X-Device-Token", deviceToken_);
   http.addHeader("Content-Type", "application/json");
   JsonDocument report;
@@ -413,7 +413,7 @@ void FirmwareUpdater::reportFirmwareResult(bool registered, const String& ticker
   if (now - firmwareUpdateLastAckAt < 5000 || !worker_.available()) return;
   auto* job = new (std::nothrow) NetworkJob(NetworkKind::FirmwareResult);
   if (!job) return;
-  job->url = baseUrl_ + "/api/v2/tickers/" + tickerId + "/updates/result";
+  job->url = baseUrl_ + "/update-result";
   job->identity = resultVersion_;
   job->command = firmwareUpdateReceiptCommandId + "|" + resultStatus_;
   JsonDocument report;

@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from sports_ticker.device_stream import DeviceStreamHub, StreamProjection
+from ticker3.api import stream
+from ticker3.api.stream import Projection, StreamHub
 from ticker_core.protocol import DeviceStreamState, StreamMessage, TickerResponse
 
 
 pytestmark = pytest.mark.critical
-FIXTURE = Path(__file__).resolve().parents[2] / "fixtures/display" / "v2_render_snapshot.json"
+FIXTURE = Path(__file__).resolve().parents[2] / "fixtures/display" / "render_snapshot.json"
 
 
 def _payload():
@@ -21,7 +22,6 @@ def _payload():
 def _message(kind, stream_id, seq, base_seq, **fields):
     return StreamMessage.from_payload({
         "type": kind,
-        "protocol_version": 1,
         "stream_id": stream_id,
         "seq": seq,
         "base_seq": base_seq,
@@ -103,104 +103,131 @@ def test_stream_delta_removal_and_invalid_replacement_preserve_recovery():
         after.settings.data["mode"] = "clock"
 
 
+def _subscribe(hub, payload, *, stream_id=None, after_seq=None):
+    return hub.subscribe("ticker-1", Projection.of(payload), stream_id=stream_id, after_seq=after_seq)
+
+
 def test_hub_replays_contiguous_updates_for_a_matching_cursor():
-    hub = DeviceStreamHub()
+    hub = StreamHub()
     payload = _payload()
-    subscriber, initial = hub.subscribe(
-        "ticker-1", StreamProjection.from_payload(payload), resume_stream_id=None, after_seq=None
-    )
-    initial_value = json.loads(initial[0].encoded)
+    subscriber, initial = _subscribe(hub, payload)
+    initial_value = json.loads(initial[0].text)
     assert initial_value["type"] == "snapshot"
-    assert initial_value["seq"] == 1
+    assert initial_value["seq"] == initial_value["base_seq"] == 1
+    # The client model reads the server message without a version field.
+    assert StreamMessage.from_payload(initial_value).kind == "snapshot"
     changed = deepcopy(payload)
     changed["settings"]["brightness"] = 80
-    hub.publish("ticker-1", StreamProjection.from_payload(changed))
+    hub.publish("ticker-1", Projection.of(changed))
     queued = subscriber.queue.get_nowait()
-    queued_value = json.loads(queued.encoded)
+    queued_value = json.loads(queued.text)
     assert queued_value["type"] == "delta"
-    assert queued_value["base_seq"] == 1
+    assert queued_value["base_seq"] == 1 and queued_value["seq"] == 2
 
-    resumed, replay = hub.subscribe(
-        "ticker-1",
-        StreamProjection.from_payload(changed),
-        resume_stream_id=hub.stream_id,
-        after_seq=1,
-    )
-    assert replay == (queued,)
+    resumed, replay = _subscribe(hub, changed, stream_id=hub.stream_id, after_seq=1)
+    assert replay == [queued]
     assert replay[0] is queued
-    hub.unsubscribe("ticker-1", subscriber)
-    hub.unsubscribe("ticker-1", resumed)
+    current, ready = _subscribe(hub, changed, stream_id=hub.stream_id, after_seq=2)
+    assert json.loads(ready[0].text)["type"] == "ready"
+    _, fresh = _subscribe(hub, changed, stream_id="other-server", after_seq=2)
+    assert json.loads(fresh[0].text)["type"] == "snapshot"
+    for client in (subscriber, resumed, current):
+        hub.unsubscribe("ticker-1", client)
+    assert hub.active == ("ticker-1",)
 
 
-def test_hub_resets_a_slow_client_with_a_full_snapshot():
-    hub = DeviceStreamHub(queue_size=1)
+def test_client_state_follows_the_hub_messages():
+    hub = StreamHub()
     payload = _payload()
-    subscriber, _ = hub.subscribe(
-        "ticker-1", StreamProjection.from_payload(payload), resume_stream_id=None, after_seq=None
-    )
+    subscriber, initial = _subscribe(hub, payload)
+    state = DeviceStreamState()
+    assert state.apply(StreamMessage.from_payload(json.loads(initial[0].text))).settings.brightness == 100
+    changed = deepcopy(payload)
+    changed["settings"]["brightness"] = 80
+    hub.publish("ticker-1", Projection.of(changed))
+    response = state.apply(StreamMessage.from_payload(json.loads(subscriber.queue.get_nowait().text)))
+    assert response.settings.brightness == 80
+    assert response == TickerResponse.from_payload(changed)
+
+
+def test_hub_resets_a_slow_client_with_a_full_snapshot(monkeypatch):
+    monkeypatch.setattr(stream, "QUEUE_SIZE", 1)
+    hub = StreamHub()
+    payload = _payload()
+    subscriber, _ = _subscribe(hub, payload)
     first = deepcopy(payload)
     first["settings"]["brightness"] = 80
     second = deepcopy(payload)
     second["settings"]["brightness"] = 60
-    hub.publish("ticker-1", StreamProjection.from_payload(first))
-    hub.publish("ticker-1", StreamProjection.from_payload(second))
-    reset = json.loads(subscriber.queue.get_nowait().encoded)
+    hub.publish("ticker-1", Projection.of(first))
+    hub.publish("ticker-1", Projection.of(second))
+    reset = json.loads(subscriber.queue.get_nowait().text)
+    assert subscriber.queue.empty()
     assert reset["type"] == "snapshot"
     assert reset["seq"] == 3
     assert reset["payload"]["settings"]["brightness"] == 60
 
 
 def test_hub_detaches_input_and_shares_an_immutable_wire_message():
-    hub = DeviceStreamHub()
+    hub = StreamHub()
     payload = _payload()
-    first, initial = hub.subscribe("ticker-1", StreamProjection.from_payload(payload), resume_stream_id=None, after_seq=None)
-    second, _ = hub.subscribe("ticker-1", StreamProjection.from_payload(payload), resume_stream_id=None, after_seq=None)
-    projection = StreamProjection.from_payload({**payload, "settings": {**payload["settings"], "brightness": 80}})
+    first, initial = _subscribe(hub, payload)
+    second, _ = _subscribe(hub, payload)
+    projection = Projection.of({**payload, "settings": {**payload["settings"], "brightness": 80}})
     with pytest.raises(TypeError):
         projection.sections["settings"] = "{}"
     payload["content"]["sports"][0]["data"]["away_score"] = "999"
     hub.publish("ticker-1", projection)
     left, right = first.queue.get_nowait(), second.queue.get_nowait()
     assert left is right
-    assert json.loads(left.encoded)["changes"]["settings"]["brightness"] == 80
-    assert json.loads(initial[0].encoded)["payload"]["content"]["sports"][0]["data"]["away_score"] == "17"
+    assert json.loads(left.text)["changes"]["settings"]["brightness"] == 80
+    assert json.loads(initial[0].text)["payload"]["content"]["sports"][0]["data"]["away_score"] == "17"
 
 
 def test_hub_tracks_removed_and_null_sections_and_ignores_object_key_order():
-    hub = DeviceStreamHub()
+    hub = StreamHub()
     payload = {"settings": {"brightness": 80, "name": "é雪\"\n"}, "obsolete": {"value": 1}}
-    subscriber, _ = hub.subscribe("ticker-1", StreamProjection.from_payload(payload), resume_stream_id=None, after_seq=None)
-    hub.publish("ticker-1", StreamProjection.from_payload({"obsolete": {"value": 1}, "settings": {"name": "é雪\"\n", "brightness": 80}}))
+    subscriber, _ = _subscribe(hub, payload)
+    hub.publish("ticker-1", Projection.of({"obsolete": {"value": 1}, "settings": {"name": "é雪\"\n", "brightness": 80}}))
     assert subscriber.queue.empty()
-    hub.publish("ticker-1", StreamProjection.from_payload({"settings": payload["settings"], "nullable": None}))
-    value = json.loads(subscriber.queue.get_nowait().encoded)
+    hub.publish("ticker-1", Projection.of({"settings": payload["settings"], "nullable": None}))
+    value = json.loads(subscriber.queue.get_nowait().text)
     assert value["removed"] == ["obsolete"]
     assert value["changes"] == {"nullable": None}
 
 
-def test_projection_encoding_runs_with_the_projector_outside_the_event_loop(monkeypatch):
+def test_hub_ignores_a_timing_only_change():
+    hub = StreamHub()
+    payload = {"snapshot": {"ticker_id": "ticker-1", "timing": {"published_at_ms": 1.0}}, "settings": {}}
+    subscriber, _ = _subscribe(hub, payload)
+    hub.publish("ticker-1", Projection.of({**payload, "snapshot": {"ticker_id": "ticker-1", "timing": {"published_at_ms": 2.0}}}))
+    assert subscriber.queue.empty()
+
+
+def test_projection_runs_outside_the_event_loop_and_stops_at_once():
     import asyncio
     from threading import get_ident
-    from sports_ticker.device_stream import StreamProjection
 
     async def run():
         main_thread = get_ident()
         threads = []
-        factory = StreamProjection.from_payload
-
-        def encode(cls, payload):
-            threads.append(get_ident())
-            return factory(payload)
+        changed = deepcopy(_payload())
+        changed["settings"]["brightness"] = 80
 
         def projector(ticker_id):
             threads.append(get_ident())
-            return _payload()
+            return changed
 
-        monkeypatch.setattr(StreamProjection, "from_payload", classmethod(encode))
-        hub = DeviceStreamHub()
-        await hub._refresh_one(projector, "ticker-1")
-        assert len(threads) == 2
-        assert threads[0] == threads[1] != main_thread
-        assert hub.published_deltas == 1
+        hub = StreamHub()
+        subscriber, _ = _subscribe(hub, _payload())
+        stop = asyncio.Event()
+        runner = asyncio.create_task(hub.run(projector, stop))
+        await asyncio.sleep(0)
+        hub.changed("ticker-1")
+        message = json.loads((await asyncio.wait_for(subscriber.queue.get(), 5)).text)
+        assert message["changes"]["settings"]["brightness"] == 80
+        assert threads and all(thread != main_thread for thread in threads)
+        stop.set()
+        await asyncio.wait_for(runner, 0.5)
 
     asyncio.run(run())

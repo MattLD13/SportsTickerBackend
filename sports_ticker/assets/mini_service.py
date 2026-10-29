@@ -138,7 +138,7 @@ class MiniSpriteService:
                 return {"state": "pending" if source_url in self._pending else "unavailable"}
             return {
                 "state": "ready", "asset_id": entry["asset_id"], "sha256": entry["sha256"],
-                "url": f'/api/v2/assets/mini-sports/{entry["asset_id"]}.mts',
+                "url": f'/assets/sprites/{entry["asset_id"]}.mts',
                 "length": WIRE_BYTES, "width": 18, "height": 18,
                 "format": "rgb565-le-mask-lsb", "pipeline_version": self.policy.pipeline_version,
                 "refreshing": not fresh,

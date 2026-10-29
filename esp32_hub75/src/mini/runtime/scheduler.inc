@@ -224,7 +224,7 @@ void processMiniSerialCommand(Stream* input, const String& command) {
     if (!registered || !networkWorker.available()) { input->print("MINI_AUTH_CHECK:BUSY\n"); return; }
     auto* job = new (std::nothrow) NetworkJob(NetworkKind::AuthCheck);
     if (!job) { input->print("MINI_AUTH_CHECK:BUSY\n"); return; }
-    job->url = backendEndpoint("/api/v2/tickers/") + tickerId + "/device-credential/verify";
+    job->url = backendEndpoint("/verify");
     job->request = "{}";
     job->requireFreshConnection = command.endsWith(":COLD");
     networkWorker.enqueue(job);

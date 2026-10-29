@@ -270,7 +270,7 @@ def test_packet_lists_no_unrelated_initial_mini_context(planner_calls):
     planner_calls[0].append(decision(["mini-sports"], ["esp32_hub75/src/mini/rendering/sports_pane.h"]))
     result = prepare(ROOT, "Fix Mini hockey shootout rendering", "startup-minimal-check", new_task=True, use_planner=True)
     state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
-    assert not any(path.startswith(("TickerControlApp/", "ticker_core/features/", "sports_ticker/dashboard_v2/"))
+    assert not any(path.startswith(("TickerControlApp/", "ticker_core/features/", "ticker3/web/"))
                    for path in state["context_files"])
     assert not any(any(word in path for word in ("music", "weather", "stocks", "flights"))
                    for path in state["context_files"])

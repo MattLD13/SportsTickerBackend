@@ -32,9 +32,6 @@ class StreamMessage:
         kind = value.get("type")
         if kind not in {"snapshot", "delta", "ready"}:
             raise PayloadValidationError("stream message type is invalid")
-        version = value.get("protocol_version")
-        if isinstance(version, bool) or not isinstance(version, int) or version != 1:
-            raise PayloadValidationError("stream protocol version is unsupported")
         stream_id = value.get("stream_id")
         if not isinstance(stream_id, str) or not stream_id.strip():
             raise PayloadValidationError("stream_id must be a non-empty string")

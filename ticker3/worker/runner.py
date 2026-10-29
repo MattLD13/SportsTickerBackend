@@ -6,7 +6,7 @@ worker owns the read timing that the core scheduler owned before:
 - An interval pass reads every subscription at the provider interval.
 - A new subscription is read at once.
 - For ESPN, a Fastcast change starts a live pass for the tickers that follow the changed league.
-- A failing ticker setting pauses with the existing ProviderRecovery rule.
+- A failing ticker setting pauses with the ProviderRecovery rule in recovery.py.
 
 The worker sends each healthy result. It never sends an unhealthy result, so
 the core keeps the last good data, as the old scheduler did.
@@ -24,16 +24,16 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend_ops.worker_contract import encode
-from sports_ticker.application.provider_recovery import ProviderRecovery
-from sports_ticker.application.scheduler import SchedulerHealth
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.contracts import ProviderHealth, ProviderResult
 from sports_ticker.providers.normalization import normalize_provider_result
-
 from ticker3.contract import PROTOCOL, ContractError
+from ticker3.contract.health import JobHealth
 from ticker3.contract.messages import core_message
+from ticker3.contract.results import encode
 from ticker3.contract.wire import MAX_LINE, decode, encode as encode_line
+
+from .recovery import ProviderRecovery
 
 # Seconds between interval passes. These are the deployed core scheduler intervals.
 INTERVALS = {"espn": 5.0, "fotmob": 5.0, "weather": 300.0, "golf": 30.0, "racing": 15.0, "stock": 2.0,
@@ -66,7 +66,7 @@ class ProviderWorker:
         self.orphan_seconds, self.connect_seconds = orphan_seconds, connect_seconds
         self.monotonic, self.wall = monotonic, wall
         self.recovery = ProviderRecovery()
-        self.health = SchedulerHealth(next_due=wall())
+        self.health = JobHealth(next_due=wall())
         self.subs: dict[str, _Subscription] = {}
         self.errors: dict[str, str] = {}
         self.next_due = monotonic()
@@ -325,17 +325,17 @@ def _failure(name: str, error: BaseException) -> ProviderResult:
         "exception_type": type(error).__name__, "traceback": "".join(traceback.format_exception(error))}))
 
 
-def _job_health(health: SchedulerHealth, tally: _Tally, wall_now: datetime, wall_due: datetime) -> SchedulerHealth:
+def _job_health(health: JobHealth, tally: _Tally, wall_now: datetime, wall_due: datetime) -> JobHealth:
     """Return the job health after one pass. The rules match the old core scheduler."""
     attempted = len(tally.published)
     if not attempted:
         result = replace(health, next_due=wall_due)
     elif tally.errors:
-        result = SchedulerHealth(last_success=wall_now if tally.successes else health.last_success,
+        result = JobHealth(last_success=wall_now if tally.successes else health.last_success,
                                  last_error=_messages(tally.errors + tally.warnings), next_due=wall_due,
                                  consecutive_failures=health.consecutive_failures + 1)
     else:
-        result = SchedulerHealth(last_success=wall_now, last_error=_messages(tally.warnings), next_due=wall_due,
+        result = JobHealth(last_success=wall_now, last_error=_messages(tally.warnings), next_due=wall_due,
                                  consecutive_failures=0)
     return replace(result, refresh_calls=health.refresh_calls + attempted, paused_refreshes=health.paused_refreshes + tally.skipped)
 

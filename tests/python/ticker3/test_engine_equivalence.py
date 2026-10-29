@@ -1,15 +1,16 @@
-"""Prove that the Ticker 3 engine gives the same V2 output as the old scheduler.
+"""Prove that the Ticker 3 engine gives the same display data as the old scheduler.
 
-Both backends read the same replay providers, which return recorded real
-provider results. The test compares the V2 data that the /data route and the
-device stream send, for the full view and the device view of each ticker.
+`tests/fixtures/ticker3/golden_views.json` holds the data views that the old scheduler made
+from the replay providers. The replay providers return recorded real provider results.
+The test runs the Ticker 3 engine with the same providers and compares the full view and
+the device view of each ticker.
 """
 import json
-import os
 import shutil
 import sys
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ pytestmark = [pytest.mark.critical, pytest.mark.skipif(sys.platform == "win32", 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
+GOLDEN = REPOSITORY / "tests" / "fixtures" / "ticker3" / "golden_views.json"
 TICKERS = {
     "sports0001": DisplaySettings(mode="sports", my_teams=("nfl:nyg", "nba:nyk", "nhl:nyr")),
     "weather001": DisplaySettings(mode="weather", weather_city="New York", weather_lat=40.7128, weather_lon=-74.006),
@@ -32,6 +34,8 @@ TICKERS = {
 # Only these fields may differ: a publish counter, latency diagnostics, and the read time.
 # A provider stamps each result with its read time, so two runs of one backend differ there too.
 VOLATILE = (("snapshot", "revision"), ("snapshot", "timing"), ("snapshot", "observed_at"))
+# The schedule shows the local time. The application clock stays at the minute of the recording.
+RECORDED_AT = datetime(2026, 10, 29, 19, 6, 30, tzinfo=timezone.utc).timestamp()
 
 
 def seed(path: Path) -> None:
@@ -41,21 +45,25 @@ def seed(path: Path) -> None:
     repository.close()
 
 
+def without_volatile(data: dict) -> dict:
+    for *parents, key in VOLATILE:
+        section = data
+        for parent in parents:
+            section = section.get(parent, {})
+        section.pop(key, None)
+    return data
+
+
 def views(app) -> dict:
-    application = app.extensions["sports_ticker.backend_application"]
-    result = {}
-    for ticker_id in TICKERS:
-        for device_view in (False, True):
-            data = json.loads(json.dumps(application.project_data(ticker_id, device_view=device_view), default=str))
-            for section, key in VOLATILE:
-                data.get(section, {}).pop(key, None)
-            result[f"{ticker_id}:{'device' if device_view else 'full'}"] = data
-    return result
+    application = app.extensions["ticker.application"]
+    return {f"{ticker_id}:{'device' if device_view else 'full'}": without_volatile(
+                json.loads(json.dumps(application.project_data(ticker_id, device_view=device_view), default=str)))
+            for ticker_id in TICKERS for device_view in (False, True)}
 
 
 def ready(app) -> bool:
-    store = app.extensions["sports_ticker.snapshot_store"]
-    snapshots = {ticker_id: store.get(ticker_id) for ticker_id in TICKERS}
+    application = app.extensions["ticker.application"]
+    snapshots = {ticker_id: application.get_snapshot(ticker_id) for ticker_id in TICKERS}
     if any(snapshot is None for snapshot in snapshots.values()):
         return False
     families = {item.family for item in snapshots["sports0001"].content}
@@ -63,54 +71,34 @@ def ready(app) -> bool:
         and any(item.family in ("airports", "flights") for item in snapshots["airport001"].content)
 
 
-def wait(app, step, seconds=40.0):
+def wait(app, seconds=40.0):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        step()
         if ready(app):
-            # One more step lets each provider of the last pass land.
+            # Let each provider of the last pass land.
             time.sleep(0.5)
-            step()
             return
         time.sleep(0.1)
-    raise AssertionError("the backend did not publish every ticker in time")
+    raise AssertionError("the engine did not publish every ticker in time")
 
 
 @pytest.fixture
 def environment(monkeypatch):
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", "client")
-    monkeypatch.setenv("SPOTIFY_CALLBACK_URI", "https://example.com/callback")
+    monkeypatch.setenv("SPOTIFY_CALLBACK_URI", "https://example.com/spotify/callback")
     monkeypatch.setenv("SPOTIFY_APP_RETURN_URI", "sportsticker://spotify")
     monkeypatch.setenv("SPOTIFY_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("TICKER3_REPLAY_DIR", str(REPOSITORY / "tests" / "fixtures" / "ticker3"))
-    monkeypatch.delenv("TICKER_WORKER_DIRECTORY", raising=False)
     monkeypatch.delenv("TICKER_ENV_FILE", raising=False)
     with tempfile.TemporaryDirectory(dir="/tmp") as directory:
         yield Path(directory)
 
 
-def test_new_engine_gives_the_same_v2_data_as_the_old_scheduler(environment, monkeypatch):
-    sys.path.insert(0, str(HERE))
-    import replay_provider
-
-    old_path, new_path = environment / "old" / "ticker.sqlite3", environment / "new" / "ticker.sqlite3"
-    for path in (old_path, new_path):
-        path.parent.mkdir()
-        seed(path)
-
-    # The old backend makes each provider through the provider factory. The clock has no upstream, so it stays real.
-    from sports_ticker.providers.clock import ClockProvider
-    monkeypatch.setattr("sports_ticker.providers.factory.create_provider",
-                        lambda name, **options: ClockProvider() if name == "clock" else replay_provider.create(name))
-    from sports_ticker.production import create_production_application
-    old = create_production_application(old_path)
-    runtime = old.extensions["sports_ticker.runtime"]
-    try:
-        wait(old, runtime.run_once)
-        expected = views(old)
-    finally:
-        old.extensions["sports_ticker.public_demo_data"].close()
-        old.extensions["sports_ticker.backend_application"].close()
+def test_engine_gives_the_recorded_data_of_the_old_scheduler(environment, monkeypatch):
+    expected = {view: without_volatile(data) for view, data in json.loads(GOLDEN.read_text()).items()}
+    path = environment / "data" / "ticker.sqlite3"
+    path.parent.mkdir()
+    seed(path)
 
     release = environment / "releases" / "replay"
     release.mkdir(parents=True)
@@ -121,21 +109,21 @@ def test_new_engine_gives_the_same_v2_data_as_the_old_scheduler(environment, mon
     monkeypatch.setenv("TICKER3_RELEASE", "replay")
     monkeypatch.setenv("TICKER3_SOCKET", str(environment / "t3.sock"))
     from ticker3.server import create_application, start_engine
-    new = create_application(new_path, worker_arguments=("--factory", "replay_provider:create", "--health-seconds", "0.2"),
-                             supervisor_options={"adopt_seconds": 0, "watch_seconds": 0.05})
-    stop = start_engine(new)
+    app = create_application(path, worker_arguments=("--factory", "replay_provider:create", "--health-seconds", "0.2"),
+                             supervisor_options={"adopt_seconds": 0, "watch_seconds": 0.05}, clock=lambda: RECORDED_AT)
+    stop = start_engine(app)
     try:
-        wait(new, lambda: None)
-        actual = views(new)
-        engine = new.extensions["ticker3.engine"]
+        wait(app)
+        actual = views(app)
+        engine = app.extensions["ticker3.engine"]
         assert all(status["connected"] for status in engine.workers().values())
-        health = new.test_client().get("/api/v2/health").get_json()
+        health = app.test_client().get("/health").get_json()
         assert health["status"] == "ok" and health["runtime"]["ready"] and health["runtime"]["cycles"] >= 2
         assert set(health["scheduler"]["providers"]) == {"espn", "fotmob", "weather", "golf", "racing", "stock",
                                                          "flights", "music", "news", "clock"}
         assert all(provider["healthy"] for provider in health["scheduler"]["providers"].values())
     finally:
-        new.extensions["ticker3.engine"].stop(stop_workers=True)
+        app.extensions["ticker3.engine"].stop(stop_workers=True)
         stop()
 
     assert set(actual) == set(expected)

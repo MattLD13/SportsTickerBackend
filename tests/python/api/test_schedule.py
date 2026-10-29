@@ -2,26 +2,31 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 
 import pytest
 
-from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
-
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
+
+
+def device_token(ticker_id: str) -> str:
+    """Return the device token of one test device. The token alone names the ticker."""
+    return hashlib.sha256(ticker_id.encode()).hexdigest()
 
 
 def test_live_rule_counts_only_its_ticker_and_reverts_below_threshold(tmp_path) -> None:
     """Exclude other tickers, duplicates, hidden records, and stale snapshots."""
     now = [datetime(2026, 10, 20, 20, tzinfo=timezone.utc).timestamp()]
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None, clock=lambda: now[0])
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [], clock=lambda: now[0])
     try:
         client = app.test_client()
         token = _register_and_exchange(client, "one-live")
         _register_and_exchange(client, "other-games")
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         backend.update_ticker("one-live", display_settings={"mode": "sports", "sports_filter": "all"})
         backend.create_schedule_condition("one-live", kind="live_games", threshold=1, operator="gt",
                                           when_mode="sports", action_sports_filter="live", ignore_pinned=True)
@@ -42,7 +47,7 @@ def test_live_rule_counts_only_its_ticker_and_reverts_below_threshold(tmp_path) 
         assert status["live_games"] == 1
         assert status["sports_filter"] == "all"
         assert status["source"] == "base"
-        document = client.get("/api/v2/tickers/one-live/schedule", headers={"Authorization": f"Bearer {token}"}).get_json()
+        document = client.get("/tickers/one-live/schedule", headers={"Authorization": f"Bearer {token}"}).get_json()
         assert document["live_games"] == document["effective"]["live_games"] == 1
         publish("one-live", [game("own"), game("second", state="half")])
         assert backend.schedule_status("one-live")["source"] == "condition"
@@ -54,17 +59,17 @@ def test_live_rule_counts_only_its_ticker_and_reverts_below_threshold(tmp_path) 
             assert backend.schedule_status("one-live")["live_games"] == 0
         assert backend.schedule_service.live_game_count("missing") == 0
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()
 
 
 def test_schedule_presence_uses_only_enabled_rules_for_this_ticker(tmp_path) -> None:
     """Keep empty and disabled schedules distinct from inactive enabled schedules."""
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
         _register_and_exchange(client, "empty")
         _register_and_exchange(client, "configured")
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         assert backend.schedule_status("empty")["has_enabled_rules"] is False
         block = backend.create_schedule_block("configured", days_of_week=[0], start_minute=1, end_minute=2,
                                                mode="weather", enabled=False)
@@ -80,20 +85,20 @@ def test_schedule_presence_uses_only_enabled_rules_for_this_ticker(tmp_path) -> 
         backend.delete_schedule_condition("configured", condition.id)
         assert backend.schedule_status("configured")["has_enabled_rules"] is False
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()
 
 
 def _register_and_exchange(client, ticker_id: str) -> str:
     """Register one ticker and return its controller token."""
 
     registration = client.post(
-        "/api/v2/devices/register",
+        "/register",
         json={"device_id": ticker_id, "name": ticker_id, "metadata": {}},
-        headers={"X-Device-Token": "a" * 64},
+        headers={"X-Device-Token": device_token(ticker_id)},
     )
     assert registration.status_code == 201
     exchange = client.post(
-        "/api/v2/pairings/exchange",
+        "/pair",
         json={"pairing_code": registration.get_json()["pairing_code"]},
     )
     assert exchange.status_code == 201
@@ -103,7 +108,7 @@ def _register_and_exchange(client, ticker_id: str) -> str:
 def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
     """Persist recurring rules under one ticker and reject the removed global endpoint."""
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
         token = _register_and_exchange(client, "schedule-pi")
@@ -111,16 +116,16 @@ def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
         headers = {"Authorization": f"Bearer {token}"}
 
         assert client.get("/api/v2/schedule").status_code == 404
-        initial = client.get("/api/v2/tickers/schedule-pi/schedule", headers=headers)
+        initial = client.get("/tickers/schedule-pi/schedule", headers=headers)
         assert initial.status_code == 200
         assert initial.get_json()["blocks"] == []
         assert client.get(
-            "/api/v2/tickers/other-schedule-pi/schedule",
+            "/tickers/other-schedule-pi/schedule",
             headers=headers,
         ).status_code == 403
 
         block = client.post(
-            "/api/v2/tickers/schedule-pi/schedule/blocks",
+            "/tickers/schedule-pi/schedule/blocks",
             headers=headers,
             json={
                 "days_of_week": [0, 1, 2, 3, 4],
@@ -141,7 +146,7 @@ def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
         ]
 
         resized = client.patch(
-            f"/api/v2/tickers/schedule-pi/schedule/blocks/{block_id}",
+            f"/tickers/schedule-pi/schedule/blocks/{block_id}",
             headers=headers,
             json={"end_minute": 720},
         )
@@ -149,7 +154,7 @@ def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
         assert resized.get_json()["end_minute"] == 720
 
         overlap = client.post(
-            "/api/v2/tickers/schedule-pi/schedule/blocks",
+            "/tickers/schedule-pi/schedule/blocks",
             headers=headers,
             json={
                 "days_of_week": [2],
@@ -162,7 +167,7 @@ def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
         assert "cannot overlap" in overlap.get_json()["error"]["message"]
 
         condition = client.post(
-            "/api/v2/tickers/schedule-pi/schedule/conditions",
+            "/tickers/schedule-pi/schedule/conditions",
             headers=headers,
             json={
                 "kind": "live_games",
@@ -178,7 +183,7 @@ def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
         assert condition.get_json()["action_sports_filter"] == "live"
 
         document = client.get(
-            "/api/v2/tickers/schedule-pi/schedule",
+            "/tickers/schedule-pi/schedule",
             headers=headers,
         ).get_json()
         assert "timezone" in document
@@ -186,30 +191,29 @@ def test_schedule_routes_are_ticker_owned_and_use_weekly_days(tmp_path) -> None:
         assert [item["id"] for item in document["conditions"]] == [condition_id]
         assert document["days"][0]["blocks"][0]["id"] == block_id
         assert client.get(
-            "/api/v2/tickers/other-schedule-pi/schedule",
+            "/tickers/other-schedule-pi/schedule",
             headers=headers,
         ).status_code == 403
 
         assert client.delete(
-            f"/api/v2/tickers/schedule-pi/schedule/blocks/{block_id}",
+            f"/tickers/schedule-pi/schedule/blocks/{block_id}",
             headers=headers,
         ).status_code == 200
         assert client.delete(
-            f"/api/v2/tickers/schedule-pi/schedule/conditions/{condition_id}",
+            f"/tickers/schedule-pi/schedule/conditions/{condition_id}",
             headers=headers,
         ).status_code == 200
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()
 
 
 def test_schedule_uses_ticker_timezone_condition_precedence_and_expiry(tmp_path) -> None:
     """Apply local time, live-game conditions, pinned precedence, and expiring app overrides."""
 
     now = [datetime(2026, 9, 16, 14, 30, tzinfo=timezone.utc).timestamp()]
-    app = create_backend_application(
+    app = create_offline_application(
         tmp_path / "ticker.sqlite3",
         [],
-        scheduler=None,
         clock=lambda: now[0],
     )
     try:
@@ -218,7 +222,7 @@ def test_schedule_uses_ticker_timezone_condition_precedence_and_expiry(tmp_path)
         other_token = _register_and_exchange(client, "other-effective-pi")
         headers = {"Authorization": f"Bearer {token}"}
         other_headers = {"Authorization": f"Bearer {other_token}"}
-        backend = app.extensions["sports_ticker.backend_application"]
+        backend = app.extensions["ticker.application"]
         backend.update_ticker(
             "effective-pi",
             display_settings={
@@ -276,7 +280,7 @@ def test_schedule_uses_ticker_timezone_condition_precedence_and_expiry(tmp_path)
         assert status["live_games"] == 1
         assert backend.schedule_status("other-effective-pi")["source"] == "base"
         assert backend.schedule_status("other-effective-pi")["sports_filter"] == "all"
-        projected = client.get("/api/v2/tickers/effective-pi/data", headers={"X-Device-Token": "a" * 64})
+        projected = client.get("/data", headers={"X-Device-Token": device_token("effective-pi")})
         assert projected.status_code == 200
         assert projected.get_json()["settings"]["sports_filter"] == "live"
         assert projected.get_json()["meta"]["schedule"]["source"] == "condition"
@@ -293,7 +297,7 @@ def test_schedule_uses_ticker_timezone_condition_precedence_and_expiry(tmp_path)
         assert pinned_status["sports_filter"] == "all"
 
         override = client.patch(
-            "/api/v2/tickers/effective-pi",
+            "/tickers/effective-pi",
             headers=headers,
             json={"display_settings": {"mode": "music"}, "schedule_override": True},
         )
@@ -309,25 +313,25 @@ def test_schedule_uses_ticker_timezone_condition_precedence_and_expiry(tmp_path)
         assert expired["source"] == "base"
         assert expired["override"] is False
         assert client.get(
-            "/api/v2/tickers/effective-pi/schedule",
+            "/tickers/effective-pi/schedule",
             headers=headers,
         ).get_json()["effective"]["source"] == "base"
         assert client.get(
-            "/api/v2/tickers/other-effective-pi/schedule",
+            "/tickers/other-effective-pi/schedule",
             headers=other_headers,
         ).status_code == 200
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()
 
 
 def test_schedule_dashboard_path_is_removed(tmp_path) -> None:
     """Keep schedule ownership in the native controller instead of the former global dashboard editor."""
 
-    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
         client = app.test_client()
         assert client.get("/schedule").status_code == 404
-        assert client.get("/dashboard/static/dashboard_v2/schedule.js").status_code == 404
-        assert client.get("/dashboard/static/dashboard_v2/schedule.css").status_code == 404
+        assert client.get("/static/control/schedule.js").status_code == 404
+        assert client.get("/static/control/schedule.css").status_code == 404
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()

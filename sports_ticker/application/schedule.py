@@ -56,7 +56,6 @@ class ScheduleService:
         block_values = [block_to_mapping(block) for block in blocks]
         status = self.status(identifier, settings, allowed_modes=allowed_modes)
         return {
-            "api_version": "v2",
             "ticker_id": identifier,
             "timezone": settings.timezone,
             "days": [

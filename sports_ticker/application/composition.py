@@ -20,7 +20,6 @@ from sports_ticker.projections import project_data_v2, select_display_content
 from sports_ticker.projections.device_data import project_device_data, compact_mini_data
 
 from .events import EventService, event_to_mapping
-from .scheduler import RefreshScheduler, SchedulerHealth
 from .schedule import ScheduleService
 from .state_store import SnapshotStore
 
@@ -36,7 +35,7 @@ class BackendApplication:
         self,
         repository: TickerRepository,
         snapshot_store: SnapshotStore,
-        scheduler: RefreshScheduler | None = None,
+        scheduler: Any | None = None,
         *,
         runtime: object | None = None,
         spotify_service: object | None = None,
@@ -82,6 +81,12 @@ class BackendApplication:
         if self.scheduler is not None:
             for ticker in self.repository.list_tickers():
                 self._register_scheduler_ticker(ticker.ticker_id)
+
+    @property
+    def clock(self) -> Callable[[], float]:
+        """Return the wall clock of the application."""
+
+        return self._clock
 
     @property
     def store(self) -> SnapshotStore:
@@ -751,7 +756,7 @@ class BackendApplication:
         if failures:
             raise failures[0]
 
-    def scheduler_health(self) -> Mapping[str, SchedulerHealth] | None:
+    def scheduler_health(self) -> Mapping[str, Any] | None:
         """Return scheduler health without exposing scheduler internals to routes."""
 
         if self.scheduler is None:

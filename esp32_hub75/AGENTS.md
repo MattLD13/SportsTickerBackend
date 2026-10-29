@@ -1,7 +1,7 @@
 # Ticker Mini
 
 The production display uses `64x32` pixels.
-`src/mini/protocol/` reads explicit V2 facts. `src/mini/rendering/` draws them without I/O.
+`src/mini/protocol/` reads explicit display facts. `src/mini/rendering/` draws them without I/O.
 `src/mini/runtime/` owns scheduling and network results. `src/mini/platform/` owns hardware boundaries.
 Edit shared field and glyph owners before regenerating `fields_generated.h` or `ui_generated.h`.
 Use the generators in `tools/mini/`. Do not hand-edit generated headers.

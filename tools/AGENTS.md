@@ -21,7 +21,7 @@ Read the root `AGENTS.md` before changing a tool.
 Render a production frame:
 
 ```powershell
-python tools/rendering/render_frame.py --snapshot tests/fixtures/display/v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews/nfl.png
+python tools/rendering/render_frame.py --snapshot tests/fixtures/display/render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews/nfl.png
 ```
 
 Build and verify the public gallery:

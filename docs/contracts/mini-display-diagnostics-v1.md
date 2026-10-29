@@ -3,8 +3,8 @@
 ## Owners
 
 The matrix driver owns the RGB mirror and presentation timestamps.
-The runtime supplies the explicit pane kind, V2 item ID, index, count, and configured duration.
-The retained V2 projection owns item identities. Diagnostics do not parse status labels or infer game state.
+The runtime supplies the explicit pane kind, item ID, index, count, and configured duration.
+The retained projection owns item identities. Diagnostics do not parse status labels or infer game state.
 
 ## Timing
 

@@ -89,7 +89,7 @@ The WEC and Alkamel web-client vocabularies were inspected alongside recorded so
 Historical flag messages are not presented as active flags without an explicit active indication.
 Missing driver penalties and local cautions are not inferred from weather, lap counts, or display text.
 
-## V2 display contract
+## Display contract
 
 `data.racing_display.cards` contains one top-three card per class.
 The original series payload keeps the full classification for the pinned Six carousel.

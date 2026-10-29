@@ -21,15 +21,15 @@ sys.path.insert(0, str(ROOT))
 from sports_ticker.assets.mini_artwork import encode_artwork
 from sports_ticker.assets.mini_sprite import encode_sprite
 from sports_ticker.assets.music_palette import artwork_colors
-from sports_ticker.dashboard_v2.preview import main_layout, project_preview_game
+from ticker3.web.preview import main_layout, project_preview_game
 from sports_ticker.projections.racing_display import mini_racing_cards
 from sports_ticker.providers.logo_overrides import mini_logo_sources
 from tools.rendering.render_mini_ui import remote_render
 from tools.mini.generate_mini_weather import FRAMES as WEATHER_FRAMES, STEP_MS as WEATHER_FRAME_MS
 
 SOURCE = ROOT / "docs/contracts/demo-layouts.json"
-DESTINATION = ROOT / "sports_ticker/dashboard_v2/static/layout-gallery.json"
-ALBUM = ROOT / "sports_ticker/dashboard_v2/static/mr-blue-sky-cover.png"
+DESTINATION = ROOT / "ticker3/web/static/layout-gallery.json"
+ALBUM = ROOT / "ticker3/web/static/mr-blue-sky-cover.png"
 
 
 def encode_image(image: Image.Image) -> str:

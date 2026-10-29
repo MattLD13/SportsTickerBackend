@@ -5,6 +5,7 @@ name: Build and deploy
     - main
     paths:
     - sports_ticker/**
+    - ticker3/**
     - ticker_core/**
     - backend_ops/**
     - esp32_hub75/**
@@ -23,6 +24,7 @@ name: Build and deploy
   pull_request:
     paths:
     - sports_ticker/**
+    - ticker3/**
     - ticker_core/**
     - backend_ops/**
     - esp32_hub75/**
@@ -118,9 +120,9 @@ jobs:
     - name: Install test dependencies
       run: python -m pip install -r requirements-backend.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
     - name: Compile Python sources
-      run: python -m compileall -q sports_ticker ticker_core backend_ops tools tests/python
+      run: python -m compileall -q sports_ticker ticker3 ticker_core backend_ops tools tests/python
     - name: Check Python correctness
-      run: python -m ruff check sports_ticker ticker_core backend_ops tools
+      run: python -m ruff check sports_ticker ticker3 ticker_core backend_ops tools
     - name: Check scoped Python types
       run: python -m mypy
     - name: Build public layouts from current Mini firmware
@@ -149,7 +151,7 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: public-demo-${{ github.sha }}
-        path: sports_ticker/dashboard_v2/static/layout-gallery.json
+        path: ticker3/web/static/layout-gallery.json
         if-no-files-found: error
         retention-days: 1
     - uses: actions/upload-artifact@v4
@@ -306,7 +308,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: public-demo-${{ github.sha }}
-        path: sports_ticker/dashboard_v2/static/
+        path: ticker3/web/static/
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Generate VERSION file
       run: |
@@ -348,8 +350,11 @@ jobs:
       run: |
         python -m backend_ops.components --base "$BASE_REVISION" --output deployment-staging
         cp deploy/backend/* deployment-staging/
-        cp -R backend_ops deployment-staging/bootstrap-ops
-        find deployment-staging/bootstrap-ops -type d -name __pycache__ -prune -exec rm -rf '{}' +
+        mkdir -p deployment-staging/bootstrap/ticker3
+        cp -R backend_ops deployment-staging/bootstrap/backend_ops
+        cp -R ticker3/contract deployment-staging/bootstrap/ticker3/contract
+        cp ticker3/__init__.py deployment-staging/bootstrap/ticker3/__init__.py
+        find deployment-staging/bootstrap -type d -name __pycache__ -prune -exec rm -rf '{}' +
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Copy selected component releases
       uses: appleboy/scp-action@master
@@ -374,9 +379,6 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y python3-venv
           fi
-          mkdir -p bootstrap
-          mv bootstrap-ops bootstrap/backend_ops
-          cp /home/${{ secrets.SSH_USER }}/RELEASE_SHA bootstrap/RELEASE_SHA
           python3 -c 'import json,pathlib; p=pathlib.Path("plan.json"); pathlib.Path("bootstrap/RELEASE_SHA").write_text(json.loads(p.read_text())["release"])'
           PYTHONPATH="$PWD/bootstrap" python3 -m backend_ops.manager deploy --staging "$PWD"
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
@@ -409,7 +411,7 @@ jobs:
         DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
       run: |
         curl --fail --retry 3 --retry-delay 2 \
-          -X POST "https://ticker.mattdicks.org/api/v2/tickers/${OTA_TICKER_ID}/updates" \
+          -X POST "https://ticker.mattdicks.org/tickers/${OTA_TICKER_ID}/update" \
           -H "X-Deployment-Token: ${DEPLOY_TOKEN}" \
           -H "Content-Type: application/json" \
           --data "{\"version\":\"${OTA_VERSION}\"}"
@@ -422,7 +424,7 @@ jobs:
         VERSION=$(git rev-parse HEAD)
         TICKER_ID="722c59f4-fce3-4735-b072-faaa2f579a0a"
         curl --fail --retry 3 --retry-delay 2 \
-          -X POST "https://ticker.mattdicks.org/api/v2/tickers/${TICKER_ID}/updates" \
+          -X POST "https://ticker.mattdicks.org/tickers/${TICKER_ID}/update" \
           -H "Content-Type: application/json" \
           -H "X-Deployment-Token: ${DEPLOY_TOKEN}" \
           --data "{\"version\":\"${VERSION}\"}"

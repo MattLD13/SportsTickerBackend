@@ -34,20 +34,19 @@ from ticker_core.drivers import MemoryFrameSink
 from ticker_core.protocol import BackendClient
 from ticker_core.rendering import FrameGeometry
 from ticker_core.runtime import FramePacer, RuntimeConfig, TickerRuntime
-from sports_ticker.application import BackendRuntime
-from sports_ticker.asgi import BackendASGI
-from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import PairingState
+from ticker3.api.asgi import TickerASGI
+from ticker3.offline import create_offline_application
 
 
 DEVICE_ID = "virtual-ticker-01"
 DEVICE_TOKEN = sha256(b"isolated-virtual-ticker-credential").hexdigest()
-SNAPSHOT = REPOSITORY / "tests" / "fixtures" / "display" / "v2_render_snapshot.json"
+SNAPSHOT = REPOSITORY / "tests" / "fixtures" / "display" / "render_snapshot.json"
 
 
 class LoopbackHttpSession:
-    """Send requests to the local V2 API."""
+    """Send requests to the local API."""
 
     def __init__(self, base_url: str) -> None:
         self._base_url = base_url
@@ -83,7 +82,7 @@ class RestPollProbe:
     """Measure the former HTTP snapshot polling path against the same API."""
 
     def __init__(self, base_url: str, *, interval: float = 0.5) -> None:
-        self.url = f"{base_url}/api/v2/tickers/{DEVICE_ID}/data"
+        self.url = f"{base_url}/data"
         self.interval = interval
         self.ready = threading.Event()
         self.changed = threading.Event()
@@ -244,6 +243,7 @@ class VirtualRunLogger:
         self.issues: list[dict[str, object]] = []
         self.frames: list[dict[str, object]] = []
         self.stream_events: list[dict[str, object]] = []
+        self.latency: list[dict[str, object]] = []
         self._viewport_generation = viewport_generation
 
     def start(self) -> None:
@@ -257,6 +257,9 @@ class VirtualRunLogger:
 
     def record_stream(self, event, **values) -> None:
         self.stream_events.append({"event": event, **values})
+
+    def record_latency(self, value) -> None:
+        self.latency.append(dict(value))
 
     def record_issue(self, source, error, **details) -> None:
         self.issues.append({"source": source, "error": str(error), **details})
@@ -282,7 +285,7 @@ def _load_payload(path: Path) -> dict[str, Any]:
 class HypercornThread:
     """Run one local Hypercorn server with ASGI lifespan management."""
 
-    def __init__(self, application: BackendASGI) -> None:
+    def __init__(self, application: TickerASGI) -> None:
         self.application = application
         self.port = _free_port()
         self.base_url = f"http://127.0.0.1:{self.port}"
@@ -299,7 +302,7 @@ class HypercornThread:
             if self.error is not None:
                 raise RuntimeError("Hypercorn failed to start") from self.error
             try:
-                response = requests.get(f"{self.base_url}/api/v2/health", timeout=0.2)
+                response = requests.get(f"{self.base_url}/health", timeout=0.2)
                 if response.status_code == 200:
                     return
             except requests.RequestException:
@@ -339,6 +342,25 @@ class HypercornThread:
             shutdown_trigger=self._shutdown.wait,
             mode="asgi",
         )
+
+
+def _expire_events(flask_app):
+    """Remove expired overlays every 0.1 seconds, as the engine does each pass. Return the stop function."""
+    events = flask_app.extensions["ticker.application"].event_service
+    stop = threading.Event()
+
+    def run() -> None:
+        while not stop.wait(0.1):
+            events.remove_expired()
+
+    thread = threading.Thread(target=run, name="virtual-event-expiry", daemon=True)
+    thread.start()
+
+    def close() -> None:
+        stop.set()
+        thread.join(timeout=2)
+
+    return close
 
 
 def _free_port() -> int:
@@ -416,8 +438,8 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
     captures: list[dict[str, object]] = []
     requests_seen: list[dict[str, object]] = []
     with tempfile.TemporaryDirectory(prefix="ticker-virtual-backend-") as temporary:
-        flask_app = create_backend_application(Path(temporary) / "ticker.sqlite3", [], scheduler=None)
-        backend_app = flask_app.extensions["sports_ticker.backend_application"]
+        flask_app = create_offline_application(Path(temporary) / "ticker.sqlite3")
+        backend_app = flask_app.extensions["ticker.application"]
         backend_app.repository.create_ticker(
             DEVICE_ID,
             display_settings=DisplaySettings(mode="sports"),
@@ -425,14 +447,9 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
             credential_hash=sha256(DEVICE_TOKEN.encode()).hexdigest(),
             pairing=PairingState(paired=True),
         )
-        snapshot_store = flask_app.extensions["sports_ticker.snapshot_store"]
+        snapshot_store = backend_app.snapshot_store
         snapshot_store.replace(_snapshot(payload, revision=1))
-        flask_app.extensions["sports_ticker.runtime"] = BackendRuntime(
-            flask_app.extensions["sports_ticker.scheduler"],
-            flask_app.extensions["sports_ticker.event_service"],
-            poll_interval=0.1,
-        )
-        backend = BackendASGI(flask_app, http_threads=4)
+        backend = TickerASGI(flask_app, start=_expire_events, http_threads=4)
         server = HypercornThread(backend)
         stream_transport = LoopbackStreamConnector()
         ticker = None
@@ -475,7 +492,7 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
                 and decision.kind.value in {"scroll", "static"}
                 and sink.last_image is not None,
                 8,
-                "rendered sports content frame from the V2 API",
+                "rendered sports content frame from the API",
                 run_logger,
                 session,
             )
@@ -499,7 +516,7 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
                 ticker,
                 lambda _: runtime.snapshot is not None and runtime.snapshot.key != initial_key,
                 5,
-                "updated V2 payload after reconnection",
+                "updated payload after reconnection",
             )
             deadline = time.monotonic() + 0.3
             while time.monotonic() < deadline:
@@ -511,7 +528,7 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
             rest_probe.start()
             if not rest_probe.ready.wait(5) or rest_probe.error is not None:
                 raise RuntimeError(f"REST efficiency probe failed: {rest_probe.error}")
-            stream_hub = backend._stream_hub
+            stream_hub = backend.hub
             projection_start = stream_hub.metrics
             message_start = len(stream_transport.messages)
             probe_record_start = len(rest_probe.records)
@@ -645,15 +662,15 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
                 server.close()
             backend_app.close()
     checks = {
-        "registration_route": any(item["path"] == "/api/v2/devices/register" for item in requests_seen),
+        "registration_route": any(item["path"] == "/register" for item in requests_seen),
         "data_route_served_by_local_api": any(
-            item["path"] == f"/api/v2/tickers/{DEVICE_ID}/data" and item.get("status") == 200
+            item["path"] == "/data" and item.get("status") == 200
             for item in requests_seen
         ),
         "disconnect_injected_at_client_transport": any(
             item.get("result") == "simulated_transport_loss" for item in requests_seen
         ) or stream_transport.disconnects > 0,
-        "websocket_subprotocol_accepted": "ticker-v2" in stream_transport.subprotocols,
+        "websocket_subprotocol_accepted": "ticker" in stream_transport.subprotocols,
         "delta_reached_device": any(item.get("type") == "delta" for item in stream_transport.messages),
         "reconnect_replayed_after_cursor": (
             len(stream_transport.messages) >= 2
@@ -672,7 +689,7 @@ def run(output: Path, snapshot: Path = SNAPSHOT) -> dict[str, object]:
         raise RuntimeError(f"Virtual hardware checks failed: {checks}")
     return {
         "hardware_model": "Pi controller + 384x32 RGB matrix memory sink",
-        "backend_model": "real V2 Flask API over Hypercorn ASGI with temporary SQLite",
+        "backend_model": "real Flask API over Hypercorn ASGI with temporary SQLite",
         "checks": checks,
         "frames": captures,
         "requests": requests_seen,

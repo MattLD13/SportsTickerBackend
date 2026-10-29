@@ -22,7 +22,7 @@ jobs:
           python - <<'PY'
           import json, os, urllib.request
           request = urllib.request.Request(
-              "https://ticker.mattdicks.org/api/v2/fleet/health",
+              "https://ticker.mattdicks.org/fleet",
               headers={"X-Deployment-Token": os.environ["DEPLOY_TOKEN"], "User-Agent": "Mozilla/5.0"},
           )
           with urllib.request.urlopen(request, timeout=20) as response:

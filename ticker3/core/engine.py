@@ -1,10 +1,8 @@
-"""Replace the core refresh scheduler and runtime with pushing provider workers.
+"""Turn tickers and settings into worker subscriptions, and publish each new result.
 
-The engine keeps the interfaces that BackendApplication and the V2 routes read:
-`register_ticker`, `unregister_ticker`, `has_ticker`, `health`, `recovery_health`,
-`status`, `stop`, and `close`. It publishes each ticker snapshot through the
-existing RefreshService, so the V2 data, the device stream, and every display
-stay the same.
+BackendApplication and the API read the engine through `register_ticker`,
+`unregister_ticker`, `has_ticker`, `health`, `recovery_health`, `status`, `stop`,
+and `close`. The engine publishes each ticker snapshot through RefreshService.
 
 Each pass, the engine:
 1. resolves the settings of each registered ticker,
@@ -27,8 +25,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from backend_ops.worker_contract import decode_result, encode
-from sports_ticker.application.scheduler import SchedulerHealth
+from ticker3.contract.results import decode_result, encode
+from ticker3.contract.health import JobHealth
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.contracts import ProviderResult
 from sports_ticker.providers.normalization import normalize_provider_result, normalize_settings
@@ -68,7 +66,7 @@ class Engine:
         self._subs: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {name: {} for name in self.providers}
         self._reads: dict[str, dict[str, tuple[str, dict[str, Any], float, list[Future]]]] = {name: {} for name in self.providers}
         self._sent: dict[str, str] = {}
-        self._job_health: dict[str, SchedulerHealth] = {}
+        self._job_health: dict[str, JobHealth] = {}
         self._recovery: dict[str, dict] = {}
         self._dirty: set[str] = set()
         self._cycles, self._completed_at, self._started_at, self._last_error = 0, None, None, None
@@ -114,19 +112,19 @@ class Engine:
             return str(ticker_id).strip() in self._tickers
 
     @property
-    def health(self) -> Mapping[str, SchedulerHealth]:
+    def health(self) -> Mapping[str, JobHealth]:
         status = self.supervisor.status()
         result = {}
         with self._lock:
             for name in self.providers:
-                health = self._job_health.get(name, SchedulerHealth())
+                health = self._job_health.get(name, JobHealth())
                 if not status[name]["connected"]:
-                    health = SchedulerHealth(last_success=health.last_success, last_error="the provider worker is not connected",
+                    health = JobHealth(last_success=health.last_success, last_error="the provider worker is not connected",
                                              next_due=health.next_due, consecutive_failures=max(1, health.consecutive_failures),
                                              refresh_calls=health.refresh_calls, paused_refreshes=health.paused_refreshes)
                 result[name] = health
             for name in self.builtins:
-                result[name] = self._job_health.get(name, SchedulerHealth())
+                result[name] = self._job_health.get(name, JobHealth())
         return MappingProxyType(result)
 
     def recovery_health(self) -> dict:
@@ -139,6 +137,15 @@ class Engine:
     def workers(self) -> dict[str, Any]:
         """Return the supervisor status of each provider worker."""
         return self.supervisor.status()
+
+    def deploy(self, name: str, release: str, *, timeout: float = 150.0) -> bool:
+        """Start `release` of one provider worker next to the active release. Return True when it becomes active."""
+        if name not in self.providers:
+            raise KeyError(name)
+        if self._loop is None or not self._running:
+            raise RuntimeError("the engine is not running")
+        future = asyncio.run_coroutine_threadsafe(self.supervisor.deploy(name, release), self._loop)
+        return future.result(timeout=timeout)
 
     # Runtime interface
 
@@ -305,7 +312,7 @@ class Engine:
         """Take one result or health message from the active worker of a provider."""
         if message["t"] == "health":
             job = message["job"]
-            health = SchedulerHealth(**{field: _time(job.get(field)) if field in ("last_success", "next_due") else job.get(field)
+            health = JobHealth(**{field: _time(job.get(field)) if field in ("last_success", "next_due") else job.get(field)
                                         for field in ("last_success", "last_error", "next_due", "consecutive_failures",
                                                       "refresh_calls", "paused_refreshes")})
             with self._lock:
@@ -348,8 +355,8 @@ class Engine:
                 result = self._builtin_result(name, settings)
                 with self._lock:
                     self._held[name][ticker_id] = _Held(key, result, now)
-                    self._job_health[name] = SchedulerHealth(last_success=self.wall_clock(),
-                                                             refresh_calls=self._job_health.get(name, SchedulerHealth()).refresh_calls + 1)
+                    self._job_health[name] = JobHealth(last_success=self.wall_clock(),
+                                                             refresh_calls=self._job_health.get(name, JobHealth()).refresh_calls + 1)
                     self._dirty.add(ticker_id)
 
     def _builtin_result(self, name: str, settings: DisplaySettings) -> ProviderResult:

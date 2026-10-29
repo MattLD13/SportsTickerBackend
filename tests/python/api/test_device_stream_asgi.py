@@ -1,32 +1,31 @@
 """Verify the device stream route and its registration gate."""
 
-from datetime import datetime, timezone
 import asyncio
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
-from asgiref.testing import ApplicationCommunicator
 import pytest
+from asgiref.testing import ApplicationCommunicator
 
-from sports_ticker.fleet.device_credentials import device_token_hash
-from sports_ticker import asgi
-from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import PairingState
-
+from sports_ticker.fleet.device_credentials import device_token_hash
+from ticker3.api.asgi import TickerASGI
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
-FIXTURE = Path(__file__).resolve().parents[2] / "fixtures/display" / "v2_render_snapshot.json"
+FIXTURE = Path(__file__).resolve().parents[2] / "fixtures/display" / "render_snapshot.json"
 
 
 def _app(tmp_path, *, registered=True):
-    flask = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    flask = create_offline_application(tmp_path / "ticker.sqlite3", [])
     if registered:
-        flask.extensions["sports_ticker.backend_application"].repository.create_ticker(
+        flask.extensions["ticker.application"].repository.create_ticker(
             "stream-device",
             display_settings=DisplaySettings(mode="sports"),
             pairing=PairingState(paired=True),
-        credential_hash=device_token_hash("a" * 64))
+            credential_hash=device_token_hash("a" * 64))
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
         content = tuple(
             ContentItem(
@@ -34,7 +33,7 @@ def _app(tmp_path, *, registered=True):
             )
             for item in fixture["content"]["sports"]
         )
-        flask.extensions["sports_ticker.snapshot_store"].replace(
+        flask.extensions["ticker.application"].snapshot_store.replace(
             TickerSnapshot(
                 ticker_id="stream-device",
                 revision=1,
@@ -48,16 +47,20 @@ def _app(tmp_path, *, registered=True):
     return flask
 
 
-def _scope(ticker_id="stream-device", *, subprotocols=("ticker-v2",), query=b""):
+def _asgi(flask):
+    return TickerASGI(flask, start=lambda app: lambda: None)
+
+
+def _scope(token=b"a" * 64, *, subprotocols=("ticker",), query=b""):
     return {
         "type": "websocket",
         "asgi": {"version": "3.0", "spec_version": "2.4"},
         "http_version": "1.1",
         "scheme": "ws",
-        "path": f"/api/v2/tickers/{ticker_id}/stream",
+        "path": "/stream",
         "root_path": "",
         "query_string": query,
-        "headers": [(b"x-device-token", b"a" * 64)],
+        "headers": [(b"x-device-token", token)],
         "subprotocols": list(subprotocols),
         "server": ("127.0.0.1", 5000),
         "client": ("127.0.0.1", 40000),
@@ -68,15 +71,14 @@ def test_device_stream_sends_a_projected_snapshot(tmp_path):
     flask = _app(tmp_path)
 
     async def verify():
-        communicator = ApplicationCommunicator(asgi.BackendASGI(flask), _scope())
+        communicator = ApplicationCommunicator(_asgi(flask), _scope())
         await communicator.send_input({"type": "websocket.connect"})
         accepted = await communicator.receive_output(timeout=5)
         initial = await communicator.receive_output(timeout=5)
-        assert accepted == {"type": "websocket.accept", "subprotocol": "ticker-v2"}
+        assert accepted == {"type": "websocket.accept", "subprotocol": "ticker"}
         assert initial["type"] == "websocket.send"
         message = json.loads(initial["text"])
         assert message["type"] == "snapshot"
-        assert message["protocol_version"] == 1
         assert message["seq"] == message["base_seq"]
         assert message["payload"]["content"]["sports"][0]["data"]["away_score"] == "17"
         await communicator.send_input({"type": "websocket.disconnect", "code": 1000})
@@ -85,20 +87,20 @@ def test_device_stream_sends_a_projected_snapshot(tmp_path):
     try:
         asyncio.run(verify())
     finally:
-        flask.extensions["sports_ticker.backend_application"].close()
+        flask.extensions["ticker.application"].close()
 
 
 def test_device_stream_rejects_unknown_ticker_and_missing_subprotocol(tmp_path):
     flask = _app(tmp_path, registered=False)
 
     async def verify():
-        unknown = ApplicationCommunicator(asgi.BackendASGI(flask), _scope("unknown"))
+        unknown = ApplicationCommunicator(_asgi(flask), _scope(b"b" * 64))
         await unknown.send_input({"type": "websocket.connect"})
         assert await unknown.receive_output(timeout=5) == {"type": "websocket.close", "code": 4403}
         await unknown.wait()
 
         invalid_protocol = ApplicationCommunicator(
-            asgi.BackendASGI(flask), _scope(subprotocols=())
+            _asgi(flask), _scope(subprotocols=())
         )
         await invalid_protocol.send_input({"type": "websocket.connect"})
         assert await invalid_protocol.receive_output(timeout=5) == {
@@ -110,21 +112,21 @@ def test_device_stream_rejects_unknown_ticker_and_missing_subprotocol(tmp_path):
     try:
         asyncio.run(verify())
     finally:
-        flask.extensions["sports_ticker.backend_application"].close()
+        flask.extensions["ticker.application"].close()
 
 
 def test_device_stream_rejects_missing_credentials_and_closes_after_rotation(tmp_path):
     flask = _app(tmp_path)
-    application = flask.extensions["sports_ticker.backend_application"]
+    application = flask.extensions["ticker.application"]
 
     async def verify():
         scope = _scope()
         scope["headers"] = []
-        anonymous = ApplicationCommunicator(asgi.BackendASGI(flask), scope)
+        anonymous = ApplicationCommunicator(_asgi(flask), scope)
         await anonymous.send_input({"type": "websocket.connect"})
         assert await anonymous.receive_output(timeout=5) == {"type": "websocket.close", "code": 4401}
         await anonymous.wait()
-        active = ApplicationCommunicator(asgi.BackendASGI(flask), _scope())
+        active = ApplicationCommunicator(_asgi(flask), _scope())
         await active.send_input({"type": "websocket.connect"})
         assert (await active.receive_output(timeout=5))["type"] == "websocket.accept"
         assert (await active.receive_output(timeout=5))["type"] == "websocket.send"

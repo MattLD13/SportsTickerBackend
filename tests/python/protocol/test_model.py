@@ -15,7 +15,6 @@ pytestmark = pytest.mark.critical
 
 def _payload(mode: str = "sports") -> dict:
     return {
-        "api_version": "v2",
         "snapshot": {"ticker_id": "pi-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
         "settings": {"mode": mode, "sports_presentation": "rotation", "pinned_content_id": "", "brightness": 85, "scroll_speed": 0.04, "inverted": True},
         "content": {"sports": [{"id": "game-1", "family": "sports", "kind": "scoreboard", "is_shown": True, "data": {"sport": "nfl", "state": "in"}}]},
@@ -39,11 +38,6 @@ def test_pairing_response_exposes_the_pairing_code() -> None:
 
     assert response.status is DeviceState.PAIRING
     assert response.pairing_code == "123456"
-
-
-def test_payload_boundary_rejects_a_non_v2_response() -> None:
-    with pytest.raises(PayloadValidationError, match="api_version"):
-        TickerResponse.from_payload({"api_version": "v1"})
 
 
 def test_payload_hashing_and_snapshot_stability() -> None:

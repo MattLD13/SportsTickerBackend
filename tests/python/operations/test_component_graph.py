@@ -1,3 +1,4 @@
+"""Prove that the static import graph covers every module that each process really loads."""
 import json
 import os
 import subprocess
@@ -7,57 +8,83 @@ from pathlib import Path
 import pytest
 from cryptography.fernet import Fernet
 
-from backend_ops.components import import_closures, packaged
-from backend_ops.worker_contract import PROVIDERS
+from backend_ops.components import WORKERS, import_closures
 
 ROOT = Path(__file__).resolve().parents[3]
+PACKAGES = ("sports_ticker", "ticker_core", "ticker3", "backend_ops")
 
-PROBE = """
+WORKER_PROBE = """
 import json, pathlib, sys, tempfile
-import backend_ops.worker
+import ticker3.worker.__main__
 from sports_ticker.providers.factory import create_provider
 create_provider(sys.argv[1], database_path=pathlib.Path(tempfile.mkdtemp()) / "ticker.sqlite3")
-print(json.dumps(sorted(name for name in sys.modules if name.split(".")[0] in ("sports_ticker", "ticker_core", "backend_ops"))))
-"""
+print(json.dumps(sorted(name for name in sys.modules if name.split(".")[0] in %r)))
+""" % (PACKAGES,)
+
+CORE_PROBE = """
+import json, sys
+from ticker3.server import create_asgi_application
+create_asgi_application(sys.argv[1])
+print(json.dumps(sorted(name for name in sys.modules if name.split(".")[0] in %r)))
+""" % (PACKAGES,)
+
+# The core loads only these provider modules. Each worker owns every other provider module.
+CORE_PROVIDER_MODULES = {
+    "__init__", "catalog", "clock", "contracts", "http", "logo_overrides", "normalization", "payloads",
+    "racing_session", "sports_display", "stock_catalog", "weather_location",
+}
 
 
 def _module_file(name):
+    """Return the source file of a module, or None for a namespace package."""
     base = ROOT.joinpath(*name.split("."))
     path = base / "__init__.py" if (base / "__init__.py").exists() else base.with_suffix(".py")
-    return path.relative_to(ROOT).as_posix()
+    return path.relative_to(ROOT).as_posix() if path.exists() else None
 
 
-@pytest.mark.critical
-@pytest.mark.parametrize("component", PROVIDERS)
-def test_each_worker_package_carries_its_import_closure(component):
-    closure = import_closures(ROOT)[component]
-
-    assert "backend_ops/worker.py" in closure
-    assert not [path for path in closure if not packaged(component, path)]
+def _loaded(tmp_path, probe, argument):
+    environment = {
+        **os.environ,
+        "TICKER3_SOCKET": str(tmp_path / "t.sock"),
+        "SPOTIFY_CLIENT_ID": "client",
+        "SPOTIFY_CALLBACK_URI": "https://example.com/spotify/callback",
+        "SPOTIFY_APP_RETURN_URI": "sportsticker://spotify",
+        "SPOTIFY_TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+    }
+    completed = subprocess.run([sys.executable, "-c", probe, argument], cwd=ROOT, env=environment,
+                               capture_output=True, text=True, timeout=120)
+    assert completed.returncode == 0, completed.stderr
+    return {_module_file(name) for name in json.loads(completed.stdout.splitlines()[-1])} - {None}
 
 
 @pytest.mark.critical
 def test_core_closure_excludes_the_worker_factory_branches():
     core = import_closures(ROOT)["core"]
-
-    assert "sports_ticker/server.py" in core
-    assert "sports_ticker/providers/weather_location.py" in core
-    assert not {"sports_ticker/providers/espn.py", "sports_ticker/providers/racing_live.py",
-                "sports_ticker/providers/weather.py", "sports_ticker/providers/news_source.py"} & core
+    assert {"ticker3/server.py", "ticker3/api/asgi.py", "sports_ticker/providers/weather_location.py"} <= core
+    assert not {"sports_ticker/providers/espn.py", "sports_ticker/providers/racing_live.py", "sports_ticker/providers/weather.py",
+                "sports_ticker/providers/news_source.py", "sports_ticker/providers/factory.py"} & core
 
 
-@pytest.mark.parametrize("component", PROVIDERS)
+@pytest.mark.critical
+@pytest.mark.parametrize("component", WORKERS)
+def test_workers_load_no_server_application_code(component):
+    closure = import_closures(ROOT)[component]
+    assert "ticker3/worker/runner.py" in closure
+    assert not [path for path in closure if path.startswith(("ticker3/api/", "ticker3/web/", "ticker3/core/",
+                                                             "sports_ticker/application/", "sports_ticker/projections/",
+                                                             "ticker_core/"))]
+
+
+@pytest.mark.critical
+def test_the_core_process_loads_only_core_provider_modules(tmp_path):
+    loaded = _loaded(tmp_path, CORE_PROBE, str(tmp_path / "ticker.sqlite3"))
+    providers = {Path(path).stem for path in loaded if path.startswith("sports_ticker/providers/")}
+    assert providers <= CORE_PROVIDER_MODULES, sorted(providers - CORE_PROVIDER_MODULES)
+    assert {"contracts", "normalization", "sports_display", "clock"} <= providers
+    assert loaded <= import_closures(ROOT)["core"], sorted(loaded - import_closures(ROOT)["core"])
+
+
+@pytest.mark.parametrize("component", WORKERS)
 def test_static_worker_closure_covers_every_module_the_worker_loads(component, tmp_path):
-    environment = {
-        **os.environ,
-        "SPOTIFY_CLIENT_ID": "client",
-        "SPOTIFY_CALLBACK_URI": "https://example.com/callback",
-        "SPOTIFY_APP_RETURN_URI": "sportsticker://spotify",
-        "SPOTIFY_TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(),
-    }
-    completed = subprocess.run([sys.executable, "-c", PROBE, component], cwd=ROOT, env=environment,
-                               capture_output=True, text=True, timeout=120)
-
-    assert completed.returncode == 0, completed.stderr
-    loaded = {_module_file(name) for name in json.loads(completed.stdout.splitlines()[-1])}
+    loaded = _loaded(tmp_path, WORKER_PROBE, component)
     assert loaded <= import_closures(ROOT)[component], sorted(loaded - import_closures(ROOT)[component])

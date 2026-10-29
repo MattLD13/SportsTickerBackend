@@ -1,10 +1,10 @@
-from urllib.parse import parse_qs, urlparse
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.providers.stock_catalog import StockSymbolCatalog
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
 
@@ -42,18 +42,18 @@ def test_stock_search_uses_provider_symbols_and_caches_bounded_results(monkeypat
 
 
 def test_stock_catalog_http_contract_and_failure_does_not_expose_provider_details(tmp_path, monkeypatch):
-    app = create_backend_application(tmp_path / "fleet.sqlite3", [], scheduler=None)
+    app = create_offline_application(tmp_path / "fleet.sqlite3", [])
     try:
-        app.extensions["sports_ticker.stock_catalog"] = SimpleNamespace(search=lambda query: [{"symbol": "NVDA", "name": "NVIDIA Corp"}])
+        app.extensions["ticker.stock_catalog"] = SimpleNamespace(search=lambda query: [{"symbol": "NVDA", "name": "NVIDIA Corp"}])
         client = app.test_client()
-        assert client.get("/api/v2/catalog/stocks?q=nvid").get_json() == {"stocks": [{"symbol": "NVDA", "name": "NVIDIA Corp"}]}
+        assert client.get("/stocks?q=nvid").get_json() == {"stocks": [{"symbol": "NVDA", "name": "NVIDIA Corp"}]}
         monkeypatch.setenv("FINNHUB_API_KEY", "sensitive-key")
         class Broken:
             def get_json(self, url, *, timeout): raise RuntimeError(url)
-        app.extensions["sports_ticker.stock_catalog"] = StockSymbolCatalog(Broken())
-        response = client.get("/api/v2/catalog/stocks?q=NVDA")
+        app.extensions["ticker.stock_catalog"] = StockSymbolCatalog(Broken())
+        response = client.get("/stocks?q=NVDA")
         assert response.status_code == 503
         assert "sensitive-key" not in response.get_data(as_text=True)
-        assert client.get("/api/v2/catalog/stocks?q=" + "x" * 61).status_code == 400
+        assert client.get("/stocks?q=" + "x" * 61).status_code == 400
     finally:
-        app.extensions["sports_ticker.backend_application"].close()
+        app.extensions["ticker.application"].close()

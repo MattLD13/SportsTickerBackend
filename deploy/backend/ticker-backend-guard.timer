@@ -1,5 +1,5 @@
 [Unit]
-Description=Check backend component health every 30 seconds
+Description=Check the ticker core every 30 seconds
 
 [Timer]
 OnBootSec=60

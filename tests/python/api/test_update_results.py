@@ -1,7 +1,9 @@
 """Verify durable boot failure reports and family isolation."""
 import hashlib
+
 import pytest
-from sports_ticker.bootstrap_v2 import create_backend_application
+
+from ticker3.offline import create_offline_application
 
 pytestmark = pytest.mark.critical
 
@@ -9,8 +11,8 @@ pytestmark = pytest.mark.critical
 def test_boot_failure_quarantines_only_assigned_family_and_preserves_controls(tmp_path, monkeypatch):
     monkeypatch.setenv("TICKER_DEPLOY_TOKEN", "admin")
     path = tmp_path / "fleet.sqlite3"
-    flask = create_backend_application(path, [])
-    app = flask.extensions["sports_ticker.backend_application"]
+    flask = create_offline_application(path, [])
+    app = flask.extensions["ticker.application"]
     tokens = {"mini-a": "a" * 64, "mini-b": "b" * 64, "six": "c" * 64}
     try:
         for identity, token in tokens.items():
@@ -21,9 +23,11 @@ def test_boot_failure_quarantines_only_assigned_family_and_preserves_controls(tm
         target = app.get_ticker("mini-a")
         attempt = next(item["id"] for item in target.device.metadata["pending_commands"] if item["type"] == "update")
         report = {"id": attempt, "version": "release-1", "running_version": "release-0", "status": "rolled_back", "reason": "boot_reset"}
-        route = "/api/v2/tickers/mini-a/updates/result"
+        route = "/update-result"
         assert client.post(route, json=report).status_code == 401
-        assert client.post(route, json=report, headers={"X-Device-Token": tokens["mini-b"]}).status_code == 403
+        assert client.post(route, json=report, headers={"X-Device-Token": "d" * 64}).status_code == 403
+        # The token names mini-b, and the attempt of mini-a is not assigned to mini-b.
+        assert client.post(route, json=report, headers={"X-Device-Token": tokens["mini-b"]}).status_code == 400
         assert client.post(route, json={**report, "id": "not-assigned"}, headers={"X-Device-Token": tokens["mini-a"]}).status_code == 400
         before = {item.ticker_id: item for item in app.repository.list_tickers()}
         result = client.post(route, json=report, headers={"X-Device-Token": tokens["mini-a"]})
@@ -43,23 +47,23 @@ def test_boot_failure_quarantines_only_assigned_family_and_preserves_controls(tm
         with pytest.raises(ValueError, match="quarantined"):
             app.request_update("mini-b", "release-1")
         app.request_update("six", "release-1")
-        assert client.get("/api/v2/fleet/updates").status_code == 401
-        history = client.get("/api/v2/fleet/updates", headers={"X-Deployment-Token": "admin"}).get_json()
+        assert client.get("/fleet/updates").status_code == 401
+        history = client.get("/fleet/updates", headers={"X-Deployment-Token": "admin"}).get_json()
         assert sum(item["status"] == "rolled_back" for item in history["events"]) == 1
     finally:
         app.close()
-    restarted = create_backend_application(path, [])
+    restarted = create_offline_application(path, [])
     try:
-        ledger = restarted.extensions["sports_ticker.backend_application"].repository.updates
+        ledger = restarted.extensions["ticker.application"].repository.updates
         assert ledger.quarantined("mini", "release-1")
         assert not ledger.quarantined("full", "release-1")
     finally:
-        restarted.extensions["sports_ticker.backend_application"].close()
+        restarted.extensions["ticker.application"].close()
 
 
 def test_download_failure_remains_retryable_and_cannot_claim_another_release(tmp_path):
-    flask = create_backend_application(tmp_path / "fleet.sqlite3", [])
-    app = flask.extensions["sports_ticker.backend_application"]
+    flask = create_offline_application(tmp_path / "fleet.sqlite3", [])
+    app = flask.extensions["ticker.application"]
     try:
         app.register_device("mini", profile={"product_family": "mini"})
         ticker = app.request_update("mini", "new")

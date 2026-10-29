@@ -65,7 +65,7 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/platform/network_gate.h/.cpp` | Shared TLS and Wi-Fi renewal exclusion |
 | `src/mini/runtime/scheduler.inc` | Startup, device polling, Wi-Fi scheduling, and Arduino ticks |
 
-The backend owns source selection and image preparation. The Mini reads versioned asset references from the V2 display projection.
+The backend owns source selection and image preparation. The Mini reads versioned asset references from the display projection.
 Each asset contains an 18x18 RGB565 image and a coverage mask. The complete file contains 705 bytes.
 Read [Mini Sprite V1](../docs/contracts/mini-sprite-v1.md) for the binary format and identity rules.
 
@@ -144,13 +144,16 @@ BACKEND_URL
 
 Keep real Wi-Fi credentials out of commits. Bluetooth-provisioned credentials take precedence after the firmware stores them in ESP32 NVS.
 
-`BACKEND_URL` is the server base URL, such as `https://ticker.example.com`. The firmware creates these V2 routes after registration:
+`BACKEND_URL` is the server base URL, such as `https://ticker.example.com`. The firmware uses these routes. Each request sends the device token in `X-Device-Token`, and the token names the ticker. `docs/api.md` lists every route.
 
 ```text
-POST /api/v2/devices/register
-POST /api/v2/tickers/<ticker-id>/data
-GET  /api/v2/tickers/<ticker-id>/firmware
-POST /api/v2/tickers/<ticker-id>/updates/ack
+POST /register
+POST /poll
+POST /verify
+GET  /firmware?version=<version>
+POST /update-result
+GET  /assets/sprites/<id>.mts
+GET  /assets/artwork/<id>.mta
 ```
 
 The firmware derives a stable device ID from the ESP32 eFuse MAC. It sends an `esp32s3-...` device ID with a `mini` profile, one 64x32 panel, 16-bit color, OTA capability, and all seven mode capabilities. The server returns the ticker ID, pairing state, and pairing code. No ticker ID belongs in the firmware source.
@@ -159,9 +162,9 @@ The firmware derives a stable device ID from the ESP32 eFuse MAC. It sends an `e
 
 The custom 8 MB partition table contains two 2 MiB OTA application slots, an OTA data partition, and 3.625 MiB of LittleFS storage for logos. The firmware rejects images larger than the inactive 2 MiB slot.
 
-The production backend loads a complete manifest from `TICKER_FIRMWARE_MANIFEST_PATH` or the `TICKER_MINI_FIRMWARE_*` environment variables. The deploy workflow builds the mini binary, stores it in the server firmware directory, and serves it from the manifest HTTPS URL. The manifest contains `version`, `target`, `hardware`, `binary_url`, `size`, and `sha256`. A release request uses `POST /api/v2/tickers/<ticker-id>/updates` with the existing deployment token. The mini reads the pending V2 update command, fetches `GET /api/v2/tickers/<ticker-id>/firmware`, verifies the target, hardware, HTTPS URL, size, HTTP status, content length, image structure, and SHA-256, then activates the inactive slot.
+The production backend loads a complete manifest from `TICKER_FIRMWARE_MANIFEST_PATH` or the `TICKER_MINI_FIRMWARE_*` environment variables. The deploy workflow builds the mini binary, stores it in the server firmware directory, and serves it from the manifest HTTPS URL. The manifest contains `version`, `target`, `hardware`, `binary_url`, `size`, and `sha256`. A release request uses `POST /tickers/<ticker-id>/update` with the existing deployment token. The mini reads the pending update command, fetches `GET /firmware?version=<version>`, verifies the target, hardware, HTTPS URL, size, HTTP status, content length, image structure, and SHA-256, then activates the inactive slot.
 
-Every successful `main` deployment requests the current mini firmware through the same V2 update route. The mini downloads the release automatically after it reconnects to Wi-Fi.
+Every successful `main` deployment requests the current mini firmware through the same update route. The mini downloads the release automatically after it reconnects to Wi-Fi.
 
 Manual workflow dispatch accepts `ota_ticker_id` when one ticker needs a targeted release request.
 
@@ -269,8 +272,8 @@ Set both test switches to `false` before normal ticker operation. Reflash after 
 - If the panel stays blank, verify separate 5 V power, common ground, the ribbon orientation, and the `UART` pin map.
 - If colors are swapped or unstable, verify the panel’s HUB75 signal labels and add a `74AHCT125` level buffer.
 - If the panel shows `WIFI...`, verify the SSID, password, 2.4 GHz network, and saved credentials in NVS.
-- If the panel shows `REGISTER`, verify `BACKEND_URL` and that the server exposes `/api/v2/devices/register`.
-- If the panel shows `NO <mode>`, verify that the selected V2 mode has at least one shown content item.
+- If the panel shows `REGISTER`, verify `BACKEND_URL` and that the server exposes `/register`.
+- If the panel shows `NO <mode>`, verify that the selected mode has at least one shown content item.
 - If the panel shows `DOWNLOAD ASSETS`, keep Wi-Fi available while the logo worker downloads and caches images.
 - If credentials change, use the setup PIN to complete BLE provisioning. Hold both board buttons for three seconds to open setup.
 
@@ -287,7 +290,7 @@ The worker advances its bounded logo window at each page change and retains the 
 
 Run `python tools/mini/check_mini_tls.py --port COM11` to check repeated TLS cleanup with a real open cache file.
 The check preserves the active mode and credentials.
-Run `python tools/mini/verify_mini_logos.py --frames previews/mini-diagnostics/frames --ticker <ticker_id>` after a frame capture.
+Run `python tools/mini/verify_mini_logos.py --frames previews/mini-diagnostics/frames --device-token-file <token-file>` after a frame capture.
 That check compares the captured logo pixels with validated backend assets.
 
 ### Connection recovery diagnostics

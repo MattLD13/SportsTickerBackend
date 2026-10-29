@@ -43,7 +43,6 @@ def test_sports_filter_marks_cards_without_removing_them_from_the_app_feed() -> 
     assert [item["is_shown"] for item in pinned["sports"]] == [False, True]
 
     response = TickerResponse.from_payload({
-        "api_version": "v2",
         "snapshot": {"ticker_id": "ticker-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
         "settings": {"mode": "sports", "sports_presentation": "pinned", "pinned_content_id": "scheduled", "brightness": 100, "scroll_speed": 0.05, "inverted": False},
         "content": pinned,

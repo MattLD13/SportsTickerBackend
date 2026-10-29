@@ -18,12 +18,12 @@ Readiness polling installs one completed card at each configured frame boundary.
 The fixed render time is `2026-08-13T00:00:00+00:00`.
 The script records resolved font names, sizes, and SHA-256 hashes.
 
-The source is `tests/fixtures/display/v2_render_snapshot.json`.
+The source is `tests/fixtures/display/render_snapshot.json`.
 It contains two sports records and no asset URLs.
 The 1, 10, and 60 card cases repeat those records with unique card identities.
 These capacity cases do not represent 60 distinct live games.
 The script uses an empty prepared asset cache and performs no prefetch.
-A production workload with diverse cards and prepared external assets needs another captured V2 snapshot and its assets.
+A production workload with diverse cards and prepared external assets needs another captured snapshot and its assets.
 
 The score update increases the first source card's away score by one.
 The benchmark requires changed presented RGB bytes after that update.

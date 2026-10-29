@@ -6,7 +6,7 @@ The Mini owns validated flash storage, bounded eviction, and RAM-only rendering.
 ## Negotiation and reference
 
 A Mini reports `metadata.mini_sprite_protocol: 1` during registration and heartbeat.
-Its V2 sports records contain `data.away_logo_asset` and `data.home_logo_asset`.
+Its sports records contain `data.away_logo_asset` and `data.home_logo_asset`.
 The [reference schema](mini-sprite-asset.json) defines `pending`, `unavailable`, and `ready` states.
 Only a ready reference supplies a binary URL and checksum.
 
@@ -39,7 +39,7 @@ The mask marks source pixels with nonzero prepared alpha.
 
 ## HTTP and storage
 
-`GET /api/v2/assets/mini-sports/<asset_id>.mts` serves prepared public team art.
+`GET /assets/sprites/<asset_id>.mts` serves prepared public team art.
 It accepts no upstream URL parameter. Invalid identities and missing or invalid files return 404.
 Successful responses include content length, `X-Content-SHA256`, ETag, and immutable public caching headers.
 

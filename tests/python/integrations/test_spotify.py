@@ -348,11 +348,11 @@ def test_asset_planner_recognizes_family_and_kind_without_explicit_type() -> Non
         assert req.processor == "logo"
 
 
-def test_production_spotify_refresh_interval_limits_api_polling() -> None:
+def test_music_worker_interval_supports_the_adaptive_poll_cadence() -> None:
     """Wake the music source often enough to support its adaptive poll cadence."""
-    from sports_ticker.production import _INTERVALS
+    from ticker3.worker.runner import INTERVALS
 
-    assert _INTERVALS["music"] == 0.6
+    assert INTERVALS["music"] == 0.6
 
 
 def test_spotify_api_cooldown_honors_retry_after_and_resumes_at_expiry(tmp_path) -> None:

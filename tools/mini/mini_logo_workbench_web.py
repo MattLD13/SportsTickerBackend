@@ -150,13 +150,13 @@ def compare():
 @app.get("/api/catalog")
 def catalog():
     try:
-        response = http.get(f"{BACKEND_URL}/api/v2/catalog/leagues", timeout=25)
+        response = http.get(f"{BACKEND_URL}/leagues", timeout=25)
         response.raise_for_status()
         source_leagues = response.json().get("leagues", [])
         leagues = [x for x in source_leagues if x.get("type") == "sport" and x.get("my_teams_enabled") and not x.get("conference_parent")]
 
         def fetch_teams(league: dict) -> list[dict]:
-            result = http.get(f"{BACKEND_URL}/api/v2/catalog/leagues/{league['id']}/teams", timeout=25)
+            result = http.get(f"{BACKEND_URL}/leagues/{league['id']}/teams", timeout=25)
             result.raise_for_status()
             return [
                 {

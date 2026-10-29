@@ -22,7 +22,7 @@ from tools.rendering.render_frame import normalize_snapshot, render_snapshot
 def cases(snapshot: dict) -> list[dict]:
     """Keep live input and add local sport layout examples."""
     result = [{"name": "production", "game": dict(snapshot["content"]["sports"][0]["data"])}]
-    fixture = json.loads((ROOT / "tests/fixtures/display/v2_render_snapshot.json").read_text())
+    fixture = json.loads((ROOT / "tests/fixtures/display/render_snapshot.json").read_text())
     for item in fixture["content"]["sports"]:
         result.append({"name": item["id"], "game": item["data"]})
     nfl = next(row for row in result if row["name"] == "nfl-live")
@@ -130,7 +130,7 @@ def prepare(snapshot: Path, output: Path, native_root: str) -> list[dict]:
                 from ticker_core.context import RenderContext
                 image = UtilityRenderer(load_default_font_set()).pairing(RenderContext(datetime.fromisoformat("2026-10-15T12:34:27+00:00")), row["game"]["app_code"])
             else:
-                envelope = {"api_version":"v2", "content":{mode:[{"id":row["name"], "family":mode, "kind":"scoreboard", "data":row["game"]}]}}
+                envelope = {"content":{mode:[{"id":row["name"], "family":mode, "kind":"scoreboard", "data":row["game"]}]}}
                 image = render_snapshot(normalize_snapshot(envelope,mode), mode, item_id=row["name"],
                                         now=datetime.fromisoformat("2026-10-15T12:34:27+00:00"), asset_directory=output / "main-assets")
             image.save(output / (row["name"] + "-main.png"))

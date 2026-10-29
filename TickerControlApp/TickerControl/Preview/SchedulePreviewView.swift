@@ -107,7 +107,7 @@ private final class SchedulePreviewTransport: TickerHTTPTransport {
                 failedRead = false
                 return (["error": ["message": "Preview connection interrupted. Try again."]], 503)
             }
-            return (["api_version": "2", "ticker_id": "schedule-preview", "timezone": "America/New_York",
+            return (["ticker_id": "schedule-preview", "timezone": "America/New_York",
                      "days": [], "blocks": blocks, "conditions": conditions, "live_games": 3,
                      "effective": effective], 200)
         }

@@ -55,6 +55,9 @@ class SchemaMigrations:
                 );
                 """,
                 """
+                CREATE INDEX IF NOT EXISTS device_credentials_token ON device_credentials(token_sha256);
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS overlay_events (
                     event_id TEXT PRIMARY KEY,
                     event_type TEXT NOT NULL CHECK (event_type IN ('alerts', 'news')),

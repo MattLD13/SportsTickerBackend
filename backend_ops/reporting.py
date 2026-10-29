@@ -12,9 +12,7 @@ import sys
 import tempfile
 from uuid import uuid4
 
-from .worker_contract import PROVIDERS
-
-COMPONENTS = ("core", *PROVIDERS)
+from .components import COMPONENTS
 CATEGORIES = frozenset(("startup_failed", "deployment_interrupted", "runtime_unready", "crash_loop",
                         "rollback_started", "rolled_back", "recovered"))
 SCOPES = frozenset(("production", "verification"))

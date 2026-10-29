@@ -44,9 +44,9 @@ bool DevicePayload::accept(const ResponseBody& body) {
   offset_ = reader.position();
   error_ = error ? error.c_str() : "";
   if (error) return false;
-  if (candidate["api_version"] != "v2" || !candidate["settings"].is<JsonObject>() ||
+  if (!candidate["settings"].is<JsonObject>() ||
       !candidate["content"].is<JsonObject>() || !candidate["meta"]["pairing"]["paired"].is<bool>()) {
-    error_ = "Invalid V2 display contract";
+    error_ = "Invalid display contract";
     return false;
   }
   document_ = std::move(candidate);

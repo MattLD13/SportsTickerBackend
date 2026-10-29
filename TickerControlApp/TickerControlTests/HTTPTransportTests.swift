@@ -69,7 +69,7 @@ final class HTTPTransportTests: XCTestCase {
     }
 
     func testAuthorizationRequestPreservesBodyAndDefaults() {
-        let url = URL(string: "https://ticker.example/api/v2/tickers/one")!
+        let url = URL(string: "https://ticker.example/tickers/one")!
         var request = TickerHTTPClient.authorizedRequest(url: url, method: "PATCH", token: "test-token")
         request.httpBody = Data("{\"mode\":\"sports\"}".utf8)
         XCTAssertEqual(request.url, url)
@@ -84,7 +84,7 @@ final class HTTPTransportTests: XCTestCase {
     func testTaskStartsSuspendedAndForwardsAuthorizedRequest() {
         let completed = expectation(description: "request completes after resume")
         var request = TickerHTTPClient.authorizedRequest(
-            url: URL(string: "https://ticker.example/api/v2/tickers/one")!, method: "PATCH", token: "test-token"
+            url: URL(string: "https://ticker.example/tickers/one")!, method: "PATCH", token: "test-token"
         )
         request.httpBody = Data("{\"mode\":\"sports\"}".utf8)
         request.timeoutInterval = 15

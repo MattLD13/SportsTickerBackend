@@ -1,4 +1,4 @@
-# Existing V2 contracts
+# Display contracts
 
 This document describes the current contract. Source definitions remain authoritative.
 It does not introduce runtime validation, generated models, or a new protocol.
@@ -8,13 +8,12 @@ Read [the revised engineering SOW](../plans/engineering-sow.md) before adding ru
 
 ## Data response
 
-Devices read `GET /api/v2/tickers/<ticker-id>/data`.
+A Six reads `GET /data`. A Mini sends `POST /poll` and gets the compact view. The device token names the ticker.
 `sports_ticker/projections/data_api.py` owns the JSON envelope.
-`sports_ticker/api/routes.py` owns route authorization and response construction.
+`ticker3/api/` owns route authorization and response construction. `docs/api.md` lists every route.
 
 | Field | Current meaning |
 |---|---|
-| `api_version` | The string `v2`. |
 | `snapshot` | Ticker ID, revision, observation time, and stale state. |
 | `settings` | Effective ticker display settings. |
 | `content` | Content family keys containing ordered item lists. |
@@ -82,12 +81,12 @@ Controller schedule override actions use this field. An inactive time window doe
 
 The HTTP snapshot route remains the Pi boot path. The main Pi uses Device Stream V1 for sequenced updates.
 Snapshot revisions do not define stream ordering or replay. Provider WebSockets do not define the device stream contract.
-Read [Device Stream V1](device-stream-v1.md) for its envelope and recovery rules.
+Read [the device stream contract](device-stream.md) for its envelope and recovery rules.
 
 
 ## Stock symbol search
 
-`GET /api/v2/catalog/stocks?q=<company-or-symbol>` returns confirmed US symbol matches.
+`GET /stocks?q=<company-or-symbol>` returns confirmed US symbol matches.
 The response contains `stocks`, with `symbol` and `name` for each match.
 An empty query returns an empty list. Queries contain at most 60 characters.
 The server returns at most 12 matches, with an exact symbol match first.

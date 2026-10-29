@@ -3,7 +3,7 @@
 
 Examples:
   python tools/rendering/render_frame.py --snapshot ticker.json --mode sports --pinned
-  python tools/rendering/render_frame.py --url http://localhost:5000 --ticker-id TICKER_ID --mode weather
+  python tools/rendering/render_frame.py --url http://localhost:5000 --device-token-file TOKEN_FILE --mode weather
 """
 
 from __future__ import annotations
@@ -79,8 +79,6 @@ def normalize_snapshot(value: object, requested_mode: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("The backend response must be an object.")
     data = dict(value)
-    if data.get("api_version") != "v2":
-        raise ValueError("The backend response must use api_version v2.")
     records: list[dict[str, Any]] = []
     for family, values in data.get("content", {}).items() if isinstance(data.get("content"), Mapping) else ():
         for index, envelope in enumerate(_items(values)):
@@ -177,7 +175,6 @@ def main() -> int:
     parser.add_argument("--url", default=DEFAULT_BACKEND_URL, help="Backend base URL when --snapshot is absent.")
     parser.add_argument("--endpoint", default="", help="Override the V2 data endpoint.")
     parser.add_argument("--device-token-file", type=Path, help="Read this device credential for a live render.")
-    parser.add_argument("--ticker-id", default="", help="Ticker id for the V2 data request.")
     parser.add_argument("--mode", choices=[str(value) for value in DisplayMode], default="sports")
     parser.add_argument("--item-id", default="", help="Render this content item id.")
     parser.add_argument("--index", type=int, default=0, help="Render this content item when --item-id is absent.")
@@ -188,9 +185,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("previews/frame.png"), help="Save the 384x32 PNG here.")
     arguments = parser.parse_args()
     try:
-        endpoint = arguments.endpoint or f"/api/v2/tickers/{arguments.ticker_id}/data"
-        if arguments.snapshot is None and not arguments.ticker_id and not arguments.endpoint:
-            raise ValueError("Provide --ticker-id when loading from a backend.")
+        # The device token names the ticker, so the data path has no ticker ID.
+        endpoint = arguments.endpoint or "/data"
         snapshot = load_snapshot(arguments.snapshot, arguments.url, endpoint, arguments.mode, 10.0, arguments.device_token_file)
         image = render_snapshot(snapshot, arguments.mode, item_id=arguments.item_id, index=arguments.index, now=arguments.datetime, asset_directory=arguments.assets, prefetch=not arguments.no_prefetch, pinned=arguments.pinned)
         arguments.output.parent.mkdir(parents=True, exist_ok=True)

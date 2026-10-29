@@ -14,7 +14,7 @@ pytestmark = pytest.mark.critical
 
 def airport_payload():
     item = json.loads((ROOT / "tests/fixtures/ticker3/flights_result.json").read_text(encoding="utf-8"))["result"]["content"][0]
-    return {"api_version": "v2", "content": {"airports": [
+    return {"content": {"airports": [
         {"id": item["id"], "family": item["family"], "kind": item["kind"], "is_shown": True, "data": item["data"]}]}}
 
 

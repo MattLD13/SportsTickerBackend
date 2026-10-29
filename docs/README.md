@@ -3,7 +3,7 @@
 | Folder | Content |
 |---|---|
 | [Architecture](architecture/README.md) | Current ownership, deployment boundaries, and system flow. |
-| [Contracts](contracts/README.md) | V2 APIs, device streams, and shared display data. |
+| [Contracts](contracts/README.md) | The API, device streams, and shared display data. |
 | [Development](development/README.md) | Local setup and validation. |
 | [Operations](operations/backend-recovery.md) | Deployment recovery, setup, and hardware checks. |
 | [Plans](plans/engineering-sow.md) | Engineering scope and feasibility. |

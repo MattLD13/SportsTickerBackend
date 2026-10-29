@@ -49,6 +49,6 @@ def payload_filter():
     content = {"sports": [sports_item]}
     for family in ("weather", "music", "flights", "airports", "stock", "clock", "racing"):
         content[family] = [{"is_shown": True, "id": True, "data": True}]
-    return {"api_version": True, "meta": {"pairing": {"paired": True, "code": True},
+    return {"meta": {"pairing": {"paired": True, "code": True},
             "update": {"version": True, "id": True, "expires_at": True}},
             "settings": {key: True for key in ("mode", "timezone", "scroll_speed", "brightness")}, "content": content}

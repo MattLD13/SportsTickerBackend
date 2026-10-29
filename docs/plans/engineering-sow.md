@@ -119,7 +119,7 @@ Never call `asyncio.Queue` methods from provider or runtime threads.
 Hypercorn sends WebSocket Ping frames every 20 seconds. The Pi WebSocket client returns Pong frames.
 Hypercorn does not expose a Pong timeout setting. Validate proxy idle limits and reconnect through the deployed proxy before rollout.
 
-Read [Device Stream V1](../contracts/device-stream-v1.md) for envelope, replay, queue, and recovery rules.
+Read [the device stream contract](../contracts/device-stream.md) for envelope, replay, queue, and recovery rules.
 The route validates registered ticker identity and uses the current data endpoint access policy. A device-specific credential remains future security work.
 
 ### Provider backoff

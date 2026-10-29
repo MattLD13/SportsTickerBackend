@@ -1,25 +1,25 @@
 # Sports ticker system flow
 
-The app controls durable ticker settings. The backend owns provider data, pairing, projections, and fleet state. The main ticker and mini ticker poll the same V2 contract and render locally.
+The app controls durable ticker settings. The backend owns provider data, pairing, projections, and fleet state. The main ticker and mini ticker read the same display contract and render locally.
 
 ```mermaid
 flowchart LR
     APP["TickerControlApp\nContentView.swift"]
-    API["V2 Flask API\nsports_ticker/api/routes.py"]
+    API["Flask API\nticker3/api/"]
     APPDATA["Pairing, mode, team,\nlayout, and display settings"]
-    PAIR["Pairing exchange\n/api/v2/pairings/exchange"]
-    REG["Device registration\n/api/v2/devices/register"]
-    DATA["Ticker projection\n/api/v2/tickers/{id}/data"]
+    PAIR["Pairing exchange\n/pair"]
+    REG["Device registration\n/register"]
+    DATA["Ticker projection\n/data, /poll, /stream"]
     HEART["Heartbeat, updates,\nreboot acknowledgements"]
     REPO["Fleet repository\nsports_ticker/fleet/repository.py"]
     STATE["Durable ticker state\nsettings, pairing, tokens, events"]
-    SCHED["Refresh scheduler\nsports_ticker/application/scheduler.py"]
+    SCHED["Engine and provider workers\nticker3/core/ + ticker3/worker/"]
     PROVIDERS["Providers\nESPN, racing, golf, weather, stocks,\nmusic, flights, news, alerts"]
     NORM["Normalization and shared display projection\nproviders/normalization.py\nprojections/data_api.py"]
     EVENTS["Overlay events\nnews, score alerts, updates"]
     MAIN["Main ticker\nticker_core"]
     MINIFW["Mini ticker firmware\nesp32_hub75/src/main.cpp"]
-    MAINPOLL["V2 polling client\nprotocol/client.py + polling.py"]
+    MAINPOLL["Stream and HTTP client\nprotocol/client.py + app/poller.py"]
     MINIPOLL["Wi-Fi polling and registration\nfetchData(), registerDevice(), sendHeartbeat()"]
     MAINSTATE["Runtime state and pacing\nruntime/* + app/application.py"]
     MINISTATE["Local payload and mode state\nWi-Fi, pairing, page rotation"]
@@ -83,7 +83,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant App as Controller app
-    participant Backend as V2 backend
+    participant Backend as Backend
     participant Ticker as Main Pi ticker
     participant Mini as ESP32 mini ticker
     participant Source as Sports and mode providers
@@ -97,7 +97,7 @@ sequenceDiagram
     Backend-->>Ticker: Effective settings, content, events, asset URLs
     Ticker->>Backend: Resume /stream with stream_id and after_seq
     Backend-->>Ticker: Sequenced projection deltas and recovery snapshots
-    Mini->>Backend: Poll /data over HTTP
+    Mini->>Backend: Poll /poll over HTTP
     Backend-->>Mini: Effective settings, content, events, asset URLs
     Ticker->>Cache: Resolve logo from memory or durable cache
     alt Logo is missing
@@ -113,4 +113,4 @@ sequenceDiagram
 - The backend owns durable state, provider refreshes, normalized display facts, pairing, events, and fleet telemetry.
 - The main ticker owns runtime pacing, feature rendering, and its durable asset cache.
 - The mini ticker owns its Wi-Fi state machine, 64x32 rendering, local logo overrides, and two-level logo cache.
-- Both devices consume the same V2 data contract. They do not share a display loop or fetch provider data directly.
+- Both devices consume the same display data contract. They do not share a display loop or fetch provider data directly.

@@ -8,11 +8,11 @@ import pickle
 import pytest
 
 from sports_ticker.application.state_store import SnapshotStore
-from sports_ticker.device_stream import DeviceStreamHub, StreamProjection
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.projections.data_api import project_data_v2
 from sports_ticker.providers.espn_fastcast import EspnFastcastSource, fastcast_published_at_ms
 from ticker_core.app.latency import DisplayLatencyTracker, received_timing
+from ticker3.api.stream import Projection, StreamHub
 from ticker_core.protocol import StreamMessage, TickerResponse
 
 pytestmark = pytest.mark.critical
@@ -68,11 +68,12 @@ def test_timing_survives_projection_but_does_not_enter_the_scene_or_display_fing
     after = TickerResponse.from_payload(changed)
     assert before.payload_key == after.payload_key
     assert before.content == after.content
-    hub = DeviceStreamHub()
-    subscriber, _ = hub.subscribe("ticker", StreamProjection.from_payload(payload), resume_stream_id=None, after_seq=None)
-    hub.publish("ticker", StreamProjection.from_payload(changed))
+    hub = StreamHub()
+    subscriber, _ = hub.subscribe("ticker", Projection.of(payload), stream_id=None, after_seq=None)
+    hub.publish("ticker", Projection.of(changed))
     assert subscriber.queue.empty()
-    assert hub.generation == 1
+    _, current = hub.subscribe("ticker", Projection.of(changed), stream_id=hub.stream_id, after_seq=1)
+    assert json.loads(current[0].text)["type"] == "ready"
 
 
 def test_input_timing_alone_does_not_create_a_new_delayed_source_frame():
@@ -211,7 +212,7 @@ def test_the_same_input_trace_is_measured_only_at_its_first_presentation():
 def test_receive_timing_is_serializable_across_the_polling_process_boundary():
     payload = traced_payload()
     response = TickerResponse.from_payload(payload)
-    message = StreamMessage.from_payload({"type": "snapshot", "protocol_version": 1, "stream_id": "one", "seq": 1,
+    message = StreamMessage.from_payload({"type": "snapshot", "stream_id": "one", "seq": 1,
                                          "base_seq": 1, "server_time": "2026-10-25T22:00:00+00:00", "payload": payload})
     value = received_timing(response, message, received_ms=BASE + 200, received_mono=2, decoded_mono=2.01, queued_mono=2.015, item_ids=["game"])
     assert pickle.loads(pickle.dumps(value)) == value
@@ -255,7 +256,7 @@ def test_polling_process_bridge_retains_timing_on_success_events():
 
 
 def test_worker_receipt_starts_generic_timing_and_preserves_earlier_fastcast_timing():
-    from backend_ops.worker_contract import decode_result, encode
+    from ticker3.contract.results import decode_result, encode
     from sports_ticker.providers.contracts import ProviderResult
 
     result = ProviderResult(content=(ContentItem(id="weather", family="weather", kind="weather", data={"temperature": 75}),))

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -13,13 +13,14 @@ from requests.adapters import HTTPAdapter
 from .model import PayloadValidationError, TickerResponse
 
 
-DATA_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/data"
-STREAM_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/stream"
-REGISTRATION_ENDPOINT = "/api/v2/devices/register"
-TICKER_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}"
-HEARTBEAT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/heartbeat"
-UPDATE_RESULT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/updates/result"
-REBOOT_ACK_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/commands/reboot/ack"
+# The device token names the ticker, so device paths have no ticker ID.
+DATA_ENDPOINT = "/data"
+STREAM_ENDPOINT = "/stream"
+STREAM_SUBPROTOCOL = "ticker"
+REGISTRATION_ENDPOINT = "/register"
+HEARTBEAT_ENDPOINT = "/heartbeat"
+UPDATE_RESULT_ENDPOINT = "/update-result"
+REBOOT_ACK_ENDPOINT = "/reboot-ack"
 
 
 class BackendError(RuntimeError):
@@ -49,7 +50,7 @@ class BackendPayloadError(BackendError):
 
 @dataclass(frozen=True, slots=True)
 class DeviceRegistration:
-    """Represent the validated V2 bootstrap response for one device."""
+    """Represent the validated bootstrap response for one device."""
 
     ticker_id: str
     paired: bool
@@ -116,15 +117,12 @@ class BackendClient:
 
         if not device_id.strip():
             raise ValueError("device_id must not be empty")
-        response = self._request(
-            "GET",
-            DATA_ENDPOINT_TEMPLATE.format(device_id=device_id),
-        )
+        response = self._request("GET", DATA_ENDPOINT)
         body = response.content
         self.last_response_bytes = len(body)
         if body and body == self._last_data_body and self._last_data_response is not None:
             return self._last_data_response
-        payload = self._json_object(response, "GET /api/v2/tickers/<id>/data")
+        payload = self._json_object(response, "GET /data")
         try:
             parsed = TickerResponse.from_payload(payload)
         except PayloadValidationError as error:
@@ -141,7 +139,7 @@ class BackendClient:
         after_seq: int | None = None,
         timeout_seconds: float = 1.0,
     ):
-        """Open one version two device WebSocket with an optional replay cursor."""
+        """Open the device WebSocket with an optional replay cursor."""
         if not device_id.strip():
             raise ValueError("device_id must not be empty")
         if timeout_seconds <= 0:
@@ -163,7 +161,7 @@ class BackendClient:
         if scheme is None or not parsed.netloc:
             raise ValueError("backend_url must use http or https")
         prefix = parsed.path.rstrip("/")
-        path = f"{prefix}{STREAM_ENDPOINT_TEMPLATE.format(device_id=quote(device_id.strip(), safe=''))}"
+        path = f"{prefix}{STREAM_ENDPOINT}"
         query = urlencode({"stream_id": stream_id, "after_seq": after_seq}) if stream_id is not None else ""
         url = urlunsplit((scheme, parsed.netloc, path, query, ""))
         sslopt = None
@@ -179,7 +177,7 @@ class BackendClient:
             return connector(
                 url,
                 timeout=timeout_seconds,
-                subprotocols=["ticker-v2"],
+                subprotocols=[STREAM_SUBPROTOCOL],
                 sslopt=sslopt,
                 enable_multithread=True,
                 header={"X-Device-Token": self.device_token} if self.device_token else {},
@@ -202,7 +200,7 @@ class BackendClient:
         metadata: Mapping[str, Any] | None = None,
         profile: Mapping[str, Any] | None = None,
     ) -> DeviceRegistration:
-        """Register one Pi before its first V2 display poll."""
+        """Register one Pi before its first display read."""
 
         if not device_id.strip():
             raise ValueError("device_id must not be empty")
@@ -225,7 +223,7 @@ class BackendClient:
             json=request_payload,
         )
         registration = DeviceRegistration.from_payload(
-            self._json_object(response, "POST /api/v2/devices/register")
+            self._json_object(response, "POST /register")
         )
         if registration.ticker_id != device_id.strip():
             raise BackendPayloadError(
@@ -234,33 +232,25 @@ class BackendClient:
         return registration
 
     def heartbeat(self, device_id: str, telemetry: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Send bounded device telemetry through the version two heartbeat route."""
+        """Send bounded device telemetry through the heartbeat route."""
 
         if not device_id.strip():
             raise ValueError("device_id must not be empty")
-        response = self._request(
-            "POST",
-            HEARTBEAT_ENDPOINT_TEMPLATE.format(device_id=device_id),
-            json={"metadata": dict(telemetry)},
-        )
-        return self._json_object(response, "POST /api/v2/tickers/<id>/heartbeat")
+        response = self._request("POST", HEARTBEAT_ENDPOINT, json={"metadata": dict(telemetry)})
+        return self._json_object(response, "POST /heartbeat")
 
     def report_update(self, device_id: str, result: Mapping[str, Any]) -> Mapping[str, Any]:
         """Send one durable installation result for an assigned update attempt."""
-        response = self._request("POST", UPDATE_RESULT_ENDPOINT_TEMPLATE.format(device_id=device_id), json=dict(result))
-        return self._json_object(response, "POST /api/v2/tickers/<id>/updates/result")
+        response = self._request("POST", UPDATE_RESULT_ENDPOINT, json=dict(result))
+        return self._json_object(response, "POST /update-result")
 
     def acknowledge_reboot(self, device_id: str, command_id: str) -> Mapping[str, Any]:
         """Acknowledge one reboot command before the controller restarts."""
 
         if not device_id.strip() or not command_id.strip():
             raise ValueError("device_id and command_id must not be empty")
-        response = self._request(
-            "POST",
-            REBOOT_ACK_ENDPOINT_TEMPLATE.format(device_id=device_id),
-            json={"id": command_id},
-        )
-        return self._json_object(response, "POST /api/v2/tickers/<id>/commands/reboot/ack")
+        response = self._request("POST", REBOOT_ACK_ENDPOINT, json={"id": command_id})
+        return self._json_object(response, "POST /reboot-ack")
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
         url = f"{self.backend_url}{path}"

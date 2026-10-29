@@ -34,7 +34,7 @@ def game(sport="imsa", flag="GREEN"):
 def mini_payload(source):
     data = deepcopy(source)
     data["racing_display"] = {"cards": racing_cards(data)}
-    payload = {"api_version": "v2", "settings": {"mode": "sports", "brightness": 100},
+    payload = {"settings": {"mode": "sports", "brightness": 100},
                "meta": {"pairing": {"paired": True}}, "content": {
                    "racing": [{"id": data["id"], "family": "racing", "kind": data["sport"], "is_shown": True, "data": data}]}}
     return project_device_data(payload, mini=True)

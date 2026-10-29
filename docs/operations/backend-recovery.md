@@ -2,13 +2,15 @@
 
 ## Ownership
 
-The refresh runtime owns loop readiness.
-The scheduler owns settings-scoped provider recovery.
+The engine owns loop readiness.
+Each worker owns settings-scoped provider recovery for its provider.
 Providers retain their last healthy data through their existing cache contracts.
+The core supervisor owns worker restarts, worker deploys, and worker rollback.
+`backend_ops/manager.py` owns release files, the core service, and the deployment record.
 The incident store owns redaction, bounded evidence, and failure deduplication.
 The deployment generates `RELEASE_SHA` as the full backend identity.
 
-## Fetcher behavior
+## Worker behavior
 
 Three failed calls pause that provider for the affected ticker settings.
 The first pause lasts 30 seconds.
@@ -16,15 +18,16 @@ Repeated failures increase the pause to a maximum of 300 seconds.
 A successful call resets the circuit.
 A settings change creates a fresh recovery state.
 Other tickers and providers continue to refresh.
-The scheduler publishes only data from matching settings.
-No recovery path combines source files from different releases.
+The engine publishes only data from matching settings.
+Each process runs the files of one release.
 
 ## Readiness
 
-Readiness requires a running refresh loop and recent completed work.
+Readiness requires a running engine loop and recent completed passes.
 Remote provider errors remain separate from process readiness.
-A stopped or stalled refresh loop becomes unready.
-The public health response includes release identity, loop progress, and aggregate fetcher recovery state.
+A stopped or stalled engine loop becomes unready.
+`GET /health` includes the release identity, loop progress, and the health and recovery state of each provider.
+`GET /workers` includes the active release, the previous release, the bad releases, and the restarts of each worker.
 
 ## Agent evidence
 
@@ -44,57 +47,66 @@ Injected-clock tests cover provider pause, last-good data, settings isolation, r
 Readiness tests distinguish stale loop progress from upstream failure.
 Evidence tests check source tracebacks, redaction, storage limits, and ZIP contents.
 
-## Independent components
+## Processes and releases
 
-The core and ten fetcher workers have separate immutable releases and service units.
-The fetchers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flights`, `music`, `news`, and `clock`.
-The planner owns source-to-component selection.
-A provider implementation change updates that worker and its declared consumers.
-Shared domain, protocol, or dependency changes update all affected components together.
-The planner in `backend_ops/components.py` reads the module import graph of the release.
-A change to a Python module selects each process that can load that module.
-The core starts at `sports_ticker.server`. Each worker starts at `backend_ops.worker` and its branch of `create_provider`.
+The core and nine provider workers are separate processes.
+The workers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flights`, `music`, and `news`. The core makes the clock result.
+`deploy/backend/ticker.service` runs the core. The core supervisor starts each worker. No worker has a service unit.
+The unit uses `KillMode=process`, so a core restart leaves the workers running. The new core adopts them.
+
+| Path under the home folder | Content |
+|---|---|
+| `ticker3/releases/<revision>/` | One immutable release: all source files, a manifest, and a `.venv` link |
+| `ticker3/environments/<hash>/` | One dependency environment for each set of requirements |
+| `ticker3/current` | The release of the core |
+| `ticker_data/backend-control/state.json` | The deployment record and the report queue |
+| `ticker_data/ticker3-supervisor.json` | The active, previous, and bad release of each worker |
+
+Each release holds every source file, so the core and each worker can run any release.
+`backend_ops/components.py` reads the module import graph to select the processes that a change reaches.
+The core starts at `ticker3.server`. Each worker starts at `ticker3.worker.__main__` and its branch of `create_provider`.
 For example, a change in `providers/stock_source.py` selects only `stock`.
-A change in `providers/sports_display.py` selects core and the four sports workers.
-Contract files, `backend_ops/`, requirements, and service units select all components.
-A deleted provider module or a provider data file has no import edge, so it selects all components.
-Worker bundles include provider dependencies. They exclude the core API, dashboard, and Pi renderer.
-A test checks that each worker bundle carries every module in its import graph.
-The core calls workers through a bounded local JSON socket contract.
-Rendering and public V2 payloads retain their existing owners.
+A change in `providers/sports_display.py` selects the core and the four sports workers.
+The worker contract, `backend_ops/`, requirements, units, and workflows select all processes.
+A deleted provider module or a provider data file has no import edge, so it selects all processes.
+`tests/python/operations/test_component_graph.py` checks that each graph covers every module that the process really loads.
 
-Each component stores its current and previous code identities in `ticker_data/backend-control/state.json`.
-Dependency environments remain immutable and use requirement hashes.
-Components can share the same unchanged dependency environment.
 User state, credentials, stock caches, and firmware remain outside releases.
-Core deployment creates a private SQLite backup before activation.
+A core deployment creates a private SQLite backup before activation.
 Rollback never replaces current user settings or pairing records with an older database.
 Database migrations must retain compatibility with the previous release.
 
-## Failure sequence
+## Deployment sequence
 
-1. Prepare candidate files and dependencies without changing running services.
-2. Check source hashes and the shared worker contract.
-3. Save a rollback transaction before switching component links.
-4. Restart only selected components.
-5. Require three successful readiness checks with the exact release identity.
-6. If startup fails, restore the transaction's previous versions and quarantine the candidate.
+1. Unpack the release and check the checksum of each file. Running processes do not change.
+2. Give the release a dependency environment, compile it, and import the core and worker entry points.
+3. Install the guard toolkit and the units.
+4. If the core is selected, save a rollback record, move `ticker3/current`, and restart the core.
+5. Require three ready checks with the exact release identity. If they fail, restore the previous core release and quarantine the candidate.
+6. For each selected worker, call `POST /workers/<provider>/deploy`. The supervisor starts the new release next to the old one.
+7. The supervisor promotes the new worker after it sends a result for every subscription. Otherwise it keeps the old worker and marks the release bad.
 
-The independent system timer checks components every 30 seconds.
-After three failed checks, it records thread stacks and restarts the failed component once.
-After three further failed checks, it restores the previous release.
-Three process crashes within 30 minutes also trigger rollback, even when a later health sample succeeds.
-If deployment stops before confirmation, the timer resolves the saved rollback transaction.
-The timer retains healthy data during upstream outages through the scheduler's existing cache and pause rules.
+## Guard
 
-Three repeated programming errors can trigger a private request replay against the previous fetcher process.
-The controller first confirms that the current worker still fails the same request.
-If the previous process returns healthy data, the timer restores that fetcher.
-If both versions fail, the timer records the result and keeps the current code.
-Remote HTTP failures do not trigger code rollback by themselves.
-A shared contract change requires a coordinated rollback of matching component versions.
-The missed-deploy workflow reads the processed revision from deployment state.
-It does not repeatedly deploy a quarantined revision.
+The guard timer checks the core every 30 seconds.
+After three failed checks, it records thread stacks and restarts the core once.
+After three further failed checks, it restores the previous core release.
+Three core process crashes within 30 minutes also restore the previous core release, even when a later health sample succeeds.
+If a deployment stops before confirmation, the guard resolves the saved rollback record.
+The guard copies the worker releases from the supervisor record, and reports each worker release that the supervisor marked bad.
+The guard runs on the system Python. It imports only `backend_ops` and `ticker3.contract`.
+
+## First Ticker 3 deployment
+
+The first Ticker 3 deployment moves every process, whatever the change selection says.
+It keeps the deployment record of the old layout in `ticker_data/backend-control/state-before-ticker3.json`.
+It keeps the old units in `ticker_data/backend-control/units-before-ticker3/`.
+If the new core becomes ready, the deployment stops and disables the old `ticker-fetcher@` units.
+If the new core fails, the deployment restores the old units, the old guard toolkit, and the old deployment record. The old fetchers keep running.
+The report queue keeps the failure reports in both cases.
+
+The Six and the Mini cannot update themselves across this deployment. Their released code reads the old paths.
+Update each device by hand after the server changes: run `updater.py` on the Six, and flash the Mini over USB.
 
 ## Agent repair workflow
 
@@ -111,11 +123,9 @@ Decrypt the artifact before reading the report.
 ```
 
 Read `TRIAGE.md` and `report.json` before editing source.
-The report includes component versions, changed files, service facts, tracebacks, replay IDs, and rollback decisions.
-Raw replay requests remain private on the server.
-Do not include raw requests in issue text or public artifacts.
+The report includes process releases, worker state, changed files, service facts, tracebacks, and rollback decisions.
 Use sanitized provider fixtures to reproduce the failure.
-Publish reviewed changes through the component deployment workflow.
+Publish reviewed changes through the deployment workflow.
 
 ## GitHub runtime reporting
 
@@ -133,7 +143,7 @@ Report sequences prevent retries from replacing a newer result with an older res
 The server removes a queued report only after GitHub confirms its check.
 
 Public checks contain fixed lifecycle text, component names, code identities, and report references.
-Detailed logs, tracebacks, replay inputs, and credentials never enter public check output.
+Detailed logs, tracebacks, and credentials never enter public check output.
 Diagnostic artifacts retain the existing encryption policy.
 The health response exposes queue depth and the last acknowledgement time.
 
@@ -141,14 +151,9 @@ The collector uses the existing five-minute monitoring schedule and supports man
 GitHub can delay scheduled runs. Reports remain queued during delivery outages.
 Read [GitHub check runs](https://docs.github.com/en/rest/checks/runs) for the check update API.
 
-## Migration and limits
+## Limits
 
-The first release adds readiness and worker infrastructure without changing the active deployment layout.
-The next release freezes that verified version as the rollback baseline.
-The controller then activates immutable core and worker services.
-The baseline environment preserves existing installed dependencies during this one-time migration.
-Later dependency environments use isolated installations.
 Process recovery requires a running server host and systemd.
 This design does not provide host failover or an off-server database backup.
-The controller cannot prove every upstream response before production receives it.
-Focused tests and private replay evidence cover that boundary.
+The supervisor cannot prove every upstream response before production receives it.
+Focused tests cover that boundary.

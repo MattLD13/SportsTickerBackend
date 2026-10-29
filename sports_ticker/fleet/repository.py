@@ -133,6 +133,10 @@ class TickerRepository(SchemaMigrations, ScheduleRecords, EventRecords, PairingR
         with self._transaction():
             if self.get_ticker(ticker_id) is None:
                 raise KeyError(ticker_id)
+            # The token alone identifies the ticker, so two tickers cannot share one token.
+            if self._connection.execute("SELECT 1 FROM device_credentials WHERE token_sha256 = ? AND ticker_id != ?",
+                                        (digest, ticker_id)).fetchone() is not None:
+                raise ValueError("device token belongs to another ticker")
             self._connection.execute(
                 "INSERT INTO device_credentials(ticker_id, token_sha256, updated_at) VALUES (?, ?, ?) "
                 "ON CONFLICT(ticker_id) DO UPDATE SET token_sha256=excluded.token_sha256, updated_at=excluded.updated_at",
@@ -147,6 +151,19 @@ class TickerRepository(SchemaMigrations, ScheduleRecords, EventRecords, PairingR
         except ValueError:
             return False
         return self.authorize_device_hash(ticker_id, supplied)
+
+    def ticker_for_device_token(self, token: str) -> str | None:
+        """Return the ticker that owns one device token, or None if no single ticker owns it."""
+        from .device_credentials import device_token_hash
+        try:
+            supplied = device_token_hash(token)
+        except ValueError:
+            return None
+        with self._lock:
+            rows = self._connection.execute("SELECT ticker_id, token_sha256 FROM device_credentials WHERE token_sha256 = ?",
+                                            (supplied,)).fetchall()
+        owners = [row["ticker_id"] for row in rows if hmac.compare_digest(supplied, row["token_sha256"])]
+        return owners[0] if len(owners) == 1 else None
 
     def authorize_device_hash(self, ticker_id: str, digest: str) -> bool:
         """Authorize a registration digest inside the registration transaction boundary."""

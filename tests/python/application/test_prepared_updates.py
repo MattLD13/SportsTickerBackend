@@ -36,7 +36,7 @@ class Assets:
 
 
 def response():
-    payload = json.loads(Path('tests/fixtures/display/v2_render_snapshot.json').read_text())
+    payload = json.loads(Path('tests/fixtures/display/render_snapshot.json').read_text())
     original = payload['content']['sports'][0]
     payload['content'] = {'sports': [{**deepcopy(original), 'id': f'game-{index}'} for index in range(150)]}
     return payload

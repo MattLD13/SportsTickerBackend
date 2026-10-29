@@ -45,7 +45,7 @@ def render(output: Path, weather: dict, host: str, key: Path) -> None:
         rows.append({"name": f"long-city-{index:03}", "mode": "weather", "game": long_city, "elapsed_ms": index * 100})
     (output / "input.json").write_text(json.dumps(rows), encoding="utf-8")
     remote_render(host, key, output, "/tmp/mini-weather-preview")
-    envelope = {"api_version": "v2", "content": {"weather": [{"id": "weather_main", "family": "weather", "kind": "weather", "data": weather}]}}
+    envelope = {"content": {"weather": [{"id": "weather_main", "family": "weather", "kind": "weather", "data": weather}]}}
     six = render_snapshot(normalize_snapshot(envelope, "weather"), "weather", prefetch=False, asset_directory=output / "six-assets")
     assert six.size == (384, 32)
     six.save(output / "live-six.png")

@@ -1,13 +1,23 @@
-# Ticker 3 engine
+# Ticker 3 server
 
-Read `docs/architecture/ticker3.md` before you change this folder.
+Read `docs/architecture/ticker3.md` before you change this folder. `docs/api.md` lists every route.
 
-- Ticker 3 replaces only the refresh engine. The V2 routes, projections, providers, and every display stay the same.
-- The engine publishes through `RefreshService`. It must not change a V2 payload.
-- A worker hosts one existing provider without changes. Provider facts stay in `sports_ticker/providers/`.
+| Boundary | Owner |
+|---|---|
+| Routes, request checks, and authorization | `api/` |
+| Device stream | `api/stream.py`, `api/asgi.py` |
+| Subscriptions and snapshot publication | `core/engine.py` |
+| Worker processes and worker releases | `core/supervisor.py` |
+| One provider in one process | `worker/` |
+| Messages between the core and the workers | `contract/` |
+| Web pages | `web/` |
+
+- A worker hosts one provider from `sports_ticker/providers/`. Provider facts stay there.
 - The engine names no provider. Provider facts come from `provider_settings_key` and the worker intervals.
-- A worker never connects to another worker.
-- Run `python -m pytest -q tests/python/ticker3` for every change.
+- The engine publishes through `RefreshService`. Display data comes only from `sports_ticker/projections/`.
+- A worker never connects to another worker. A worker loads no route, engine, projection, or Six code.
+- The device token names the ticker. Device routes have no ticker ID.
+- Run `python -m pytest -q tests/python/ticker3 tests/python/api` for every change.
 - If the engine changes, `test_engine_equivalence.py` must pass. Do not add fields to its volatile list
   unless the Six ignores them too, as in `ticker_core/protocol/model.py:_display_payload_hash`.
 - If recorded provider results change, record them again from the live providers. Do not edit them by hand.

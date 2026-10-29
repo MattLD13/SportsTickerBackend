@@ -1,0 +1,5796 @@
+{
+ "airport001:device": {
+  "content": {
+   "airports": [
+    {
+     "data": {
+      "arrivals": [
+       {
+        "actual_at": "2026-10-29T14:56:02+00:00",
+        "actual_timestamp": 1793285762.0,
+        "aircraft_code": "B739",
+        "aircraft_type": "Boeing 737-924(ER)",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Fort Myers",
+        "airport_code": "RSW",
+        "altitude_ft": 0,
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": "2026-10-29T14:56:02+00:00",
+        "estimated_timestamp": 1793285762.0,
+        "flight_number": "UA2477",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Fort Myers",
+        "origin_iata": "RSW",
+        "scheduled_at": "2026-10-29T15:26:00+00:00",
+        "scheduled_timestamp": 1793287560.0,
+        "source_updated_at": "2026-10-29T14:56:02+00:00",
+        "state": "landed",
+        "status": "LANDED 10:56",
+        "status_label": "LANDED 10:56",
+        "terminal": ""
+       },
+       {
+        "actual_at": "2026-10-29T15:09:27+00:00",
+        "actual_timestamp": 1793286567.0,
+        "aircraft_code": "B38M",
+        "aircraft_type": "Boeing 737 MAX 8",
+        "airline": "AA",
+        "airline_iata": "AA",
+        "airline_icao": "AAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=aa.com&sz=64",
+        "airline_name": "American Airlines",
+        "airport_city": "Miami",
+        "airport_code": "MIA",
+        "altitude_ft": 0,
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": "2026-10-29T15:09:27+00:00",
+        "estimated_timestamp": 1793286567.0,
+        "flight_number": "AA1801",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Miami",
+        "origin_iata": "MIA",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:09:27+00:00",
+        "state": "landed",
+        "status": "LANDED 11:09",
+        "status_label": "LANDED 11:09",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "A319",
+        "aircraft_type": "Airbus A319-131",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Cleveland",
+        "airport_code": "CLE",
+        "altitude_ft": 0,
+        "delay_min": 1,
+        "delay_minutes": 1,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": "2026-10-29T15:31:06+00:00",
+        "estimated_timestamp": 1793287866.0,
+        "flight_number": "UA1701",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Cleveland",
+        "origin_iata": "CLE",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:31:06+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED 11:31",
+        "status_label": "ESTIMATED 11:31",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "E75L",
+        "aircraft_type": "Embraer E175LR",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Express",
+        "airport_city": "Toronto",
+        "airport_code": "YYZ",
+        "altitude_ft": 0,
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": null,
+        "estimated_timestamp": null,
+        "flight_number": "UA3605",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Toronto",
+        "origin_iata": "YYZ",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:30:00+00:00",
+        "state": "scheduled",
+        "status": "SCHEDULED",
+        "status_label": "SCHEDULED",
+        "terminal": ""
+       }
+      ],
+      "departures": [
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "B39M",
+        "aircraft_type": "Boeing 737 MAX 9",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Miami",
+        "airport_code": "MIA",
+        "altitude_ft": 0,
+        "delay_min": 16,
+        "delay_minutes": 16,
+        "destination_city": "Miami",
+        "destination_iata": "MIA",
+        "estimated_at": "2026-10-29T15:40:00+00:00",
+        "estimated_timestamp": 1793288400.0,
+        "flight_number": "UA2295",
+        "gate": "",
+        "is_delayed": true,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:24:00+00:00",
+        "scheduled_timestamp": 1793287440.0,
+        "source_updated_at": "2026-10-29T15:40:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:40",
+        "status_label": "ESTIMATED DEP 11:40",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "C68A",
+        "aircraft_type": "C68A",
+        "airline": "EJA",
+        "airline_iata": "",
+        "airline_icao": "EJA",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=eja.com&sz=64",
+        "airline_name": "NetJets",
+        "airport_city": "New York",
+        "airport_code": "LGA",
+        "altitude_ft": 0,
+        "delay_min": 6,
+        "delay_minutes": 6,
+        "destination_city": "New York",
+        "destination_iata": "LGA",
+        "estimated_at": "2026-10-29T15:36:00+00:00",
+        "estimated_timestamp": 1793288160.0,
+        "flight_number": "EJA937",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:36:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:36",
+        "status_label": "ESTIMATED DEP 11:36",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "A21N",
+        "aircraft_type": "Airbus A321-271NX",
+        "airline": "F9",
+        "airline_iata": "F9",
+        "airline_icao": "FFT",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=flyfrontier.com&sz=64",
+        "airline_name": "Frontier (Lupe the Fur Seal Livery)",
+        "airport_city": "Atlanta",
+        "airport_code": "ATL",
+        "altitude_ft": 0,
+        "delay_min": 14,
+        "delay_minutes": 14,
+        "destination_city": "Atlanta",
+        "destination_iata": "ATL",
+        "estimated_at": "2026-10-29T15:49:00+00:00",
+        "estimated_timestamp": 1793288940.0,
+        "flight_number": "F94601",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:35:00+00:00",
+        "scheduled_timestamp": 1793288100.0,
+        "source_updated_at": "2026-10-29T15:49:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:49",
+        "status_label": "ESTIMATED DEP 11:49",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "B39M",
+        "aircraft_type": "Boeing 737 MAX 9",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Fort Lauderdale",
+        "airport_code": "FLL",
+        "altitude_ft": 0,
+        "delay_min": 17,
+        "delay_minutes": 17,
+        "destination_city": "Fort Lauderdale",
+        "destination_iata": "FLL",
+        "estimated_at": "2026-10-29T15:52:00+00:00",
+        "estimated_timestamp": 1793289120.0,
+        "flight_number": "UA2759",
+        "gate": "",
+        "is_delayed": true,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:35:00+00:00",
+        "scheduled_timestamp": 1793288100.0,
+        "source_updated_at": "2026-10-29T15:52:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:52",
+        "status_label": "ESTIMATED DEP 11:52",
+        "terminal": ""
+       }
+      ],
+      "schema": "airports.flight_airport_hud",
+      "sport": "airport",
+      "weather": {
+       "airport_name": "New York Newark Liberty International Airport",
+       "away_abbr": "63F",
+       "city": "New York",
+       "condition": "CLOUDY",
+       "home_abbr": "EWR",
+       "humidity": 67.0,
+       "iata": "EWR",
+       "icao": "KEWR",
+       "observed_at": "2026-10-29T14:51:00+00:00",
+       "status": "CLOUDY",
+       "temperature_f": 63.0,
+       "weather_code": null,
+       "wind_mph": 13.0
+      }
+     },
+     "family": "airports",
+     "id": "airport:EWR",
+     "is_shown": true,
+     "kind": "flight_airport_hud"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "airports",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "airports",
+   "my_teams": [],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "airport001"
+  }
+ },
+ "airport001:full": {
+  "content": {
+   "airports": [
+    {
+     "data": {
+      "arrivals": [
+       {
+        "actual_at": "2026-10-29T14:56:02+00:00",
+        "actual_timestamp": 1793285762.0,
+        "aircraft_code": "B739",
+        "aircraft_type": "Boeing 737-924(ER)",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Fort Myers",
+        "airport_code": "RSW",
+        "altitude_ft": 0,
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": "2026-10-29T14:56:02+00:00",
+        "estimated_timestamp": 1793285762.0,
+        "flight_number": "UA2477",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Fort Myers",
+        "origin_iata": "RSW",
+        "scheduled_at": "2026-10-29T15:26:00+00:00",
+        "scheduled_timestamp": 1793287560.0,
+        "source_updated_at": "2026-10-29T14:56:02+00:00",
+        "state": "landed",
+        "status": "LANDED 10:56",
+        "status_label": "LANDED 10:56",
+        "terminal": ""
+       },
+       {
+        "actual_at": "2026-10-29T15:09:27+00:00",
+        "actual_timestamp": 1793286567.0,
+        "aircraft_code": "B38M",
+        "aircraft_type": "Boeing 737 MAX 8",
+        "airline": "AA",
+        "airline_iata": "AA",
+        "airline_icao": "AAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=aa.com&sz=64",
+        "airline_name": "American Airlines",
+        "airport_city": "Miami",
+        "airport_code": "MIA",
+        "altitude_ft": 0,
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": "2026-10-29T15:09:27+00:00",
+        "estimated_timestamp": 1793286567.0,
+        "flight_number": "AA1801",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Miami",
+        "origin_iata": "MIA",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:09:27+00:00",
+        "state": "landed",
+        "status": "LANDED 11:09",
+        "status_label": "LANDED 11:09",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "A319",
+        "aircraft_type": "Airbus A319-131",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Cleveland",
+        "airport_code": "CLE",
+        "altitude_ft": 0,
+        "delay_min": 1,
+        "delay_minutes": 1,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": "2026-10-29T15:31:06+00:00",
+        "estimated_timestamp": 1793287866.0,
+        "flight_number": "UA1701",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Cleveland",
+        "origin_iata": "CLE",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:31:06+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED 11:31",
+        "status_label": "ESTIMATED 11:31",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "E75L",
+        "aircraft_type": "Embraer E175LR",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Express",
+        "airport_city": "Toronto",
+        "airport_code": "YYZ",
+        "altitude_ft": 0,
+        "delay_min": 0,
+        "delay_minutes": 0,
+        "destination_city": "",
+        "destination_iata": "",
+        "estimated_at": null,
+        "estimated_timestamp": null,
+        "flight_number": "UA3605",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "Toronto",
+        "origin_iata": "YYZ",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:30:00+00:00",
+        "state": "scheduled",
+        "status": "SCHEDULED",
+        "status_label": "SCHEDULED",
+        "terminal": ""
+       }
+      ],
+      "departures": [
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "B39M",
+        "aircraft_type": "Boeing 737 MAX 9",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Miami",
+        "airport_code": "MIA",
+        "altitude_ft": 0,
+        "delay_min": 16,
+        "delay_minutes": 16,
+        "destination_city": "Miami",
+        "destination_iata": "MIA",
+        "estimated_at": "2026-10-29T15:40:00+00:00",
+        "estimated_timestamp": 1793288400.0,
+        "flight_number": "UA2295",
+        "gate": "",
+        "is_delayed": true,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:24:00+00:00",
+        "scheduled_timestamp": 1793287440.0,
+        "source_updated_at": "2026-10-29T15:40:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:40",
+        "status_label": "ESTIMATED DEP 11:40",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "C68A",
+        "aircraft_type": "C68A",
+        "airline": "EJA",
+        "airline_iata": "",
+        "airline_icao": "EJA",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=eja.com&sz=64",
+        "airline_name": "NetJets",
+        "airport_city": "New York",
+        "airport_code": "LGA",
+        "altitude_ft": 0,
+        "delay_min": 6,
+        "delay_minutes": 6,
+        "destination_city": "New York",
+        "destination_iata": "LGA",
+        "estimated_at": "2026-10-29T15:36:00+00:00",
+        "estimated_timestamp": 1793288160.0,
+        "flight_number": "EJA937",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:30:00+00:00",
+        "scheduled_timestamp": 1793287800.0,
+        "source_updated_at": "2026-10-29T15:36:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:36",
+        "status_label": "ESTIMATED DEP 11:36",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "A21N",
+        "aircraft_type": "Airbus A321-271NX",
+        "airline": "F9",
+        "airline_iata": "F9",
+        "airline_icao": "FFT",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=flyfrontier.com&sz=64",
+        "airline_name": "Frontier (Lupe the Fur Seal Livery)",
+        "airport_city": "Atlanta",
+        "airport_code": "ATL",
+        "altitude_ft": 0,
+        "delay_min": 14,
+        "delay_minutes": 14,
+        "destination_city": "Atlanta",
+        "destination_iata": "ATL",
+        "estimated_at": "2026-10-29T15:49:00+00:00",
+        "estimated_timestamp": 1793288940.0,
+        "flight_number": "F94601",
+        "gate": "",
+        "is_delayed": false,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:35:00+00:00",
+        "scheduled_timestamp": 1793288100.0,
+        "source_updated_at": "2026-10-29T15:49:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:49",
+        "status_label": "ESTIMATED DEP 11:49",
+        "terminal": ""
+       },
+       {
+        "actual_at": null,
+        "actual_timestamp": null,
+        "aircraft_code": "B39M",
+        "aircraft_type": "Boeing 737 MAX 9",
+        "airline": "UA",
+        "airline_iata": "UA",
+        "airline_icao": "UAL",
+        "airline_logo": "https://www.google.com/s2/favicons?domain=united.com&sz=64",
+        "airline_name": "United Airlines",
+        "airport_city": "Fort Lauderdale",
+        "airport_code": "FLL",
+        "altitude_ft": 0,
+        "delay_min": 17,
+        "delay_minutes": 17,
+        "destination_city": "Fort Lauderdale",
+        "destination_iata": "FLL",
+        "estimated_at": "2026-10-29T15:52:00+00:00",
+        "estimated_timestamp": 1793289120.0,
+        "flight_number": "UA2759",
+        "gate": "",
+        "is_delayed": true,
+        "is_live": false,
+        "is_shown": true,
+        "origin_city": "",
+        "origin_iata": "",
+        "scheduled_at": "2026-10-29T15:35:00+00:00",
+        "scheduled_timestamp": 1793288100.0,
+        "source_updated_at": "2026-10-29T15:52:00+00:00",
+        "state": "scheduled",
+        "status": "ESTIMATED DEP 11:52",
+        "status_label": "ESTIMATED DEP 11:52",
+        "terminal": ""
+       }
+      ],
+      "schema": "airports.flight_airport_hud",
+      "sport": "airport",
+      "weather": {
+       "airport_name": "New York Newark Liberty International Airport",
+       "away_abbr": "63F",
+       "city": "New York",
+       "condition": "CLOUDY",
+       "home_abbr": "EWR",
+       "humidity": 67.0,
+       "iata": "EWR",
+       "icao": "KEWR",
+       "observed_at": "2026-10-29T14:51:00+00:00",
+       "status": "CLOUDY",
+       "temperature_f": 63.0,
+       "weather_code": null,
+       "wind_mph": 13.0
+      }
+     },
+     "family": "airports",
+     "id": "airport:EWR",
+     "is_shown": true,
+     "kind": "flight_airport_hud"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "airports",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "airports",
+   "my_teams": [],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "airport001"
+  }
+ },
+ "clock00001:device": {
+  "content": {
+   "clock": [
+    {
+     "data": {
+      "sport": "clock",
+      "status": "active"
+     },
+     "family": "clock",
+     "id": "clock",
+     "is_shown": true,
+     "kind": "clock"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "clock",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "clock",
+   "my_teams": [],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "clock00001"
+  }
+ },
+ "clock00001:full": {
+  "content": {
+   "clock": [
+    {
+     "data": {
+      "sport": "clock",
+      "status": "active"
+     },
+     "family": "clock",
+     "id": "clock",
+     "is_shown": true,
+     "kind": "clock"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "clock",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "clock",
+   "my_teams": [],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "clock00001"
+  }
+ },
+ "sports0001:device": {
+  "content": {
+   "golf": [
+    {
+     "data": {
+      "away_abbr": "VidantaWorld Mexico Open",
+      "competition_stage": 0,
+      "game_phase": "playing",
+      "golf": {
+       "brand": "pga",
+       "event_name": "VidantaWorld Mexico Open",
+       "players": [
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          3.0,
+          3.0,
+          4.0,
+          3.0
+         ],
+         "name": "Denny McCarthy",
+         "pos": "T1",
+         "thru": 8,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0,
+          2.0,
+          4.0
+         ],
+         "name": "Austin Eckroat",
+         "pos": "T1",
+         "thru": 8,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          4.0,
+          2.0,
+          4.0,
+          2.0,
+          5.0
+         ],
+         "name": "Jeremy Paul",
+         "pos": "T1",
+         "thru": 7,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          3.0
+         ],
+         "name": "Sudarshan Yellamaraju",
+         "pos": "T1",
+         "thru": 4,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          2.0,
+          5.0,
+          3.0
+         ],
+         "name": "Beau Hossler",
+         "pos": "T5",
+         "thru": 7,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          2.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0,
+          3.0
+         ],
+         "name": "Justin Lower",
+         "pos": "T5",
+         "thru": 7,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          3.0,
+          3.0
+         ],
+         "name": "Max Homa",
+         "pos": "T5",
+         "thru": 6,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          4.0
+         ],
+         "name": "Ben Griffin",
+         "pos": "T5",
+         "thru": 5,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "Kensei Hirata",
+         "pos": "T5",
+         "thru": 3,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          2.0,
+          5.0,
+          3.0
+         ],
+         "name": "Erik van Rooyen",
+         "pos": "T10",
+         "thru": 7,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          5.0,
+          3.0,
+          5.0,
+          2.0
+         ],
+         "name": "Christiaan Bezuidenhout",
+         "pos": "T10",
+         "thru": 7,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0,
+          2.0,
+          5.0
+         ],
+         "name": "Rasmus Neergaard-Petersen",
+         "pos": "T10",
+         "thru": 7,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0,
+          3.0
+         ],
+         "name": "Tony Finau",
+         "pos": "T10",
+         "thru": 6,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          4.0,
+          3.0
+         ],
+         "name": "Corey Conners",
+         "pos": "T10",
+         "thru": 6,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Steven Fisk",
+         "pos": "T10",
+         "thru": 6,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "Chandler Blanchet",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "Rico Hoey",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "Santiago de la Fuente",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "David Ford",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "Trace Crowe",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0
+         ],
+         "name": "Paul Peterson",
+         "pos": "T10",
+         "thru": 2,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "David Lipsky",
+         "pos": "T22",
+         "thru": 8,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Jordan Smith",
+         "pos": "T22",
+         "thru": 7,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Emiliano Grillo",
+         "pos": "T22",
+         "thru": 7,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "Taylor Pendrith",
+         "pos": "T22",
+         "thru": 6,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          3.0
+         ],
+         "name": "Davis Riley",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          4.0,
+          4.0,
+          3.0
+         ],
+         "name": "Nick Hardy",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          3.0
+         ],
+         "name": "Kevin Roy",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0
+         ],
+         "name": "Joel Dahmen",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Andrew Novak",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0
+         ],
+         "name": "Pierceson Coody",
+         "pos": "T22",
+         "thru": 4,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Harry Higgs",
+         "pos": "T22",
+         "thru": 4,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Tyler Duncan",
+         "pos": "T22",
+         "thru": 4,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "Peter Malnati",
+         "pos": "T22",
+         "thru": 3,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "Lee Hodges",
+         "pos": "T22",
+         "thru": 3,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "A.J. Ewart",
+         "pos": "T22",
+         "thru": 3,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0
+         ],
+         "name": "Marco Penge",
+         "pos": "T22",
+         "thru": 2,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Eli Ortego",
+         "pos": "T22",
+         "thru": 2,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          5.0,
+          5.0,
+          5.0,
+          3.0,
+          3.0,
+          3.0,
+          5.0
+         ],
+         "name": "Zach Bauchou",
+         "pos": "T39",
+         "thru": 7,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          3.0,
+          5.0,
+          6.0,
+          4.0,
+          4.0,
+          3.0,
+          4.0
+         ],
+         "name": "Nick Dunlap",
+         "pos": "T39",
+         "thru": 7,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          5.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Aaron Wise",
+         "pos": "T39",
+         "thru": 6,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          6.0,
+          3.0,
+          3.0
+         ],
+         "name": "Cam Davis",
+         "pos": "T39",
+         "thru": 5,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          5.0,
+          3.0
+         ],
+         "name": "Aldrich Potgieter",
+         "pos": "T39",
+         "thru": 5,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Ben Martin",
+         "pos": "T39",
+         "thru": 5,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          6.0,
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "Chad Ramey",
+         "pos": "T39",
+         "thru": 4,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          4.0
+         ],
+         "name": "Isaiah Salinda",
+         "pos": "T39",
+         "thru": 3,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          4.0
+         ],
+         "name": "Cameron Tankersley",
+         "pos": "T39",
+         "thru": 3,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Trent Phillips",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Gordon Sargent",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Ben James",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0
+         ],
+         "name": "John Daly II",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          5.0
+         ],
+         "name": "Christo Lamprecht",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          4.0,
+          5.0,
+          4.0,
+          4.0,
+          5.0,
+          2.0
+         ],
+         "name": "Patrick Rodgers",
+         "pos": "T53",
+         "thru": 8,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          5.0,
+          3.0,
+          6.0,
+          3.0
+         ],
+         "name": "Mark Hubbard",
+         "pos": "T53",
+         "thru": 7,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          5.0,
+          5.0
+         ],
+         "name": "Hank Lebioda",
+         "pos": "T53",
+         "thru": 4,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          5.0,
+          5.0,
+          5.0
+         ],
+         "name": "Tayler Termeer",
+         "pos": "T53",
+         "thru": 3,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          5.0,
+          5.0,
+          3.0,
+          5.0,
+          2.0,
+          7.0,
+          4.0
+         ],
+         "name": "Danny Walker",
+         "pos": "T57",
+         "thru": 9,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          5.0,
+          4.0,
+          3.0,
+          6.0,
+          3.0,
+          5.0
+         ],
+         "name": "Patton Kizzire",
+         "pos": "T57",
+         "thru": 8,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          5.0,
+          5.0,
+          4.0,
+          5.0
+         ],
+         "name": "Camilo Villegas",
+         "pos": "T57",
+         "thru": 8,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [
+          6.0,
+          4.0
+         ],
+         "name": "John VanDerLaan",
+         "pos": "T57",
+         "thru": 2,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [],
+         "name": "John Parry",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Andrew Putnam",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Max McGreevy",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Vince Whaley",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Takumi Kanaya",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Dylan Wu",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Rafael Campos",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Chan Kim",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Mackenzie Hughes",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Ben Silverman",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Zac Blair",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Adam Svensson",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Brice Garnett",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "David Skinns",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Doug Ghim",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Chandler Phillips",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jackson Suber",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Johnny Keefer",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Brian Campbell",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Wyndham Clark",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kevin Yu",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Tom Kim",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Joe Highsmith",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Karl Vilips",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kevin Streelman",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Billy Horschel",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Alvaro Ortiz",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Garrick Higgo",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Harry Hall",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "William Mouw",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Adam Hadwin",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Matthieu Pavon",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Max Greyserman",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Rasmus H\u00f8jgaard",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Will Gordon",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Mac Meissner",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Marcelo Rozo",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Zecheng Dou",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Pontus Nyholm",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Davis Chatfield",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Neal Shipley",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Ryder Cowan",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Hayden Springer",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jeffrey Kang",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Blades Brown",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Luke Clanton",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kihei Akina",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Mauricio Figueroa Ramirez",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Haotong Li",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jimmy Stanger",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Alejandro Tosti",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Adrien Dumont de Chassart",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Gerardo Gomez",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Alejandro Fierro",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kristoffer Ventura",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Patrick Fishburn",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jesper Svensson",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Keita Nakajima",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Omar Morales",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Garrett Endicott",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        }
+       ],
+       "round": "Round 1",
+       "year": 2026
+      },
+      "schema": "golf.golf",
+      "situation": {},
+      "sport": "golf",
+      "state": "in",
+      "status": "Round 1"
+     },
+     "family": "golf",
+     "id": "golf:401850978",
+     "is_shown": true,
+     "kind": "golf"
+    }
+   ],
+   "sports": [
+    {
+     "data": {
+      "away_abbr": "SCST",
+      "away_alt_color": "#104897",
+      "away_color": "#7D1315",
+      "away_conference_id": "24",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2569.png",
+      "away_rank": "25",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "MORG",
+      "home_alt_color": "#F47937",
+      "home_color": "#014786",
+      "home_conference_id": "24",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2415.png",
+      "home_rank": "",
+      "home_score": "0",
+      "id": "401867969",
+      "situation": {},
+      "sport": "ncf_fcs",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401867969",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CBJ",
+      "away_alt_color": "#E31937",
+      "away_color": "#002D62",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/cbj.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "CAR",
+      "home_alt_color": "#000000",
+      "home_color": "#E30426",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/car.png",
+      "home_score": "0",
+      "id": "401892603",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892603",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "UTA",
+      "away_alt_color": "#7AB2E1",
+      "away_color": "#000000",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "PIT",
+      "home_alt_color": "#FDB71A",
+      "home_color": "#000000",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/pit.png",
+      "home_score": "0",
+      "id": "401892602",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892602",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "WPG",
+      "away_alt_color": "#C41230",
+      "away_color": "#002D62",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/wpg.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "TB",
+      "home_alt_color": "#FFFFFF",
+      "home_color": "#003E7E",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/tb.png",
+      "home_score": "0",
+      "id": "401892601",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892601",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "TROY",
+      "away_alt_color": "#B1B1B1",
+      "away_color": "#862633",
+      "away_conference_id": "37",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2653.png",
+      "away_rank": "",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "JMU",
+      "home_alt_color": "#CBB677",
+      "home_color": "#450084",
+      "home_conference_id": "37",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/256.png",
+      "home_rank": "",
+      "home_score": "0",
+      "id": "401869963",
+      "situation": {},
+      "sport": "ncf_fbs",
+      "startTimeUTC": "2026-10-29T23:30Z",
+      "state": "pre",
+      "status": "7:30 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401869963",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "FAU",
+      "away_alt_color": "#CC0000",
+      "away_color": "#003366",
+      "away_conference_id": "151",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2226.png",
+      "away_rank": "",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "UNT",
+      "home_alt_color": "#FFFFFF",
+      "home_color": "#068F33",
+      "home_conference_id": "151",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/249.png",
+      "home_rank": "",
+      "home_score": "0",
+      "id": "401862812",
+      "situation": {},
+      "sport": "ncf_fbs",
+      "startTimeUTC": "2026-10-29T23:30Z",
+      "state": "pre",
+      "status": "7:30 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401862812",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CHI",
+      "away_alt_color": "#000000",
+      "away_color": "#E31937",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/chi.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "DET",
+      "home_alt_color": "#FFFFFF",
+      "home_color": "#E30526",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/det.png",
+      "home_score": "0",
+      "id": "401892600",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:30Z",
+      "state": "pre",
+      "status": "7:30 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892600",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CLE",
+      "away_alt_color": "#BC945C",
+      "away_color": "#860038",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/cle.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "ATL",
+      "home_alt_color": "#FDB927",
+      "home_color": "#C8102E",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/atl.png",
+      "home_score": "0",
+      "id": "401909893",
+      "situation": {},
+      "sport": "nba",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401909893",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "SAC",
+      "away_alt_color": "#6A7A82",
+      "away_color": "#5A2D81",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/sac.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "NO",
+      "home_alt_color": "#B4975A",
+      "home_color": "#0A2240",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/no.png",
+      "home_score": "0",
+      "id": "401909894",
+      "situation": {},
+      "sport": "nba",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401909894",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "MTL",
+      "away_alt_color": "#013A81",
+      "away_color": "#C41230",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/mtl.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "DAL",
+      "home_alt_color": "#000000",
+      "home_color": "#20864C",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/dal.png",
+      "home_score": "0",
+      "id": "401892606",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892606",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "NYI",
+      "away_alt_color": "#F47D31",
+      "away_color": "#00529B",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/nyi.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "MIN",
+      "home_alt_color": "#AE122A",
+      "home_color": "#124734",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/min.png",
+      "home_score": "0",
+      "id": "401892607",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892607",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "WSH",
+      "away_alt_color": "#0B1F41",
+      "away_color": "#D71830",
+      "away_logo": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "NSH",
+      "home_alt_color": "#002D62",
+      "home_color": "#FDBA31",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/nsh.png",
+      "home_score": "0",
+      "id": "401892605",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892605",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "BOS",
+      "away_alt_color": "#FDB71A",
+      "away_color": "#231F20",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/bos.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "STL",
+      "home_alt_color": "#FDB71A",
+      "home_color": "#0070B9",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/stl.png",
+      "home_score": "0",
+      "id": "401892604",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892604",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CAR",
+      "away_alt_color": "#000000",
+      "away_color": "#0085CA",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/car.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "GB",
+      "home_alt_color": "#FFB612",
+      "home_color": "#204E32",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/gb.png",
+      "home_score": "0",
+      "id": "401873023",
+      "situation": {},
+      "sport": "nfl",
+      "startTimeUTC": "2026-10-30T00:15Z",
+      "state": "pre",
+      "status": "8:15 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401873023",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "MEM",
+      "away_alt_color": "#12173F",
+      "away_color": "#5D76A9",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/mem.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "POR",
+      "home_alt_color": "#000000",
+      "home_color": "#E03A3E",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/por.png",
+      "home_score": "0",
+      "id": "401909895",
+      "situation": {},
+      "sport": "nba",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401909895",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "BUF",
+      "away_alt_color": "#FDB71A",
+      "away_color": "#00468B",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/buf.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "ANA",
+      "home_alt_color": "#000000",
+      "home_color": "#FC4C02",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/ana.png",
+      "home_score": "0",
+      "id": "401892608",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892608",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "OTT",
+      "away_alt_color": "#B79257",
+      "away_color": "#DD1A32",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/ott.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "LA",
+      "home_alt_color": "#A2AAAD",
+      "home_color": "#121212",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/la.png",
+      "home_score": "0",
+      "id": "401892609",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892609",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "VAN",
+      "away_alt_color": "#008752",
+      "away_color": "#003E7E",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "SJ",
+      "home_alt_color": "#070707",
+      "home_color": "#00788A",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sj.png",
+      "home_score": "0",
+      "id": "401892610",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892610",
+     "is_shown": true,
+     "kind": "scoreboard"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "sports",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "sports",
+   "my_teams": [
+    "nfl:nyg",
+    "nba:nyk",
+    "nhl:nyr"
+   ],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "sports0001"
+  }
+ },
+ "sports0001:full": {
+  "content": {
+   "golf": [
+    {
+     "data": {
+      "away_abbr": "VidantaWorld Mexico Open",
+      "competition_stage": 0,
+      "game_phase": "playing",
+      "golf": {
+       "brand": "pga",
+       "event_name": "VidantaWorld Mexico Open",
+       "players": [
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          3.0,
+          3.0,
+          4.0,
+          3.0
+         ],
+         "name": "Denny McCarthy",
+         "pos": "T1",
+         "thru": 8,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0,
+          2.0,
+          4.0
+         ],
+         "name": "Austin Eckroat",
+         "pos": "T1",
+         "thru": 8,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          4.0,
+          2.0,
+          4.0,
+          2.0,
+          5.0
+         ],
+         "name": "Jeremy Paul",
+         "pos": "T1",
+         "thru": 7,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          3.0
+         ],
+         "name": "Sudarshan Yellamaraju",
+         "pos": "T1",
+         "thru": 4,
+         "today": "-3",
+         "total": "-3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          2.0,
+          5.0,
+          3.0
+         ],
+         "name": "Beau Hossler",
+         "pos": "T5",
+         "thru": 7,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          2.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0,
+          3.0
+         ],
+         "name": "Justin Lower",
+         "pos": "T5",
+         "thru": 7,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          3.0,
+          3.0
+         ],
+         "name": "Max Homa",
+         "pos": "T5",
+         "thru": 6,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          4.0
+         ],
+         "name": "Ben Griffin",
+         "pos": "T5",
+         "thru": 5,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "Kensei Hirata",
+         "pos": "T5",
+         "thru": 3,
+         "today": "-2",
+         "total": "-2"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          2.0,
+          5.0,
+          3.0
+         ],
+         "name": "Erik van Rooyen",
+         "pos": "T10",
+         "thru": 7,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          5.0,
+          3.0,
+          5.0,
+          2.0
+         ],
+         "name": "Christiaan Bezuidenhout",
+         "pos": "T10",
+         "thru": 7,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0,
+          2.0,
+          5.0
+         ],
+         "name": "Rasmus Neergaard-Petersen",
+         "pos": "T10",
+         "thru": 7,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0,
+          3.0
+         ],
+         "name": "Tony Finau",
+         "pos": "T10",
+         "thru": 6,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          4.0,
+          3.0
+         ],
+         "name": "Corey Conners",
+         "pos": "T10",
+         "thru": 6,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0,
+          4.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Steven Fisk",
+         "pos": "T10",
+         "thru": 6,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "Chandler Blanchet",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "Rico Hoey",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "Santiago de la Fuente",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "David Ford",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0
+         ],
+         "name": "Trace Crowe",
+         "pos": "T10",
+         "thru": 3,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          3.0,
+          4.0
+         ],
+         "name": "Paul Peterson",
+         "pos": "T10",
+         "thru": 2,
+         "today": "-1",
+         "total": "-1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "David Lipsky",
+         "pos": "T22",
+         "thru": 8,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Jordan Smith",
+         "pos": "T22",
+         "thru": 7,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Emiliano Grillo",
+         "pos": "T22",
+         "thru": 7,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          4.0,
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "Taylor Pendrith",
+         "pos": "T22",
+         "thru": 6,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          3.0
+         ],
+         "name": "Davis Riley",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          4.0,
+          4.0,
+          3.0
+         ],
+         "name": "Nick Hardy",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          3.0
+         ],
+         "name": "Kevin Roy",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          5.0,
+          3.0,
+          4.0
+         ],
+         "name": "Joel Dahmen",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Andrew Novak",
+         "pos": "T22",
+         "thru": 5,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0
+         ],
+         "name": "Pierceson Coody",
+         "pos": "T22",
+         "thru": 4,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Harry Higgs",
+         "pos": "T22",
+         "thru": 4,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Tyler Duncan",
+         "pos": "T22",
+         "thru": 4,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "Peter Malnati",
+         "pos": "T22",
+         "thru": 3,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "Lee Hodges",
+         "pos": "T22",
+         "thru": 3,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          5.0
+         ],
+         "name": "A.J. Ewart",
+         "pos": "T22",
+         "thru": 3,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0
+         ],
+         "name": "Marco Penge",
+         "pos": "T22",
+         "thru": 2,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Eli Ortego",
+         "pos": "T22",
+         "thru": 2,
+         "today": "E",
+         "total": "E"
+        },
+        {
+         "holes": [
+          5.0,
+          5.0,
+          5.0,
+          3.0,
+          3.0,
+          3.0,
+          5.0
+         ],
+         "name": "Zach Bauchou",
+         "pos": "T39",
+         "thru": 7,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          3.0,
+          5.0,
+          6.0,
+          4.0,
+          4.0,
+          3.0,
+          4.0
+         ],
+         "name": "Nick Dunlap",
+         "pos": "T39",
+         "thru": 7,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          5.0,
+          4.0,
+          3.0,
+          5.0
+         ],
+         "name": "Aaron Wise",
+         "pos": "T39",
+         "thru": 6,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          6.0,
+          3.0,
+          3.0
+         ],
+         "name": "Cam Davis",
+         "pos": "T39",
+         "thru": 5,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0,
+          4.0,
+          5.0,
+          3.0
+         ],
+         "name": "Aldrich Potgieter",
+         "pos": "T39",
+         "thru": 5,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          5.0,
+          3.0
+         ],
+         "name": "Ben Martin",
+         "pos": "T39",
+         "thru": 5,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          6.0,
+          3.0,
+          4.0,
+          4.0
+         ],
+         "name": "Chad Ramey",
+         "pos": "T39",
+         "thru": 4,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          4.0
+         ],
+         "name": "Isaiah Salinda",
+         "pos": "T39",
+         "thru": 3,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          4.0
+         ],
+         "name": "Cameron Tankersley",
+         "pos": "T39",
+         "thru": 3,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Trent Phillips",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Gordon Sargent",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          4.0
+         ],
+         "name": "Ben James",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0
+         ],
+         "name": "John Daly II",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          4.0,
+          5.0
+         ],
+         "name": "Christo Lamprecht",
+         "pos": "T39",
+         "thru": 2,
+         "today": "+1",
+         "total": "+1"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          4.0,
+          5.0,
+          4.0,
+          4.0,
+          5.0,
+          2.0
+         ],
+         "name": "Patrick Rodgers",
+         "pos": "T53",
+         "thru": 8,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          5.0,
+          3.0,
+          6.0,
+          3.0
+         ],
+         "name": "Mark Hubbard",
+         "pos": "T53",
+         "thru": 7,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          5.0,
+          5.0
+         ],
+         "name": "Hank Lebioda",
+         "pos": "T53",
+         "thru": 4,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          5.0,
+          5.0,
+          5.0
+         ],
+         "name": "Tayler Termeer",
+         "pos": "T53",
+         "thru": 3,
+         "today": "+2",
+         "total": "+2"
+        },
+        {
+         "holes": [
+          5.0,
+          3.0,
+          5.0,
+          5.0,
+          3.0,
+          5.0,
+          2.0,
+          7.0,
+          4.0
+         ],
+         "name": "Danny Walker",
+         "pos": "T57",
+         "thru": 9,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [
+          5.0,
+          4.0,
+          5.0,
+          4.0,
+          3.0,
+          6.0,
+          3.0,
+          5.0
+         ],
+         "name": "Patton Kizzire",
+         "pos": "T57",
+         "thru": 8,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [
+          4.0,
+          3.0,
+          5.0,
+          4.0,
+          5.0,
+          5.0,
+          4.0,
+          5.0
+         ],
+         "name": "Camilo Villegas",
+         "pos": "T57",
+         "thru": 8,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [
+          6.0,
+          4.0
+         ],
+         "name": "John VanDerLaan",
+         "pos": "T57",
+         "thru": 2,
+         "today": "+3",
+         "total": "+3"
+        },
+        {
+         "holes": [],
+         "name": "John Parry",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Andrew Putnam",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Max McGreevy",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Vince Whaley",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Takumi Kanaya",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Dylan Wu",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Rafael Campos",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Chan Kim",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Mackenzie Hughes",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Ben Silverman",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Zac Blair",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Adam Svensson",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Brice Garnett",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "David Skinns",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Doug Ghim",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Chandler Phillips",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jackson Suber",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Johnny Keefer",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Brian Campbell",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Wyndham Clark",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kevin Yu",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Tom Kim",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Joe Highsmith",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Karl Vilips",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kevin Streelman",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Billy Horschel",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Alvaro Ortiz",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Garrick Higgo",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Harry Hall",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "William Mouw",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Adam Hadwin",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Matthieu Pavon",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Max Greyserman",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Rasmus H\u00f8jgaard",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Will Gordon",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Mac Meissner",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Marcelo Rozo",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Zecheng Dou",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Pontus Nyholm",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Davis Chatfield",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Neal Shipley",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Ryder Cowan",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Hayden Springer",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jeffrey Kang",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Blades Brown",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Luke Clanton",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kihei Akina",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Mauricio Figueroa Ramirez",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Haotong Li",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jimmy Stanger",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Alejandro Tosti",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Adrien Dumont de Chassart",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Gerardo Gomez",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Alejandro Fierro",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Kristoffer Ventura",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Patrick Fishburn",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Jesper Svensson",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Keita Nakajima",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Omar Morales",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        },
+        {
+         "holes": [],
+         "name": "Garrett Endicott",
+         "pos": "T61",
+         "thru": 0,
+         "today": "-",
+         "total": "E"
+        }
+       ],
+       "round": "Round 1",
+       "year": 2026
+      },
+      "schema": "golf.golf",
+      "situation": {},
+      "sport": "golf",
+      "state": "in",
+      "status": "Round 1"
+     },
+     "family": "golf",
+     "id": "golf:401850978",
+     "is_shown": true,
+     "kind": "golf"
+    }
+   ],
+   "sports": [
+    {
+     "data": {
+      "away_abbr": "SCST",
+      "away_alt_color": "#104897",
+      "away_color": "#7D1315",
+      "away_conference_id": "24",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2569.png",
+      "away_rank": "25",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "MORG",
+      "home_alt_color": "#F47937",
+      "home_color": "#014786",
+      "home_conference_id": "24",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2415.png",
+      "home_rank": "",
+      "home_score": "0",
+      "id": "401867969",
+      "situation": {},
+      "sport": "ncf_fcs",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401867969",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CBJ",
+      "away_alt_color": "#E31937",
+      "away_color": "#002D62",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/cbj.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "CAR",
+      "home_alt_color": "#000000",
+      "home_color": "#E30426",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/car.png",
+      "home_score": "0",
+      "id": "401892603",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892603",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "UTA",
+      "away_alt_color": "#7AB2E1",
+      "away_color": "#000000",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "PIT",
+      "home_alt_color": "#FDB71A",
+      "home_color": "#000000",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/pit.png",
+      "home_score": "0",
+      "id": "401892602",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892602",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "WPG",
+      "away_alt_color": "#C41230",
+      "away_color": "#002D62",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/wpg.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "TB",
+      "home_alt_color": "#FFFFFF",
+      "home_color": "#003E7E",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/tb.png",
+      "home_score": "0",
+      "id": "401892601",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:00Z",
+      "state": "pre",
+      "status": "7:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892601",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "TROY",
+      "away_alt_color": "#B1B1B1",
+      "away_color": "#862633",
+      "away_conference_id": "37",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2653.png",
+      "away_rank": "",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "JMU",
+      "home_alt_color": "#CBB677",
+      "home_color": "#450084",
+      "home_conference_id": "37",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/256.png",
+      "home_rank": "",
+      "home_score": "0",
+      "id": "401869963",
+      "situation": {},
+      "sport": "ncf_fbs",
+      "startTimeUTC": "2026-10-29T23:30Z",
+      "state": "pre",
+      "status": "7:30 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401869963",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "FAU",
+      "away_alt_color": "#CC0000",
+      "away_color": "#003366",
+      "away_conference_id": "151",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2226.png",
+      "away_rank": "",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "UNT",
+      "home_alt_color": "#FFFFFF",
+      "home_color": "#068F33",
+      "home_conference_id": "151",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/249.png",
+      "home_rank": "",
+      "home_score": "0",
+      "id": "401862812",
+      "situation": {},
+      "sport": "ncf_fbs",
+      "startTimeUTC": "2026-10-29T23:30Z",
+      "state": "pre",
+      "status": "7:30 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401862812",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CHI",
+      "away_alt_color": "#000000",
+      "away_color": "#E31937",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/chi.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "DET",
+      "home_alt_color": "#FFFFFF",
+      "home_color": "#E30526",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/det.png",
+      "home_score": "0",
+      "id": "401892600",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-29T23:30Z",
+      "state": "pre",
+      "status": "7:30 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892600",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CLE",
+      "away_alt_color": "#BC945C",
+      "away_color": "#860038",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/cle.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "ATL",
+      "home_alt_color": "#FDB927",
+      "home_color": "#C8102E",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/atl.png",
+      "home_score": "0",
+      "id": "401909893",
+      "situation": {},
+      "sport": "nba",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401909893",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "SAC",
+      "away_alt_color": "#6A7A82",
+      "away_color": "#5A2D81",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/sac.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "NO",
+      "home_alt_color": "#B4975A",
+      "home_color": "#0A2240",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/no.png",
+      "home_score": "0",
+      "id": "401909894",
+      "situation": {},
+      "sport": "nba",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401909894",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "MTL",
+      "away_alt_color": "#013A81",
+      "away_color": "#C41230",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/mtl.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "DAL",
+      "home_alt_color": "#000000",
+      "home_color": "#20864C",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/dal.png",
+      "home_score": "0",
+      "id": "401892606",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892606",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "NYI",
+      "away_alt_color": "#F47D31",
+      "away_color": "#00529B",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/nyi.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "MIN",
+      "home_alt_color": "#AE122A",
+      "home_color": "#124734",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/min.png",
+      "home_score": "0",
+      "id": "401892607",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892607",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "WSH",
+      "away_alt_color": "#0B1F41",
+      "away_color": "#D71830",
+      "away_logo": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "NSH",
+      "home_alt_color": "#002D62",
+      "home_color": "#FDBA31",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/nsh.png",
+      "home_score": "0",
+      "id": "401892605",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892605",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "BOS",
+      "away_alt_color": "#FDB71A",
+      "away_color": "#231F20",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/bos.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "STL",
+      "home_alt_color": "#FDB71A",
+      "home_color": "#0070B9",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/stl.png",
+      "home_score": "0",
+      "id": "401892604",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T00:00Z",
+      "state": "pre",
+      "status": "8:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892604",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "CAR",
+      "away_alt_color": "#000000",
+      "away_color": "#0085CA",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/car.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "GB",
+      "home_alt_color": "#FFB612",
+      "home_color": "#204E32",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/gb.png",
+      "home_score": "0",
+      "id": "401873023",
+      "situation": {},
+      "sport": "nfl",
+      "startTimeUTC": "2026-10-30T00:15Z",
+      "state": "pre",
+      "status": "8:15 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401873023",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "MEM",
+      "away_alt_color": "#12173F",
+      "away_color": "#5D76A9",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/mem.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "POR",
+      "home_alt_color": "#000000",
+      "home_color": "#E03A3E",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/por.png",
+      "home_score": "0",
+      "id": "401909895",
+      "situation": {},
+      "sport": "nba",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401909895",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "BUF",
+      "away_alt_color": "#FDB71A",
+      "away_color": "#00468B",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/buf.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "ANA",
+      "home_alt_color": "#000000",
+      "home_color": "#FC4C02",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/ana.png",
+      "home_score": "0",
+      "id": "401892608",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892608",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "OTT",
+      "away_alt_color": "#B79257",
+      "away_color": "#DD1A32",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/ott.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "LA",
+      "home_alt_color": "#A2AAAD",
+      "home_color": "#121212",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/la.png",
+      "home_score": "0",
+      "id": "401892609",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892609",
+     "is_shown": true,
+     "kind": "scoreboard"
+    },
+    {
+     "data": {
+      "away_abbr": "VAN",
+      "away_alt_color": "#008752",
+      "away_color": "#003E7E",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/van.png",
+      "away_score": "0",
+      "competition_stage": 0,
+      "estimated_duration": 180,
+      "game_phase": "scheduled",
+      "home_abbr": "SJ",
+      "home_alt_color": "#070707",
+      "home_color": "#00788A",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/scoreboard/sj.png",
+      "home_score": "0",
+      "id": "401892610",
+      "situation": {
+       "emptyNet": false,
+       "emptyNetSide": "",
+       "manpower": {
+        "awaySkaters": null,
+        "homeSkaters": null,
+        "label": "",
+        "penalties": [],
+        "penaltyNumbers": [],
+        "phase": "inactive",
+        "powerPlayLabel": "",
+        "powerPlayTimeRemaining": "",
+        "scrollLabel": "",
+        "state": "inactive"
+       },
+       "powerPlay": false,
+       "powerPlayTeam": "",
+       "shootout_state": "none",
+       "shootout_winner": ""
+      },
+      "sport": "nhl",
+      "startTimeUTC": "2026-10-30T02:00Z",
+      "state": "pre",
+      "status": "10:00 PM",
+      "type": "scoreboard"
+     },
+     "family": "sports",
+     "id": "401892610",
+     "is_shown": true,
+     "kind": "scoreboard"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "sports",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "sports",
+   "my_teams": [
+    "nfl:nyg",
+    "nba:nyk",
+    "nhl:nyr"
+   ],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "sports0001"
+  }
+ },
+ "weather001:device": {
+  "content": {
+   "weather": [
+    {
+     "data": {
+      "aqi": 69,
+      "away_abbr": "New York",
+      "city": "New York",
+      "cloud_cover": 0,
+      "condition": "sun",
+      "day_night": "day",
+      "feels": 58,
+      "forecast": [
+       {
+        "day": "TODAY",
+        "high": 68,
+        "icon": "sun",
+        "low": 58,
+        "pop": 1
+       },
+       {
+        "day": "FRI",
+        "high": 69,
+        "icon": "sun",
+        "low": 50,
+        "pop": 2
+       },
+       {
+        "day": "SAT",
+        "high": 61,
+        "icon": "sun",
+        "low": 49,
+        "pop": 0
+       },
+       {
+        "day": "SUN",
+        "high": 63,
+        "icon": "sun",
+        "low": 51,
+        "pop": 0
+       },
+       {
+        "day": "MON",
+        "high": 68,
+        "icon": "sun",
+        "low": 53,
+        "pop": 6
+       }
+      ],
+      "home_abbr": "62",
+      "humidity": 59,
+      "icon": "sun",
+      "is_day": 1,
+      "situation": {
+       "cloud_cover": 0,
+       "day_night": "day",
+       "forecast": [
+        {
+         "day": "TODAY",
+         "high": 68,
+         "icon": "sun",
+         "low": 58,
+         "pop": 1
+        },
+        {
+         "day": "FRI",
+         "high": 69,
+         "icon": "sun",
+         "low": 50,
+         "pop": 2
+        },
+        {
+         "day": "SAT",
+         "high": 61,
+         "icon": "sun",
+         "low": 49,
+         "pop": 0
+        },
+        {
+         "day": "SUN",
+         "high": 63,
+         "icon": "sun",
+         "low": 51,
+         "pop": 0
+        },
+        {
+         "day": "MON",
+         "high": 68,
+         "icon": "sun",
+         "low": 53,
+         "pop": 6
+        }
+       ],
+       "icon": "sun",
+       "is_day": 1,
+       "obs_time": "2026-10-29T11:15",
+       "stats": {
+        "aqi": "69",
+        "feels": "58",
+        "humidity": "59",
+        "uv": "3",
+        "wind": "8"
+       },
+       "sunrise": null,
+       "sunset": null
+      },
+      "sport": "weather",
+      "status": "SUN",
+      "sunrise": null,
+      "sunset": null,
+      "temp": 62,
+      "temperature": 62,
+      "type": "weather",
+      "weather_code": null,
+      "wind": 8
+     },
+     "family": "weather",
+     "id": "weather_main",
+     "is_shown": true,
+     "kind": "weather"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "weather",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "weather",
+   "my_teams": [],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "weather001"
+  }
+ },
+ "weather001:full": {
+  "content": {
+   "weather": [
+    {
+     "data": {
+      "aqi": 69,
+      "away_abbr": "New York",
+      "city": "New York",
+      "cloud_cover": 0,
+      "condition": "sun",
+      "day_night": "day",
+      "feels": 58,
+      "forecast": [
+       {
+        "day": "TODAY",
+        "high": 68,
+        "icon": "sun",
+        "low": 58,
+        "pop": 1
+       },
+       {
+        "day": "FRI",
+        "high": 69,
+        "icon": "sun",
+        "low": 50,
+        "pop": 2
+       },
+       {
+        "day": "SAT",
+        "high": 61,
+        "icon": "sun",
+        "low": 49,
+        "pop": 0
+       },
+       {
+        "day": "SUN",
+        "high": 63,
+        "icon": "sun",
+        "low": 51,
+        "pop": 0
+       },
+       {
+        "day": "MON",
+        "high": 68,
+        "icon": "sun",
+        "low": 53,
+        "pop": 6
+       }
+      ],
+      "home_abbr": "62",
+      "humidity": 59,
+      "icon": "sun",
+      "is_day": 1,
+      "situation": {
+       "cloud_cover": 0,
+       "day_night": "day",
+       "forecast": [
+        {
+         "day": "TODAY",
+         "high": 68,
+         "icon": "sun",
+         "low": 58,
+         "pop": 1
+        },
+        {
+         "day": "FRI",
+         "high": 69,
+         "icon": "sun",
+         "low": 50,
+         "pop": 2
+        },
+        {
+         "day": "SAT",
+         "high": 61,
+         "icon": "sun",
+         "low": 49,
+         "pop": 0
+        },
+        {
+         "day": "SUN",
+         "high": 63,
+         "icon": "sun",
+         "low": 51,
+         "pop": 0
+        },
+        {
+         "day": "MON",
+         "high": 68,
+         "icon": "sun",
+         "low": 53,
+         "pop": 6
+        }
+       ],
+       "icon": "sun",
+       "is_day": 1,
+       "obs_time": "2026-10-29T11:15",
+       "stats": {
+        "aqi": "69",
+        "feels": "58",
+        "humidity": "59",
+        "uv": "3",
+        "wind": "8"
+       },
+       "sunrise": null,
+       "sunset": null
+      },
+      "sport": "weather",
+      "status": "SUN",
+      "sunrise": null,
+      "sunset": null,
+      "temp": 62,
+      "temperature": 62,
+      "type": "weather",
+      "weather_code": null,
+      "wind": 8
+     },
+     "family": "weather",
+     "id": "weather_main",
+     "is_shown": true,
+     "kind": "weather"
+    }
+   ]
+  },
+  "events": {
+   "alerts": [],
+   "news": []
+  },
+  "health": {
+   "error": null,
+   "healthy": true,
+   "provider": "scheduler"
+  },
+  "meta": {
+   "live_delay": {
+    "enabled": false,
+    "seconds": 0
+   },
+   "pairing": {
+    "code": null,
+    "paired": true
+   },
+   "profile": {
+    "capabilities": {
+     "asset_cache": true,
+     "color_depth": 24,
+     "modes": [
+      "sports",
+      "stock",
+      "weather",
+      "music",
+      "flights",
+      "airports",
+      "clock"
+     ],
+     "ota": true
+    },
+    "display": {
+     "height": 32,
+     "orientation": "landscape",
+     "panel_count": 6,
+     "width": 384
+    },
+    "firmware": "unknown",
+    "hardware": "pi-zero-2w",
+    "product_family": "full"
+   },
+   "schedule": {
+    "active": false,
+    "condition_id": null,
+    "day_of_week": 3,
+    "has_enabled_rules": false,
+    "live_games": 0,
+    "local_day": "thursday",
+    "local_time": "19:06",
+    "mode": "weather",
+    "override": false,
+    "override_expires_at": null,
+    "rule_id": null,
+    "scheduled_mode": null,
+    "scheduled_sports_filter": null,
+    "source": "base",
+    "sports_filter": "all",
+    "sports_presentation": "rotation",
+    "timezone": "UTC"
+   },
+   "stale": false
+  },
+  "settings": {
+   "active_conferences": {},
+   "active_sports": {},
+   "airport_code_iata": "EWR",
+   "airport_code_icao": "KEWR",
+   "airport_name": "Newark Liberty International",
+   "brightness": 100.0,
+   "custom_stock_symbols": [],
+   "inverted": false,
+   "live_delay_mode": false,
+   "live_delay_seconds": 45.0,
+   "mode": "weather",
+   "my_teams": [],
+   "pinned_content_id": "",
+   "score_alerts": true,
+   "scroll_seamless": true,
+   "scroll_speed": 0.03,
+   "sports_filter": "all",
+   "sports_presentation": "rotation",
+   "timezone": "",
+   "track_flight_id": "",
+   "track_guest_name": "",
+   "weather_city": "New York",
+   "weather_lat": 40.7128,
+   "weather_lon": -74.006
+  },
+  "snapshot": {
+   "stale": false,
+   "ticker_id": "weather001"
+  }
+ }
+}

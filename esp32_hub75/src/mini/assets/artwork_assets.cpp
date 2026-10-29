@@ -72,7 +72,7 @@ void ArtworkAssets::loadPending() {
   if (!state_->window.next(millis(), reference)) { xSemaphoreGive(state_->mutex); return; }
   xSemaphoreGive(state_->mutex);
   AssetTransfer transfer;
-  const bool received = transport_.fetchAsset(String(backend_) + "/api/v2/assets/mini-artwork/" + reference.id + ".mta",
+  const bool received = transport_.fetchAsset(String(backend_) + "/assets/artwork/" + reference.id + ".mta",
       state_->transfer, mini_artwork::Bytes, transfer);
   const bool valid = received && mini_artwork::validate(state_->transfer, mini_artwork::Bytes, reference, hashArtwork);
   xSemaphoreTake(state_->mutex, portMAX_DELAY);

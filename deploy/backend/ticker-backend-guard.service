@@ -1,5 +1,5 @@
 [Unit]
-Description=Check backend components and restore healthy releases
+Description=Check the ticker core and restore a healthy release
 After=network-online.target
 
 [Service]

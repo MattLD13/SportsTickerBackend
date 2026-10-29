@@ -5,7 +5,6 @@ import pytest
 
 from sports_ticker.application.provider_demand import ProviderDemand
 from sports_ticker.application.schedule import ScheduleService
-from sports_ticker.application.scheduler import RefreshScheduler
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import TickerRepository
@@ -49,29 +48,6 @@ def test_app_mode_override_keeps_selected_provider_demand_without_device_presenc
         assert active[other_provider] == frozenset()
 
 
-def test_paused_refreshes_keep_data_and_resume_before_the_next_interval():
-    now = datetime(2026, 5, 4, 16, tzinfo=timezone.utc)
-    enabled = [True]
-    calls, published = [], []
-    scheduler = RefreshScheduler(lambda ticker, settings, data: published.append(dict(data)),
-                                 monotonic=lambda: 0, wall_clock=lambda: now)
-    scheduler.set_provider_demand(lambda providers, tickers, now: {
-        name: frozenset(tickers) if enabled[0] else frozenset() for name in providers
-    })
-    scheduler.register_provider("flights", 30, lambda settings: calls.append(1) or {"flight": "last-good"})
-    scheduler.register_ticker("mini", lambda ticker: {})
-    scheduler.run_due(0)
-    enabled[0] = False
-    scheduler.run_due(30)
-    assert len(calls) == 1
-    assert published[-1]["flights"] == {"flight": "last-good"}
-    assert scheduler.get_health("flights").paused_refreshes == 1
-    enabled[0] = True
-    scheduler.run_due(31)
-    assert len(calls) == 2
-    assert scheduler.get_health("flights").refresh_calls == 2
-
-
 def test_demand_resolves_once_per_ticker_and_reads_fresh_state_each_pass(tmp_path, monkeypatch):
     now = datetime(2026, 5, 5, 12, tzinfo=timezone.utc)
     settings = DisplaySettings(mode="stock")
@@ -96,22 +72,6 @@ def test_demand_resolves_once_per_ticker_and_reads_fresh_state_each_pass(tmp_pat
         assert calls == ["six", "six"]
         assert after["stock"] == frozenset()
         assert after["flights"] == frozenset({"six"})
-
-
-def test_scheduler_selects_demand_once_for_the_complete_provider_set():
-    selections = []
-    scheduler = RefreshScheduler(lambda *args: None)
-    scheduler.register_ticker("six", lambda identifier: DisplaySettings())
-    for name in ("golf", "stock", "flights"):
-        scheduler.register_provider(name, 30, lambda settings: {})
-
-    def demand(providers, tickers, now):
-        selections.append((providers, tuple(tickers)))
-        return {name: frozenset(tickers) for name in providers}
-
-    scheduler.set_provider_demand(demand)
-    scheduler.run_due(0)
-    assert selections == [(("golf", "stock", "flights"), ("six",))]
 
 
 @pytest.mark.parametrize("timestamp,opened", [

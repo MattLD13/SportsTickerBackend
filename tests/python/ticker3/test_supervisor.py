@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from backend_ops.worker_contract import decode_result, encode
+from ticker3.contract.results import decode_result, encode
 from sports_ticker.domain import DisplaySettings
 from ticker3.core.supervisor import Supervisor, WorkerSpec
 

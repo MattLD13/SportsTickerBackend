@@ -8,9 +8,8 @@
 | Shared sports display facts | `providers/sports_display.py` |
 | Per-ticker refresh and snapshots | `application/` |
 | Pairing, device records, and durable events | `fleet/` |
-| Public V2 data | `projections/data_api.py` |
+| Public display data | `projections/data_api.py` |
 | Compact Mini data | `projections/device_data.py`, `projections/mini_fields.py` |
-| V2 validation and routes | `api/routes.py` |
 | Encrypted Spotify connections and OAuth state | `integrations/spotify.py` |
 
 ## Sports and events
@@ -25,5 +24,6 @@ Use the provider contract, domain model, and projection as the explicit cross-de
 ## Validation
 
 Run the focused provider and contract checks from the task packet.
-After a V2 behavior change, run `python -m pytest -q`.
+After a display data change, run `python -m pytest -q`.
+The routes, the engine, and the workers live in `ticker3/`. Read `ticker3/AGENTS.md` before you change them.
 If a change affects Pi display output, render a real `384x32` frame before committing.

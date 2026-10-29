@@ -52,6 +52,7 @@
         "sports_ticker/__init__.py",
         "sports_ticker/leagues.py",
         "sports_ticker/markets.py",
+        "ticker3/__init__.py",
         "sports_ticker/providers/*.py",
         "ticker_core/protocol/*.py",
         "ticker_core/rendering/*",
@@ -65,13 +66,14 @@
       "checks": []
     },
     "server-core": {
-      "owner": "V2 models, projection, API, persistence, and runtime",
+      "owner": "Ticker 3 server: models, projections, API, engine, workers, and persistence",
       "owned": [
         "sports_ticker/domain/*",
         "sports_ticker/projections/*",
-        "sports_ticker/api/*",
         "sports_ticker/application/*",
         "sports_ticker/fleet/*",
+        "ticker3/*",
+        "docs/api.md",
         "docs/contracts/*",
         "ticker_core/protocol/*"
       ],
@@ -83,6 +85,8 @@
         "sports_ticker/projections/data_api.py",
         "sports_ticker/projections/device_data.py",
         "sports_ticker/projections/mini_fields.py",
+        "ticker3/api/__init__.py",
+        "docs/api.md",
         "docs/contracts/overview.md"
       ],
       "build": [
@@ -91,7 +95,8 @@
         "tools/mini/generate_mini_fields.py",
         "esp32_hub75/src/mini/protocol/fields_generated.h",
         "sports_ticker/application/*.py",
-        "sports_ticker/fleet/*.py"
+        "sports_ticker/fleet/*.py",
+        "ticker3/*"
       ],
       "checks": [
         "mini-fields"
