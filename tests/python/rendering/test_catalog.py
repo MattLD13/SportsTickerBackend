@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 from PIL import Image
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.ui import (
     ContentRendererCatalog,
     ContentScene,

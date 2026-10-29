@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from PIL import Image
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
 from ticker_core.ui import ContentScene, load_default_font_set
 from ticker_core.ui.catalog import content_family

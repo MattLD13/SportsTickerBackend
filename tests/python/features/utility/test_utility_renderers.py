@@ -3,10 +3,10 @@
 from datetime import datetime
 
 
-from ticker_core.context import RenderContext
-from ticker_core.features.flight import FlightRenderer
+from ticker_core.ui.frame import RenderContext
+from ticker_core.ui.cards.flight import FlightCard
 from ticker_core.features.golf import GolfAnimationState, GolfRenderer
-from ticker_core.features.music import MusicAnimationState, MusicRenderer
+from ticker_core.ui.cards.music import MusicCard, MusicState
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.features.weather import WeatherRenderer
 from ticker_core.ui import ContentScene, load_default_font_set
@@ -47,11 +47,11 @@ def test_media_and_flight_keep_explicit_animation_state() -> None:
     fonts = load_default_font_set()
     first = RenderContext(datetime(2026, 8, 11, 14, 30, 15))
     second = RenderContext(datetime(2026, 8, 11, 14, 30, 16))
-    music = MusicRenderer(fonts)
-    image, state = music.render_with_state(first, {"home_abbr": "Artist", "away_abbr": "Song", "situation": {"is_playing": True, "duration": 240, "fetch_ts": first.now.timestamp()}}, MusicAnimationState())
-    later, next_state = music.render_with_state(second, {"home_abbr": "Artist", "away_abbr": "Song", "situation": {"is_playing": True, "duration": 240, "fetch_ts": first.now.timestamp()}}, state)
+    music = MusicCard(fonts)
+    image, state = music.frame(first.now, {"home_abbr": "Artist", "away_abbr": "Song", "situation": {"is_playing": True, "duration": 240, "fetch_ts": first.now.timestamp()}}, MusicState())
+    later, next_state = music.frame(second.now, {"home_abbr": "Artist", "away_abbr": "Song", "situation": {"is_playing": True, "duration": 240, "fetch_ts": first.now.timestamp()}}, state)
     golf, golf_state = GolfRenderer(fonts).full(first, {"golf": {"players": [{"name": "A Player", "total": -1, "holes": [4] * 18, "thru": 18}]}}, GolfAnimationState())
-    flight = FlightRenderer(fonts).visitor({"type": "flight_visitor", "id": "UA12", "guest_name": "Guest", "origin_city": "BOS", "dest_city": "ORD", "is_live": True, "progress": 50})
+    flight = FlightCard(fonts).visitor({"type": "flight_visitor", "id": "UA12", "guest_name": "Guest", "origin_city": "BOS", "dest_city": "ORD", "is_live": True, "progress": 50})
     assert image.height == later.height == golf.height == flight.height == 32
     assert next_state.rotation != state.rotation
     assert golf_state.pair == 0

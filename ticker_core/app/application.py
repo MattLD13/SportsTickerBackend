@@ -13,7 +13,7 @@ from time import monotonic, time as wall_time
 import os
 from typing import Protocol
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.drivers import FrameSink
 from ticker_core.platform import (
     AssetCoordinator,

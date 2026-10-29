@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from PIL import __version__ as pillow_version, features
 from ticker_core.assets import AssetPlanner
 from ticker_core.bootstrap import create_default_content_catalog
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.platform import AssetCoordinator
 from ticker_core.ui import ContentScene
 from tools.rendering.render_frame import content_items, normalize_snapshot, panel_image

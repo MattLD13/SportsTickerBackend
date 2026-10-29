@@ -7,7 +7,7 @@ from typing import Protocol
 
 from PIL import Image, ImageDraw
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.platform.wifi import WiFiSetupState
 from ticker_core.ui import ContentScene, FontSet, RenderedContent
 

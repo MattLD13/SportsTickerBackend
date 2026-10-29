@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from PIL import Image, ImageChops, ImageDraw
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.features.weather import WeatherRenderer
 from ticker_core.features.weather.drawing import ANIMATION_PERIOD, PreparedWeatherRenderer
 from ticker_core.ui import ContentScene, load_default_font_set

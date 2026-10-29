@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from PIL import __version__ as pillow_version
 from ticker_core.bootstrap import create_default_frame_builder
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.drivers.memory import MemoryFrameSink
 from ticker_core.platform.assets import AssetCoordinator
 from ticker_core.ui.text import load_default_font_set

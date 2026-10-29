@@ -4,9 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from datetime import datetime
+from typing import Any, ClassVar, Protocol
 
 from PIL import Image
+
+
+@dataclass(frozen=True, slots=True)
+class RenderContext:
+    """Give every renderer the same injected time."""
+
+    now: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,3 +67,17 @@ def plain(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [plain(item) for item in value]
     return value
+
+
+class Logos(Protocol):
+    """Return a prepared logo from memory. A logo read does no I/O."""
+
+    def get(self, value: object, size: tuple[int, int]) -> Image.Image | None:
+        """Return the logo of one URL at one size, or None."""
+
+
+class NoLogos:
+    """Return no logo, for a renderer that has no prepared assets."""
+
+    def get(self, value: object, size: tuple[int, int]) -> Image.Image | None:
+        return None

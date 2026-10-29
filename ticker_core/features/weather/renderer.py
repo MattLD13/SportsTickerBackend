@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.ui import ContentScene, FontSet, RenderedContent
 from .drawing import PreparedWeatherRenderer
 

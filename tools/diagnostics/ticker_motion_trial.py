@@ -85,7 +85,7 @@ _repo_root()
 
 from ticker_core.assets import AssetPlanner  # noqa: E402
 from ticker_core.bootstrap import create_default_content_catalog  # noqa: E402
-from ticker_core.context import RenderContext  # noqa: E402
+from ticker_core.ui.frame import RenderContext  # noqa: E402
 from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink  # noqa: E402
 from ticker_core.platform import AssetCoordinator  # noqa: E402
 from ticker_core.protocol import TickerResponse  # noqa: E402

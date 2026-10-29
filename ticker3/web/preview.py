@@ -15,7 +15,7 @@ from threading import RLock
 from PIL import Image
 
 from ticker_core.bootstrap import create_default_content_catalog, create_default_frame_builder
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.platform.wifi import HotspotDetails, WiFiSetupState
 from ticker_core.ui import ContentScene
 from ticker_core.ui.strip import compose_pane_strip
@@ -92,7 +92,7 @@ class PreviewRenderer:
     def animation(self, items: list[dict], mode: str, start: datetime) -> bytes:
         """Render one bounded three-second atlas through production drawing code."""
         from ticker_core.bootstrap import CachedLogoView
-        from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
+        from ticker_core.ui.cards.music import MusicCard, MusicState
         from ticker_core.features.weather import WeatherRenderer
         from ticker_core.ui import load_default_font_set
 
@@ -105,12 +105,12 @@ class PreviewRenderer:
             game = deepcopy(items[0]) if items else {}
             fonts = load_default_font_set()
             if mode == "music" and items:
-                renderer = MusicRenderer(fonts, CachedLogoView(self._assets))
+                renderer = MusicCard(fonts, CachedLogoView(self._assets))
                 warm = start - timedelta(seconds=2)
                 age = max(0.0, float(game.get("progress", 0)) + warm.timestamp() - float(game.get("fetch_ts", warm.timestamp())))
-                state = MusicAnimationState(rotation=(-100 * age) % 360, scroll=15 * age, previous_time=warm.timestamp())
+                state = MusicState(rotation=(-100 * age) % 360, scroll=15 * age, previous_time=warm.timestamp())
                 for index in range(60):
-                    _, state = renderer.render_with_state(RenderContext(warm + timedelta(seconds=index / 30)), game, state)
+                    _, state = renderer.frame(warm + timedelta(seconds=index / 30), game, state)
             elif items:
                 renderer = WeatherRenderer(fonts)
             else:
@@ -118,7 +118,7 @@ class PreviewRenderer:
             for index in range(90):
                 context = RenderContext(start + timedelta(seconds=index / 30))
                 if mode == "music" and items:
-                    frame, state = renderer.render_with_state(context, game, state)
+                    frame, state = renderer.frame(context.now, game, state)
                 elif items:
                     frame = renderer.detailed(context, game)
                 atlas.paste(frame.convert("RGB"), (0, index * 32))

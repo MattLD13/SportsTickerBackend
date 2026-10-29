@@ -141,7 +141,7 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
 @pytest.mark.parametrize("mode", ["music", "weather"])
 def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
     from ticker3.web import routes
-    from ticker_core.context import RenderContext
+    from ticker_core.ui.frame import RenderContext
     from ticker_core.features.weather import WeatherRenderer
     from ticker_core.ui import load_default_font_set
 
@@ -182,8 +182,8 @@ def test_missing_public_feed_does_not_show_fake_flight_or_apple_quote(demo_app):
 def test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor(demo_app):
     from ticker3.web import routes
     from ticker_core.bootstrap import CachedLogoView
-    from ticker_core.context import RenderContext
-    from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
+    from ticker_core.ui.frame import RenderContext
+    from ticker_core.ui.cards.music import MusicCard, MusicState
     from ticker_core.ui import load_default_font_set
 
     start = datetime.fromtimestamp(1792168467, ZoneInfo("America/New_York"))
@@ -193,12 +193,12 @@ def test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor(
         assets = routes._preview_assets()
         first = Image.open(BytesIO(assets.renderer.animation([game], "music", start))).convert("RGB")
         next_chunk = Image.open(BytesIO(assets.renderer.animation([game], "music", start + timedelta(seconds=3)))).convert("RGB")
-        renderer = MusicRenderer(load_default_font_set(), CachedLogoView(assets))
+        renderer = MusicCard(load_default_font_set(), CachedLogoView(assets))
         warm = start - timedelta(seconds=2)
         age = game["progress"] + warm.timestamp() - game["fetch_ts"]
-        state = MusicAnimationState(rotation=(-100 * age) % 360, scroll=15 * age, previous_time=warm.timestamp())
+        state = MusicState(rotation=(-100 * age) % 360, scroll=15 * age, previous_time=warm.timestamp())
         for index in range(151):
-            frame, state = renderer.render_with_state(RenderContext(warm + timedelta(seconds=index / 30)), game, state)
+            frame, state = renderer.frame(warm + timedelta(seconds=index / 30), game, state)
             if index == 149:
                 assert first.crop((0, 89 * 32, 384, 90 * 32)).tobytes() == frame.convert("RGB").tobytes()
             elif index == 150:

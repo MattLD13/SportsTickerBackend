@@ -10,7 +10,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.ui import ContentScene, FontSet, RenderedContent
 from ticker_core.ui.layers import ImageTemplates
 from ticker_core.ui.text import TINY as TINY_FONT_MAP

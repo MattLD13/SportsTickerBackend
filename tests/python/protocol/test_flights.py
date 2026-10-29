@@ -7,8 +7,8 @@ from sports_ticker.providers.flights import FlightsProvider
 from sports_ticker.providers.flight_source import FlightRadarSource
 from sports_ticker.providers.contracts import ProviderHealth
 from sports_ticker.projections import project_data_v2
-from ticker_core.context import RenderContext
-from ticker_core.features.flight import FlightRenderer
+from ticker_core.ui.frame import RenderContext
+from ticker_core.ui.cards.flight import FlightCard
 from ticker_core.ui import ContentScene, load_default_font_set
 
 
@@ -255,7 +255,7 @@ def test_flight_provider_projection_and_render_keep_contract_shape() -> None:
     airport_envelope = projected["content"]["airports"][0]
     visitor = {**visitor_envelope["data"], "type": visitor_envelope["kind"]}
     airport = {**airport_envelope["data"], "type": airport_envelope["kind"]}
-    renderer = FlightRenderer(load_default_font_set())
+    renderer = FlightCard(load_default_font_set())
     context = RenderContext(datetime.fromtimestamp(NOW, tz=timezone.utc))
     visitor_frame = renderer.render(context, ContentScene(visitor, "flights")).image
     airport_frame = renderer.render(context, ContentScene(airport, "airports")).image

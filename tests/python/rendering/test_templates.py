@@ -5,17 +5,17 @@ from datetime import datetime, timezone
 import pytest
 from PIL import Image
 
-from ticker_core.context import RenderContext
-from ticker_core.features.clock.renderer import ClockRenderer
-from ticker_core.features.flight.renderer import FlightRenderer
+from ticker_core.ui.frame import RenderContext
+from ticker_core.ui.cards.flight import FlightCard
 from ticker_core.features.golf.renderer import GolfRenderer
-from ticker_core.features.music.renderer import MusicRenderer
+from ticker_core.ui.cards.music import MusicCard
 from ticker_core.features.racing.renderer import RacingRenderer
 from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
 from ticker_core.features.sports.pinned import PreparedSportsFullRenderer
 from ticker_core.features.utility.renderer import UtilityRenderer
 from ticker_core.features.weather.renderer import WeatherRenderer
 from ticker_core.ui import load_default_font_set
+from ticker_core.ui.cards.clock import ClockCard
 from ticker_core.ui.layers import ImageTemplates
 
 pytestmark = pytest.mark.critical
@@ -139,12 +139,12 @@ def test_mode_templates_match_fresh_layers_when_values_change():
     golf_ref._scroll_templates = NoTemplates()
     racing, racing_ref = RacingRenderer(fonts,logos), RacingRenderer(fonts,logos)
     racing_ref._scroll_templates = NoTemplates()
-    flight, flight_ref = FlightRenderer(fonts,logos), FlightRenderer(fonts,logos)
-    flight_ref._airport_templates = NoTemplates()
+    flight, flight_ref = FlightCard(fonts,logos), FlightCard(fonts,logos)
+    flight_ref._boards = NoTemplates()
     weather, weather_ref = WeatherRenderer(fonts), WeatherRenderer(fonts)
-    clock, clock_ref = ClockRenderer(fonts.tiny,fonts.clock), ClockRenderer(fonts.tiny,fonts.clock)
-    clock_ref._date_templates = NoTemplates()
-    music, music_ref = MusicRenderer(fonts,logos), MusicRenderer(fonts,logos)
+    clock, clock_ref = ClockCard(fonts), ClockCard(fonts)
+    clock_ref._dates = NoTemplates()
+    music, music_ref = MusicCard(fonts,logos), MusicCard(fonts,logos)
     for index in range(8):
         if index == 4:
             logos.color = (0,0,255,255)
@@ -167,10 +167,10 @@ def test_mode_templates_match_fresh_layers_when_values_change():
         pairs = [(utility.stock(stock),utility_ref.stock(stock)), (golf.scroll(golf_game),golf_ref.scroll(golf_game)),
                  (racing._render_scroll(race),racing_ref._render_scroll(race)),
                  (flight.visitor(visitor),flight_ref.visitor(visitor)),
-                 (flight.airport(airport,[{'flight_number':str(index)}],[]),flight_ref.airport(airport,[{'flight_number':str(index)}],[])),
+                 (flight.board(airport,[{'flight_number':str(index)}],[]),flight_ref.board(airport,[{'flight_number':str(index)}],[])),
                  (weather.detailed(context,weather_item),weather_ref.detailed(context,weather_item)),
-                 (clock.render_at(now),clock_ref.render_at(now)),
-                 (music._cover_artwork(artwork),music_ref._cover_artwork(artwork))]
+                 (clock.frame(now),clock_ref.frame(now)),
+                 (music._label(artwork),music_ref._label(artwork))]
         for actual, expected in pairs:
             assert actual.size == expected.size and actual.tobytes() == expected.tobytes()
     assert racing._scroll_templates.hits > 0

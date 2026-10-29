@@ -5,18 +5,17 @@ from PIL import Image
 from .assets import LogoAssetView
 from .app.frame_builder import FrameBuilder
 from .app.viewport import CardViewport
+from .ui.cards.clock import ClockCard
 from .features.alerts import NewsBannerRenderer, ScoreAlertRenderer
-from .features.clock import ClockRenderer
-from .features.flight import FlightRenderer
+from .ui.cards.flight import FlightCard
 from .features.golf import GolfRenderer
-from .features.music import MusicRenderer
+from .ui.cards.music import MusicCard
 from .features.racing import RacingRenderer
 from .features.sports import SportsRenderer
 from .features.utility import UtilityRenderer
 from .features.weather import WeatherRenderer
 from .ui import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
 from .ui.text import load_display_font, load_monospace_font
-from .registry import SceneRegistry
 
 
 class CachedLogoView:
@@ -32,20 +31,6 @@ class CachedLogoView:
         return image(url, "logo", size) if url and callable(image) else None
 
 
-class _ClockContentRenderer:
-    """Adapt the standalone clock renderer to the content catalog."""
-
-    def __init__(self, renderer: ClockRenderer) -> None:
-        self._renderer = renderer
-
-    def render(self, context, scene: ContentScene) -> RenderedContent:
-        """Render the current time as a static full-panel scene."""
-        del scene
-        from .features.clock import ClockScene
-
-        return RenderedContent(self._renderer.render(context, ClockScene()))
-
-
 def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     """Create the renderer catalog for every enabled ticker content family."""
     fonts = load_default_font_set()
@@ -54,14 +39,14 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     catalog = ContentRendererCatalog()
     sports = SportsRenderer(fonts, sports_logos)
     utility = UtilityRenderer(fonts, logos)
-    catalog.register("clock", _ClockContentRenderer(ClockRenderer(fonts.tiny, fonts.clock)))
+    catalog.register("clock", ClockCard(fonts))
     catalog.register("scoreboard", sports)
     catalog.register("sports", sports)
     catalog.register("racing", RacingRenderer(fonts, assets))
     catalog.register("golf", GolfRenderer(fonts))
     catalog.register("weather", WeatherRenderer(fonts))
-    catalog.register("music", MusicRenderer(fonts, logos))
-    catalog.register("flight", FlightRenderer(fonts, logos))
+    catalog.register("music", MusicCard(fonts, logos))
+    catalog.register("flight", FlightCard(fonts, logos))
     catalog.register("stock", utility)
     catalog.register("leaderboard", utility)
     catalog.register("empty", utility)
@@ -95,16 +80,3 @@ def create_default_frame_builder(
         viewport,
         geometry=geometry,
     ), viewport
-
-
-def create_default_scene_registry() -> SceneRegistry[Image.Image]:
-    """Create the registry for all enabled rewrite scenes."""
-    registry = SceneRegistry()
-    registry.register(
-        "clock",
-        ClockRenderer(
-            tiny_font=load_monospace_font(9),
-            clock_font=load_display_font(28, bold=True),
-        ),
-    )
-    return registry

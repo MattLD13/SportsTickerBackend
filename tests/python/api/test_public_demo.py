@@ -173,7 +173,7 @@ def test_public_scroll_matches_real_card_viewport(tmp_path) -> None:
     from ticker3.web import routes
     from ticker3.web.preview import case_items, layout_case, layout_library
     from ticker_core.bootstrap import create_default_frame_builder
-    from ticker_core.context import RenderContext
+    from ticker_core.ui.frame import RenderContext
     from ticker_core.runtime import Content
 
     app = create_offline_application(tmp_path / "ticker.sqlite3", [])

@@ -7,13 +7,13 @@ from typing import Any, Protocol
 
 from PIL import Image
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
-from ticker_core.features.status import ConnectionLostOverlay
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.ui import ContentRendererCatalog, ContentScene
 from ticker_core.ui import FrameGeometry
 from ticker_core.ui.frame import plain_mapping as _plain_mapping
+from ticker_core.ui.screens import connection_lost
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
@@ -38,7 +38,6 @@ class FrameBuilder:
         score_alerts: ScoreAlertRenderer,
         news_banners: NewsBannerRenderer,
         viewport: ViewportSource,
-        connection_status: ConnectionLostOverlay | None = None,
         geometry: FrameGeometry | None = None,
     ) -> None:
         self._catalog = catalog
@@ -46,7 +45,6 @@ class FrameBuilder:
         self._score_alerts = score_alerts
         self._news_banners = news_banners
         self._viewport = viewport
-        self._connection_status = connection_status or ConnectionLostOverlay()
         self._geometry = geometry or FrameGeometry()
         self._last_base: Image.Image | None = None
         self._cached_content: Content | None = None
@@ -136,7 +134,7 @@ class FrameBuilder:
             frame = self._news_banners.apply(frame, decision.news, decision.news_elapsed or 0.0)
         frame = self._panel_frame(frame)
         if decision.connection_lost and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.OFFLINE}:
-            frame = self._connection_status.apply(frame)
+            frame = connection_lost(frame)
         if decision.update_failure is not None:
             frame = self._utility.update_overlay(frame, 0.0, failure_status=decision.update_failure["status"])
         return frame

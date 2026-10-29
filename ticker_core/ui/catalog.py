@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import json
 from typing import Any, Protocol
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 
 from .frame import ContentScene, RenderedContent
 

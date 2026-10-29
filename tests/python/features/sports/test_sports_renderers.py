@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from sports_ticker.providers.nhl_live import _game_events
 from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.sports import SportsRenderer
 from ticker_core.features.sports import pinned as sports_full_port

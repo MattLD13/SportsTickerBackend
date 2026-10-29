@@ -233,7 +233,7 @@ def _summarize(samples: list[dict[str, float]], started: float, ended: float) ->
 
 def _device_run(args: argparse.Namespace) -> dict[str, object]:
     from ticker_core.bootstrap import create_default_frame_builder
-    from ticker_core.context import RenderContext
+    from ticker_core.ui.frame import RenderContext
     from ticker_core.drivers import RgbMatrixFrameSink
     from ticker_core.platform import AssetCoordinator
     from ticker_core.ui import FrameGeometry

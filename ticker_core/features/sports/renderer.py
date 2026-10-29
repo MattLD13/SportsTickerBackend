@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from PIL import Image, ImageDraw
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.ui import ContentScene, FontSet, RenderedContent
 from ticker_core.ui.text import draw_hybrid, draw_tiny, plain_text
 

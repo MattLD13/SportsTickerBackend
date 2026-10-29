@@ -1,13 +1,13 @@
-"""Pixel parity tests for the rewritten full-panel clock."""
+"""Pixel parity tests for the full-panel clock card."""
 
 from datetime import datetime
 
 import pytest
 from PIL import Image, ImageDraw
 
-from ticker_core import RenderContext
-from ticker_core.features.clock import ClockRenderer, ClockScene
-from ticker_core.ui.text import load_display_font, load_monospace_font
+from ticker_core.ui.cards.clock import ClockCard
+from ticker_core.ui.frame import ContentScene, RenderContext
+from ticker_core.ui.text import load_default_font_set, load_display_font, load_monospace_font
 
 
 PANEL_WIDTH = 384
@@ -56,7 +56,7 @@ def test_clock_renderer_matches_legacy_pixels(clock_fonts):
         datetime(2026, 12, 31, 23, 59, 59, 999_999),
     ]
     for now in timestamps:
-        actual = ClockRenderer(tiny_font, clock_font).render(RenderContext(now), ClockScene())
+        actual = ClockCard(load_default_font_set()).render(RenderContext(now), ContentScene({"sport": "clock"}, "clock")).image
         expected = legacy_clock_frame(now, tiny_font, clock_font)
 
         assert actual.mode == "RGBA"
@@ -67,15 +67,7 @@ def test_clock_renderer_matches_legacy_pixels(clock_fonts):
 def test_clock_renderer_fills_minute_progress_inclusive(clock_fonts):
     """The progress line retains the legacy inclusive rectangle endpoint."""
     tiny_font, clock_font = clock_fonts
-    image = ClockRenderer(tiny_font, clock_font).render(
-        RenderContext(datetime(2026, 1, 1, 9, 0, 30)), ClockScene()
-    )
+    image = ClockCard(load_default_font_set()).frame(datetime(2026, 1, 1, 9, 0, 30))
 
     assert image.getpixel((192, 31)) == (0, 200, 255, 255)
     assert image.getpixel((193, 31)) == (30, 30, 30, 255)
-
-
-def test_clock_scene_kind_cannot_be_reconfigured():
-    """The registry key remains part of the feature contract."""
-    with pytest.raises(TypeError):
-        ClockScene(kind="other")

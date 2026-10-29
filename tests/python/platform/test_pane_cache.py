@@ -7,7 +7,7 @@ from time import monotonic, sleep
 from PIL import Image
 
 from ticker_core.app.viewport import CardViewport
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.platform.assets import AssetCoordinator
 from ticker_core.platform.panes import PreparedPaneCache, asset_signatures
 from ticker_core.ui import RenderedContent

@@ -110,40 +110,39 @@ def renderers(present: bool) -> dict[str, Any]:
     from ticker_core.assets import LogoAssetView
     from ticker_core.bootstrap import CachedLogoView
     from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
-    from ticker_core.features.clock import ClockRenderer
-    from ticker_core.features.flight import FlightRenderer
+    from ticker_core.ui.cards.flight import FlightCard
     from ticker_core.features.golf import GolfRenderer
-    from ticker_core.features.music import MusicRenderer
+    from ticker_core.ui.cards.music import MusicCard
     from ticker_core.features.racing import RacingRenderer
     from ticker_core.features.sports import SportsRenderer
-    from ticker_core.features.status import ConnectionLostOverlay
     from ticker_core.features.utility import UtilityRenderer
     from ticker_core.features.weather import WeatherRenderer
     from ticker_core.ui import load_default_font_set
+    from ticker_core.ui.cards.clock import ClockCard
+    from ticker_core.ui.screens import connection_lost
 
     assets = StandInAssets(present)
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     return {
         "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingRenderer(fonts, assets),
-        "golf": GolfRenderer(fonts), "weather": WeatherRenderer(fonts), "music": MusicRenderer(fonts, logos),
-        "flight": FlightRenderer(fonts, logos), "utility": UtilityRenderer(fonts, logos),
-        "clock": ClockRenderer(fonts.tiny, fonts.clock), "alert": ScoreAlertRenderer(fonts, logos),
-        "news": NewsBannerRenderer(fonts), "connection": ConnectionLostOverlay(),
+        "golf": GolfRenderer(fonts), "weather": WeatherRenderer(fonts), "music": MusicCard(fonts, logos),
+        "flight": FlightCard(fonts, logos), "utility": UtilityRenderer(fonts, logos),
+        "clock": ClockCard(fonts), "alert": ScoreAlertRenderer(fonts, logos),
+        "news": NewsBannerRenderer(fonts), "connection": connection_lost,
     }
 
 
 def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, Any]) -> Image.Image:
     """Run one recorded renderer call and return its image."""
-    from ticker_core.context import RenderContext
-    from ticker_core.features.clock import ClockScene
+    from ticker_core.ui.frame import RenderContext
     from ticker_core.ui import ContentScene
 
     renderer = renderer_set[kind]
     if kind == "weather" and method == "detailed":
         return renderer.detailed(RenderContext(args["now"]), args["item"])
     if method == "render" and kind == "clock":
-        return renderer.render(RenderContext(args["now"]), ClockScene())
+        return renderer.frame(args["now"])
     if method == "render" and "item" in args and kind not in {"news"}:
         rendered = renderer.render(RenderContext(args["now"]), ContentScene(args["item"], args["mode"], args["elapsed"]))
         return rendered.image
@@ -152,7 +151,7 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
     if kind == "news":
         return renderer.render(args["item"]) if method == "render" else renderer.apply(args["frame"], args["item"], args["elapsed"])
     if kind == "connection":
-        return renderer.apply(args["frame"])
+        return renderer(args["frame"])
     context = RenderContext(args["now"]) if "now" in args else None
     if method == "update_overlay":
         extra = {key: value for key, value in args.items() if key not in {"frame", "progress", "version"}}

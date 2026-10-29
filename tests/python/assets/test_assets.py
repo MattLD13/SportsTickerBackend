@@ -367,7 +367,7 @@ def test_planner_reads_team_logos_from_v2_content_envelopes() -> None:
 def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) -> None:
     from datetime import datetime, timezone
     from sports_ticker.providers.racing_live import _f1_car_url
-    from ticker_core.context import RenderContext
+    from ticker_core.ui.frame import RenderContext
     from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
     from ticker_core.protocol import TickerResponse
     from ticker_core.ui import ContentScene, load_default_font_set

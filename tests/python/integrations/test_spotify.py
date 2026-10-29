@@ -23,8 +23,8 @@ from sports_ticker.integrations.spotify import (
 )
 from sports_ticker.integrations import spotify as spotify_module
 from ticker_core.assets.planner import AssetPlanner
-from ticker_core.context import RenderContext
-from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
+from ticker_core.ui.frame import RenderContext
+from ticker_core.ui.cards.music import MusicCard, MusicState
 from ticker_core.ui import load_default_font_set
 
 
@@ -295,7 +295,7 @@ def test_music_renderer_blends_dominant_color_from_previous_song() -> None:
     logos.add("https://img.spotify.com/song1.jpg", (255, 0, 0))    # Red
     logos.add("https://img.spotify.com/song2.jpg", (0, 0, 255))    # Blue
 
-    renderer = MusicRenderer(fonts, logos)
+    renderer = MusicCard(fonts, logos)
     context = RenderContext(datetime(2026, 8, 16, 12, 0, 0))
 
     # Frame 1: Song 2 with last_song Song 1
@@ -309,7 +309,7 @@ def test_music_renderer_blends_dominant_color_from_previous_song() -> None:
         "duration": 200.0,
         "progress": 10.0,
     }
-    image, state = renderer.render_with_state(context, item, MusicAnimationState())
+    image, state = renderer.frame(context.now, item, MusicState())
     assert image.size == (384, 32)
     assert state.artwork is not None
     assert state.previous_artwork is not None

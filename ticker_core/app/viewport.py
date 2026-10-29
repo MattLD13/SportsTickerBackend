@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from PIL import Image, ImageChops
 
-from ticker_core.context import RenderContext
+from ticker_core.ui.frame import RenderContext
 from ticker_core.ui import ContentRendererCatalog, ContentScene
 from ticker_core.ui.catalog import content_family
 from ticker_core.ui.strip import compose_pane_strip
