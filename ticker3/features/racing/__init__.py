@@ -13,9 +13,9 @@ from typing import Any
 from ticker3.sdk.feature import Feature, Poll
 
 SEASON_URL = "https://api.jolpi.ca/ergast/f1/current.json"
-SESSIONS = (("FirstPractice", "PRACTICE 1", 60), ("SecondPractice", "PRACTICE 2", 60), ("ThirdPractice", "PRACTICE 3", 60),
-            ("SprintQualifying", "SPRINT QUALI", 45), ("Sprint", "SPRINT", 45), ("Qualifying", "QUALIFYING", 60),
-            ("Race", "RACE", 120))
+SESSIONS = (("FirstPractice", "PRACTICE 1", "FP1", 60), ("SecondPractice", "PRACTICE 2", "FP2", 60),
+            ("ThirdPractice", "PRACTICE 3", "FP3", 60), ("SprintQualifying", "SPRINT QUALI", "SQ", 45),
+            ("Sprint", "SPRINT", "SPRINT", 45), ("Qualifying", "QUALIFYING", "QUALI", 60), ("Race", "RACE", "RACE", 120))
 
 MANIFEST = {
     "feature": "racing",
@@ -26,21 +26,21 @@ MANIFEST = {
 }
 
 
-def sessions(payload: dict[str, Any]) -> list[tuple[datetime, int, str, dict[str, Any]]]:
-    """Return each session of the season as start, minutes, name, and race."""
+def sessions(payload: dict[str, Any]) -> list[tuple[datetime, int, str, str, dict[str, Any]]]:
+    """Return each session of the season as start, minutes, name, short name, and race."""
     found = []
     for race in payload["MRData"]["RaceTable"]["Races"]:
-        for key, name, minutes in SESSIONS:
+        for key, name, short, minutes in SESSIONS:
             source = race if key == "Race" else race.get(key)
             if source and source.get("date") and source.get("time"):
                 start = datetime.fromisoformat(f"{source['date']}T{source['time'].replace('Z', '+00:00')}")
-                found.append((start, minutes, name, race))
+                found.append((start, minutes, name, short, race))
     return sorted(found, key=lambda item: item[0])
 
 
 def records(payload: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
     """Return the record `session` for the live session, or else for the next one."""
-    for start, minutes, name, race in sessions(payload):
+    for start, minutes, name, short, race in sessions(payload):
         end = start + timedelta(minutes=minutes)
         if end <= now:
             continue
@@ -50,8 +50,9 @@ def records(payload: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
             "event": race["raceName"].replace("Grand Prix", "GP").upper()[:24],
             "circuit": race["Circuit"]["circuitName"][:32],
             "place": f"{location['locality']}, {location['country']}"[:32],
+            "city": location["locality"].upper()[:24],
             "round": f"R{race['round']}",
-            "session": name, "state": state, "starts": int(start.timestamp()),
+            "session": name, "session_short": short, "state": state, "starts": int(start.timestamp()),
             "weather": {"$ref": {"feature": "weather", "record": "now",
                                  "config": {"latitude": float(location["lat"]), "longitude": float(location["long"])}}},
         }}]

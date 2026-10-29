@@ -135,11 +135,17 @@ def _situation(entry: League, competition: dict[str, Any], teams: dict[str, Any]
 
 
 def _color(primary: Any, alternate: Any) -> str:
-    """Return a team color that shows on an LED panel. A near-black color falls back to the alternate color, then white."""
+    """Return a team color that shows on an LED panel.
+
+    A dark color falls back to the alternate color, then to white. Dark means a
+    perceived brightness below 70 of 255.
+    """
     for value in (primary, alternate):
         text = str(value or "").strip().lower().lstrip("#")
-        if re.fullmatch(r"[0-9a-f]{6}", text) and max(int(text[i:i + 2], 16) for i in (0, 2, 4)) >= 64:
-            return f"#{text}"
+        if re.fullmatch(r"[0-9a-f]{6}", text):
+            red, green, blue = (int(text[i:i + 2], 16) for i in (0, 2, 4))
+            if 0.299 * red + 0.587 * green + 0.114 * blue >= 70:
+                return f"#{text}"
     return "#ffffff"
 
 
