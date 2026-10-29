@@ -30,7 +30,7 @@ def test_catalog_covers_each_polling_worker_from_production_constants():
     endpoints = endpoint_catalog(datetime(2026, 10, 29, tzinfo=timezone.utc))
     workers = {endpoint.worker for endpoint in endpoints}
 
-    assert workers == {"espn", "fotmob", "golf", "racing", "news", "weather", "stock", "flights"}
+    assert workers == {"core", "espn", "fotmob", "golf", "racing", "news", "weather", "stock", "flights"}
     scoreboards = [endpoint for endpoint in endpoints if endpoint.part == "Scoreboards"]
     assert len(scoreboards) == len(ESPN_SCOREBOARD_PATHS)
     assert all(endpoint.url.startswith("https://") for endpoint in endpoints)

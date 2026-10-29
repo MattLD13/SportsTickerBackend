@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers import HybridWeatherProvider, WeatherLocationResolver
+from sports_ticker.providers.weather import HybridWeatherProvider
+from sports_ticker.providers.weather_location import WeatherLocationResolver
 from sports_ticker.providers.http import JsonHttpError
 
 

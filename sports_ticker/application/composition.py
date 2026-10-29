@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import DeviceMetadata, TickerProfile, TickerRecord, TickerRepository
-from sports_ticker.providers import ProviderHealth
+from sports_ticker.providers.contracts import ProviderHealth
 from sports_ticker.projections import project_data_v2, select_display_content
 from sports_ticker.projections.device_data import project_device_data, compact_mini_data
 

@@ -12,7 +12,8 @@ from sports_ticker.application import BackendApplication, RefreshScheduler, Refr
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.fleet import TickerRepository
 from sports_ticker.firmware import FirmwareManifest
-from sports_ticker.providers import Provider, WeatherLocationResolver
+from sports_ticker.providers.contracts import Provider
+from sports_ticker.providers.weather_location import WeatherLocationResolver
 from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.assets.mini_artwork import MiniArtworkService
 

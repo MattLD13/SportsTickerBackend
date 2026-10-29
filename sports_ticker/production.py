@@ -15,7 +15,6 @@ from backend_ops.worker_contract import WorkerProvider
 from backend_ops.public_status import summary as deployment_summary
 
 from sports_ticker.api.app import create_app
-from sports_ticker.providers.factory import create_provider
 from sports_ticker.assets.mini_service import MiniSpriteService
 from sports_ticker.assets.mini_artwork import MiniArtworkService
 from sports_ticker.application import BackendApplication, BackendRuntime, RefreshScheduler, RefreshService
@@ -26,7 +25,8 @@ from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService
 from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, FOTMOB_LEAGUES, TEAM_CATALOG_PATHS
-from sports_ticker.providers import EspnTeamCatalog, WeatherLocationResolver
+from sports_ticker.providers.catalog import EspnTeamCatalog
+from sports_ticker.providers.weather_location import WeatherLocationResolver
 
 
 _INTERVALS: Final = {
@@ -56,6 +56,9 @@ def create_production_application(
     catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS)
     weather_resolver = WeatherLocationResolver()
     worker_directory = os.environ.get("TICKER_WORKER_DIRECTORY")
+    if not worker_directory:
+        # Without a worker directory, core runs every provider in this process.
+        from sports_ticker.providers.factory import create_provider
     providers = {
         name: WorkerProvider(name, Path(worker_directory)) if worker_directory else create_provider(name, spotify=spotify, catalog=catalog)
         for name in _INTERVALS

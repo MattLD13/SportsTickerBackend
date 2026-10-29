@@ -36,4 +36,4 @@ def test_changed_components_skips_binary_file_reads(tmp_path) -> None:
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "change weather and image")
 
-    assert changed_components(tmp_path, base) == ["core", "weather"]
+    assert changed_components(tmp_path, base) == ["weather"]

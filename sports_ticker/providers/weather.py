@@ -26,68 +26,9 @@ _NWS_PRODUCTS_URL = "https://api.weather.gov/products"
 _NWS_UVI_LIST_URL = f"{_NWS_PRODUCTS_URL}/types/UVI"
 _NWS_POINT_CACHE_SECONDS = 24 * 60 * 60
 _NWS_UVI_CACHE_SECONDS = 24 * 60 * 60
-_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
-_POSTAL_CODE = re.compile(r"^\d{5}(?:-\d{4})?$")
 _NWS_OBSERVATION_MAX_AGE = timedelta(minutes=45)
 _UVI_VALUE = re.compile(r"([A-Z][A-Z .'-]*?)\s{2,}([A-Z]{2})\s+(\d+(?:\.\d+)?)")
 _UVI_VALID_DATE = re.compile(r"\bVALID\s+([A-Z]{3})\s+(\d{1,2})\s+(\d{4})\b")
-
-
-class WeatherLocationResolver:
-    """Resolve U.S. ZIP codes before the backend stores weather coordinates."""
-
-    def __init__(
-        self,
-        client: JsonHttpClient | None = None,
-        *,
-        timeout: float = 10.0,
-    ) -> None:
-        self._client_owner = OwnedClient(client, PooledJsonHttpClient)
-        self.client = self._client_owner.client
-        self.timeout = float(timeout)
-        if not isfinite(self.timeout) or self.timeout <= 0:
-            raise ValueError("timeout must be a finite positive number")
-
-    def close(self) -> None:
-        self._client_owner.close()
-
-    def resolve(self, value: str) -> Mapping[str, object] | None:
-        """Return canonical city and coordinates when ``value`` is a U.S. ZIP code."""
-
-        query = str(value).strip()
-        if not _POSTAL_CODE.fullmatch(query):
-            return None
-        postal = query[:5]
-        payload = self.client.get_json(
-            _query(
-                _GEOCODING_URL,
-                name=postal,
-                count=10,
-                countryCode="US",
-                language="en",
-                format="json",
-            ),
-            timeout=self.timeout,
-        )
-        results = payload.get("results") if isinstance(payload, Mapping) else None
-        if not isinstance(results, Sequence) or isinstance(results, (str, bytes)):
-            return None
-        for result in results:
-            item = _mapping(result)
-            postcodes = item.get("postcodes")
-            if not isinstance(postcodes, Sequence) or isinstance(postcodes, (str, bytes)):
-                continue
-            if postal not in {str(code).strip() for code in postcodes}:
-                continue
-            try:
-                return {
-                    "weather_city": _text(item.get("name")),
-                    "weather_lat": float(item["latitude"]),
-                    "weather_lon": float(item["longitude"]),
-                }
-            except (KeyError, TypeError, ValueError):
-                return None
-        return None
 
 
 class OpenMeteoWeatherProvider:
@@ -883,4 +824,4 @@ def _weather_icon(value: Any) -> str:
     return "cloud"
 
 
-__all__ = ["HybridWeatherProvider", "OpenMeteoWeatherProvider", "WeatherLocationResolver"]
+__all__ = ["HybridWeatherProvider", "OpenMeteoWeatherProvider"]

@@ -7,12 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
-from sports_ticker.providers import (
-    Provider,
-    ProviderHealth,
-    normalize_provider_result,
-    normalize_settings,
-)
+from sports_ticker.providers.contracts import Provider, ProviderHealth
+from sports_ticker.providers.normalization import normalize_provider_result, normalize_settings
 from sports_ticker.providers.sports_display import sports_content_sort_key
 
 from .state_store import SnapshotStore

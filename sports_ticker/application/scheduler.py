@@ -20,7 +20,8 @@ from typing import Protocol, TypeAlias
 from .provider_recovery import ProviderRecovery
 
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers import ProviderResult, normalize_settings
+from sports_ticker.providers.contracts import ProviderResult
+from sports_ticker.providers.normalization import normalize_settings
 
 
 MonotonicClock: TypeAlias = Callable[[], float]

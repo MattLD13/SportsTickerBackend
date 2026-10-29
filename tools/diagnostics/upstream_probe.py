@@ -94,7 +94,8 @@ def endpoint_catalog(now: datetime | None = None) -> list[Endpoint]:
     from sports_ticker.providers.racing_endurance import _WEC
     from sports_ticker.providers.racing_live import _F1_ESPN_URL, _INDYCAR_BLOB_BASE, _INDYCAR_ESPN_URL
     from sports_ticker.providers.stock_source import FINNHUB_QUOTE_URL
-    from sports_ticker.providers.weather import _AIR_QUALITY_URL, _FORECAST_URL, _GEOCODING_URL, _NWS_POINTS_URL
+    from sports_ticker.providers.weather import _AIR_QUALITY_URL, _FORECAST_URL, _NWS_POINTS_URL
+    from sports_ticker.providers.weather_location import _GEOCODING_URL
 
     current = now or datetime.now(timezone.utc)
     espn = "https://site.web.api.espn.com/apis/site/v2/sports"
@@ -130,7 +131,7 @@ def endpoint_catalog(now: datetime | None = None) -> list[Endpoint]:
         Endpoint("weather", "World forecast", "Open-Meteo forecast",
                  f"{_FORECAST_URL}?latitude=40.7128&longitude=-74.006&current=temperature_2m&daily=temperature_2m_max&timezone=auto"),
         Endpoint("weather", "Air quality", "Open-Meteo air quality", f"{_AIR_QUALITY_URL}?latitude=40.7128&longitude=-74.006&current=us_aqi"),
-        Endpoint("weather", "Place lookup", "Open-Meteo geocoding", f"{_GEOCODING_URL}?name=Boston&count=1"),
+        Endpoint("core", "Place lookup", "Open-Meteo geocoding", f"{_GEOCODING_URL}?name=Boston&count=1"),
         Endpoint("stock", "Quotes and charts", "Finnhub quote", f"{FINNHUB_QUOTE_URL}?symbol=AAPL",
                  secret_query=("token", FINNHUB_KEY_NAMES)),
         Endpoint("flights", "Airline logos", "Google site icon", "https://www.google.com/s2/favicons?domain=united.com&sz=64", accept="image/*"),
