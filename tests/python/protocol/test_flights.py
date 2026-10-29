@@ -9,7 +9,7 @@ from sports_ticker.providers.contracts import ProviderHealth
 from sports_ticker.projections import project_data_v2
 from ticker_core.context import RenderContext
 from ticker_core.features.flight import FlightRenderer
-from ticker_core.rendering import ContentScene, load_default_font_set
+from ticker_core.ui import ContentScene, load_default_font_set
 
 
 NOW = 1_800_000_000.0

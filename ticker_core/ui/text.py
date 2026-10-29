@@ -1,13 +1,18 @@
-"""Provide the ticker pixel glyphs without legacy imports."""
+"""Own every Six typeface: the bitmap glyphs and the bundled TrueType fonts.
 
+A bitmap font draws one point for each set bit. Each glyph advances the cursor 5 pixels.
+The `~` character is a 2-pixel space. Every draw call returns the drawn width.
+"""
 from __future__ import annotations
 
 import unicodedata
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
-from PIL import ImageDraw
+from PIL import ImageDraw, ImageFont
 
-
-# Own the compact three-column glyphs used by both ticker sizes.
+# The pane glyphs: rows of three columns, and five columns for "#". The Mini uses the same rows.
 PANE = {
     '0':[[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
     '1':[[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
@@ -63,6 +68,7 @@ PANE = {
     ' ':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
 }
 
+# The five-row glyphs. Each row is a bit mask. The bits 8, 4, 2, 1, and 16 are the columns from left to right.
 TINY = {
     "A": [6, 9, 15, 9, 9], "B": [14, 9, 14, 9, 14], "C": [6, 9, 8, 9, 6], "D": [14, 9, 9, 9, 14], "E": [15, 8, 14, 8, 15], "F": [15, 8, 14, 8, 8], "G": [6, 9, 11, 9, 6], "H": [9, 9, 15, 9, 9], "I": [14, 4, 4, 4, 14], "J": [7, 2, 2, 10, 4], "K": [9, 10, 12, 10, 9], "L": [8, 8, 8, 8, 15], "M": [9, 15, 15, 9, 9], "N": [9, 13, 15, 11, 9], "O": [6, 9, 9, 9, 6], "P": [14, 9, 14, 8, 8], "Q": [6, 9, 9, 10, 5], "R": [14, 9, 14, 10, 9], "S": [7, 8, 6, 1, 14], "T": [15, 4, 4, 4, 4], "U": [9, 9, 9, 9, 6], "V": [9, 9, 9, 10, 4], "W": [9, 9, 15, 15, 9], "X": [9, 9, 6, 9, 9], "Y": [9, 9, 6, 2, 2], "Z": [15, 1, 6, 8, 15],
     "0": [6, 9, 9, 9, 6], "1": [4, 12, 4, 4, 14], "2": [14, 1, 6, 8, 15], "3": [14, 1, 6, 1, 14], "4": [9, 9, 15, 1, 1], "5": [15, 8, 14, 1, 14], "6": [6, 8, 14, 9, 6], "7": [15, 1, 2, 4, 4], "8": [6, 9, 6, 9, 6], "9": [6, 9, 7, 1, 6],
@@ -94,12 +100,18 @@ HYBRID.update({
 })
 
 
-def normalize_special_chars(text: object) -> str:
-    """Return ASCII text that ticker glyphs can draw."""
-    value = str(text)
-    value = value.replace("Â°", "o").replace("°", "o")
-    value = value.replace("â†’", "->").replace("→", "->")
-    value = value.translate(str.maketrans({
+# The five-row glyphs of the golf scoreboard. The bits 4, 2, and 1 are the columns.
+GOLF = {
+    "A": [2, 5, 7, 5, 5], "B": [6, 5, 7, 5, 6], "C": [7, 4, 4, 4, 7], "D": [6, 5, 5, 5, 6], "E": [7, 4, 7, 4, 7], "F": [7, 4, 7, 4, 4], "G": [7, 4, 5, 5, 7], "H": [5, 5, 7, 5, 5], "I": [7, 2, 2, 2, 7], "J": [1, 1, 1, 5, 2], "K": [5, 6, 4, 6, 5], "L": [4, 4, 4, 4, 7], "M": [5, 7, 7, 5, 5], "N": [5, 7, 5, 5, 5], "O": [7, 5, 5, 5, 7], "P": [7, 5, 7, 4, 4], "Q": [7, 5, 5, 7, 1], "R": [7, 5, 6, 5, 5], "S": [7, 4, 7, 1, 7], "T": [7, 2, 2, 2, 2], "U": [5, 5, 5, 5, 7], "V": [5, 5, 5, 2, 2], "W": [5, 5, 7, 7, 5], "X": [5, 5, 2, 5, 5], "Y": [5, 5, 2, 2, 2], "Z": [7, 1, 2, 4, 7], "0": [7, 5, 5, 5, 7], "1": [2, 6, 2, 2, 7], "2": [7, 1, 7, 4, 7], "3": [7, 1, 7, 1, 7], "4": [5, 5, 7, 1, 1], "5": [7, 4, 7, 1, 7], "6": [7, 4, 7, 5, 7], "7": [7, 1, 1, 1, 1], "8": [7, 5, 7, 5, 7], "9": [7, 5, 7, 1, 7], "-": [0, 0, 7, 0, 0], "+": [0, 2, 7, 2, 0], ".": [0, 0, 0, 0, 2], " ": [0, 0, 0, 0, 0],
+}
+
+
+def plain_text(value: object) -> str:
+    """Return ASCII text that the bitmap glyphs can draw."""
+    text = str(value)
+    text = text.replace("Â°", "o").replace("°", "o")
+    text = text.replace("â†’", "->").replace("→", "->")
+    text = text.translate(str.maketrans({
         "’": "'", "‘": "'", "“": '"', "”": '"',
         "–": "-", "—": "-", "…": "...", "·": ".",
         "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE",
@@ -107,35 +119,99 @@ def normalize_special_chars(text: object) -> str:
         "đ": "d", "Đ": "D", "ð": "d", "Ð": "D",
         "þ": "th", "Þ": "Th", "ß": "ss",
     }))
-    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
 
-def draw_tiny_text(draw: ImageDraw.ImageDraw, x: int, y: int, text: object, color: object) -> int:
-    """Draw uppercase five-row ticker glyphs."""
-    cursor = x
-    for char in normalize_special_chars(text).upper():
-        if char == "~":
-            cursor += 2
-            continue
-        for row, value in enumerate(TINY.get(char, TINY[" "])):
-            for column, bit in enumerate((8, 4, 2, 1, 16)):
-                if value & bit:
-                    draw.point((cursor + column, y + row), fill=color)
-        cursor += 5
-    return cursor - x
+@dataclass(frozen=True)
+class BitmapFont:
+    """Draw one bitmap glyph table."""
+
+    glyphs: dict[str, list[int]]
+    columns: tuple[int, ...]
+    keep_lowercase_v: bool = False
+
+    def width(self, text: object) -> int:
+        return sum(2 if char == "~" else 5 for char in plain_text(text))
+
+    def draw(self, draw: ImageDraw.ImageDraw, x: int, y: int, text: object, color: object) -> int:
+        cursor = int(x)
+        y = int(y)
+        space = self.glyphs[" "]
+        for char in plain_text(text):
+            if char == "~":
+                cursor += 2
+                continue
+            rows = HYBRID_SMALL_V if self.keep_lowercase_v and char == "v" else self.glyphs.get(char.upper(), space)
+            for row, value in enumerate(rows):
+                for column, bit in enumerate(self.columns):
+                    if value & bit:
+                        draw.point((cursor + column, y + row), fill=color)
+            cursor += 5
+        return cursor - int(x)
 
 
-def draw_hybrid_text(draw: ImageDraw.ImageDraw, x: int, y: int, text: object, color: object) -> int:
-    """Draw six-row ticker glyphs."""
-    cursor = x
-    for char in normalize_special_chars(text):
-        if char == "~":
-            cursor += 2
-            continue
-        value = [0, 0, 10, 4, 0, 0] if char == "v" else HYBRID.get(char.upper(), HYBRID[" "])
-        for row, byte in enumerate(value):
-            for column, bit in enumerate((8, 4, 2, 1)):
-                if byte & bit:
-                    draw.point((cursor + column, y + row), fill=color)
-        cursor += 5
-    return cursor
+# A lowercase "v" in six-row text is a small check mark.
+HYBRID_SMALL_V = [0, 0, 10, 4, 0, 0]
+TINY_FONT = BitmapFont(TINY, (8, 4, 2, 1, 16))
+HYBRID_FONT = BitmapFont(HYBRID, (8, 4, 2, 1), keep_lowercase_v=True)
+
+
+def draw_tiny(draw: ImageDraw.ImageDraw, x: int | float, y: int | float, text: object, color: object) -> int:
+    """Draw uppercase five-row text and return its width."""
+    return TINY_FONT.draw(draw, int(x), int(y), text, color)
+
+
+def draw_hybrid(draw: ImageDraw.ImageDraw, x: int | float, y: int | float, text: object, color: object) -> int:
+    """Draw six-row text and return its width."""
+    return HYBRID_FONT.draw(draw, int(x), int(y), text, color)
+
+
+def clean_text(value: object) -> str:
+    """Return drawable text without surrounding space."""
+    return plain_text(value).strip()
+
+
+@dataclass(frozen=True, slots=True)
+class FontSet:
+    """Provide explicit fonts to every content renderer."""
+
+    normal: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    medium: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    big: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    huge: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    clock: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    tiny: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    tiny_small: ImageFont.ImageFont | ImageFont.FreeTypeFont
+    micro: ImageFont.ImageFont | ImageFont.FreeTypeFont
+
+
+FONT_DIRECTORY = Path(__file__).with_name("font_assets")
+
+
+@lru_cache(maxsize=64)
+def load_monospace_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Load the same bundled monospace typeface on every display host."""
+    name = "DejaVuSansMono-Bold.ttf" if bold else "DejaVuSansMono.ttf"
+    return ImageFont.truetype(FONT_DIRECTORY / name, size, layout_engine=ImageFont.Layout.BASIC)
+
+
+@lru_cache(maxsize=64)
+def load_display_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Load the same bundled display typeface on every display host."""
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    return ImageFont.truetype(FONT_DIRECTORY / name, size, layout_engine=ImageFont.Layout.BASIC)
+
+
+@lru_cache(maxsize=1)
+def load_default_font_set() -> FontSet:
+    """Load fonts that match the deployed controller."""
+    return FontSet(
+        normal=load_monospace_font(10, bold=True),
+        medium=load_monospace_font(12, bold=True),
+        big=load_monospace_font(14, bold=True),
+        huge=load_display_font(20, bold=True),
+        clock=load_display_font(28, bold=True),
+        tiny=load_monospace_font(9),
+        tiny_small=load_monospace_font(8),
+        micro=load_monospace_font(7),
+    )

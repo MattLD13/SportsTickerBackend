@@ -7,8 +7,8 @@ from PIL import Image
 
 from ticker_core.context import RenderContext
 from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
-from ticker_core.rendering import ContentScene, load_default_font_set
-from ticker_core.rendering.catalog import content_family
+from ticker_core.ui import ContentScene, load_default_font_set
+from ticker_core.ui.catalog import content_family
 from sports_ticker.projections.racing_display import racing_cards
 
 
@@ -48,13 +48,13 @@ def test_completed_f1_cards_show_leader_time_and_following_gaps(monkeypatch) -> 
     import ticker_core.features.racing.renderer as rendering
 
     drawn = []
-    original = rendering.draw_tiny_text
+    original = rendering.draw_tiny
 
     def record(draw, x, y, text, color):
         drawn.append(str(text))
         return original(draw, x, y, text, color)
 
-    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    monkeypatch.setattr(rendering, "draw_tiny", record)
     item = _item("f1")
     item.update(state="post", sports_presentation="pinned")
     item["f1"].update(session_type="Practice 1", drivers=[
@@ -137,13 +137,13 @@ def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
     import ticker_core.features.racing.renderer as rendering
 
     drawn = []
-    original = rendering.draw_tiny_text
+    original = rendering.draw_tiny
 
     def record(draw, x, y, text, color):
         drawn.append(str(text))
         return original(draw, x, y, text, color)
 
-    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    monkeypatch.setattr(rendering, "draw_tiny", record)
     item = _item("indycar")
     item["sports_presentation"] = "pinned"
     item["indycar"]["drivers"] = [{"pos": 2, "car": "2", "name": "Driver", "gap": "+1.234", "speed": "220.123"}]
@@ -168,13 +168,13 @@ def test_safety_car_labels_stay_distinct_in_both_six_layouts(monkeypatch):
     import ticker_core.features.racing.renderer as rendering
     from tools.mini.racing_vectors import game
     drawn = []
-    original = rendering.draw_tiny_text
+    original = rendering.draw_tiny
 
     def record(draw, x, y, text, color):
         drawn.append(str(text))
         return original(draw, x, y, text, color)
 
-    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    monkeypatch.setattr(rendering, "draw_tiny", record)
     for code in ("SAFETY CAR", "VSC", "FCY", "UNKNOWN"):
         item = game("f1", code)
         item["racing_display"] = {"cards": racing_cards(item)}

@@ -17,9 +17,9 @@ from PIL import Image
 from ticker_core.bootstrap import create_default_content_catalog, create_default_frame_builder
 from ticker_core.context import RenderContext
 from ticker_core.platform.wifi import HotspotDetails, WiFiSetupState
-from ticker_core.rendering import ContentScene
-from ticker_core.rendering.strip import compose_pane_strip
-from ticker_core.rendering.style import pane_divider_colors
+from ticker_core.ui import ContentScene
+from ticker_core.ui.strip import compose_pane_strip
+from ticker_core.ui.palette import pane_divider_colors
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 from sports_ticker.projections.racing_display import racing_cards
 
@@ -94,7 +94,7 @@ class PreviewRenderer:
         from ticker_core.bootstrap import CachedLogoView
         from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
         from ticker_core.features.weather import WeatherRenderer
-        from ticker_core.rendering import load_default_font_set
+        from ticker_core.ui import load_default_font_set
 
         key = ("animation", mode, start.isoformat(), json.dumps(items, sort_keys=True), self._assets.revision)
         with self._lock:

@@ -119,7 +119,7 @@ def renderers(present: bool) -> dict[str, Any]:
     from ticker_core.features.status import ConnectionLostOverlay
     from ticker_core.features.utility import UtilityRenderer
     from ticker_core.features.weather import WeatherRenderer
-    from ticker_core.rendering import load_default_font_set
+    from ticker_core.ui import load_default_font_set
 
     assets = StandInAssets(present)
     fonts = load_default_font_set()
@@ -137,7 +137,7 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
     """Run one recorded renderer call and return its image."""
     from ticker_core.context import RenderContext
     from ticker_core.features.clock import ClockScene
-    from ticker_core.rendering import ContentScene
+    from ticker_core.ui import ContentScene
 
     renderer = renderer_set[kind]
     if kind == "weather" and method == "detailed":
@@ -213,7 +213,7 @@ def _images(value: Any) -> Any:
 
 
 def _kind(item: Mapping[str, Any]) -> str:
-    from ticker_core.rendering.catalog import content_family
+    from ticker_core.ui.catalog import content_family
     family = content_family(item)
     return {"scoreboard": "sports", "stock": "utility", "leaderboard": "utility", "empty": "utility"}.get(family, family)
 

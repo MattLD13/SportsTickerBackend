@@ -2,10 +2,10 @@
 
 from PIL import Image, ImageDraw, ImageStat
 
-from ticker_core.rendering.pixels import draw_tiny_text
-from ticker_core.rendering.colors import is_near_black, is_near_white, parse_hex_color
-from ticker_core.rendering.style import TOURNAMENT_SEED
-from ticker_core.rendering.templates import ImageTemplates
+from ticker_core.ui.text import draw_tiny
+from ticker_core.ui.palette import is_near_black, is_near_white, parse_hex_color
+from ticker_core.ui.palette import TOURNAMENT_SEED
+from ticker_core.ui.layers import ImageTemplates
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo
@@ -516,8 +516,8 @@ class PreparedSportsFullRenderer:
                       ('S', str(sit.get('strikes', 0)), (255, 136, 0)),
                       ('O', str(sit.get('outs', 0)), (224, 48, 48)))
         for row, (label, value, color) in enumerate(count_rows):
-            draw_tiny_text(d, count_cx - 8, 4 + row * 8, label, (180, 180, 180))
-            draw_tiny_text(d, count_cx, 4 + row * 8, value, color)
+            draw_tiny(d, count_cx - 8, 4 + row * 8, label, (180, 180, 180))
+            draw_tiny(d, count_cx, 4 + row * 8, value, color)
 
         if is_top:
             home_score_w = d.textlength(str(game.get('home_score', '')), font=self.clock_giant)
@@ -642,7 +642,7 @@ class PreparedSportsFullRenderer:
                 draw_hockey_so_column(d, int(home_score_x + home_score_w + 7), 6, shootout, 'away')
                 draw_hockey_so_column(d, int(away_score_x - away_score_w - 12), 6, shootout, 'home')
                 round_label = str(shootout.get('roundLabel') or '')
-                draw_tiny_text(d, W // 2 - len(round_label) * 5 // 2, 1, round_label, (20, 25, 35))
+                draw_tiny(d, W // 2 - len(round_label) * 5 // 2, 1, round_label, (20, 25, 35))
             else:
                 self._draw_hockey_context(d, sit, page_tick)
         return img

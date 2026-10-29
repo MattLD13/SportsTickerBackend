@@ -9,8 +9,8 @@ from PIL import Image, ImageDraw
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, tiny_text
 from ticker_core.features.utility.renderer import EmptyLogoSource, LogoSource
-from ticker_core.rendering import ContentScene, FontSet, RenderedContent
-from ticker_core.rendering.templates import ImageTemplates
+from ticker_core.ui import ContentScene, FontSet, RenderedContent
+from ticker_core.ui.layers import ImageTemplates
 
 
 BOARD_ROWS = 4

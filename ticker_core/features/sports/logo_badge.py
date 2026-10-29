@@ -6,8 +6,8 @@ from collections.abc import Sequence
 
 from PIL import Image, ImageDraw
 
-from ticker_core.rendering.pixels import draw_hybrid_text, normalize_special_chars
-from ticker_core.rendering.colors import relative_luminance
+from ticker_core.ui.text import draw_hybrid, plain_text
+from ticker_core.ui.palette import relative_luminance
 
 _BADGE_MASK_SCALE = 4
 
@@ -53,13 +53,13 @@ def draw_missing_team_badge(
     text_y = y + (size - 6) // 2
     draw = ImageDraw.Draw(image, "RGBA")
     for index, character in enumerate(label):
-        draw_hybrid_text(draw, text_x + index * letter_step, text_y, character, foreground)
+        draw_hybrid(draw, text_x + index * letter_step, text_y, character, foreground)
 
 
 def _badge_label(value: object) -> str:
     """Keep the supplied team code compact and safe for the ticker font."""
 
-    normalized = normalize_special_chars(str(value or "")).strip().upper()
+    normalized = plain_text(str(value or "")).strip().upper()
     compact = "".join(character for character in normalized if character.isalnum() or character in "-&")
     return compact[:4] or "?"
 

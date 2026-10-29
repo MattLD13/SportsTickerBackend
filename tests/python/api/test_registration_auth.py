@@ -12,7 +12,7 @@ from ticker_core.app.frame_builder import FrameBuilder
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.protocol import DeviceState, TickerResponse
-from ticker_core.rendering import ContentRendererCatalog, load_default_font_set
+from ticker_core.ui import ContentRendererCatalog, load_default_font_set
 from ticker_core.runtime import FrameDecision, FrameKind
 
 pytestmark = pytest.mark.critical

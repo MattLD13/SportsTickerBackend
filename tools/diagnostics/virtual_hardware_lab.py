@@ -32,7 +32,7 @@ from ticker_core.assets import MemoryAssetView, ShortTermContentCache
 from ticker_core.bootstrap import create_default_frame_builder
 from ticker_core.drivers import MemoryFrameSink
 from ticker_core.protocol import BackendClient
-from ticker_core.rendering import FrameGeometry
+from ticker_core.ui import FrameGeometry
 from ticker_core.runtime import FramePacer, RuntimeConfig, TickerRuntime
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import PairingState

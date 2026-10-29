@@ -11,10 +11,10 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from ticker_core.context import RenderContext
-from ticker_core.rendering import ContentScene, FontSet, RenderedContent
-from ticker_core.rendering.templates import ImageTemplates
-from ticker_core.rendering.pixels import TINY as TINY_FONT_MAP
-from ticker_core.rendering.pixels import draw_tiny_text, normalize_special_chars
+from ticker_core.ui import ContentScene, FontSet, RenderedContent
+from ticker_core.ui.layers import ImageTemplates
+from ticker_core.ui.text import TINY as TINY_FONT_MAP
+from ticker_core.ui.text import draw_tiny, plain_text
 
 from .assets import RacingAssetService
 from sports_ticker.providers.racing_session import racing_timed_session
@@ -77,7 +77,7 @@ class RacingRenderer:
         cards = _mapping(item.get("racing_display")).get("cards") or []
         if not cards:
             empty = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
-            draw_tiny_text(ImageDraw.Draw(empty), 5, 12, "NO TIMING", (180, 210, 255))
+            draw_tiny(ImageDraw.Draw(empty), 5, 12, "NO TIMING", (180, 210, 255))
             return empty
         strip = Image.new("RGBA", (128 * len(cards) + 6 * (len(cards) - 1), PANEL_HEIGHT), (0, 0, 0, 255))
         for index, card in enumerate(cards):
@@ -96,7 +96,7 @@ class RacingRenderer:
             def build_header():
                 image = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
                 draw = ImageDraw.Draw(image)
-                draw_tiny_text(draw, 1, 1, header, (255, 240, 150))
+                draw_tiny(draw, 1, 1, header, (255, 240, 150))
                 _draw_mini_flag(draw, 116, 0, visible_signal)
                 draw.line([(0, 7), (127, 7)], fill=(55, 76, 130))
                 return image
@@ -105,21 +105,21 @@ class RacingRenderer:
             draw = ImageDraw.Draw(image)
             rows = card.get("rows") or []
             if not rows:
-                draw_tiny_text(draw, 3, 14, str(card.get("session") or "WAITING")[:28], (180, 210, 255))
-                draw_tiny_text(draw, 3, 24, str(card.get("status") or "WAIT")[:28], (200, 200, 200))
+                draw_tiny(draw, 3, 14, str(card.get("session") or "WAITING")[:28], (180, 210, 255))
+                draw_tiny(draw, 3, 24, str(card.get("status") or "WAIT")[:28], (200, 200, 200))
             else:
-                draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
-                draw_tiny_text(draw, 10, 8, "CAR", (70, 90, 140))
-                draw_tiny_text(draw, 90, 8, "MPH" if card.get("metric_type") == "mph" else "GAP", (70, 90, 140))
+                draw_tiny(draw, 1, 8, "P", (70, 90, 140))
+                draw_tiny(draw, 10, 8, "CAR", (70, 90, 140))
+                draw_tiny(draw, 90, 8, "MPH" if card.get("metric_type") == "mph" else "GAP", (70, 90, 140))
                 for position, row in enumerate(rows[:3]):
                     y = 13 + position * 7
-                    draw_tiny_text(draw, 1, y, str(row["position"]), tuple(row["position_rgb"]))
+                    draw_tiny(draw, 1, y, str(row["position"]), tuple(row["position_rgb"]))
                     number = str(row["car"])
                     style = _mapping(row.get("number_style"))
-                    draw_tiny_text(draw, 10, y, number, tuple(style.get("color_rgb") or (235, 235, 235)))
-                    draw_tiny_text(draw, 13 + _tiny_width(number), y, str(row["name"]), (255, 255, 255))
+                    draw_tiny(draw, 10, y, number, tuple(style.get("color_rgb") or (235, 235, 235)))
+                    draw_tiny(draw, 13 + _tiny_width(number), y, str(row["name"]), (255, 255, 255))
                     metric = str(row.get("metric") or "")[:12]
-                    draw_tiny_text(draw, max(60, 126 - _tiny_width(metric)), y, metric, tuple(row["metric_rgb"]))
+                    draw_tiny(draw, max(60, 126 - _tiny_width(metric)), y, metric, tuple(row["metric_rgb"]))
             strip.paste(image, (index * 134, 0))
         return strip
 
@@ -153,13 +153,13 @@ class RacingRenderer:
         _draw_flag(draw, width - 17, 1, _pulse_flag(selected, signal_time))
         available = width - 25
         if _tiny_width(name) <= available:
-            draw_tiny_text(draw, 4, 1, name, (255, 240, 150))
+            draw_tiny(draw, 4, 1, name, (255, 240, 150))
         else:
             loop = _tiny_width(name) + 18
             strip = Image.new("RGBA", (_tiny_width(name) * 2 + 18 + available, 7), (0, 0, 0, 0))
             strip_draw = ImageDraw.Draw(strip)
-            draw_tiny_text(strip_draw, 0, 0, name, (255, 240, 150))
-            draw_tiny_text(strip_draw, _tiny_width(name) + 18, 0, name, (255, 240, 150))
+            draw_tiny(strip_draw, 0, 0, name, (255, 240, 150))
+            draw_tiny(strip_draw, _tiny_width(name) + 18, 0, name, (255, 240, 150))
             crop = strip.crop((int(max(0, elapsed) * 14) % loop, 0, int(max(0, elapsed) * 14) % loop + available, 7))
             draw._image.paste(crop, (4, 1), crop)
         weather = _mapping(payload.get("weather"))
@@ -175,7 +175,7 @@ class RacingRenderer:
         if selected["code"] not in {"GREEN", "NONE", "CHECKERED"}:
             target = str(selected["car"]) if selected.get("car") else "S" + str(selected["sector"]) if selected.get("sector") else ""
             session_display = (selected["label"] + " " + target).strip()
-        draw_tiny_text(draw, 4, 8, session_display, (180, 210, 255))
+        draw_tiny(draw, 4, 8, session_display, (180, 210, 255))
         _draw_weather(draw, weather)
 
     def _draw_driver_panel(self, image: Image.Image, payload: Mapping[str, Any], item: Mapping[str, Any], x_offset: int, elapsed: float) -> None:
@@ -184,12 +184,12 @@ class RacingRenderer:
         drivers = sorted(_drivers(payload), key=_driver_position)
         if not drivers:
             label = _header_label(payload)
-            draw_tiny_text(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(label)) // 2), 10, label, (180, 210, 255))
+            draw_tiny(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(label)) // 2), 10, label, (180, 210, 255))
             if str(item.get("state") or "").lower() == "pre":
                 status = str(item.get("status") or "").strip()
                 if status:
                     starts = f"STARTS {status}"
-                    draw_tiny_text(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(starts)) // 2), 18, starts, (200, 200, 200))
+                    draw_tiny(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(starts)) // 2), 18, starts, (200, 200, 200))
             image.paste(panel, (x_offset, 0), panel)
             return
         session = str(payload.get("session_name") or payload.get("session_type") or "").lower()
@@ -298,7 +298,7 @@ class RacingRenderer:
         else:
             right = str(driver.get("gap") or driver.get("interval") or "")[:10]
         if right:
-            draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
+            draw_tiny(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
         return card
 
     def _driver_card_base(self, driver: Mapping[str, Any], f1: bool) -> Image.Image:
@@ -456,9 +456,9 @@ def _draw_weather(draw: ImageDraw.ImageDraw, weather: Mapping[str, Any]) -> None
     wind = _round(weather.get("wind_mph")) or "--"
     direction = _wind(weather.get("wind_dir")) or "--"
     _draw_condition_icon(draw, 5, 17, "air", (255, 220, 50))
-    draw_tiny_text(draw, 15, 16, f"{air}F", (255, 255, 255))
+    draw_tiny(draw, 15, 16, f"{air}F", (255, 255, 255))
     _draw_condition_icon(draw, 5, 26, "wind", (115, 190, 255))
-    draw_tiny_text(draw, 15, 25, f"{wind}-{direction}", (180, 210, 255))
+    draw_tiny(draw, 15, 25, f"{wind}-{direction}", (180, 210, 255))
 
 
 def _draw_condition_icon(draw: ImageDraw.ImageDraw, x: int, y: int, kind: str, color: tuple[int, int, int]) -> None:
@@ -567,7 +567,7 @@ def _draw_number(draw: ImageDraw.ImageDraw, number: str, primary: tuple[int, int
 
 def _tiny_width(value: object) -> int:
     """Return the bitmap-font width for one label."""
-    text = normalize_special_chars(str(value or "").strip()).upper()
+    text = plain_text(str(value or "").strip()).upper()
     return sum(2 if char == "~" else 5 for char in text)
 
 

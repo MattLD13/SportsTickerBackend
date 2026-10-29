@@ -9,8 +9,8 @@ from typing import Any, Protocol
 from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
-from ticker_core.rendering import ContentScene, FontSet, RenderedContent
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.ui import ContentScene, FontSet, RenderedContent
+from ticker_core.ui.text import draw_hybrid, draw_tiny, plain_text
 
 from .pinned import PreparedSportsFullRenderer, hockey_page_count
 from .logo_rendering import get_prepared_team_logo
@@ -57,7 +57,7 @@ def _sports_ad_width(game: Mapping[str, Any]) -> int:
         game.get("detail", "PARODY"),
     )
     largest = max(
-        (len(normalize_special_chars(line)) * 5 for line in lines),
+        (len(plain_text(line)) * 5 for line in lines),
         default=0,
     )
     return max(
@@ -124,10 +124,10 @@ class SportsRenderer:
             image.paste(logo, (9, 7), logo)
         else:
             draw.ellipse((9, 8, 26, 25), outline=accent, width=2)
-            draw_hybrid_text(draw, 15, 13, "S", accent)
-        draw_hybrid_text(draw, 32, 3, game.get("headline", "FANDUEL"), (255, 255, 255))
-        draw_tiny_text(draw, 32, 13, game.get("tagline", "MAKE EVERY MOMENT MORE"), accent)
-        draw_tiny_text(draw, 32, 22, game.get("detail", "PARODY"), (150, 170, 185))
+            draw_hybrid(draw, 15, 13, "S", accent)
+        draw_hybrid(draw, 32, 3, game.get("headline", "FANDUEL"), (255, 255, 255))
+        draw_tiny(draw, 32, 13, game.get("tagline", "MAKE EVERY MOMENT MORE"), accent)
+        draw_tiny(draw, 32, 22, game.get("detail", "PARODY"), (150, 170, 185))
         return image
 
     def render_full(self, game: Mapping[str, Any], *, page_tick: int = 0) -> Image.Image:

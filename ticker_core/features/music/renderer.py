@@ -12,7 +12,7 @@ from sports_ticker.assets.music_palette import artwork_colors
 from ticker_core.context import RenderContext
 from ticker_core.features.utility.primitives import PANEL_H, PANEL_W, normal_text
 from ticker_core.features.utility.renderer import EmptyLogoSource, LogoSource
-from ticker_core.rendering import ContentScene, FontSet, RenderedContent
+from ticker_core.ui import ContentScene, FontSet, RenderedContent
 
 
 @dataclass(frozen=True, slots=True)

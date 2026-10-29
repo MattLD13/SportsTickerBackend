@@ -4,8 +4,8 @@ import pytest
 from PIL import Image
 
 from ticker_core.app.frame_builder import FrameBuilder
-from ticker_core.rendering import FrameGeometry, RenderedContent
-from ticker_core.rendering import ContentRendererCatalog
+from ticker_core.ui import FrameGeometry, RenderedContent
+from ticker_core.ui import ContentRendererCatalog
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 pytestmark = pytest.mark.critical

@@ -16,9 +16,9 @@ import re
 
 from PIL import Image, ImageDraw
 
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
-from ticker_core.rendering.fonts import load_monospace_font
-from ticker_core.rendering.colors import is_near_black, is_near_white, parse_hex_color
+from ticker_core.ui.text import draw_hybrid, draw_tiny
+from ticker_core.ui.text import load_monospace_font
+from ticker_core.ui.palette import is_near_black, is_near_white, parse_hex_color
 from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 
 PANEL_W = 384
@@ -232,7 +232,7 @@ class ScoreAlertMixin:
         if logo is not None:
             img.paste(logo, ((LOGO_PANEL_W - 1 - 24) // 2, 4), logo)
         else:
-            draw_tiny_text(
+            draw_tiny(
                 d,
                 5,
                 13,
@@ -265,7 +265,7 @@ class ScoreAlertMixin:
             color = team_color if is_scorer else _DIM_GREY
             if is_scorer:
                 d.rectangle([x0 + 1, top, x0 + 2, top + 10], fill=accent)
-            draw_hybrid_text(d, x0 + 6, top + 2, abbr[:3], color)
+            draw_hybrid(d, x0 + 6, top + 2, abbr[:3], color)
             score_color = (255, 255, 255) if is_scorer else _DIM_GREY
             d.text((PANEL_W - 3, top + 5), str(score if score is not None else ''),
                    font=self.medium_font, fill=score_color, anchor="rm")
@@ -282,10 +282,10 @@ class ScoreAlertMixin:
             elif arrow == '▼':
                 d.polygon([(x, 26), (x + 4, 26), (x + 2, 28)], fill=marker_color)
             else:
-                draw_tiny_text(d, x, 26, arrow, marker_color)
+                draw_tiny(d, x, 26, arrow, marker_color)
             x += 7
         if status:
-            draw_tiny_text(d, x, 25, status, (200, 200, 210))
+            draw_tiny(d, x, 25, status, (200, 200, 210))
         self._draw_alert_down_distance(
             d,
             str(alert.get("down_distance") or "").strip(),
@@ -317,7 +317,7 @@ class ScoreAlertMixin:
             outline=(105, 112, 120, 210),
             width=1,
         )
-        draw_tiny_text(draw, x + 3, 25, down_distance, color)
+        draw_tiny(draw, x + 3, 25, down_distance, color)
 
     def _alert_status_label(self, alert):
         """Return ``(arrow, text)`` for the status line.
@@ -414,7 +414,7 @@ class ScoreAlertMixin:
                 outline=border,
                 width=1,
             )
-            draw_tiny_text(draw, x + FACT_BOX_PAD_X, FACT_BOX_TOP + 2, value, (255, 255, 255))
+            draw_tiny(draw, x + FACT_BOX_PAD_X, FACT_BOX_TOP + 2, value, (255, 255, 255))
 
     # ── frame ────────────────────────────────────────────────────────────────
     def draw_score_alert(self, alert, elapsed, under=None):

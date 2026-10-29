@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from sports_ticker.providers.sports_display import nhl_shootout_display, nhl_manpower_situation
-from ticker_core.rendering.pixels import PANE
+from ticker_core.ui.text import PANE
 from tools.mini.generate_mini_ui import header
 
 

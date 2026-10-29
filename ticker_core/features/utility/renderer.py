@@ -9,10 +9,10 @@ from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
 from ticker_core.platform.wifi import WiFiSetupState
-from ticker_core.rendering import ContentScene, FontSet, RenderedContent
+from ticker_core.ui import ContentScene, FontSet, RenderedContent
 
-from ticker_core.rendering.style import STOCK_GAIN, STOCK_LOSS
-from ticker_core.rendering.templates import ImageTemplates, image_key
+from ticker_core.ui.palette import STOCK_GAIN, STOCK_LOSS
+from ticker_core.ui.layers import ImageTemplates, image_key
 
 from .primitives import PANEL_H, PANEL_W, tiny_text
 

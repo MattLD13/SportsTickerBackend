@@ -6,7 +6,7 @@ from enum import Enum
 
 from PIL import Image, ImageChops, ImageFilter
 
-from ticker_core.rendering.colors import relative_luminance
+from ticker_core.ui.palette import relative_luminance
 
 
 _CONTRAST_RATIO_THRESHOLD = 2.0

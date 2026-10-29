@@ -4,9 +4,9 @@ from PIL import Image, ImageDraw
 
 from sports_ticker.providers.sports_display import sport_family
 
-from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP, PANE as PF
-from ticker_core.rendering.style import STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED, sports_rule_color
-from ticker_core.rendering.templates import ImageTemplates, image_key
+from ticker_core.ui.text import HYBRID as HYBRID_FONT_MAP, PANE as PF
+from ticker_core.ui.palette import STATUS_TEXT, SCORE_TEXT, PLAY_TEXT, RED_ZONE_TEXT, TOURNAMENT_SEED, sports_rule_color
+from ticker_core.ui.layers import ImageTemplates, image_key
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
 from .logo_rendering import get_prepared_team_logo

@@ -115,7 +115,7 @@ def demo_app(tmp_path, monkeypatch):
 def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch, tmp_path):
     from ticker_core.features.utility import UtilityRenderer
     from ticker_core.platform import assets as asset_module
-    from ticker_core.rendering import load_default_font_set
+    from ticker_core.ui import load_default_font_set
 
     records = [{"data": {**dict(item.data), "situation": dict(item.data["situation"])}} for item in (stock("MSFT"), stock("NVDA"))]
     demo_app.extensions["ticker.public_demo"] = SimpleNamespace(content=lambda mode: ({mode: records}, "live"))
@@ -143,7 +143,7 @@ def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
     from ticker3.web import routes
     from ticker_core.context import RenderContext
     from ticker_core.features.weather import WeatherRenderer
-    from ticker_core.rendering import load_default_font_set
+    from ticker_core.ui import load_default_font_set
 
     weather = layout_case("MD04")["game"]
     demo_app.extensions["ticker.public_demo"] = SimpleNamespace(content=lambda value: ({value: [{"data": weather}]}, "live"))
@@ -184,7 +184,7 @@ def test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor(
     from ticker_core.bootstrap import CachedLogoView
     from ticker_core.context import RenderContext
     from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
-    from ticker_core.rendering import load_default_font_set
+    from ticker_core.ui import load_default_font_set
 
     start = datetime.fromtimestamp(1792168467, ZoneInfo("America/New_York"))
     game = dict(routes._demo_content("music")["music"][0]["data"])

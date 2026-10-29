@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core import RenderContext
 from ticker_core.features.clock import ClockRenderer, ClockScene
-from ticker_core.rendering.fonts import load_display_font, load_monospace_font
+from ticker_core.ui.text import load_display_font, load_monospace_font
 
 
 PANEL_WIDTH = 384

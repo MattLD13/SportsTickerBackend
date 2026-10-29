@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 
 from ticker_core.context import RenderContext
-from ticker_core.rendering import (
+from ticker_core.ui import (
     ContentRendererCatalog,
     ContentScene,
     DuplicateContentRendererError,

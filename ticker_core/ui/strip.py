@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from PIL import Image, ImageDraw
 
-from .style import INACTIVE
+from .palette import INACTIVE
 
 
 def compose_pane_strip(

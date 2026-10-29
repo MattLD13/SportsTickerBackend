@@ -14,8 +14,8 @@ from .features.racing import RacingRenderer
 from .features.sports import SportsRenderer
 from .features.utility import UtilityRenderer
 from .features.weather import WeatherRenderer
-from .rendering import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
-from .rendering.fonts import load_display_font, load_monospace_font
+from .ui import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
+from .ui.text import load_display_font, load_monospace_font
 from .registry import SceneRegistry
 
 

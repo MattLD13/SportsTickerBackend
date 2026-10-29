@@ -25,7 +25,7 @@ from sports_ticker.integrations import spotify as spotify_module
 from ticker_core.assets.planner import AssetPlanner
 from ticker_core.context import RenderContext
 from ticker_core.features.music.renderer import MusicAnimationState, MusicRenderer
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 
 class FakeSpotifyHttp(SpotifyHttpPort):

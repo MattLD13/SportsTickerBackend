@@ -1,7 +1,7 @@
 import math
 from datetime import datetime, timedelta
 from PIL import Image, ImageChops, ImageDraw
-from ticker_core.rendering.pixels import draw_tiny_text, normalize_special_chars
+from ticker_core.ui.text import draw_tiny, plain_text
 
 PANEL_W = 384
 PANEL_H = 32
@@ -207,9 +207,9 @@ def _forecast_column(index):
 def _draw_high_low(d, left, width, high, low, high_color, low_color):
     """Center one high and low temperature pair at the bottom of a forecast column."""
     tx = left + max(0, (width - (len(high) * 5 + 5 + len(low) * 5)) // 2)
-    draw_tiny_text(d, tx, 26, high, high_color)
-    draw_tiny_text(d, tx + len(high) * 5, 26, "/", MISSING_FORECAST_TEXT)
-    draw_tiny_text(d, tx + len(high) * 5 + 5, 26, low, low_color)
+    draw_tiny(d, tx, 26, high, high_color)
+    draw_tiny(d, tx + len(high) * 5, 26, "/", MISSING_FORECAST_TEXT)
+    draw_tiny(d, tx + len(high) * 5 + 5, 26, low, low_color)
 
 
 class PreparedWeatherRenderer:
@@ -450,8 +450,8 @@ class PreparedWeatherRenderer:
                                dim=1.0 - (cloud or 0.0), mask_moon=icon_for_render == 'moon')
         d.line((CURRENT_W, 0, CURRENT_W, 31), fill=DEEP_BLUE)
 
-        location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
-        draw_tiny_text(d, 4, 2, location_name[:15], (125, 170, 230))
+        location_name = plain_text(str(game.get('away_abbr', 'CITY')).upper()).strip()
+        draw_tiny(d, 4, 2, location_name[:15], (125, 170, 230))
         self.draw_weather_pixel_art(d, icon_for_render, 3, 11, t=anim_t)
         d.text((24, 10), f"{temp_f or '--'}°F", font=self.big_font, fill=temp_color)
 
@@ -460,12 +460,12 @@ class PreparedWeatherRenderer:
         feels_val = _stat(stats, 'feels')
         wind_val = _stat(stats, 'wind')
         hum_val = _stat(stats, 'humidity')
-        condition = normalize_special_chars(str(game.get('status', '')).upper()).strip()
+        condition = plain_text(str(game.get('status', '')).upper()).strip()
         condition = CONDITION_ABBREVIATIONS.get(condition, condition)[:19]
         if feels_val != '--':
-            draw_tiny_text(d, 24, 25, f"FEELS {feels_val}F", _temperature_color(feels_val))
+            draw_tiny(d, 24, 25, f"FEELS {feels_val}F", _temperature_color(feels_val))
         elif condition:
-            draw_tiny_text(d, 24, 25, condition, (105, 145, 190))
+            draw_tiny(d, 24, 25, condition, (105, 145, 190))
         self._draw_stat_boxes(d, (
             ((74, 1, 121, 7), "AQI", aqi_val[:4], self.get_aqi_color(aqi_val), 0),
             ((74, 9, 121, 15), "UV", uv_val[:4], (210, 155, 255), 0),
@@ -494,8 +494,8 @@ class PreparedWeatherRenderer:
             label_x = box[0] + ((mid - box[0]) - len(label) * 5) // 2
             value_x = mid + ((box[2] - mid + 1) - len(value) * 5) // 2
             ty = box[1] + ((box[3] - box[1] + 1) - tiny_h) // 2
-            draw_tiny_text(d, label_x + x_offset, ty, label, (95, 120, 160))
-            draw_tiny_text(d, value_x + x_offset, ty, value, value_color)
+            draw_tiny(d, label_x + x_offset, ty, label, (95, 120, 160))
+            draw_tiny(d, value_x + x_offset, ty, value, value_color)
 
     def _draw_forecast_background(self, img, d, index, day, t):
         left, right = _forecast_column(index)
@@ -541,6 +541,6 @@ class PreparedWeatherRenderer:
         """Draw the day name and its underline at the top of one forecast column."""
         width = right - left + 1
         day_text = 'TODAY' if index == 0 else (self._now + timedelta(days=index)).strftime('%a').upper()
-        draw_tiny_text(d, left + max(0, (width - len(day_text) * 5) // 2), 2, day_text,
+        draw_tiny(d, left + max(0, (width - len(day_text) * 5) // 2), 2, day_text,
                        (255, 255, 255) if index == 0 else (110, 160, 220))
         d.line((left + 4, 8, right - 4, 8), fill=DEEP_BLUE)

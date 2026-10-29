@@ -7,7 +7,7 @@ import json
 from ticker_core.context import RenderContext
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.platform import HotspotDetails, WiFiNetwork, WiFiRecoveryService, WiFiSetupState
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 
 

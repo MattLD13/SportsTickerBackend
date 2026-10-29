@@ -9,7 +9,7 @@ from ticker_core.features.golf import GolfAnimationState, GolfRenderer
 from ticker_core.features.music import MusicAnimationState, MusicRenderer
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.features.weather import WeatherRenderer
-from ticker_core.rendering import ContentScene, load_default_font_set
+from ticker_core.ui import ContentScene, load_default_font_set
 
 
 def test_utility_and_weather_render_deterministically() -> None:

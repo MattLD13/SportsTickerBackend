@@ -71,7 +71,7 @@ Read [Mini Sprite V1](../docs/contracts/mini-sprite-v1.md) for the binary format
 
 ## Shared display style
 
-The main ticker owns compact glyphs in `ticker_core/rendering/pixels.py` and shared colors in `ticker_core/rendering/style.py`.
+The main ticker owns compact glyphs in `ticker_core/ui/text.py` and shared colors in `ticker_core/ui/palette.py`.
 `tools/mini/generate_mini_ui.py` exports these definitions into `src/mini/rendering/ui_generated.h`.
 If either Python owner changes, regenerate the header before building firmware:
 

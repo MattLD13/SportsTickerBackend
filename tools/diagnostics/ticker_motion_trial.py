@@ -89,7 +89,7 @@ from ticker_core.context import RenderContext  # noqa: E402
 from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink  # noqa: E402
 from ticker_core.platform import AssetCoordinator  # noqa: E402
 from ticker_core.protocol import TickerResponse  # noqa: E402
-from ticker_core.rendering.fonts import load_default_font_set  # noqa: E402
+from ticker_core.ui.text import load_default_font_set  # noqa: E402
 from ticker_core.runtime import Content  # noqa: E402
 from ticker_core.app.viewport import CardViewport  # noqa: E402
 

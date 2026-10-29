@@ -17,11 +17,11 @@ from typing import Any, Callable
 from PIL import Image, ImageChops
 
 from ticker_core.context import RenderContext
-from ticker_core.rendering import ContentRendererCatalog, ContentScene
-from ticker_core.rendering.catalog import content_family
-from ticker_core.rendering.strip import compose_pane_strip
-from ticker_core.rendering.style import pane_divider_colors
-from ticker_core.rendering.values import plain_mapping as _plain_mapping
+from ticker_core.ui import ContentRendererCatalog, ContentScene
+from ticker_core.ui.catalog import content_family
+from ticker_core.ui.strip import compose_pane_strip
+from ticker_core.ui.palette import pane_divider_colors
+from ticker_core.ui.frame import plain_mapping as _plain_mapping
 from ticker_core.platform.affinity import pin_to_cpu
 from ticker_core.runtime import Content, StripLayout, StripSegment
 from ticker_core.platform.panes import asset_signatures

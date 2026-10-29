@@ -126,7 +126,7 @@ def prepare(snapshot: Path, output: Path, native_root: str) -> list[dict]:
             mode = row.get("mode", "sports")
             if mode == "pairing":
                 from ticker_core.features.utility import UtilityRenderer
-                from ticker_core.rendering import load_default_font_set
+                from ticker_core.ui import load_default_font_set
                 from ticker_core.context import RenderContext
                 image = UtilityRenderer(load_default_font_set()).pairing(RenderContext(datetime.fromisoformat("2026-10-15T12:34:27+00:00")), row["game"]["app_code"])
             else:

@@ -15,8 +15,8 @@ from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
 from ticker_core.features.sports.pinned import PreparedSportsFullRenderer
 from ticker_core.features.utility.renderer import UtilityRenderer
 from ticker_core.features.weather.renderer import WeatherRenderer
-from ticker_core.rendering import load_default_font_set
-from ticker_core.rendering.templates import ImageTemplates
+from ticker_core.ui import load_default_font_set
+from ticker_core.ui.layers import ImageTemplates
 
 pytestmark = pytest.mark.critical
 

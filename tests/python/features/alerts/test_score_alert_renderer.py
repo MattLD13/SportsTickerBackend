@@ -8,7 +8,7 @@ from ticker_core.features.alerts.score_alert import (
     _score_alert_fact_layout,
 )
 from ticker_core.features.alerts.news_banner import PreparedNewsBannerRenderer
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 
 @pytest.mark.critical
@@ -16,19 +16,19 @@ from ticker_core.rendering import load_default_font_set
 def test_football_goal_distance_chip_fits_beside_the_scoring_clock(monkeypatch, value, label):
     from ticker_core.features.alerts import score_alert
     calls = []
-    original = score_alert.draw_tiny_text
+    original = score_alert.draw_tiny
 
     def capture(draw, x, y, text, color):
         calls.append((x, y, str(text)))
         return original(draw, x, y, text, color)
 
-    monkeypatch.setattr(score_alert, "draw_tiny_text", capture)
+    monkeypatch.setattr(score_alert, "draw_tiny", capture)
     renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
     frame = renderer.draw_score_alert({"sport": "nfl", "headline": "RUSH TD", "status": "Q4 12:52",
         "team_abbr": "HOM", "away_abbr": "AWY", "home_abbr": "HOM", "home_score": 7, "away_score": 0,
         "down_distance": value, "is_red_zone": True}, 4.0)
     assert frame.size == (384, 32)
-    from ticker_core.rendering.fonts import load_monospace_font
+    from ticker_core.ui.text import load_monospace_font
     assert score_alert.load_monospace_font is load_monospace_font
     chip = next((x, y, text) for x, y, text in calls if text == label)
     clock = next((x, y, text) for x, y, text in calls if "12:52" in text)

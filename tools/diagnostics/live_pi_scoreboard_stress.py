@@ -236,7 +236,7 @@ def _device_run(args: argparse.Namespace) -> dict[str, object]:
     from ticker_core.context import RenderContext
     from ticker_core.drivers import RgbMatrixFrameSink
     from ticker_core.platform import AssetCoordinator
-    from ticker_core.rendering import FrameGeometry
+    from ticker_core.ui import FrameGeometry
     from ticker_core.runtime import Content
 
     games = json.loads(args.games_file.read_text(encoding="utf-8"))

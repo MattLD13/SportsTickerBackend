@@ -10,7 +10,7 @@ from ticker_core.app.viewport import CardViewport
 from ticker_core.context import RenderContext
 from ticker_core.platform.assets import AssetCoordinator
 from ticker_core.platform.panes import PreparedPaneCache, asset_signatures
-from ticker_core.rendering import RenderedContent
+from ticker_core.ui import RenderedContent
 from ticker_core.runtime import Content
 
 

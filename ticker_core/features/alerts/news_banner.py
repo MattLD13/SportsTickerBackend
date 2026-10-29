@@ -19,7 +19,7 @@ import json
 
 from PIL import Image, ImageDraw
 
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
+from ticker_core.ui.text import draw_hybrid, draw_tiny
 
 PANEL_W = 384
 PANEL_H = 32
@@ -192,14 +192,14 @@ class NewsBannerMixin:
 
         d.rectangle([0, 0, 2, PANEL_H], fill=accent)
         _draw_header_gradient(d, _gradient_stops(item, accent))
-        draw_tiny_text(d, 7, 3, kind, (255, 255, 255))
+        draw_tiny(d, 7, 3, kind, (255, 255, 255))
 
         y = 2
         x = 12 + len(kind) * 5
         from_abbr = str(item.get('from_abbr', ''))[:4]
         to_abbr = str(item.get('to_abbr', ''))[:4]
         if str(item.get("kind") or "").strip().upper() == "TRADE" and from_abbr and to_abbr:
-            x = draw_hybrid_text(d, x, y, from_abbr, _team_text_color(item, "from", from_color))
+            x += draw_hybrid(d, x, y, from_abbr, _team_text_color(item, "from", from_color))
             self._draw_banner_arrow(d, x + 4, y + 2, 13, from_color, to_color)
             team_x = x + 23
         else:
@@ -207,7 +207,7 @@ class NewsBannerMixin:
         team_abbr = to_abbr or from_abbr
         team_side = "to" if to_abbr else "from"
         team_color = _team_text_color(item, team_side, to_color)
-        draw_hybrid_text(d, team_x, y, team_abbr, team_color)
+        draw_hybrid(d, team_x, y, team_abbr, team_color)
 
         d.line([(4, 11), (BANNER_W, 11)], fill=(52, 56, 66))
 
@@ -215,10 +215,10 @@ class NewsBannerMixin:
         if len(lines) == 1:
             # A short trade centres instead of hanging from the rule with an
             # empty line under it.
-            draw_hybrid_text(d, 7, 20, lines[0], (255, 255, 255))
+            draw_hybrid(d, 7, 20, lines[0], (255, 255, 255))
         else:
-            draw_hybrid_text(d, 7, 15, lines[0], (255, 255, 255))
-            draw_hybrid_text(d, 7, 24, lines[1], (206, 211, 222))
+            draw_hybrid(d, 7, 15, lines[0], (255, 255, 255))
+            draw_hybrid(d, 7, 24, lines[1], (206, 211, 222))
         return img
 
     def _draw_stock_banner(self, item):
@@ -235,18 +235,18 @@ class NewsBannerMixin:
         d.rectangle([0, 0, 2, PANEL_H], fill=accent)
         d.rectangle([4, 0, BANNER_W, 9], fill=(22, 24, 30))
         d.rectangle([6, 1, 34, 8], fill=CYAN)
-        draw_tiny_text(d, 8, 2, "NEWS", (8, 10, 14))
-        draw_hybrid_text(d, 40, 1, str(item.get('to_abbr', ''))[:6], (255, 255, 255))
+        draw_tiny(d, 8, 2, "NEWS", (8, 10, 14))
+        draw_hybrid(d, 40, 1, str(item.get('to_abbr', ''))[:6], (255, 255, 255))
 
         if item.get('pct') is not None:
             label = f"{pct:+.1f}%"
-            draw_tiny_text(d, BANNER_W - 5 - len(label) * 5, 2, label, accent)
+            draw_tiny(d, BANNER_W - 5 - len(label) * 5, 2, label, accent)
         d.line([(4, 10), (BANNER_W, 10)], fill=(52, 56, 66))
 
         # Rows 12 to 31 hold exactly three 6px lines with one row between. Any
         # lower and the last line loses its bottom row off the panel.
         for i, line in enumerate(wrap_lines(item.get('text'), max_lines=3)):
-            draw_hybrid_text(d, 7, 12 + i * 7, line,
+            draw_hybrid(d, 7, 12 + i * 7, line,
                              (255, 255, 255) if i == 0 else (203, 209, 220))
         return img
 

@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ticker_core import RenderContext
 from ticker_core.features.utility import UtilityRenderer
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 STEPS = (("1m", 65), ("12m", 720), ("3h", 10800), ("2d", 172800))
 

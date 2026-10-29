@@ -25,7 +25,7 @@ from ticker_core.assets import AssetPlanner, LogoAssetView
 from ticker_core.features.alerts.score_alert import PreparedScoreAlertRenderer, _score_alert_fact_layout
 from ticker_core.platform import AssetCoordinator
 from ticker_core.protocol import TickerResponse
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 
 GROUPS = {

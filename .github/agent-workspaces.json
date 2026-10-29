@@ -55,8 +55,8 @@
         "ticker3/__init__.py",
         "sports_ticker/providers/*.py",
         "ticker_core/protocol/*.py",
-        "ticker_core/rendering/*",
-        "ticker_core/rendering/font_assets/*",
+        "ticker_core/ui/*",
+        "ticker_core/ui/font_assets/*",
         "ticker_core/__init__.py",
         "ticker_core/_enum.py",
         "ticker_core/context.py",
@@ -450,12 +450,12 @@
         "sports-server"
       ],
       "owned": [
-        "ticker_core/rendering/pixels.py",
-        "ticker_core/rendering/style.py"
+        "ticker_core/ui/text.py",
+        "ticker_core/ui/palette.py"
       ],
       "context": [
-        "ticker_core/rendering/pixels.py",
-        "ticker_core/rendering/style.py"
+        "ticker_core/ui/text.py",
+        "ticker_core/ui/palette.py"
       ],
       "build": [],
       "checks": [
@@ -730,12 +730,11 @@
     "six-rendering": {
       "owner": "Ticker Six renderer contracts, catalog, preview tools, and generic renderer tests",
       "owned": [
-        "ticker_core/rendering/catalog.py",
-        "ticker_core/rendering/colors.py",
-        "ticker_core/rendering/fonts.py",
-        "ticker_core/rendering/geometry.py",
-        "ticker_core/rendering/model.py",
-        "ticker_core/rendering/strip.py",
+        "ticker_core/ui/catalog.py",
+        "ticker_core/ui/palette.py",
+        "ticker_core/ui/text.py",
+        "ticker_core/ui/frame.py",
+        "ticker_core/ui/strip.py",
         "tests/python/rendering/*",
         "tools/rendering/render_frame.py"
       ],
@@ -743,7 +742,7 @@
         "six-build"
       ],
       "context": [
-        "ticker_core/rendering/catalog.py",
+        "ticker_core/ui/catalog.py",
         "tests/python/rendering/test_catalog.py"
       ],
       "build": [

@@ -28,7 +28,7 @@ from ticker_core.platform.frame_health import PresentedFrameHealth
 from ticker_core.platform.device_credentials import load_device_token
 from ticker_core.platform.update_journal import UpdateJournal
 from ticker_core.protocol import BackendClient
-from ticker_core.rendering import FrameGeometry
+from ticker_core.ui import FrameGeometry
 from ticker_core.runtime import FramePacer, TickerRuntime
 
 

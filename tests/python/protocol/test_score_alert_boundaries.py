@@ -14,7 +14,7 @@ from ticker_core.app.updates import delta_asset_source
 from ticker_core.features.alerts import ScoreAlertRenderer
 from ticker_core.platform import AssetCoordinator
 from ticker_core.protocol import TickerResponse, display_delta
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 from ticker_core.runtime import TickerRuntime, FrameKind
 
 pytestmark = pytest.mark.critical

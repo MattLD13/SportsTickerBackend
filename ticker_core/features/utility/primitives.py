@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PIL import ImageDraw, ImageFont
 
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
+from ticker_core.ui.text import draw_hybrid, draw_tiny, plain_text
 
 
 PANEL_W = 384
@@ -21,7 +21,7 @@ def tiny_text(
 ) -> None:
     """Draw text with the deployed five-pixel glyphs."""
     del font
-    draw_tiny_text(draw, int(x), int(y), text, color)
+    draw_tiny(draw, int(x), int(y), text, color)
 
 
 def hybrid_text(
@@ -34,9 +34,9 @@ def hybrid_text(
 ) -> None:
     """Draw text with the deployed six-pixel glyphs."""
     del font
-    draw_hybrid_text(draw, int(x), int(y), text, color)
+    draw_hybrid(draw, int(x), int(y), text, color)
 
 
 def normal_text(value: object) -> str:
     """Return display-safe text without controller state."""
-    return normalize_special_chars(str(value)).strip()
+    return plain_text(str(value)).strip()

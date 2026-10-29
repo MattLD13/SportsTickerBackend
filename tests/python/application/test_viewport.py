@@ -12,7 +12,7 @@ import pytest
 from ticker_core.app.viewport import CardViewport
 from ticker_core.app import viewport as viewport_module
 from ticker_core.context import RenderContext
-from ticker_core.rendering import RenderedContent
+from ticker_core.ui import RenderedContent
 from ticker_core.runtime import Content
 
 pytestmark = pytest.mark.critical

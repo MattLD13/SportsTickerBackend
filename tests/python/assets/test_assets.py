@@ -370,7 +370,7 @@ def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) 
     from ticker_core.context import RenderContext
     from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
     from ticker_core.protocol import TickerResponse
-    from ticker_core.rendering import ContentScene, load_default_font_set
+    from ticker_core.ui import ContentScene, load_default_font_set
 
     url = _f1_car_url("Mercedes")
     raw = (Path(__file__).resolve().parents[2] / "fixtures/assets/f1_mercedes_2026.webp").read_bytes()
@@ -411,7 +411,7 @@ def _png() -> bytes:
 def test_v2_alert_only_logo_reaches_the_production_frame(tmp_path) -> None:
     from ticker_core.features.alerts import ScoreAlertRenderer
     from ticker_core.protocol.model import OverlayItem
-    from ticker_core.rendering import load_default_font_set
+    from ticker_core.ui import load_default_font_set
 
     logo = "https://assets.example/alert-only.png"
     envelope = {"event_id": "nfl:6-0:home", "kind": "rushing_td", "payload": {

@@ -18,7 +18,7 @@ from ticker_core.features.sports import stadium_port as sports_stadium_port
 from ticker_core.features.sports.logo_badge import draw_missing_team_badge
 from ticker_core.features.sports.logo_rendering import team_logo_layout
 from ticker_core.features.sports.logo_visibility import LogoOutlineMode, paste_team_logo
-from ticker_core.rendering import ContentScene, load_default_font_set
+from ticker_core.ui import ContentScene, load_default_font_set
 
 
 class EmptyLogos:

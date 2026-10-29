@@ -120,7 +120,7 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
     from ticker3.web.preview import PreviewRenderer, layout_case, layout_library
     from ticker_core.bootstrap import create_default_frame_builder
     from ticker_core.features.sports import SportsRenderer
-    from ticker_core.rendering.fonts import load_default_font_set
+    from ticker_core.ui.text import load_default_font_set
     from ticker_core.runtime import Content, FrameDecision, FrameKind
 
     app = create_offline_application(tmp_path / "ticker.sqlite3", [])

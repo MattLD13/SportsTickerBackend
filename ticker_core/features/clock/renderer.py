@@ -7,8 +7,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from ...context import RenderContext
 from .scene import ClockScene
-from ticker_core.rendering.style import CLOCK_DATE, SCORE_TEXT, CLOCK_RAIL, CLOCK_PROGRESS
-from ticker_core.rendering.templates import ImageTemplates
+from ticker_core.ui.palette import CLOCK_DATE, SCORE_TEXT, CLOCK_RAIL, CLOCK_PROGRESS
+from ticker_core.ui.layers import ImageTemplates
 
 
 PANEL_WIDTH = 384

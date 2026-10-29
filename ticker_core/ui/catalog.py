@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from ticker_core.context import RenderContext
 
-from .model import ContentScene, RenderedContent
+from .frame import ContentScene, RenderedContent
 
 
 class ContentRenderer(Protocol):

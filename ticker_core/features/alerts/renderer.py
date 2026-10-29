@@ -8,7 +8,7 @@ from typing import Any
 from PIL import Image
 
 from ticker_core.features.sports.renderer import LogoSource
-from ticker_core.rendering import FontSet
+from ticker_core.ui import FontSet
 
 from .news_banner import PreparedNewsBannerRenderer
 from .score_alert import PreparedScoreAlertRenderer

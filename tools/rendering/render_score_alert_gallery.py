@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from ticker_core.features.alerts.score_alert import PreparedScoreAlertRenderer
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 
 class EmptyLogos:

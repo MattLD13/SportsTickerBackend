@@ -29,7 +29,7 @@ from ticker_core.assets import AssetPlanner
 from ticker_core.modes import DisplayMode, display_mode
 from ticker_core.platform import AssetCoordinator
 from ticker_core.protocol.model import ContentItem, thaw
-from ticker_core.rendering import ContentScene
+from ticker_core.ui import ContentScene
 
 
 PANEL_SIZE = (384, 32)
@@ -154,7 +154,7 @@ def render_snapshot(
             return panel_image(create_default_scene_registry().render(context, ClockScene()))
         item = choose_item(content_items(snapshot, str(selected_mode)), item_id, index)
         if item is None:
-            from ticker_core.rendering.fonts import load_default_font_set
+            from ticker_core.ui.text import load_default_font_set
             from ticker_core.features.utility import UtilityRenderer
 
             return panel_image(UtilityRenderer(load_default_font_set()).empty(context))

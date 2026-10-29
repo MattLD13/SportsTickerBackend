@@ -11,9 +11,9 @@ from ticker_core.context import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.status import ConnectionLostOverlay
 from ticker_core.features.utility import UtilityRenderer
-from ticker_core.rendering import ContentRendererCatalog, ContentScene
-from ticker_core.rendering import FrameGeometry
-from ticker_core.rendering.values import plain_mapping as _plain_mapping
+from ticker_core.ui import ContentRendererCatalog, ContentScene
+from ticker_core.ui import FrameGeometry
+from ticker_core.ui.frame import plain_mapping as _plain_mapping
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 

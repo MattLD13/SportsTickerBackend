@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from ticker_core.rendering import load_default_font_set
+from ticker_core.ui import load_default_font_set
 
 # Load the drawing owner without importing the weather runtime and its web dependencies.
 SPEC = importlib.util.spec_from_file_location("mini_weather_art_owner", ROOT / "ticker_core/features/weather/drawing.py")
