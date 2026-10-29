@@ -70,6 +70,7 @@ Pi releases are immutable. Never pull, reset, or clean a running release.
 | Work | Read when needed |
 |---|---|
 | Server | `sports_ticker/AGENTS.md` |
+| Ticker 3 rebuild | `ticker3/AGENTS.md` |
 | Six | `ticker_core/AGENTS.md` |
 | Mini | `esp32_hub75/AGENTS.md` |
 | Controller app | `TickerControlApp/AGENTS.md` |

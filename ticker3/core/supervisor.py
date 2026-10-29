@@ -73,6 +73,7 @@ class _Feature:
     started_at: float = 0.0
     lost_pid: int | None = None
     lost_at: float = 0.0
+    adopt_pid: int | None = None
 
 
 class Supervisor:
@@ -92,7 +93,7 @@ class Supervisor:
         for spec in specs:
             record = saved.get(spec.feature, {})
             self.features[spec.feature] = _Feature(spec, record.get("active", initial_release), record.get("previous"),
-                                                   list(record.get("bad", [])))
+                                                   list(record.get("bad", [])), adopt_pid=record.get("pid"))
         self.events: deque[dict[str, Any]] = deque(maxlen=200)
         self._expected_exits: set[int] = set()
         self._crashed: set[int] = set()
@@ -105,6 +106,8 @@ class Supervisor:
     # Lifecycle
 
     async def start(self) -> None:
+        if len(os.fsencode(self.socket_path)) > 100:
+            raise ValueError(f"the worker socket path {self.socket_path} is longer than 100 bytes. Set a shorter TICKER3_SOCKET.")
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_directory.mkdir(parents=True, exist_ok=True)
         self.socket_path.unlink(missing_ok=True)
@@ -201,6 +204,8 @@ class Supervisor:
             feature = self.features[connection.feature]
             if connection.role == "active":
                 feature.connection = connection
+                feature.adopt_pid = connection.pid
+                self._save()
                 self.hub.register(connection.manifest)
                 self._event(connection.feature, "worker_connected", release=connection.release, pid=connection.pid)
             else:
@@ -392,7 +397,11 @@ class Supervisor:
                         connection.writer.close()
                         self._crash(feature, connection.pid, "the worker sent no health")
                     continue
-                if now - self._started_at < self.adopt_seconds or now < feature.next_start_at:
+                if now < feature.next_start_at:
+                    continue
+                if (now - self._started_at < self.adopt_seconds and feature.adopt_pid is not None
+                        and _alive(feature.adopt_pid)):
+                    # A worker from before the core restart is running. It connects again by itself.
                     continue
                 if feature.lost_pid is not None and now - feature.lost_at < 5 and _alive(feature.lost_pid):
                     # A running worker that lost its connection connects again by itself.
@@ -432,7 +441,8 @@ class Supervisor:
         self.events.append({"at": time.time(), "feature": feature, "event": kind, **detail})
 
     def _save(self) -> None:
-        state = {"features": {name: {"active": feature.active, "previous": feature.previous, "bad": feature.bad[-20:]}
+        state = {"features": {name: {"active": feature.active, "previous": feature.previous, "bad": feature.bad[-20:],
+                                     "pid": feature.connection.pid if feature.connection else feature.adopt_pid}
                               for name, feature in self.features.items()}}
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.state_path.with_suffix(".next")

@@ -59,8 +59,10 @@ class _Plan:
 class Hub:
     def __init__(self, *, clock: Callable[[], float] = time.time,
                  on_wanted: Callable[[str, dict[str, dict[str, Any]]], None] | None = None,
-                 on_screens: Callable[[str, Composition], None] | None = None) -> None:
+                 on_screens: Callable[[str, Composition], None] | None = None,
+                 on_manifest: Callable[[dict[str, Any]], None] | None = None) -> None:
         self.clock = clock
+        self.on_manifest = on_manifest or (lambda manifest: None)
         self.on_wanted = on_wanted or (lambda feature, subs: None)
         self.on_screens = on_screens or (lambda ticker, composition: None)
         self.manifests: dict[str, dict[str, Any]] = {}
@@ -90,6 +92,8 @@ class Hub:
         self.manifests[feature] = manifest
         if builtin is not None:
             self.builtins[feature] = builtin
+        else:
+            self.on_manifest(manifest)
         self._ref_keys.clear()
         self._ref_configs.clear()
         for ticker, apps in self.playlists.items():
@@ -106,13 +110,17 @@ class Hub:
 
     # Playlists
 
-    def set_playlist(self, ticker: str, apps: Iterable[App]) -> None:
-        """Replace the apps of one ticker. Raise ContractError for an unknown feature or invalid settings."""
+    def set_playlist(self, ticker: str, apps: Iterable[App], *, strict: bool = True) -> None:
+        """Replace the apps of one ticker.
+
+        A strict call raises ContractError for an unknown feature or invalid settings.
+        A call that is not strict keeps such an app and reports it in the composition errors.
+        """
         apps = tuple(apps)
         identifiers = [app.id for app in apps]
         if len(set(identifiers)) != len(identifiers) or not all(APP_ID.match(identifier) for identifier in identifiers):
             raise ContractError("each app needs a unique id of 1 to 16 lower-case letters or digits")
-        for app in apps:
+        for app in apps if strict else ():
             manifest = self.manifests.get(app.feature)
             if manifest is None:
                 raise ContractError(f"unknown feature {app.feature!r}")

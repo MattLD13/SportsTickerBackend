@@ -76,8 +76,10 @@ def records(payload: dict[str, Any], league: str) -> list[dict[str, Any]]:
         if state == "in":
             values.update(_situation(entry, competition, teams))
         tags = sorted({f"{league}:{values[f'{side}.abbr'].lower()}" for side in ("away", "home") if values[f"{side}.abbr"]})
+        # Live games come first, then games to start, then final games. Each group runs by start time.
+        minute = int(_parse_time(event["date"]).timestamp() // 60) if event.get("date") else index
         found.append({"id": f"{league}-{event['id']}", "template": "sports.card", "values": values, "tags": tags,
-                      "order": RANK.get(state, 1) * 1000 + index})
+                      "order": RANK.get(state, 1) * 100_000_000 + minute % 100_000_000})
     return found
 
 

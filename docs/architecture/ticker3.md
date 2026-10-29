@@ -120,8 +120,36 @@ Game logic stays in the feature. It arrives as plain values.
 The core keeps tickers, tokens, and playlists in SQLite in WAL mode.
 Device and app tokens are random. The store keeps only their SHA-256 hashes.
 
+## Run
+
+```bash
+TICKER3_ADMIN_TOKEN=change-me python -m ticker3.core.main
+```
+
+`ticker3/core/main.py` lists the settings. The API listens on `127.0.0.1:5300` by default.
+
+1. `POST /v3/tickers` with the admin token creates a ticker. The answer holds the device token and a pairing code.
+2. `POST /v3/pair` with the code gives an app token.
+3. `PUT /v3/tickers/{id}/apps` with the app token sets the playlist.
+4. A device opens `/v3/stream` and sends `hello` with its device token.
+
 ## Validation
 
 Each part has focused tests in `tests/python/ticker3/`.
 Feature tests use recorded real payloads in `tests/fixtures/ticker3/`.
 End-to-end tests start the real core, real worker processes, and a WebSocket device.
+`tools/ticker3/preview.py` renders real 384x32 and 64x32 frames into `previews/ticker3/`.
+
+## Measured results
+
+These figures come from the live run on 2026-10-29.
+
+| Fact | Value |
+|---|---|
+| Worker process memory | 28 to 31 MB each |
+| Templates for a 64x32 panel | 2,468 bytes, sent once |
+| Templates for a 384x32 panel | 4,201 bytes, sent once |
+| Full screen list, 24 screens | 8,529 bytes, sent at connection |
+| One score change | under 70 bytes |
+| F1 track weather through a reference | joined about 1 second after start |
+| Hot-swap deploy | no new `screens` message and no gap on the device |
