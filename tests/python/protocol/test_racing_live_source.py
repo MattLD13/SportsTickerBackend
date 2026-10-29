@@ -339,3 +339,54 @@ def test_racing_standardized_flags() -> None:
         token = _normalize_racing_flag(input_flag)
         assert token == expected_token, f"Failed for {input_flag}: expected {expected_token}, got {token}"
         assert (token in _CAUTION_FLAGS) == is_caution, f"Caution mismatch for {token}"
+
+
+def test_series_fetch_at_the_same_time_and_keep_the_fixed_order() -> None:
+    from threading import Barrier
+
+    source = _source(JsonFixture({}), TextFixture(""))
+    barrier = Barrier(5, timeout=5)
+
+    def series(name, fail=False):
+        def fetch(settings):
+            # Each fetch waits here until all five run, so a sequential fetch fails.
+            barrier.wait()
+            if fail:
+                raise RuntimeError("feed down")
+            return [{"id": name}]
+        return fetch
+
+    source._fetch_f1 = series("f1")
+    source._fetch_indycar = series("indycar", fail=True)
+    source._cup_source.fetch = series("nascar")
+    source._endurance_source.fetch = lambda sport, settings: series(sport)(settings)
+    try:
+        result = source.fetch(_settings(f1=True, indycar=True, nascar=True, wec=True, imsa=True))
+    finally:
+        source.close()
+
+    assert [record["id"] for record in result["content"]] == ["f1", "nascar", "wec", "imsa"]
+    assert result["health"] == {"provider": "racing", "healthy": False, "error": "indycar: feed down"}
+
+
+def test_circuit_weather_location_lookups_stay_one_per_second_across_series() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from sports_ticker.providers.racing_weather import CircuitWeatherSource
+
+    class Client:
+        def __init__(self):
+            self.lookups = 0
+
+        def get_json(self, url, *, timeout):
+            if "nominatim" in url:
+                self.lookups += 1
+                return [{"type": "raceway", "lat": "33.1", "lon": "-83.8"}]
+            return {"current": {"time": "2026-10-29T12:00", "temperature_2m": 70, "wind_speed_10m": 5, "wind_direction_10m": 90}}
+
+    client = Client()
+    weather = CircuitWeatherSource(client, clock=lambda: 1000.0)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda track: weather.fetch(track), [f"TRACK {index}" for index in range(8)]))
+
+    assert client.lookups == 1
+    assert sum(result.get("available", False) for result in results) == 1

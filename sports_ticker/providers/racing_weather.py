@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Lock
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -11,16 +12,25 @@ from .http import JsonHttpClient, JsonHttpError
 
 
 class CircuitWeatherSource:
-    """Cache circuit locations and weather outside display rendering."""
+    """Cache circuit locations and weather outside display rendering.
+
+    Several racing series read this source at the same time. One lock keeps the
+    location lookup at one request each second and keeps each cache entry whole.
+    """
 
     def __init__(self, client: JsonHttpClient, *, timeout: float = 10, clock: Callable[[], float] = time.time):
         self.client, self.timeout, self.clock = client, timeout, clock
         self.locations: dict[tuple[str, str], tuple[float, float]] = {}
         self.conditions: dict[tuple[float, float], tuple[float, dict[str, Any]]] = {}
         self.next_lookup = 0.0
+        self._lock = Lock()
 
     def fetch(self, track: str, country: str = "") -> dict[str, Any]:
         """Return Fahrenheit, mph, and a wind bearing for one circuit."""
+        with self._lock:
+            return self._fetch(track, country)
+
+    def _fetch(self, track: str, country: str) -> dict[str, Any]:
         try:
             key = (track, country)
             location = self.locations.get(key)

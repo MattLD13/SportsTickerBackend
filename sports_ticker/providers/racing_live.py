@@ -171,29 +171,36 @@ class LiveRacingSource:
             self._client, self._circuit_weather, now=self._now, clock=clock, timeout=self._timeout,
             **({"socket_factory": socket_factory} if socket_factory is not None else {}),
         )
+        self._series_pool = ThreadPoolExecutor(max_workers=5, thread_name_prefix="racing-series")
 
     def close(self) -> None:
+        self._series_pool.shutdown(wait=True, cancel_futures=True)
         try:
             self._client_owner.close()
         finally:
             self._text_client_owner.close()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        """Return current sessions for the enabled racing series."""
+        """Return current sessions for the enabled racing series.
+
+        Each series reads its own sources, so the series run at the same time.
+        The records and failures keep the fixed series order.
+        """
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
         records: list[dict[str, Any]] = []
         failures: list[str] = []
-        for series, fetch in (
-            ("f1", self._fetch_f1), ("indycar", self._fetch_indycar), ("nascar", self._cup_source.fetch),
-            ("wec", lambda settings: self._endurance_source.fetch("wec", settings)),
-            ("imsa", lambda settings: self._endurance_source.fetch("imsa", settings)),
-        ):
-            if not settings.active_sports.get(series, True):
-                continue
+        pending = [
+            (series, self._series_pool.submit(fetch, settings)) for series, fetch in (
+                ("f1", self._fetch_f1), ("indycar", self._fetch_indycar), ("nascar", self._cup_source.fetch),
+                ("wec", lambda settings: self._endurance_source.fetch("wec", settings)),
+                ("imsa", lambda settings: self._endurance_source.fetch("imsa", settings)),
+            ) if settings.active_sports.get(series, True)
+        ]
+        for series, future in pending:
             try:
-                records.extend(fetch(settings))
+                records.extend(future.result())
             except Exception as error:
                 failures.append(f"{series}: {error}")
         result: dict[str, object] = {"content": records}
