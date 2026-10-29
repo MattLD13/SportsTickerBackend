@@ -25,6 +25,17 @@ def contract_id(root: Path | None = None):
     # Each release declares its own contract files in this literal list.
     paths = ["backend_ops/worker_contract.py", "sports_ticker/domain/models.py", "sports_ticker/providers/contracts.py",
              "sports_ticker/immutable.py"]
+    paths = contract_files(root)
+    digest = hashlib.sha256()
+    for name in paths:
+        digest.update(name.encode())
+        digest.update((root / name).read_bytes().replace(b"\r\n", b"\n"))
+    return digest.hexdigest()
+
+
+def contract_files(root: Path | None = None):
+    """Return the contract files that the release at ``root`` declares in ``contract_id``."""
+    root = root or REPOSITORY_ROOT
     source = (root / "backend_ops/worker_contract.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "contract_id")
@@ -34,11 +45,7 @@ def contract_id(root: Path | None = None):
     if not isinstance(paths, list) or not paths or any(
             not isinstance(name, str) or Path(name).is_absolute() or ".." in Path(name).parts for name in paths):
         raise ValueError("invalid worker contract dependencies")
-    digest = hashlib.sha256()
-    for name in paths:
-        digest.update(name.encode())
-        digest.update((root / name).read_bytes().replace(b"\r\n", b"\n"))
-    return digest.hexdigest()
+    return tuple(paths)
 
 
 def encode(value):

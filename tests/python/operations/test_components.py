@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+import shutil
 import subprocess
 
 from backend_ops.components import changed_components
@@ -17,12 +19,13 @@ def _git(root, *args: str) -> str:
 
 
 def test_changed_components_skips_binary_file_reads(tmp_path) -> None:
+    source = Path(__file__).resolve().parents[3]
+    for package in ("sports_ticker", "ticker_core", "backend_ops"):
+        shutil.copytree(source / package, tmp_path / package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (tmp_path / "docs/research").mkdir(parents=True)
-    (tmp_path / "sports_ticker/providers").mkdir(parents=True)
     image = tmp_path / "docs/research/diagram.png"
     weather = tmp_path / "sports_ticker/providers/weather.py"
     image.write_bytes(b"\x89PNG\r\n\x1a\n")
-    weather.write_text("condition = 'cloud'\n", encoding="utf-8")
 
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.name", "Test")
@@ -32,7 +35,7 @@ def test_changed_components_skips_binary_file_reads(tmp_path) -> None:
     base = _git(tmp_path, "rev-parse", "HEAD")
 
     image.write_bytes(b"\x89PNG\r\n\x1a\nupdated")
-    weather.write_text("condition = 'sun'\n", encoding="utf-8")
+    weather.write_text(weather.read_text(encoding="utf-8") + "\n# Changed weather source.\n", encoding="utf-8")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "change weather and image")
 

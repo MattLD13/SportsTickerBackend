@@ -63,18 +63,29 @@ def setup(tmp_path):
     return manager, state, host, now
 
 
-def test_deployment_selects_the_fact_owner_and_shared_dependencies():
+def test_deployment_selects_the_processes_that_load_a_file():
     assert owners("sports_ticker/providers/music.py") == {"music"}
     assert owners("sports_ticker/api/routes.py") == {"core"}
     assert owners("sports_ticker/integrations/spotify.py") == {"core", "music"}
-    assert owners("sports_ticker/tls.py") == set(ALL)
     assert owners("sports_ticker/immutable.py") == set(ALL)
     assert owners("sports_ticker/domain/models.py") == set(ALL)
+    assert owners("sports_ticker/domain/settings.py") == set(ALL)
+    assert owners("sports_ticker/__init__.py") == set(ALL)
     assert owners("tests/python/test_modes.py") == set()
     assert owners("sports_ticker/providers/source_values.py") == {"golf", "stock", "flights", "news"}
     assert owners("sports_ticker/providers/score_alerts.py") == {"espn", "fotmob"}
-    assert owners("sports_ticker/domain/settings.py") == set(ALL)
     assert owners("sports_ticker/providers/racing_session.py") == {"core", "racing"}
+    assert owners("sports_ticker/providers/sports_display.py") == {"core", "espn", "fotmob", "golf", "racing"}
+    assert owners("sports_ticker/providers/stock_catalog.py") == {"core"}
+    assert owners("sports_ticker/providers/weather.py") == {"weather"}
+    assert owners("sports_ticker/providers/weather_location.py") == {"core"}
+
+
+def test_deployment_selects_every_process_for_files_without_import_edges():
+    assert owners("sports_ticker/providers/removed_source.py") == set(ALL)
+    assert owners("sports_ticker/providers/team_overrides.json") == set(ALL)
+    assert owners("sports_ticker/removed_view.py") == {"core"}
+    assert owners("sports_ticker/dashboard_v2/static/app.js") == {"core"}
 
 
 @pytest.mark.parametrize("module,component", [

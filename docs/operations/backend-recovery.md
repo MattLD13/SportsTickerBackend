@@ -51,11 +51,15 @@ The fetchers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flight
 The planner owns source-to-component selection.
 A provider implementation change updates that worker and its declared consumers.
 Shared domain, protocol, or dependency changes update all affected components together.
-The planner uses explicit source file ownership in `backend_ops/components.py`.
+The planner in `backend_ops/components.py` reads the module import graph of the release.
+A change to a Python module selects each process that can load that module.
+The core starts at `sports_ticker.server`. Each worker starts at `backend_ops.worker` and its branch of `create_provider`.
 For example, a change in `providers/stock_source.py` selects only `stock`.
-Shared source-value helpers select their golf, stock, flights, and news consumers.
-Unclassified shared provider changes select all components.
+A change in `providers/sports_display.py` selects core and the four sports workers.
+Contract files, `backend_ops/`, requirements, and service units select all components.
+A deleted provider module or a provider data file has no import edge, so it selects all components.
 Worker bundles include provider dependencies. They exclude the core API, dashboard, and Pi renderer.
+A test checks that each worker bundle carries every module in its import graph.
 The core calls workers through a bounded local JSON socket contract.
 Rendering and public V2 payloads retain their existing owners.
 
