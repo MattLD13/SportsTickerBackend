@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import gzip
 import json
 import socket
 from threading import Lock, Thread
@@ -26,10 +27,29 @@ def server():
         def do_GET(self):
             with self.server.lock:
                 self.server.paths.append(self.path)
+                self.server.requests.append(dict(self.headers))
+                version = self.server.versions.get(self.path, 1)
             status = 200
             headers = {}
             body = b'{"value":7}'
-            if self.path == "/redirect":
+            if self.path in ("/etag", "/etag-no-store", "/modified"):
+                body = json.dumps({"version": version}).encode()
+                if self.path == "/modified":
+                    validator, sent = f"Mon, 0{version} Jan 2026 00:00:00 GMT", self.headers.get("If-Modified-Since")
+                    headers["Last-Modified"] = validator
+                else:
+                    validator, sent = f'"v{version}"', self.headers.get("If-None-Match")
+                    headers["ETag"] = validator
+                if self.path == "/etag-no-store":
+                    headers["Cache-Control"] = "no-store"
+                if sent == validator:
+                    status, body = 304, b""
+            elif self.path == "/gzip":
+                body = json.dumps({"encoding": self.headers.get("Accept-Encoding")}).encode()
+                if "gzip" in self.headers.get("Accept-Encoding", ""):
+                    body = gzip.compress(body)
+                    headers["Content-Encoding"] = "gzip"
+            elif self.path == "/redirect":
                 status, headers, body = 302, {"Location": "/json"}, b""
             elif self.path == "/loop":
                 status, headers, body = 302, {"Location": "/loop"}, b""
@@ -68,6 +88,8 @@ def server():
     instance.lock = Lock()
     instance.connections = 0
     instance.paths = []
+    instance.requests = []
+    instance.versions = {}
     worker = Thread(target=lambda: instance.serve_forever(poll_interval=0.01), daemon=True)
     worker.start()
     instance.url = f"http://127.0.0.1:{instance.server_port}"
@@ -156,3 +178,50 @@ def test_pool_retains_verified_tls_configuration():
         context = client._pool.connection_pool_kw["ssl_context"]
         assert context.verify_mode == ssl.CERT_REQUIRED
         assert context.check_hostname
+
+
+def test_reads_ask_for_gzip_and_decode_it(server):
+    with _client() as client:
+        assert client.get_json(server.url + "/gzip", timeout=1) == {"encoding": "gzip, deflate"}
+
+
+@pytest.mark.parametrize("path,header", [("/etag", "If-None-Match"), ("/modified", "If-Modified-Since")])
+def test_unchanged_source_answers_304_and_the_client_returns_the_kept_body(server, path, header):
+    with _client() as client:
+        assert client.get_json(server.url + path, timeout=1) == {"version": 1}
+        assert client.get_json(server.url + path, timeout=1) == {"version": 1}
+        server.versions[path] = 2
+        assert client.get_json(server.url + path, timeout=1) == {"version": 2}
+        assert client.get_json(server.url + path, timeout=1) == {"version": 2}
+
+    assert server.paths == [path] * 4
+    sent = [request.get(header) for request in server.requests]
+    assert sent[0] is None and sent[1] == sent[2] and sent[3] not in (None, sent[2])
+
+
+def test_body_without_validators_or_with_no_store_is_not_kept(server):
+    with _client() as client:
+        for path in ("/json", "/json", "/etag-no-store", "/etag-no-store"):
+            client.get_json(server.url + path, timeout=1)
+
+    assert [request.get("If-None-Match") for request in server.requests] == [None] * 4
+
+
+def test_kept_bodies_stay_within_the_size_limit(server):
+    with _client(stored_characters=len('{"version": 1}')) as client:
+        for path in ("/etag", "/modified", "/modified", "/etag"):
+            client.get_json(server.url + path, timeout=1)
+
+    # The limit holds one body, so the /modified body replaces the /etag body.
+    assert [request.get("If-None-Match") or request.get("If-Modified-Since") for request in server.requests] == [
+        None, None, "Mon, 01 Jan 2026 00:00:00 GMT", None]
+
+
+def test_failed_read_after_a_kept_body_raises_and_keeps_the_body(server):
+    with _client() as client:
+        assert client.get_json(server.url + "/etag", timeout=1) == {"version": 1}
+        with pytest.raises(JsonHttpError, match="HTTP 503"):
+            client.get_json(server.url + "/unavailable", timeout=1)
+        assert client.get_json(server.url + "/etag", timeout=1) == {"version": 1}
+
+    assert server.requests[-1]["If-None-Match"] == '"v1"'

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Protocol, runtime_checkable
 
@@ -51,11 +53,27 @@ class TextHttpClient(Protocol):
         """Return the response body for ``url``."""
 
 
-class _PooledHttpClient:
-    """Reuse verified connections across concurrent provider reads without automatic request retries."""
+@dataclass(frozen=True, slots=True)
+class _StoredBody:
+    validators: dict[str, str]
+    text: str
 
-    def __init__(self, *, user_agent: str = "SportsTickerBackend/8") -> None:
+
+class _PooledHttpClient:
+    """Reuse verified connections across concurrent provider reads without automatic request retries.
+
+    Each request asks for a gzip body. When a response carries an ETag or a
+    Last-Modified date, the client keeps the body and sends those validators on
+    the next read of the same URL. A 304 answer then returns the kept body, so an
+    unchanged source costs headers only. Each read still reaches the source.
+    """
+
+    def __init__(self, *, user_agent: str = "SportsTickerBackend/8", stored_characters: int = 16 * 1024 * 1024) -> None:
         self._user_agent = str(user_agent).strip() or "SportsTickerBackend/8"
+        self._stored: OrderedDict[tuple[str, str], _StoredBody] = OrderedDict()
+        self._stored_size = 0
+        self._stored_limit = int(stored_characters)
+        self._stored_lock = Lock()
         self._pool = PoolManager(
             num_pools=16, maxsize=8,
             ssl_context=verified_https_context(),
@@ -68,6 +86,9 @@ class _PooledHttpClient:
     def close(self) -> None:
         """Close retained idle connections when the owner stops this client."""
         self._pool.clear()
+        with self._stored_lock:
+            self._stored.clear()
+            self._stored_size = 0
 
     def _get_text(self, url: str, *, timeout: float, accept: str) -> str:
         target = str(url).strip()
@@ -76,21 +97,53 @@ class _PooledHttpClient:
         request_timeout = float(timeout)
         if not math.isfinite(request_timeout) or request_timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
+        key = (target, accept)
+        with self._stored_lock:
+            stored = self._stored.get(key)
+        headers = {"Accept": accept, "Accept-Encoding": "gzip, deflate", "User-Agent": self._user_agent}
+        if stored is not None:
+            headers.update(stored.validators)
         try:
             response = self._pool.request(
                 "GET", target,
-                headers={"Accept": accept, "User-Agent": self._user_agent},
+                headers=headers,
                 timeout=Timeout(connect=request_timeout, read=request_timeout),
                 preload_content=True,
             )
         except (HTTPError, OSError) as error:
             raise JsonHttpError(f"request failed for {target}: {error}") from error
+        if response.status == 304 and stored is not None:
+            with self._stored_lock:
+                if key in self._stored:
+                    self._stored.move_to_end(key)
+            return stored.text
         if not 200 <= response.status < 300:
             raise JsonHttpError(f"HTTP {response.status} for {target}: {response.reason}")
         try:
-            return response.data.decode("utf-8")
+            text = response.data.decode("utf-8")
         except UnicodeDecodeError as error:
             raise JsonHttpError(f"response was not UTF-8 for {target}") from error
+        self._store(key, response.headers, text)
+        return text
+
+    def _store(self, key: tuple[str, str], headers: Any, text: str) -> None:
+        validators = {}
+        if etag := headers.get("ETag"):
+            validators["If-None-Match"] = etag
+        if modified := headers.get("Last-Modified"):
+            validators["If-Modified-Since"] = modified
+        keep = bool(validators) and "no-store" not in headers.get("Cache-Control", "").lower() and len(text) <= self._stored_limit
+        with self._stored_lock:
+            previous = self._stored.pop(key, None)
+            if previous is not None:
+                self._stored_size -= len(previous.text)
+            if not keep:
+                return
+            self._stored[key] = _StoredBody(validators, text)
+            self._stored_size += len(text)
+            while self._stored_size > self._stored_limit:
+                _, evicted = self._stored.popitem(last=False)
+                self._stored_size -= len(evicted.text)
 
 
 class PooledJsonHttpClient(_PooledHttpClient):
