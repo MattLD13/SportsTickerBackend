@@ -28,6 +28,7 @@ from ticker_core import RenderContext
 from ticker_core.assets import AssetPlanner
 from ticker_core.modes import DisplayMode, display_mode
 from ticker_core.platform import AssetCoordinator
+from ticker_core.protocol.model import ContentItem, thaw
 from ticker_core.rendering import ContentScene
 
 
@@ -81,13 +82,12 @@ def normalize_snapshot(value: object, requested_mode: str) -> dict[str, Any]:
     if data.get("api_version") != "v2":
         raise ValueError("The backend response must use api_version v2.")
     records: list[dict[str, Any]] = []
-    for values in _items_mapping(data.get("content")):
-        for envelope in _items(values):
-            rendered = dict(envelope.get("data") or {})
-            rendered["id"] = envelope.get("id", rendered.get("id", ""))
-            rendered["family"] = envelope.get("family", rendered.get("family", ""))
-            rendered["kind"] = envelope.get("kind", rendered.get("kind", ""))
-            rendered["is_shown"] = envelope.get("is_shown", True)
+    for family, values in data.get("content", {}).items() if isinstance(data.get("content"), Mapping) else ():
+        for index, envelope in enumerate(_items(values)):
+            # The Six protocol model prepares each item, so this tool draws what the device draws.
+            item = ContentItem.from_payload(envelope, f"content.{family}[{index}]")
+            rendered = thaw(item.data)
+            rendered.update(id=item.id, is_shown=item.is_shown)
             records.append(rendered)
     return {"mode": requested_mode, "content": {"items": records}}
 
@@ -95,12 +95,6 @@ def normalize_snapshot(value: object, requested_mode: str) -> dict[str, Any]:
 def _items(value: object) -> list[dict[str, Any]]:
     """Keep only JSON object content records."""
     return [dict(item) for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
-
-
-def _items_mapping(value: object) -> tuple[object, ...]:
-    """Return v2 family record lists without accepting arbitrary scalar values."""
-
-    return tuple(value.values()) if isinstance(value, Mapping) else ()
 
 
 def content_items(snapshot: Mapping[str, Any], mode: str) -> list[dict[str, Any]]:

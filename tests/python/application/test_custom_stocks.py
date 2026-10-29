@@ -8,7 +8,7 @@ from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import TickerRepository
 from sports_ticker.markets import MARKET_GROUPS, MARKET_OPTIONS, selected_market_groups
-from sports_ticker.production import _provider_settings_key
+from sports_ticker.application.provider_keys import provider_settings_key
 from sports_ticker.projections.data_api import project_data_v2, select_display_content
 from sports_ticker.providers import stock_source
 from sports_ticker.providers.market_sessions import MarketSession
@@ -31,7 +31,7 @@ def test_custom_symbols_validate_normalize_and_persist_per_ticker(tmp_path):
     with TickerRepository(tmp_path / "fleet.sqlite3") as repo:
         assert repo.get_ticker("one").display_settings == settings
         assert repo.get_ticker("two").display_settings.custom_stock_symbols == ("MSFT",)
-    key = _provider_settings_key("stock")
+    key = provider_settings_key("stock")
     assert key(settings) != key(DisplaySettings(custom_stock_symbols=("MSFT",)))
 
 

@@ -1,155 +1,97 @@
-# Ticker 3 backend design
+# Ticker 3 engine
 
-Ticker 3 is a full rebuild of the server. It lives in `ticker3/`.
-The current server in `sports_ticker/` is the behavior reference. Ticker 3 imports nothing from it.
+Ticker 3 replaces the refresh engine of the server. It lives in `ticker3/`.
+Everything that decides how a ticker looks stays the same: the V2 routes, the projections,
+the providers and `sports_display.py`, the Six renderer, the Mini firmware, and the iOS app.
 
-## Goals
+## What changes
 
-1. A new feature is one folder in `ticker3/features/`. The core names no feature.
-2. A failed feature process stops only that feature. It does not stop the core or other features.
-3. A feature update replaces its process with no gap in data.
-4. A device downloads each screen layout once. After that, it receives only changed values.
-5. Each upstream source is read once for all tickers that need it.
+| Part | Old engine | Ticker 3 engine |
+|---|---|---|
+| Read timing | The core scheduler polls each worker at a fixed interval. | Each worker owns the timing of its provider and pushes each result. |
+| ESPN live changes | The core long-polls the ESPN worker for Fastcast versions. | The ESPN worker watches Fastcast and starts a live pass itself. |
+| Worker transport | One request and one answer per socket connection. | One connection per worker. Results and health flow without requests. |
+| Worker lifecycle | systemd units, a guard timer, and the release manager. | The core supervisor restarts, replaces, and rolls back workers. |
+| Clock | A worker process. | The core makes the clock result. The clock has no upstream. |
+| Core restart | Workers keep running, but core polls start again. | Workers keep running and connect again. The core adopts them. |
 
 ## Parts
 
 | Part | Folder | Job |
 |---|---|---|
-| Contract | `ticker3/contract/` | Messages, templates, settings schemas, and their validation. Every other part imports it. |
-| Worker SDK | `ticker3/sdk/` | The process host for one feature. It connects to the core, reads upstreams, and sends record changes. |
-| Features | `ticker3/features/<name>/` | Upstream reads, records, and templates for one feature. A feature imports only the contract and the SDK. |
-| Core | `ticker3/core/` | Fleet store, subscriptions, record store, composition, device streams, HTTP API, and the worker supervisor. The core imports no feature. |
-| Player | `ticker3/player/` | The reference template player. It draws a screen from a template and values. Tests and previews use it. |
+| Contract | `ticker3/contract/` | Line framing and the worker messages. |
+| Worker | `ticker3/worker/` | Hosts one existing provider. Owns its interval, batch reads, live passes, and failure pauses. |
+| Engine | `ticker3/core/engine.py` | Turns tickers and settings into subscriptions and publishes snapshots through `RefreshService`. |
+| Supervisor | `ticker3/core/supervisor.py` | Starts, watches, replaces, rolls back, and adopts worker processes. |
+| Server | `ticker3/server.py` | Builds the unchanged V2 application with the engine. |
 
-## Terms
+## Subscriptions
 
-| Term | Meaning |
-|---|---|
-| Feature | One kind of content, such as `weather` or `sports`. |
-| App | One feature with its settings in the playlist of one ticker. |
-| Subscription | One normalized feature config. All apps with the same config share one subscription. |
-| Record | One item that a subscription produces. It has an ID, a template ID, values, tags, and an order number. |
-| Screen | One record after the core resolves its references. A device draws a screen with a template. |
-| Reference | A value that points to a record of another feature. The core resolves it. |
+A subscription is one ticker, one provider, and the provider settings key of that ticker.
+`sports_ticker/application/provider_keys.py` names the settings that can change each provider result.
+The old scheduler cached results with the same key, so a result goes only to the ticker that asked for it.
 
-## Data flow
+Each pass, the engine:
 
-1. The app saves the playlist of a ticker. Each app has a feature and settings.
-2. The core normalizes the settings with the schema of the feature.
-3. The core expands the settings into subscriptions. A `fanout` list field gives one subscription for each item.
-4. The core sends the full subscription set to the feature worker.
-5. The worker reads its upstreams on its own schedule. It sends a `sync` for each new subscription and a `delta` when records change.
-6. The core stores the records. Then it composes the screens of each affected ticker.
-7. The core sends each connected device the changed values only.
+1. resolves the settings of each registered ticker,
+2. asks `ProviderDemand` which tickers need each provider,
+3. sends each worker its full subscription set,
+4. publishes each ticker that got a new result. The snapshot holds the result of each provider whose key matches the current settings.
 
-The core never polls a worker. The worker owns the upstream timing, because it knows the upstream limits and push channels.
+A settings change gives a new key, so the worker reads the new subscription at once.
 
-## Features share data through the core
+## Worker rules
 
-A record value can be a reference:
+These rules match the old core scheduler:
 
-```json
-{"weather": {"$ref": {"feature": "weather", "config": {"latitude": 19.4, "longitude": -99.09}, "record": "now"}}}
-```
-
-1. The core normalizes the reference config with the schema of the target feature.
-2. The core adds that config to the subscriptions of the target feature.
-3. During composition, the core replaces the value with the values of the target record. Each key gets the prefix `weather.`.
-4. If the target record is missing, the core adds no keys. The template hides the parts that need them.
-
-A worker never connects to another worker. A failed target feature removes only the referenced values.
-
-## Built-in features
-
-The core runs the `clock` feature itself. The clock has no upstream, so a process for it has no value.
-A device draws the time from its own clock. The clock record carries only the time zone and the format.
+- An interval pass reads every subscription. The intervals are in `ticker3/worker/runner.py`.
+- A provider with `fetch_batch_for_tickers` reads all its tickers in one call.
+- A Fastcast version change starts a live pass for the tickers that follow the changed league.
+- An unhealthy result is not sent, so the core keeps the last good data.
+- After 3 failures, a ticker setting pauses for 30 seconds. The pause doubles up to 300 seconds.
+- The worker sends its job health, so `/api/v2/health` keeps its fields.
 
 ## Worker protocol
 
-The core listens on one Unix socket. Each worker connects to it.
-Each message is one JSON object on one line. A line must be at most 4 MiB.
+The core listens on one Unix socket. Each message is one JSON object on one line.
 
 | Direction | Type | Content |
 |---|---|---|
-| worker to core | `hello` | Protocol version, feature name, release, process ID, and manifest. |
-| core to worker | `welcome` | Acceptance, or the reason for refusal. |
-| core to worker | `subscribe` | The full set of subscriptions, as key to config. |
-| worker to core | `sync` | All records of one subscription. |
-| worker to core | `delta` | Changed and removed records of one subscription. |
-| worker to core | `health` | Status every 5 seconds, with the error of each failed subscription. |
-| core to worker | `wake` | A request to read the given subscriptions now. |
-| core to worker | `drain` | A request to stop after the last message. |
+| worker to core | `hello` | Protocol version, provider, release, and process ID |
+| core to worker | `welcome` | Acceptance, or the reason for refusal |
+| core to worker | `subscribe` | The full set of subscriptions, as key to ticker and settings |
+| worker to core | `result` | One healthy `ProviderResult` in the `backend_ops.worker_contract` encoding |
+| worker to core | `health` | Errors, job health, paused circuits, memory, and busy time, every 5 seconds |
+| core to worker | `drain` | A request to stop |
 
-A subscription key is the first 16 hex digits of the SHA-256 of the canonical config JSON.
+## Supervisor rules
 
-## Supervisor
+- If a worker exits, sends no health for 20 seconds, or stays in one provider read for 45 seconds, it restarts with backoff.
+- If a release crashes 3 times in 30 minutes, it is marked bad and the previous release becomes active.
+- A deploy starts the new release next to the active one. The new release becomes active after it sends a result for every subscription. Then the old worker gets `drain`.
+- If the new release fails, the old release stays active and the new release is marked bad.
+- A worker that has no core for 10 minutes stops.
 
-The core starts each worker as a separate process in its own session.
+## Proof of the same output
 
-- If a worker exits or stops its health messages for 20 seconds, the supervisor starts it again with backoff.
-- If a release crashes 3 times in 30 minutes, the supervisor marks it bad and starts the previous release.
-- To deploy a release, the supervisor starts it next to the active release.
-  The new release becomes active after it syncs each subscription.
-  Then the old release gets `drain`. Devices see no gap.
-- If the new release fails the trial, the old release stays active and the new release is marked bad.
-- Workers keep running when the core restarts. They connect again, and the core adopts them.
-- If a worker has no core for 10 minutes, it stops.
+`tests/python/ticker3/test_engine_equivalence.py` runs the old production composition and the Ticker 3 server
+with the same replay providers. The replay providers return real provider results recorded on 2026-10-29.
+For each ticker, the full view and the device view of `project_data` must be equal.
+Only `snapshot.revision`, `snapshot.timing`, and `snapshot.observed_at` can differ.
+The Six ignores the same three fields when it decides whether the display changed.
 
-## Device protocol
-
-A device opens a WebSocket at `/v3/stream` and sends `hello` with its token, panel size, and template bundle hash.
-
-| Type | Content |
-|---|---|
-| `templates` | The templates for the panel size of the device. The server sends them only when the bundle hash differs. |
-| `screens` | The full ordered screen list. The server sends it after `hello`. |
-| `delta` | Changed values of each changed screen, removed screen IDs, and the new order if it changed. |
-| `ping` | A keepalive. The device answers `pong`. |
-
-A score change sends only the changed values, for example about 60 bytes.
-
-## Templates
-
-A template has one block for each panel size. A block has a box size, a flow, and a parts list.
-A `scroll` flow joins screens into a moving strip. A `page` flow shows each screen for its dwell time.
-A part can show or hide with a simple rule: `key`, `!key`, `key == value`, or `key != value`.
-Game logic stays in the feature. It arrives as plain values.
-
-## Storage
-
-The core keeps tickers, tokens, and playlists in SQLite in WAL mode.
-Device and app tokens are random. The store keeps only their SHA-256 hashes.
+A live run on 2026-10-29 read the real upstreams with both engines at the same time.
+The V2 payloads of a sports, a weather, and an airport ticker were equal, and the Six renderer drew them.
 
 ## Run
 
 ```bash
-TICKER3_ADMIN_TOKEN=change-me python -m ticker3.core.main
+python -m ticker3.server
 ```
 
-`ticker3/core/main.py` lists the settings. The API listens on `127.0.0.1:5300` by default.
+`ticker3/server.py` lists the Ticker 3 settings. Every other setting keeps its meaning from `sports_ticker/production.py`.
 
-1. `POST /v3/tickers` with the admin token creates a ticker. The answer holds the device token and a pairing code.
-2. `POST /v3/pair` with the code gives an app token.
-3. `PUT /v3/tickers/{id}/apps` with the app token sets the playlist.
-4. A device opens `/v3/stream` and sends `hello` with its device token.
+## Not done yet
 
-## Validation
-
-Each part has focused tests in `tests/python/ticker3/`.
-Feature tests use recorded real payloads in `tests/fixtures/ticker3/`.
-End-to-end tests start the real core, real worker processes, and a WebSocket device.
-`tools/ticker3/preview.py` renders real 384x32 and 64x32 frames into `previews/ticker3/`.
-
-## Measured results
-
-These figures come from the live run on 2026-10-29.
-
-| Fact | Value |
-|---|---|
-| Worker process memory | 28 to 31 MB each |
-| Templates for a 64x32 panel | 2,468 bytes, sent once |
-| Templates for a 384x32 panel | 4,201 bytes, sent once |
-| Full screen list, 24 screens | 8,529 bytes, sent at connection |
-| One score change | under 70 bytes |
-| F1 track weather through a reference | joined about 1 second after start |
-| Hot-swap deploy | no new `screens` message and no gap on the device |
+- The deployment workflow and `backend_ops/manager.py` still deploy the old engine.
+  The old engine stays until the Ticker 3 supervisor takes over deployment.

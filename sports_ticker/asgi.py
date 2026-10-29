@@ -19,10 +19,12 @@ from .device_stream import DeviceStreamHub, SUBPROTOCOL, project_stream_payload
 class BackendASGI:
     """Own one runtime lifecycle and adapt the unchanged Flask HTTP application."""
 
-    def __init__(self, app: Flask, *, http_threads: int = 8) -> None:
+    def __init__(self, app: Flask, *, http_threads: int = 8,
+                 start: Callable[[Flask], Callable[[], None]] | None = None) -> None:
         if http_threads < 1:
             raise ValueError("TICKER_HTTP_THREADS must be positive")
         self.flask_app = app
+        self._start = start
         self.http = WsgiToAsgi(app)
         self._http_slots = asyncio.Semaphore(http_threads)
         self._lifespan_claimed = False
@@ -83,7 +85,8 @@ class BackendASGI:
             if message["type"] != "lifespan.startup":
                 raise ValueError("backend lifespan requires startup")
             try:
-                self._stop = start_runtime(self.flask_app)
+                # The production runtime is looked up at start, so a caller can replace it.
+                self._stop = (self._start or start_runtime)(self.flask_app)
             except Exception as exc:
                 await send({"type": "lifespan.startup.failed", "message": str(exc)})
                 return

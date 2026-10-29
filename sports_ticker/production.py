@@ -20,11 +20,11 @@ from sports_ticker.assets.mini_artwork import MiniArtworkService
 from sports_ticker.application import BackendApplication, BackendRuntime, RefreshScheduler, RefreshService
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.application.provider_demand import ProviderDemand
-from sports_ticker.domain import DisplaySettings
+from sports_ticker.application.provider_keys import provider_settings_key
 from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService
-from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, FOTMOB_LEAGUES, TEAM_CATALOG_PATHS
+from sports_ticker.leagues import TEAM_CATALOG_PATHS
 from sports_ticker.providers.catalog import EspnTeamCatalog
 from sports_ticker.providers.weather_location import WeatherLocationResolver
 
@@ -51,7 +51,7 @@ def create_production_application(
     path = Path(database_path or os.environ.get("TICKER_DATABASE_PATH", "ticker_data/ticker-v2.sqlite3"))
     path.parent.mkdir(parents=True, exist_ok=True)
     repository = TickerRepository(path)
-    _provision_initial_ticker(repository)
+    provision_initial_ticker(repository)
     spotify = SpotifyIntegrationService(repository, SpotifyConfig.from_environment())
     catalog = EspnTeamCatalog(TEAM_CATALOG_PATHS)
     weather_resolver = WeatherLocationResolver()
@@ -73,7 +73,7 @@ def create_production_application(
             name,
             _INTERVALS[name],
             _provider_fetch(provider),
-            settings_key=_provider_settings_key(name),
+            settings_key=provider_settings_key(name),
             refresh_changed=provider.fetch_live_for_ticker if name == "espn" else None,
             refresh_batch=provider.fetch_batch_for_tickers if name == "espn" else None,
         )
@@ -117,7 +117,7 @@ def create_production_application(
     app.config["DASHBOARD_ASSET_CACHE"] = Path(
         os.environ.get("TICKER_DASHBOARD_ASSET_CACHE", path.parent / "rewrite_assets")
     )
-    app.config["VERSION"] = _build_version()
+    app.config["VERSION"] = build_version()
     app.extensions["sports_ticker.deployment_status"] = lambda: deployment_summary(path.parent)
     return app
 
@@ -160,61 +160,6 @@ def _provider_fetch(provider: object):
     return fetch
 
 
-def _provider_settings_key(name: str):
-    """Return only the settings that can change one provider result."""
-
-    if name == "espn":
-        return lambda settings: _sports_key(settings, ESPN_SCOREBOARD_PATHS) + (
-            tuple(sorted(settings.active_conferences.items())),
-            settings.my_teams,
-            settings.score_alerts,
-            settings.live_delay_mode,
-            settings.live_delay_seconds,
-        )
-    if name == "fotmob":
-        return lambda settings: _sports_key(settings, FOTMOB_LEAGUES) + (
-            settings.my_teams,
-            settings.score_alerts,
-            settings.live_delay_mode,
-            settings.live_delay_seconds,
-        )
-    if name == "news":
-        return lambda settings: _sports_key(settings, TEAM_CATALOG_PATHS) + (
-            settings.my_teams,
-        )
-    if name == "golf":
-        return lambda settings: (settings.timezone, settings.active_sports.get("golf", True))
-    if name == "racing":
-        return lambda settings: _sports_key(settings, ("f1", "indycar"))
-    if name == "stock":
-        return lambda settings: (settings.custom_stock_symbols,)
-    if name == "weather":
-        return lambda settings: (settings.weather_lat, settings.weather_lon, settings.weather_city)
-    if name == "flights":
-        return lambda settings: (
-            settings.airport_code_iata,
-            settings.airport_code_icao,
-            settings.airport_name,
-            settings.track_flight_id,
-            settings.track_guest_name,
-        )
-    if name == "clock":
-        return lambda settings: (settings.timezone,)
-    return lambda settings: ()
-
-
-def _sports_key(settings: DisplaySettings, identifiers) -> tuple[object, ...]:
-    """Return active settings for one fixed sports provider collection."""
-
-    return (
-        settings.timezone,
-        tuple(
-            (str(identifier), settings.active_sports.get(str(identifier), True))
-            for identifier in identifiers
-        ),
-    )
-
-
 def _positive_float(value: object) -> float:
     result = float(value)
     if result <= 0:
@@ -222,7 +167,7 @@ def _positive_float(value: object) -> float:
     return result
 
 
-def _build_version() -> str:
+def build_version() -> str:
     """Read the deployed Git build identifier without a Git process."""
 
     explicit = os.environ.get("TICKER_BUILD", "").strip()
@@ -235,7 +180,7 @@ def _build_version() -> str:
         return "unknown"
 
 
-def _provision_initial_ticker(repository: TickerRepository) -> None:
+def provision_initial_ticker(repository: TickerRepository) -> None:
     """Create the first local ticker once when a deployment declares its ID."""
 
     ticker_id = os.environ.get("TICKER_INITIAL_TICKER_ID", "").strip()

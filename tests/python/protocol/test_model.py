@@ -83,7 +83,7 @@ def test_frozen_hashing_matches_wire_bytes_without_thawing_the_tree(monkeypatch)
     def forbidden(value):
         raise AssertionError("Fingerprinting rebuilt the complete payload")
 
-    monkeypatch.setattr(model, "_thaw", forbidden)
+    monkeypatch.setattr(model, "thaw", forbidden)
     assert TickerResponse.from_payload(payload).payload_key == digest
     assert canonical_payload_hash(payload) == hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
 

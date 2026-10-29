@@ -1,15 +1,16 @@
-"""Start, watch, replace, and roll back feature worker processes.
+"""Start, watch, replace, and roll back provider worker processes.
 
 Each worker runs in its own process session, so it keeps running when the core
 restarts. The core listens on one Unix socket. A worker connects and sends hello.
 
 Rules:
-- A worker of the active release becomes the active connection. Its records go to the hub.
-- If the active worker exits, or sends no health for `heartbeat_seconds`, it restarts with backoff.
+- A worker of the active release becomes the active connection. Its results go to the engine.
+- If the active worker exits, sends no health for `heartbeat_seconds`, or stays in one provider
+  read for `busy_seconds`, it restarts with backoff.
 - If the active release crashes `crash_limit` times in `crash_window` seconds, it is marked bad.
   The previous release then becomes active.
 - `deploy()` starts the new release next to the active one. The new release becomes
-  active after it syncs every wanted subscription. The old worker then gets `drain`.
+  active after it sends a result for every wanted subscription. The old worker then gets `drain`.
 """
 from __future__ import annotations
 
@@ -29,17 +30,14 @@ from ticker3.contract import ContractError
 from ticker3.contract.messages import worker_message
 from ticker3.contract.wire import MAX_LINE, decode, encode
 
-from .hub import Hub
-
 BACKOFF = (0.5, 1, 2, 4, 8, 16, 30, 60)
 
 
 @dataclass(frozen=True)
 class WorkerSpec:
-    """The feature module that a worker process runs."""
+    """One provider that runs in its own worker process."""
 
-    feature: str
-    module: str
+    provider: str
 
 
 @dataclass
@@ -48,11 +46,10 @@ class _Connection:
     release: str
     pid: int
     writer: asyncio.StreamWriter
-    manifest: dict[str, Any]
     role: str
     last_health_at: float
     health: dict[str, Any] | None = None
-    records: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    results: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,22 +74,25 @@ class _Feature:
 
 
 class Supervisor:
-    def __init__(self, hub: Hub, socket_path: Path, state_path: Path, specs: list[WorkerSpec],
+    def __init__(self, socket_path: Path, state_path: Path, specs: list[WorkerSpec],
                  release_path: Callable[[str], Path], *, initial_release: str, log_directory: Path,
+                 wanted: Callable[[str], dict[str, dict[str, Any]]], deliver: Callable[[str, dict[str, Any]], None],
                  python: str = sys.executable, clock: Callable[[], float] = time.monotonic,
-                 heartbeat_seconds: float = 20, start_seconds: float = 30, trial_seconds: float = 90,
+                 heartbeat_seconds: float = 20, busy_seconds: float = 45, start_seconds: float = 30, trial_seconds: float = 90,
                  adopt_seconds: float = 10, crash_limit: int = 3, crash_window: float = 1800,
                  watch_seconds: float = 0.25, worker_arguments: tuple[str, ...] = ()) -> None:
-        self.hub, self.socket_path, self.state_path = hub, Path(socket_path), Path(state_path)
+        self.wanted, self.deliver = wanted, deliver
+        self.socket_path, self.state_path = Path(socket_path), Path(state_path)
         self.release_path, self.log_directory, self.python, self.clock = release_path, Path(log_directory), python, clock
         self.heartbeat_seconds, self.start_seconds, self.trial_seconds = heartbeat_seconds, start_seconds, trial_seconds
+        self.busy_seconds = busy_seconds
         self.adopt_seconds, self.crash_limit, self.crash_window = adopt_seconds, crash_limit, crash_window
         self.watch_seconds, self.worker_arguments = watch_seconds, worker_arguments
         saved = _read(self.state_path).get("features", {})
         self.features = {}
         for spec in specs:
-            record = saved.get(spec.feature, {})
-            self.features[spec.feature] = _Feature(spec, record.get("active", initial_release), record.get("previous"),
+            record = saved.get(spec.provider, {})
+            self.features[spec.provider] = _Feature(spec, record.get("active", initial_release), record.get("previous"),
                                                    list(record.get("bad", [])), adopt_pid=record.get("pid"))
         self.events: deque[dict[str, Any]] = deque(maxlen=200)
         self._expected_exits: set[int] = set()
@@ -101,7 +101,6 @@ class Supervisor:
         self._watch: asyncio.Task | None = None
         self._tasks: set[asyncio.Task] = set()
         self._started_at = 0.0
-        hub.on_wanted = self._push_wanted
 
     # Lifecycle
 
@@ -180,7 +179,8 @@ class Supervisor:
                 "active": feature.active, "previous": feature.previous, "bad": feature.bad,
                 "connected": connection is not None, "pid": connection.pid if connection else None,
                 "healthy": bool(health and health["ok"]), "errors": health["errors"] if health else {},
-                "rss_mb": health["rss_mb"] if health else None, "restarts": feature.restarts,
+                "rss_mb": health["rss_mb"] if health else None, "busy_seconds": health["busy_seconds"] if health else None,
+                "restarts": feature.restarts,
                 "recent_crashes": len([at for at in feature.crashes if now - at <= self.crash_window]),
                 "deploying": feature.candidate_release,
             }
@@ -206,12 +206,11 @@ class Supervisor:
                 feature.connection = connection
                 feature.adopt_pid = connection.pid
                 self._save()
-                self.hub.register(connection.manifest)
                 self._event(connection.feature, "worker_connected", release=connection.release, pid=connection.pid)
             else:
                 feature.candidate = connection
                 self._event(connection.feature, "candidate_connected", release=connection.release, pid=connection.pid)
-            await self._send(connection, {"t": "subscribe", "subs": self.hub.wanted(connection.feature)})
+            await self._send(connection, {"t": "subscribe", "subs": self.wanted(connection.feature)})
             while line := await reader.readline():
                 self._receive(connection, worker_message(decode(line)))
         except (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError, ContractError, ValueError) as error:
@@ -223,9 +222,9 @@ class Supervisor:
                 self._lost(connection)
 
     def _admit(self, hello: dict[str, Any], writer: asyncio.StreamWriter) -> tuple[_Connection | None, str]:
-        feature = self.features.get(hello["feature"])
+        feature = self.features.get(hello["provider"])
         if feature is None:
-            return None, f"feature {hello['feature']} is not configured"
+            return None, f"provider {hello['provider']} is not configured"
         if hello["release"] in feature.bad:
             return None, f"release {hello['release']} is marked bad"
         now = self.clock()
@@ -239,30 +238,17 @@ class Supervisor:
             role = "candidate"
         else:
             return None, f"release {hello['release']} is not active"
-        return _Connection(hello["feature"], hello["release"], hello["pid"], writer, hello["manifest"], role, now), ""
+        return _Connection(hello["provider"], hello["release"], hello["pid"], writer, role, now), ""
 
     def _receive(self, connection: _Connection, message: dict[str, Any]) -> None:
         feature = self.features[connection.feature]
         if message["t"] == "health":
             connection.health, connection.last_health_at = message, self.clock()
-            if connection.role == "candidate":
-                self._check_trial(feature)
-            return
-        if message["t"] not in ("sync", "delta"):
-            return
         if connection.role == "active" and feature.connection is connection:
-            self.hub.apply(connection.feature, message)
+            self.deliver(connection.feature, message)
         elif connection.role == "candidate" and feature.candidate is connection:
-            records = {record["id"]: record for record in connection.records.get(message["sub"], [])}
-            if message["t"] == "sync":
-                records = {record["id"]: record for record in message["records"]}
-            elif message["sub"] in connection.records:
-                for identifier in message["remove"]:
-                    records.pop(identifier, None)
-                records.update((record["id"], record) for record in message["upsert"])
-            else:
-                return
-            connection.records[message["sub"]] = list(records.values())
+            if message["t"] == "result":
+                connection.results[message["sub"]] = message
             self._check_trial(feature)
 
     def _lost(self, connection: _Connection) -> None:
@@ -283,20 +269,20 @@ class Supervisor:
         candidate = feature.candidate
         if candidate is None or feature.trial is None or feature.trial.done() or candidate.health is None:
             return
-        wanted = self.hub.wanted(feature.spec.feature)
-        if not set(wanted) <= set(candidate.records):
+        wanted = self.wanted(feature.spec.provider)
+        if not set(wanted) <= set(candidate.results):
             return
         old = feature.connection
-        self.hub.register(candidate.manifest)
-        for key, records in candidate.records.items():
-            self.hub.apply(feature.spec.feature, {"t": "sync", "sub": key, "records": records})
-        candidate.role, candidate.records = "active", {}
+        for key in wanted:
+            self.deliver(feature.spec.provider, candidate.results[key])
+        self.deliver(feature.spec.provider, candidate.health)
+        candidate.role, candidate.results = "active", {}
         feature.connection, feature.candidate = candidate, None
         feature.previous, feature.active = feature.active, candidate.release
         feature.crashes.clear()
         feature.restarts = 0
         self._save()
-        self._event(feature.spec.feature, "deploy_promoted", release=candidate.release, previous=feature.previous)
+        self._event(feature.spec.provider, "deploy_promoted", release=candidate.release, previous=feature.previous)
         if old is not None:
             old.role = "draining"
             self._expected_exits.add(old.pid)
@@ -317,7 +303,7 @@ class Supervisor:
         if release not in feature.bad:
             feature.bad.append(release)
         self._save()
-        self._event(feature.spec.feature, "deploy_failed", release=release, reason=reason)
+        self._event(feature.spec.provider, "deploy_failed", release=release, reason=reason)
         if feature.trial is not None and not feature.trial.done():
             feature.trial.set_result(False)
 
@@ -333,10 +319,10 @@ class Supervisor:
 
     async def _spawn(self, feature: _Feature, release: str) -> None:
         root = self.release_path(release)
-        log = open(self.log_directory / f"{feature.spec.feature}.log", "ab")
+        log = open(self.log_directory / f"{feature.spec.provider}.log", "ab")
         try:
             process = await asyncio.create_subprocess_exec(
-                self.python, "-m", "ticker3.sdk.run", "--feature", feature.spec.module, "--socket", str(self.socket_path),
+                self.python, "-m", "ticker3.worker", "--provider", feature.spec.provider, "--socket", str(self.socket_path),
                 "--release", release, *self.worker_arguments,
                 cwd=root, env={**os.environ, "PYTHONPATH": str(root)}, stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL, stderr=log, start_new_session=True)
@@ -346,7 +332,7 @@ class Supervisor:
         feature.children[process.pid] = process
         if release == feature.active:
             feature.started_pid, feature.started_at = process.pid, self.clock()
-        self._event(feature.spec.feature, "worker_started", release=release, pid=process.pid)
+        self._event(feature.spec.provider, "worker_started", release=release, pid=process.pid)
         self._spawn_task(self._reap(feature, process))
 
     async def _reap(self, feature: _Feature, process: asyncio.subprocess.Process) -> None:
@@ -372,14 +358,14 @@ class Supervisor:
             feature.crashes.popleft()
         feature.restarts += 1
         feature.next_start_at = now + BACKOFF[min(len(feature.crashes) - 1, len(BACKOFF) - 1)]
-        self._event(feature.spec.feature, "worker_crashed", release=feature.active, pid=pid, reason=reason)
+        self._event(feature.spec.provider, "worker_crashed", release=feature.active, pid=pid, reason=reason)
         if len(feature.crashes) >= self.crash_limit and feature.previous and feature.previous not in feature.bad:
             bad, feature.active, feature.previous = feature.active, feature.previous, None
             feature.bad.append(bad)
             feature.crashes.clear()
             feature.next_start_at = now
             self._save()
-            self._event(feature.spec.feature, "rolled_back", release=feature.active, bad=bad)
+            self._event(feature.spec.provider, "rolled_back", release=feature.active, bad=bad)
             if feature.connection is not None and feature.connection.release == bad:
                 self._expected_exits.add(feature.connection.pid)
                 _signal(feature.connection.pid, signal.SIGKILL)
@@ -391,11 +377,13 @@ class Supervisor:
             for feature in self.features.values():
                 connection = feature.connection
                 if connection is not None:
-                    if now - connection.last_health_at > self.heartbeat_seconds:
-                        self._event(feature.spec.feature, "worker_silent", pid=connection.pid)
+                    busy = (connection.health or {}).get("busy_seconds") or 0
+                    if now - connection.last_health_at > self.heartbeat_seconds or busy > self.busy_seconds:
+                        reason = "the worker sent no health" if busy <= self.busy_seconds else f"one provider read took {busy:.0f} s"
+                        self._event(feature.spec.provider, "worker_silent", pid=connection.pid, reason=reason)
                         _signal(connection.pid, signal.SIGKILL)
                         connection.writer.close()
-                        self._crash(feature, connection.pid, "the worker sent no health")
+                        self._crash(feature, connection.pid, reason)
                     continue
                 if now < feature.next_start_at:
                     continue
@@ -417,7 +405,8 @@ class Supervisor:
 
     # Helpers
 
-    def _push_wanted(self, name: str, subs: dict[str, dict[str, Any]]) -> None:
+    def subscribe(self, name: str, subs: dict[str, dict[str, Any]]) -> None:
+        """Send the full subscription set of one provider to its active and candidate workers."""
         feature = self.features.get(name)
         if feature is None:
             return

@@ -7,60 +7,64 @@ from pathlib import Path
 
 import pytest
 
-from ticker3.contract.settings import subscription_key
-from ticker3.core.hub import App, Hub
+from backend_ops.worker_contract import decode_result, encode
+from sports_ticker.domain import DisplaySettings
 from ticker3.core.supervisor import Supervisor, WorkerSpec
 
 pytestmark = [pytest.mark.critical, pytest.mark.skipif(sys.platform == "win32", reason="Workers use Unix sockets")]
 
 REPOSITORY = Path(__file__).resolve().parents[3]
-FEATURE = '''
+PROVIDER = '''
 import os, time
-from ticker3.sdk.feature import Feature, Poll
 
 BEHAVIOR = {behavior!r}
 
-class Demo(Feature):
-    manifest = {{"feature": "demo", "title": "Demo", "version": {version!r},
-                "settings": {{"fields": {{"name": {{"type": "string", "default": "x"}}}}}},
-                "templates": [{{"id": "demo.card", "version": 1, "panels": {{"w64h32": {{"box": [64, 32], "flow": "page",
-                    "parts": [{{"part": "text", "at": [0, 0], "font": "tiny", "value": "{{v}}"}}]}}}}}}]}}
-
-    async def poll(self, config, context):
+class Demo:
+    def fetch_for_ticker(self, ticker_id, settings):
         if BEHAVIOR == "crash":
             os._exit(1)
         if BEHAVIOR == "silent":
             time.sleep(3600)
-        return Poll([{{"id": "item", "template": "demo.card", "values": {{"v": {version!r} + ":" + config["name"]}}}}], 0.2)
+        return {{"content": [{{"id": "item", "type": "news", "sport": "news", "headline": {release!r} + ":" + ticker_id}}]}}
 
-def create():
+def create(name, database_path=None):
     if BEHAVIOR == "crash_on_start":
         raise SystemExit(1)
     return Demo()
 '''
-KEY = subscription_key({"name": "x"})
+KEY = "0123456789abcdef"
+CONFIG = {"ticker": "x", "settings": encode(DisplaySettings())}
 
 
 class Lab:
+    """Run a supervisor for the provider news with releases made in a temporary folder."""
+
     def __init__(self, directory: Path):
         self.directory = directory
-        self.screens = []
+        self.wanted = {KEY: CONFIG}
+        self.values = []
 
     def release(self, name: str, behavior: str = "good") -> str:
         root = self.directory / "releases" / name
         root.mkdir(parents=True)
-        (root / "ticker3").symlink_to(REPOSITORY / "ticker3", target_is_directory=True)
-        (root / "demo_feature.py").write_text(FEATURE.format(behavior=behavior, version=name), encoding="utf-8")
+        for package in ("ticker3", "sports_ticker", "backend_ops", "ticker_core"):
+            (root / package).symlink_to(REPOSITORY / package, target_is_directory=True)
+        (root / "demo_provider.py").write_text(PROVIDER.format(behavior=behavior, release=name), encoding="utf-8")
         return name
 
-    def supervisor(self, hub=None, **options) -> Supervisor:
-        hub = hub or Hub(on_screens=lambda ticker, composition: self.screens.append(composition))
+    def deliver(self, provider, message):
+        if message["t"] == "result":
+            self.values.append(decode_result(message["result"]).content[0].data["headline"])
+
+    def supervisor(self, **options) -> Supervisor:
         settings = dict(heartbeat_seconds=1.5, start_seconds=5, trial_seconds=10, adopt_seconds=0, crash_limit=3,
-                        watch_seconds=0.05, worker_arguments=("--health-seconds", "0.2", "--connect-seconds", "0.1"))
+                        watch_seconds=0.05, worker_arguments=("--factory", "demo_provider:create", "--interval", "0.2",
+                                                              "--health-seconds", "0.2", "--connect-seconds", "0.1"))
         settings.update(options)
-        supervisor = Supervisor(hub, self.directory / "core.sock", self.directory / "supervisor.json",
-                                [WorkerSpec("demo", "demo_feature")], lambda release: self.directory / "releases" / release,
-                                initial_release="r1", log_directory=self.directory / "logs", **settings)
+        supervisor = Supervisor(self.directory / "core.sock", self.directory / "supervisor.json", [WorkerSpec("news")],
+                                lambda release: self.directory / "releases" / release, initial_release="r1",
+                                log_directory=self.directory / "logs", wanted=lambda name: dict(self.wanted),
+                                deliver=self.deliver, **settings)
         return supervisor
 
 
@@ -80,37 +84,27 @@ async def until(check, seconds=10.0):
     raise AssertionError("condition did not become true")
 
 
-def shown(lab):
-    """Return the value of each composition after the first data arrived. None marks a gap."""
-    values = [composition.screens[0]["values"]["v"] if composition.screens else None for composition in lab.screens]
-    return values[next(index for index, item in enumerate(values) if item):]
+def value(lab):
+    return lab.values[-1] if lab.values else None
 
 
-def value(hub):
-    screens = hub.composition("t").screens
-    return screens[0]["values"]["v"] if screens else None
-
-
-async def started(lab, supervisor, hub):
+async def started(lab, supervisor):
     await supervisor.start()
-    await until(lambda: "demo" in hub.manifests)
-    hub.set_playlist("t", [App("a", "demo", {})])
-    await until(lambda: value(hub))
+    await until(lambda: value(lab))
 
 
-def test_worker_starts_restarts_after_a_crash_and_keeps_showing_data():
+def test_worker_starts_restarts_after_a_crash_and_keeps_sending_results():
     async def scenario(lab):
         lab.release("r1")
         supervisor = lab.supervisor()
-        hub = supervisor.hub
-        await started(lab, supervisor, hub)
-        assert value(hub) == "r1:x"
-        first = supervisor.status()["demo"]["pid"]
+        await started(lab, supervisor)
+        assert value(lab) == "r1:x"
+        first = supervisor.status()["news"]["pid"]
         os.killpg(first, signal.SIGKILL)
-        await until(lambda: supervisor.status()["demo"]["pid"] not in (None, first))
-        assert value(hub) == "r1:x"
-        assert supervisor.status()["demo"]["restarts"] == 1
-        assert None not in shown(lab)
+        await until(lambda: supervisor.status()["news"]["pid"] not in (None, first))
+        count = len(lab.values)
+        await until(lambda: len(lab.values) > count)
+        assert value(lab) == "r1:x" and supervisor.status()["news"]["restarts"] == 1
         await supervisor.stop(stop_workers=True)
     run(scenario)
 
@@ -120,16 +114,15 @@ def test_deploy_swaps_releases_without_a_gap():
         lab.release("r1")
         lab.release("r2")
         supervisor = lab.supervisor()
-        hub = supervisor.hub
-        await started(lab, supervisor, hub)
-        old = supervisor.status()["demo"]["pid"]
-        assert await supervisor.deploy("demo", "r2")
-        assert value(hub) == "r2:x"
-        assert hub.manifests["demo"]["version"] == "r2"
-        status = supervisor.status()["demo"]
+        await started(lab, supervisor)
+        old = supervisor.status()["news"]["pid"]
+        assert await supervisor.deploy("news", "r2")
+        assert value(lab) == "r2:x"
+        status = supervisor.status()["news"]
         assert status["active"] == "r2" and status["previous"] == "r1" and status["pid"] != old
         await until(lambda: not _alive(old))
-        assert shown(lab) == ["r1:x", "r2:x"]
+        switched = lab.values.index("r2:x")
+        assert set(lab.values[:switched]) == {"r1:x"} and set(lab.values[switched:]) == {"r2:x"}
         await supervisor.stop(stop_workers=True)
     run(scenario)
 
@@ -139,15 +132,14 @@ def test_failed_deploy_keeps_the_active_release_and_marks_the_new_one_bad():
         lab.release("r1")
         lab.release("r2", "crash")
         supervisor = lab.supervisor()
-        hub = supervisor.hub
-        await started(lab, supervisor, hub)
-        old = supervisor.status()["demo"]["pid"]
-        assert not await supervisor.deploy("demo", "r2")
-        status = supervisor.status()["demo"]
+        await started(lab, supervisor)
+        old = supervisor.status()["news"]["pid"]
+        assert not await supervisor.deploy("news", "r2")
+        status = supervisor.status()["news"]
         assert status["active"] == "r1" and status["bad"] == ["r2"] and status["pid"] == old
-        assert value(hub) == "r1:x"
+        assert set(lab.values) == {"r1:x"}
         with pytest.raises(RuntimeError, match="marked bad"):
-            await supervisor.deploy("demo", "r2")
+            await supervisor.deploy("news", "r2")
         await supervisor.stop(stop_workers=True)
     run(scenario)
 
@@ -157,18 +149,16 @@ def test_crash_loop_after_a_deploy_rolls_back_to_the_previous_release():
         lab.release("r1")
         lab.release("r2")
         supervisor = lab.supervisor()
-        hub = supervisor.hub
-        await started(lab, supervisor, hub)
-        assert await supervisor.deploy("demo", "r2")
+        await started(lab, supervisor)
+        assert await supervisor.deploy("news", "r2")
         for _ in range(3):
-            pid = await until(lambda: supervisor.status()["demo"]["pid"])
+            pid = await until(lambda: supervisor.status()["news"]["pid"])
             os.killpg(pid, signal.SIGKILL)
-            await until(lambda: supervisor.status()["demo"]["pid"] != pid)
-        await until(lambda: supervisor.status()["demo"]["active"] == "r1")
-        await until(lambda: value(hub) == "r1:x")
-        assert supervisor.status()["demo"]["bad"] == ["r2"]
-        events = [event["event"] for event in supervisor.events]
-        assert "rolled_back" in events
+            await until(lambda: supervisor.status()["news"]["pid"] != pid)
+        await until(lambda: supervisor.status()["news"]["active"] == "r1")
+        await until(lambda: value(lab) == "r1:x")
+        assert supervisor.status()["news"]["bad"] == ["r2"]
+        assert "rolled_back" in [event["event"] for event in supervisor.events]
         await supervisor.stop(stop_workers=True)
     run(scenario)
 
@@ -176,13 +166,12 @@ def test_crash_loop_after_a_deploy_rolls_back_to_the_previous_release():
 def test_silent_worker_is_replaced():
     async def scenario(lab):
         lab.release("r1", "silent")
-        supervisor = lab.supervisor(heartbeat_seconds=1.0)
-        hub = supervisor.hub
+        supervisor = lab.supervisor(heartbeat_seconds=1.0, busy_seconds=1.0)
         await supervisor.start()
-        first = await until(lambda: supervisor.status()["demo"]["pid"])
-        hub.set_playlist("t", [App("a", "demo", {})])
-        await until(lambda: supervisor.status()["demo"]["pid"] not in (None, first))
-        assert "worker_silent" in [event["event"] for event in supervisor.events]
+        first = await until(lambda: supervisor.status()["news"]["pid"])
+        await until(lambda: supervisor.status()["news"]["pid"] not in (None, first))
+        events = [event for event in supervisor.events if event["event"] == "worker_silent"]
+        assert events and "provider read took" in events[0]["reason"]
         await supervisor.stop(stop_workers=True)
     run(scenario)
 
@@ -191,18 +180,15 @@ def test_workers_survive_a_core_restart_and_the_new_core_adopts_them():
     async def scenario(lab):
         lab.release("r1")
         first = lab.supervisor()
-        await started(lab, first, first.hub)
-        pid = first.status()["demo"]["pid"]
+        await started(lab, first)
+        pid = first.status()["news"]["pid"]
         await first.stop()
         assert _alive(pid)
-        hub = Hub()
-        hub.register(first.hub.manifests["demo"])
-        hub.set_playlist("t", [App("a", "demo", {})])
-        second = lab.supervisor(hub, adopt_seconds=5)
+        lab.values.clear()
+        second = lab.supervisor(adopt_seconds=5)
         await second.start()
-        await until(lambda: value(hub) == "r1:x")
-        assert second.status()["demo"]["pid"] == pid
-        assert second.features["demo"].children == {}
+        await until(lambda: value(lab) == "r1:x")
+        assert second.status()["news"]["pid"] == pid and second.features["news"].children == {}
         await second.stop()
         os.killpg(pid, signal.SIGKILL)
     run(scenario)

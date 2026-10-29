@@ -100,12 +100,13 @@ def _boolean(value: Any, path: str, default: bool) -> bool:
     return value
 
 
-def _thaw(value: FrozenJson) -> Any:
+def thaw(value: FrozenJson) -> Any:
+    """Return plain lists and dicts for one frozen payload value, as renderers expect."""
     if value is None or isinstance(value, (str, int, float)):
         return value
     if isinstance(value, tuple):
-        return [_thaw(child) for child in value]
-    return {key: _thaw(child) for key, child in value.items()}
+        return [thaw(child) for child in value]
+    return {key: thaw(child) for key, child in value.items()}
 
 
 def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
@@ -337,7 +338,7 @@ class TickerResponse:
     def to_payload(self) -> dict[str, Any]:
         """Return one mutable JSON payload for a process boundary."""
 
-        value = _thaw(self.data)
+        value = thaw(self.data)
         assert isinstance(value, dict)
         return value
 
@@ -355,15 +356,15 @@ class TickerResponse:
                 settings.brightness,
                 settings.scroll_speed,
                 settings.inverted,
-                _thaw(settings.data),
+                thaw(settings.data),
             ),
-            tuple((item.id, item.family, item.kind, item.is_shown, _thaw(item.data)) for item in self.content),
-            tuple((item.id, item.kind, _thaw(item.data)) for item in self.alerts),
-            tuple((item.id, item.kind, _thaw(item.data)) for item in self.news),
+            tuple((item.id, item.family, item.kind, item.is_shown, thaw(item.data)) for item in self.content),
+            tuple((item.id, item.kind, thaw(item.data)) for item in self.alerts),
+            tuple((item.id, item.kind, thaw(item.data)) for item in self.news),
             self.update_version,
             self.reboot_request_id,
             self.payload_key,
-            _thaw(self.data),
+            thaw(self.data),
             self.update_request_id,
         )
         return _restore_pickled_response, (serialized,)
@@ -476,7 +477,7 @@ def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayD
     """Return only renderer scenes that changed since one valid response."""
     before = {item.id: item for item in previous.content}
     changed = tuple(
-        DisplayItemDelta(item.id, item.family, item.kind, item.is_shown, _thaw(item.data))
+        DisplayItemDelta(item.id, item.family, item.kind, item.is_shown, thaw(item.data))
         for item in current.content
         if (prior := before.get(item.id)) is None
         or prior.family != item.family
@@ -488,12 +489,12 @@ def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayD
         current.status.value,
         current.ticker_id,
         current.pairing_code,
-        _thaw(current.settings.data),
+        thaw(current.settings.data),
         previous.settings.data != current.settings.data,
         tuple(item.id for item in current.content),
         changed,
-        tuple((item.id, item.kind, _thaw(item.data)) for item in current.alerts),
-        tuple((item.id, item.kind, _thaw(item.data)) for item in current.news),
+        tuple((item.id, item.kind, thaw(item.data)) for item in current.alerts),
+        tuple((item.id, item.kind, thaw(item.data)) for item in current.news),
         current.update_version,
         current.reboot_request_id,
         current.payload_key,
