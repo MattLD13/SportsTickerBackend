@@ -66,6 +66,7 @@ class Hub:
         self.manifests: dict[str, dict[str, Any]] = {}
         self.builtins: dict[str, Builtin] = {}
         self.playlists: dict[str, tuple[App, ...]] = {}
+        self._ticker_values: dict[str, dict[str, Any]] = {}
         self._plans: dict[str, list[_Plan]] = {}
         self._records: dict[Key, dict[str, dict[str, Any]]] = {}
         self._received: dict[tuple[str, str, str], float] = {}
@@ -121,7 +122,13 @@ class Hub:
         self._update_wanted()
         self._compose([ticker])
 
+    def set_ticker_values(self, ticker: str, values: dict[str, Any]) -> None:
+        """Set values that each screen of one ticker gets as `ticker.<name>`, such as the time zone."""
+        self._ticker_values[ticker] = {f"ticker.{name}": value for name, value in values.items()}
+        self._compose([ticker])
+
     def remove_ticker(self, ticker: str) -> None:
+        self._ticker_values.pop(ticker, None)
         self.playlists.pop(ticker, None)
         self._unplan(ticker)
         self._compositions.pop(ticker, None)
@@ -302,7 +309,7 @@ class Hub:
                         continue
                     next_change = ends if next_change is None else min(next_change, ends)
                 screen = {"id": f"{plan.app.id}/{record['id']}", "template": record["template"],
-                          "values": self._values(record, plan.view)}
+                          "values": {**self._values(record, plan.view), **self._ticker_values.get(ticker, {})}}
                 (overlays if record["overlay"] is not None else screens).append(screen)
         return Composition(tuple(screens), tuple(overlays), tuple(errors), next_change)
 

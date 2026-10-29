@@ -37,7 +37,10 @@ PARTS: dict[str, tuple[set[str], set[str]]] = {
     "bases": ({"value"}, {"size", "color"}),
     "dots": ({"value"}, {"spacing"}),
     "clock": ({"font", "tz", "format"}, {"color", "align"}),
+    "time": ({"font", "value", "tz", "format"}, {"color", "align"}),
 }
+# A time part formats an epoch value in the zone of the ticker.
+TIME_FORMATS = ("time", "weekday_time", "date", "weekday")
 
 
 def validate_template(template: Any) -> dict[str, Any]:
@@ -150,6 +153,8 @@ def _validate_part(where: str, part: Any, box: list[int]) -> None:
     for name in ("value", "tz", "format"):
         if name in part and (not isinstance(part[name], str) or "{" in PLACEHOLDER.sub("", part[name])):
             raise ContractError(f"{where} {name} must be text with {{key}} placeholders")
+    if part["part"] == "time" and part["format"] not in TIME_FORMATS:
+        raise ContractError(f"{where} format must be one of {', '.join(TIME_FORMATS)}")
     if "font" in part and part["font"] not in FONTS:
         raise ContractError(f"{where} font must be one of {', '.join(FONTS)}")
     if "align" in part and part["align"] not in ALIGN:

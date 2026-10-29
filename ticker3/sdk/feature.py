@@ -1,6 +1,7 @@
 """The interface that each feature implements."""
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -24,6 +25,7 @@ class Context:
     release: str
     wake: Callable[[Callable[[dict[str, Any]], bool]], int]
     subscriptions: Callable[[], dict[str, dict[str, Any]]]
+    now: Callable[[], float] = time.time
     state: dict[str, Any] = field(default_factory=dict)
 
 

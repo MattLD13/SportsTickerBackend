@@ -1,0 +1,34 @@
+[
+  {
+    "id": "sports.card",
+    "version": 1,
+    "panels": {
+      "w384h32": {"box": [96, 32], "flow": "scroll", "parts": [
+        {"part": "text", "at": [48, 1], "font": "tiny", "align": "center", "color": "#ffd000", "value": "{status}", "show_when": "state == in"},
+        {"part": "text", "at": [48, 1], "font": "tiny", "align": "center", "color": "#c0c0c0", "value": "{status}", "show_when": "state == post"},
+        {"part": "time", "at": [48, 1], "font": "tiny", "align": "center", "color": "#c0c0c0", "value": "{starts}", "tz": "{ticker.tz}", "format": "weekday_time", "show_when": "state == pre"},
+        {"part": "rect", "at": [2, 9], "size": [92, 1], "color": "#303030"},
+        {"part": "logo", "at": [2, 11], "size": 20, "value": "{away.logo}"},
+        {"part": "logo", "at": [74, 11], "size": 20, "value": "{home.logo}"},
+        {"part": "text", "at": [36, 13], "font": "big", "align": "right", "value": "{away.score}", "show_when": "state != pre"},
+        {"part": "text", "at": [48, 13], "font": "big", "align": "center", "color": "#808080", "value": "-", "show_when": "state != pre"},
+        {"part": "text", "at": [60, 13], "font": "big", "value": "{home.score}", "show_when": "state != pre"},
+        {"part": "text", "at": [48, 15], "font": "small", "align": "center", "color": "#808080", "value": "{away.abbr} {home.abbr}", "show_when": "state == pre"},
+        {"part": "icon", "at": [23, 20], "value": "football", "show_when": "possession == away"},
+        {"part": "icon", "at": [61, 20], "value": "football", "show_when": "possession == home"},
+        {"part": "bases", "at": [42, 24], "size": 4, "value": "{bases}", "show_when": "sport == baseball"}
+      ]},
+      "w64h32": {"box": [64, 32], "flow": "page", "dwell": 6, "parts": [
+        {"part": "text", "at": [32, 1], "font": "tiny", "align": "center", "color": "#ffd000", "value": "{status}", "show_when": "state == in"},
+        {"part": "text", "at": [32, 1], "font": "tiny", "align": "center", "color": "#c0c0c0", "value": "{status}", "show_when": "state == post"},
+        {"part": "time", "at": [32, 1], "font": "tiny", "align": "center", "color": "#c0c0c0", "value": "{starts}", "tz": "{ticker.tz}", "format": "weekday_time", "show_when": "state == pre"},
+        {"part": "logo", "at": [1, 11], "size": 16, "value": "{away.logo}"},
+        {"part": "logo", "at": [47, 11], "size": 16, "value": "{home.logo}"},
+        {"part": "text", "at": [32, 12], "font": "medium", "align": "center", "value": "{away.score}-{home.score}", "show_when": "state != pre"},
+        {"part": "text", "at": [32, 14], "font": "tiny", "align": "center", "color": "#808080", "value": "VS", "show_when": "state == pre"},
+        {"part": "text", "at": [32, 24], "font": "micro", "align": "center", "color": "#40ff40", "value": "{down}", "show_when": "down"},
+        {"part": "bases", "at": [26, 24], "size": 3, "value": "{bases}", "show_when": "sport == baseball"}
+      ]}
+    }
+  }
+]

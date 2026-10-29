@@ -39,10 +39,12 @@ class HttpClient:
     def __init__(self, *, ssl_context=None, spacing: dict[str, float] | None = None, clock: Callable[[], float] = time.monotonic,
                  kept_characters: int = 16 * 1024 * 1024) -> None:
         if ssl_context is None:
+            import os
             import ssl
 
             import certifi
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            # TICKER3_CA_BUNDLE names another CA file, for a network with a TLS proxy.
+            ssl_context = ssl.create_default_context(cafile=os.environ.get("TICKER3_CA_BUNDLE") or certifi.where())
         self._pool = PoolManager(num_pools=32, maxsize=8, ssl_context=ssl_context,
                                  retries=Retry(total=None, connect=0, read=0, status=0, other=0, redirect=5))
         self._spacing = dict(spacing or {})
