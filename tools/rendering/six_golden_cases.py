@@ -20,6 +20,8 @@ def cases(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
                 yield {"source": source, "logos": logos, "calls": calls}
     yield from _alerts(encode)
     yield from _news(encode)
+    yield from _sports(encode, base)
+    yield from _ads(encode, base)
 
 
 def _under():
@@ -222,3 +224,122 @@ def _racing() -> Iterator[tuple[str, str, str, list[dict[str, Any]], tuple[float
     elapsed = (0.0, 0.4, 3.0, 9.0, 21.0)
     yield "synthetic:racing", "racing", "sports", items, elapsed
     yield "synthetic:racing-pinned", "racing", "sports", [{**item, "sports_presentation": "pinned"} for item in items], elapsed
+
+
+def _sports(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
+    """Real gallery games with one fact changed, as a pane and pinned, at four hockey page times."""
+    import json
+    from copy import deepcopy
+
+    from ticker3.web.preview import project_preview_game
+
+    library = json.loads(open("docs/contracts/demo-layouts.json", encoding="utf-8").read())
+    games = [project_preview_game(row["game"]) for row in library["cases"] if row["mode"] == "sports"]
+    games = [game for game in games if game.get("sport") not in {"f1", "nascar", "indycar", "wec", "imsa", "golf"}]
+
+    def family(game):
+        sport = str(game.get("sport", "")).lower()
+        return ("football" if any(word in sport for word in ("nfl", "ncf", "football")) else "baseball" if "mlb" in sport or "baseball" in sport
+                else "hockey" if "nhl" in sport or "hockey" in sport else "soccer" if "soccer" in sport else "basketball")
+
+    def situation(**values):
+        return lambda game: {**game, "situation": {**(game.get("situation") or {}), **values}}
+
+    def field(**values):
+        return lambda game: {**game, **values}
+
+    def goals(count):
+        return lambda game: {**game, "situation": {**(game.get("situation") or {}), "hockeyGoals": [
+            {"side": "away" if index % 4 else "home", "player": f"Player Number{index}", "time": f"P{index % 3 + 1} {index}:0{index % 10}",
+             "assists": ["A One", "B Two"][: index % 3]} for index in range(count)]}}
+
+    def soccer_events(count):
+        events = [{"player": f"Longplayername{index}", "time": f"{10 + index}'", "own_goal": index == 2, "is_home": index % 3 != 1}
+                  for index in range(count)]
+        cards = [{"is_home": True, "player": "Sent Off", "time": "77'"}, {"is_home": False, "player": "", "time": ""}]
+        return lambda game: {**game, "situation": {**(game.get("situation") or {}), "goal_events": events, "red_cards": cards}}
+
+    common = [
+        field(home_logo_rendering={"method": "new", "outline": "inner"}, away_logo_rendering={"outline": "auto", "cutoff": 90}),
+        field(home_logo_rendering={"outline": "off"}, away_logo_rendering={"method": "old", "outline": "auto", "cutoff": "bad"}),
+        field(home_logo="https://logos.example/missing-home.png", away_logo="https://logos.example/missing-away.png"),
+        field(home_logo="", away_logo="", home_color="", away_color=""),
+        field(home_color="#000000", home_alt_color="#FFFFFF", away_color="#808080", away_alt_color="#FF2200"),
+        field(home_color="zzz", away_color="#FFFFFF", away_alt_color="#FFFFFF"),
+        field(home_score=None, away_score="", status=""),
+        field(home_score="104", away_score="99", status="FINAL/2OT"),
+        field(home_rank=5, away_seed=12, competition_stage=1),
+        field(competition_stage=2, home_seed=1, away_rank=25),
+        field(state="pre", status="SAT 7:30 PM"),
+    ]
+    by_family = {
+        "football": [
+            situation(yardLine=None, downDistFull="1st & 10 at CAR 33", downDist="1st & 10", possession="CAR"),
+            situation(yardLine=None, downDistFull="3rd & 4 at 50", downDist="3rd & 4"),
+            situation(yardLine=None, downDistFull="2nd & 7 at XYZ 20", downDist="2nd & 7"),
+            situation(yardLine=None, downDistFull="4th & 1 at CAR x", downDist="4th & 1"),
+            situation(yardLine=None, downDistFull="Kickoff", downDist=""),
+            situation(yardsToGo=None, downDist="3rd & Goal", isGoalToGo=True, yardLine=8),
+            situation(yardsToGo=None, downDist="2nd & inches", yardLine=40),
+            situation(yardsToGo=None, downDist="4th & 1.", yardLine=60),
+            situation(isRedZone=True, yardLine=15),
+            lambda game: {**game, "situation": {**(game.get("situation") or {}), "isRedZone": True,
+                                                "possession": game.get("home_abbr"), "yardLine": 85}},
+            lambda game: {**game, "situation": {**(game.get("situation") or {}), "isRedZone": True,
+                                                "possession": game.get("away_abbr"), "yardLine": 12}},
+            situation(possession=""),
+        ],
+        "baseball": [
+            situation(batter_name="Juan Soto Jr.", batter_avg="0.312", batter_h="2", batter_ab="", pitcher_pitches=""),
+            situation(batter_avg="", batter_h="", batter_ab="", last_pitch_speed=0, last_pitch_type_full="", pitcher_era="3.12"),
+            situation(last_pitch_speed=97, last_pitch_type_full="Four-Seam Fastball (FF)", pitcher_name="Gerrit Cole"),
+            situation(last_pitch_speed="88", last_pitch_type_full="Knuckle Curve/Slurve", last_pitch_type_abbr="KC"),
+            situation(last_pitch_speed=84, last_pitch_type_full="Changeup Splitter Combination Pitch"),
+            situation(last_pitch_speed=0, last_pitch_type_full="", last_pitch_type_abbr="", pitcher_era="-.--"),
+            situation(last_pitch_speed=91, last_pitch_type_full="", last_pitch_type_abbr="", last_pitch_type=""),
+            situation(onFirst=True, onSecond=True, onThird=True, balls=3, strikes=2, outs=2),
+            field(home_challenges_used=2, away_challenges=0, home_challenges=None, away_challenges_used=None),
+            field(home_challenges_used="bad", home_challenges=1, away_challenges_used=1),
+            situation(batter_name="Christopher Bartholomew Longlastname-Hyphenated III", pitcher_name="A Verylongpitchername Sr"),
+        ],
+        "hockey": [goals(3), goals(7), goals(12), situation(emptyNet=True, emptyNetSide="home"),
+                   situation(powerPlay=True, powerPlayTeam="home"), situation(shootout={"away": ["goal", "miss"], "home": ["miss"]})],
+        "soccer": [soccer_events(2), soccer_events(4), soccer_events(7), soccer_events(0)],
+        "basketball": [],
+    }
+    items = []
+    seen = {}
+    for game in games:
+        kind = family(game)
+        if seen.get(kind, 0) >= 2:
+            continue
+        seen[kind] = seen.get(kind, 0) + 1
+        for mutation in common + by_family[kind]:
+            item = mutation(deepcopy(game))
+            item.setdefault("type", "scoreboard")
+            item.setdefault("id", f"{kind}-{len(items)}")
+            items.append(item)
+    for item in items:
+        for presentation in (None, "pinned"):
+            shown = {**item, "sports_presentation": presentation} if presentation else item
+            for logos in (True, False):
+                calls = [["sports", "render", encode({"now": base + timedelta(seconds=step), "item": shown, "mode": "sports",
+                                                      "elapsed": float(step)})] for step in (0, 5, 10, 15)]
+                yield {"source": "synthetic:sports", "logos": logos, "calls": calls}
+
+
+def _ads(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
+    """Every April Fools campaign card in the strip, with and without its logo."""
+    from ticker_core.features.sports.ads import SPORTS_ADS
+
+    for index, ad in enumerate(SPORTS_ADS):
+        for spot in ad["spots"]:
+            item = {"id": f"ad-{index}", "type": "fan_duel_joke_ad", "kind": "fan_duel_joke_ad", "sport": "sports", "family": "sports",
+                    "state": "pre", "status": "SPORTS AD", "headline": ad["brand"], "tagline": spot["copy"], "detail": "PARODY",
+                    "logo": ad["logo"], "logo_plate": ad.get("logo_plate"), "background": ad["background"], "accent": ad["accent"]}
+            for logos in (True, False):
+                call = ["sports", "render", encode({"now": base, "item": item, "mode": "sports", "elapsed": 0.0})]
+                yield {"source": "synthetic:ad", "logos": logos, "calls": [call]}
+    plain = {"type": "fan_duel_joke_ad", "sport": "sports", "logo": "https://logos.example/missing.png", "logo_plate": "#FFFFFF",
+             "background": "bad", "accent": ""}
+    yield {"source": "synthetic:ad", "logos": True, "calls": [["sports", "render", encode({"now": base, "item": plain, "mode": "sports", "elapsed": 0.0})]]}
