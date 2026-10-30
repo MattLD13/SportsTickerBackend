@@ -18,6 +18,88 @@ def cases(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
                 calls = [[kind, "render", encode({"now": base + timedelta(seconds=value), "item": item, "mode": mode,
                                                   "elapsed": value})] for value in elapsed]
                 yield {"source": source, "logos": logos, "calls": calls}
+    yield from _alerts(encode)
+    yield from _news(encode)
+
+
+def _under():
+    """A busy frame under an overlay, so a shutter or a slide shows what it covers."""
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (384, 32), (12, 30, 60))
+    draw = ImageDraw.Draw(image)
+    for x in range(0, 384, 24):
+        draw.rectangle((x, 4, x + 11, 27), fill=(200, 90 + x % 120, 40))
+    return image
+
+
+def _alerts(encode: Encode) -> Iterator[dict[str, Any]]:
+    """Score alerts from the alert gallery, with color, logo, fact, status, and down variants, at each phase."""
+    from tools.rendering.render_score_alert_gallery import EXAMPLES
+
+    base = [{key: value for key, value in example.items() if key not in {"title", "source", "url"}} for example in EXAMPLES]
+    variants = []
+    for alert in base:
+        variants.append(alert)
+        variants.append({**alert, "team_logo": f"https://logos.example/{alert['team_abbr'].lower()}.png"})
+    long_facts = {"player": "Christopher Columbus Alexander-Smith", "data": "47YD PASS FROM Christopher Columbus Alexander-Smith TO THE END ZONE",
+                  "primary_assist": "Bartholomew Longname", "secondary_assist": "Maximilian Evenlongername"}
+    first = base[0]
+    variants += [
+        {**base[5], **long_facts},
+        {**base[5], "player": "Adam Fox", "primary_assist": "Very Longassistname"},
+        {**first, "player": "", "data": "", "primary_assist": "", "secondary_assist": ""},
+        {**first, "headline": "A VERY LONG FUTURE SPORT HEADLINE THAT CANNOT FIT"},
+        {**first, "headline": "THREE POINTER BUZZER BEATER"},
+        {**first, "team_color": "#000000", "team_alt_color": "#000000"},
+        {**first, "team_color": "#010101", "team_logo": "https://logos.example/dark.png"},
+        {**first, "team_color": "#FFD700", "team_alt_color": "#FFFFFF"},
+        {**first, "team_color": "", "team_alt_color": "#FF0000"},
+        {**first, "team_color": "nonsense", "team_alt_color": None},
+        {**first, "status": "Top 7th"}, {**first, "status": "Mid 5th"}, {**first, "status": "End 8th"},
+        {**first, "status": "Final"}, {**first, "status": "Rain Delay 6th"}, {**first, "status": "Bottom"},
+        {**first, "sport": "wbc", "status": "^3"},
+        {**base[7], "down_distance": "1 & Goal", "is_red_zone": True},
+        {**base[7], "down_distance": "3&10"}, {**base[7], "down_distance": "bad"},
+        {**base[7], "status": "TOP OF HOUR BOT"},
+        {**first, "home_score": None, "away_score": 105, "team_abbr": "MIL"},
+        {**first, "team_abbr": "XXX"},
+    ]
+    timings = (0.0, 0.1, 0.25, 0.39, 0.45, 0.6, 1.0, 1.5, 3.0, 7.7, 7.8, 7.95, 8.0, 9.0)
+    under = _under()
+    for alert in variants:
+        for logos in (True, False):
+            for frame in (under, None):
+                calls = [["alert", "render", encode({"alert": alert, "elapsed": value, "under": frame})] for value in timings]
+                yield {"source": "synthetic:alert", "logos": logos, "calls": calls}
+
+
+def _news(encode: Encode) -> Iterator[dict[str, Any]]:
+    """News banners of each kind and domain, sliding in, held, and sliding out."""
+    kinds = ("TRADE", "MAJOR", "BLOCKBUSTER", "SIGNING", "EXTENSION", "INJURY", "WAIVER", "DFA", "RELEASE", "OPTION", "RECALL",
+             "ACTIVATED", "SUSPENSION", "RETIREMENT", "NO_TENDER", "RUMOR", "")
+    text = "The Rangers acquire a defenseman and a conditional pick in exchange for two prospects and a fourth round selection"
+    items = []
+    for kind in kinds:
+        items.append({"kind": kind, "text": text, "from_abbr": "NYR", "to_abbr": "PIT", "from_color": "0038A8",
+                      "from_alt_color": "C8102E", "to_color": "#000000", "to_alt_color": "FCB514"})
+    items += [
+        {"kind": "TRADE", "impact_tier": "BLOCKBUSTER", "text": "Short trade", "from_abbr": "LAL", "to_abbr": "BOS"},
+        {"kind": "TRADE", "text": "Only one club", "to_abbr": "SEA", "to_color": "002244"},
+        {"kind": "SIGNING", "text": "Signs a one year deal", "from_abbr": "TOR", "from_color": "bad"},
+        {"kind": "INJURY", "text": ""},
+        {"domain": "stocks", "to_abbr": "AAPL", "pct": 2.345, "text": text},
+        {"domain": "stocks", "to_abbr": "TSLAXYZ", "pct": -7.1, "text": "Shares fall"},
+        {"domain": "stocks", "to_abbr": "MSFT", "pct": None, "text": "Market news without a move"},
+        {"domain": "stocks", "to_abbr": "NVDA", "pct": "bad", "text": text + " " + text},
+    ]
+    under = _under()
+    for item in items:
+        duration = 0.3 + (7.4 if item.get("domain") == "stocks" else 6.4) + 0.3
+        timings = (0.0, 0.1, 0.29, 0.31, 3.0, duration - 0.29, duration - 0.1, duration, duration + 0.5)
+        calls = [["news", "render", encode({"item": item})]]
+        calls += [["news", "apply", encode({"frame": under, "item": item, "elapsed": value})] for value in timings]
+        yield {"source": "synthetic:news", "logos": True, "calls": calls}
 
 
 def _golf() -> Iterator[tuple[str, str, str, list[dict[str, Any]], tuple[float, ...]]]:
