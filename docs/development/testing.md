@@ -12,7 +12,7 @@ Run the complete test suite:
 python -m pytest -q
 ```
 
-See [`tests/AGENTS.md`](../../tests/AGENTS.md) for the domain test command matrix and test procedures.
+See the Tests section of [`AGENTS.md`](../../AGENTS.md) for the test rules.
 
 The Python tests live in `tests/`, in folders that mirror the code. They use temporary SQLite files, injected provider ports, and memory frame sinks. They do not start the production scheduler or require panel hardware.
 

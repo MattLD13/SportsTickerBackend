@@ -106,9 +106,9 @@ jobs:
     - name: Install test dependencies
       run: python -m pip install -r requirements/server.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
     - name: Compile Python sources
-      run: python -m compileall -q ticker tools tests
+      run: python -m compileall -q ticker agents tools tests
     - name: Check Python correctness
-      run: python -m ruff check ticker tools
+      run: python -m ruff check ticker agents tools
     - name: Check scoped Python types
       run: python -m mypy
     - name: Build public layouts from current Mini firmware

@@ -10,12 +10,12 @@ import re
 import sys
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.workspaces.manage import (
+from agents.manage import (
     WorkspaceError, expand, git, load, manifest_read, resolve, safe_path, stamp, tree, write_json,
 )
-from tools.workspaces.planner import VERSION, PlannerFailure, plan_task
+from agents.planner import VERSION, PlannerFailure, plan_task
 
 
 def edit_owners(manifest: dict, targets: list[str], shared: bool) -> set[str]:
@@ -57,7 +57,7 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
     root = Path(git(root, "rev-parse", "--show-toplevel").strip()).resolve()
     git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
     managed = (git_dir / "agent-workspace/state.json").is_file()
-    manifest = load(root)[2] if managed else manifest_read(root / ".github/agent-workspaces.json")
+    manifest = load(root)[2] if managed else manifest_read(root / "agents/manifest.json")
     key = scope if scope is not None else hashlib.sha256(session.encode()).hexdigest()[:24]
     if not re.fullmatch(r"[0-9a-f]{24}", key):
         raise WorkspaceError("Use the 24-character scope ID from the task packet")
@@ -163,15 +163,15 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
     lines += ["", "## Focused checks", ""]
     for name in plan["checks"]:
         lines.append(f"- `{name}`: " + " ".join(manifest["checks"][name]["argv"]))
-    lines += ["", "## Working rules", "", "Read applicable nested AGENTS.md files before edits.",
+    lines += ["", "## Working rules", "", "Read the AGENTS.md section for each changed folder before edits.",
               "Search the selected files before broad repository exploration.",
-              'For bounded discovery, use python tools/workspaces/find.py --search "<literal words>".',
+              'For bounded discovery, use python agents/find.py --search "<literal words>".',
               "For definitions, use find.py --symbols <path>. For source, use find.py --excerpt <path> --symbol <name>.",
               "Read relevant symbols and sections. Do not preload every selected file.",
               "If a dependency is missing, expand the recorded scope with a reason.",
               "Build files remain available without entering initial context.",
               "Preserve existing edits. The startup hook does not switch or copy this checkout.",
-              "Use tools/workspaces/manage.py for an isolated pinned sparse workspace.",
+              "Use agents/manage.py for an isolated pinned sparse workspace.",
               "Full repository CI must pass before publishing.", ""]
     packet = location / "task.md"
     packet.write_text("\n".join(lines), encoding="utf-8")
@@ -191,7 +191,7 @@ def hook(payload: dict, client: str) -> dict:
         sessions.insert(0, parent_session + ":" + str(payload["agent_id"]))
     git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
     context = ("Follow the root AGENTS.md and use ordinary targeted searches for small, clearly located tasks. "
-               "For a known component, use tools/workspaces/start.py --slice <slice> --task <summary>. "
+               "For a known component, use agents/start.py --slice <slice> --task <summary>. "
                "For broad, unfamiliar, or cross-component work, explicitly request Luna with start.py --plan --task <summary>. "
                "This hook makes no model call and creates no task packet.")
     for session in sessions:

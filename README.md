@@ -103,12 +103,13 @@ Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace th
 | `ticker/server/` | Ticker Server: API, web pages, engine, workers, providers, projections, and records. |
 | `ticker/six/` | Ticker Six runtime, rendering, platform services, and the release updater. |
 | `ticker/ops/` | Release packaging, core activation, rollback, and diagnostics. |
+| `agents/` | Agent workspace tools, their manifest, and their docs. The root `AGENTS.md` holds every agent rule. |
 | `mini/` | Ticker Mini firmware (PlatformIO). |
 | `ios/` | iOS controller app (Xcode). |
 | `deploy/server/` | Server service and guard timer units. |
 | `deploy/six/` | Six install script and service unit. |
 | `requirements/` | `base.txt` for the Six and the server, `server.txt` for the server. |
-| `tests/` | Tests in folders that mirror the code: `shared/`, `server/`, `six/`, `ops/`, `mini/`, `tools/`, and `fixtures/`. |
+| `tests/` | Tests in folders that mirror the code: `shared/`, `server/`, `six/`, `ops/`, `agents/`, `mini/`, `tools/`, and `fixtures/`. |
 | `tools/` | Utilities grouped by purpose. |
 | `docs/` | Architecture, contracts, development, operations, plans, and research. |
 

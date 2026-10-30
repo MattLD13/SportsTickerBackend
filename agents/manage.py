@@ -13,8 +13,8 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / ".github/agent-workspaces.json"
+ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = ROOT / "agents/manifest.json"
 SHA = re.compile(r"[0-9a-f]{40}")
 # These exclusions also apply to later expansions.
 DENIED = (".git/*", ".env*", "*/.env*", "*.key", "*.pem", "*.ppk", "*.secret",
@@ -22,7 +22,7 @@ DENIED = (".git/*", ".env*", "*/.env*", "*.key", "*.pem", "*.ppk", "*.secret",
           "previews/*", "caches/*", "*.log", ".spotify_token", "*credentials*.json",
           "stock_cache.json", "game_cache.json", "global_config.json", "*.sqlite*", "*.db",
           "mini/src/mini/platform/config.h")
-PUBLIC_AGENT_CONFIGS = frozenset((".claude/settings.json", ".codex/hooks.json", ".gemini/settings.json"))
+PUBLIC_AGENT_CONFIGS = frozenset((".claude/CLAUDE.md", ".claude/settings.json", ".codex/hooks.json", ".gemini/settings.json"))
 
 
 class WorkspaceError(RuntimeError):

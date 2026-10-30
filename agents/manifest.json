@@ -24,20 +24,18 @@
         "pyproject.toml",
         "requirements/base.txt",
         "requirements/server.txt",
-        "CLAUDE.md",
-        "GEMINI.md",
+        ".claude/CLAUDE.md",
         ".github/copilot-instructions.md",
         ".codex/hooks.json",
         ".claude/settings.json",
         ".gemini/settings.json",
-        ".github/agent-workspaces.json",
-        "tools/workspaces/manage.py",
-        "tools/workspaces/start.py",
-        "tools/workspaces/native_hockey.py",
-        "docs/development/agent-rules.md",
-        "tools/workspaces/planner.py",
-        "tools/workspaces/discovery.py",
-        "tools/workspaces/find.py"
+        "agents/manifest.json",
+        "agents/manage.py",
+        "agents/start.py",
+        "tools/mini/native_hockey.py",
+        "agents/planner.py",
+        "agents/discovery.py",
+        "agents/find.py"
       ],
       "checks": []
     },
@@ -651,45 +649,43 @@
       "owner": "Agent instructions, task routing, sparse workspaces, and evidence",
       "owned": [
         "AGENTS.md",
-        "CLAUDE.md",
-        "GEMINI.md",
-        ".github/agent-workspaces.json",
+        ".claude/CLAUDE.md",
+        "agents/manifest.json",
         ".github/copilot-instructions.md",
         ".codex/hooks.json",
         ".claude/settings.json",
         ".gemini/settings.json",
-        "tools/workspaces/*",
-        "docs/development/agent-workspaces.md",
-        "docs/development/agent-rules.md",
-        "tests/tools/workspaces/test_agent_workspaces.py",
-        "tests/tools/workspaces/test_agent_startup.py",
-        "tests/tools/workspaces/test_context_planner.py",
-        "tools/benchmarks/context_discovery.py",
-        "docs/contracts/agent-context-cases.json",
-        "tests/tools/workspaces/test_context_discovery.py",
-        "tests/tools/benchmarks/test_context_benchmark.py",
-        "tests/tools/workspaces/test_context_find.py"
+        "agents/*",
+        "agents/README.md",
+        "tests/agents/workspaces/test_agent_workspaces.py",
+        "tests/agents/workspaces/test_agent_startup.py",
+        "tests/agents/workspaces/test_context_planner.py",
+        "agents/context_discovery.py",
+        "agents/context-cases.json",
+        "tests/agents/workspaces/test_context_discovery.py",
+        "tests/agents/workspaces/test_context_benchmark.py",
+        "tests/agents/workspaces/test_context_find.py"
       ],
       "dependencies": [
         "instructions"
       ],
       "context": [
-        "tools/workspaces/start.py",
-        "tools/workspaces/manage.py",
-        "tests/tools/workspaces/test_agent_startup.py",
-        "tests/tools/workspaces/test_agent_workspaces.py",
-        "docs/development/agent-workspaces.md",
-        "tools/workspaces/planner.py",
-        "tools/workspaces/discovery.py"
+        "agents/start.py",
+        "agents/manage.py",
+        "tests/agents/workspaces/test_agent_startup.py",
+        "tests/agents/workspaces/test_agent_workspaces.py",
+        "agents/README.md",
+        "agents/planner.py",
+        "agents/discovery.py"
       ],
       "build": [
-        "tools/workspaces/native_hockey.py",
-        "tests/tools/workspaces/test_context_planner.py",
-        "tools/benchmarks/context_discovery.py",
-        "docs/contracts/agent-context-cases.json",
-        "tests/tools/workspaces/test_context_discovery.py",
-        "tests/tools/benchmarks/test_context_benchmark.py",
-        "tests/tools/workspaces/test_context_find.py"
+        "tools/mini/native_hockey.py",
+        "tests/agents/workspaces/test_context_planner.py",
+        "agents/context_discovery.py",
+        "agents/context-cases.json",
+        "tests/agents/workspaces/test_context_discovery.py",
+        "tests/agents/workspaces/test_context_benchmark.py",
+        "tests/agents/workspaces/test_context_find.py"
       ],
       "checks": [
         "agent-setup"
@@ -923,7 +919,7 @@
     "mini-native": {
       "argv": [
         "{python}",
-        "{tools}/workspaces/native_hockey.py"
+        "{tools}/mini/native_hockey.py"
       ],
       "files": [
         "tests/mini/mini_hockey_panes.cpp",
@@ -1044,20 +1040,20 @@
         "-m",
         "pytest",
         "-q",
-        "tests/tools/workspaces/test_agent_workspaces.py",
-        "tests/tools/workspaces/test_agent_startup.py",
-        "tests/tools/workspaces/test_context_planner.py",
-        "tests/tools/workspaces/test_context_discovery.py",
-        "tests/tools/benchmarks/test_context_benchmark.py",
-        "tests/tools/workspaces/test_context_find.py"
+        "tests/agents/workspaces/test_agent_workspaces.py",
+        "tests/agents/workspaces/test_agent_startup.py",
+        "tests/agents/workspaces/test_context_planner.py",
+        "tests/agents/workspaces/test_context_discovery.py",
+        "tests/agents/workspaces/test_context_benchmark.py",
+        "tests/agents/workspaces/test_context_find.py"
       ],
       "files": [
-        "tests/tools/workspaces/test_agent_workspaces.py",
-        "tests/tools/workspaces/test_agent_startup.py",
-        "tests/tools/workspaces/test_context_planner.py",
-        "tests/tools/workspaces/test_context_discovery.py",
-        "tests/tools/benchmarks/test_context_benchmark.py",
-        "tests/tools/workspaces/test_context_find.py"
+        "tests/agents/workspaces/test_agent_workspaces.py",
+        "tests/agents/workspaces/test_agent_startup.py",
+        "tests/agents/workspaces/test_context_planner.py",
+        "tests/agents/workspaces/test_context_discovery.py",
+        "tests/agents/workspaces/test_context_benchmark.py",
+        "tests/agents/workspaces/test_context_find.py"
       ]
     },
     "clock-domain": {

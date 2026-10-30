@@ -10,6 +10,7 @@ ticker/            The Python code. One package. Run a product with `python -m t
   server/          Ticker Server.
   six/             Ticker Six.
   ops/             Server deployment, recovery, and diagnostics.
+agents/            The agent workspace tools, their manifest, and their docs. AGENTS.md at the root holds every agent rule.
 mini/              Ticker Mini firmware (PlatformIO).
 ios/               iOS controller app (Xcode) and its Swift package.
 deploy/server/     The systemd units of the server.
@@ -70,7 +71,8 @@ The folders under `tests/` mirror the code. A test lives in the folder of the co
 | `tests/six/` | App, assets, UI and golden frames, platform, protocol, and runtime. |
 | `tests/ops/` | Deployment and recovery. |
 | `tests/mini/` | Native C++ checks of the Mini firmware. CI compiles them with `g++`. |
-| `tests/tools/` | Workspace, benchmark, deployment, diagnostic, Mini, and rendering tools. |
+| `tests/agents/` | The agent workspace tools. |
+| `tests/tools/` | Benchmark, deployment, diagnostic, Mini, and rendering tools. |
 | `tests/fixtures/` | Recorded inputs and golden digests. |
 
 ## Deployment links

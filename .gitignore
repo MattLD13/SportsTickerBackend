@@ -56,7 +56,6 @@ build/
 # Environment / secrets
 .env
 .env.*
-!.env.example
 *.secret
 
 # OS

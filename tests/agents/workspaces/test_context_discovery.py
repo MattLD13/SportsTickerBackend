@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.workspaces import discovery
-from tools.workspaces.manage import WorkspaceError
+from agents import discovery
+from agents.manage import WorkspaceError
 
 pytestmark = pytest.mark.critical
 

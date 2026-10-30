@@ -1,11 +1,14 @@
 {
+  "context": {
+    "fileName": "AGENTS.md"
+  },
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','gemini']; runpy.run_path(str(pathlib.Path(root)/'tools/workspaces/start.py'),run_name='__main__')\"",
+            "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','gemini']; runpy.run_path(str(pathlib.Path(root)/'agents/start.py'),run_name='__main__')\"",
             "timeout": 10000
           }
         ]
@@ -16,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','gemini']; runpy.run_path(str(pathlib.Path(root)/'tools/workspaces/start.py'),run_name='__main__')\"",
+            "command": "python -c \"import pathlib,runpy,subprocess,sys; root=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['repo-agent-start','--hook','gemini']; runpy.run_path(str(pathlib.Path(root)/'agents/start.py'),run_name='__main__')\"",
             "timeout": 10000
           }
         ]

@@ -8,9 +8,9 @@ import sys
 
 import pytest
 
-from tools.workspaces.manage import MANIFEST, ROOT, WorkspaceError, git, manifest_read, safe_path
-from tools.workspaces.start import edit_owners, hook, main, prepare
-from tools.workspaces.planner import MODEL, VERSION, PlannerFailure
+from agents.manage import MANIFEST, ROOT, WorkspaceError, git, manifest_read, safe_path
+from agents.start import edit_owners, hook, main, prepare
+from agents.planner import MODEL, VERSION, PlannerFailure
 
 pytestmark = pytest.mark.critical
 
@@ -30,7 +30,7 @@ def planner_calls(monkeypatch):
         calls.append(task)
         assert queued, "The test did not provide a planner decision"
         return queued.pop(0)
-    monkeypatch.setattr("tools.workspaces.start.plan_task", planner)
+    monkeypatch.setattr("agents.start.plan_task", planner)
     return queued, calls
 
 
@@ -63,7 +63,7 @@ def session_repo(tmp_path):
     }, "slices": {"mini-sports": ["mini"], "mini-runtime": ["mini"], "music": ["music"],
                   "mini-music": ["mini", "music"], "shared-sports": ["shared", "mini", "music"]},
         "checks": {}, "shared_owners": ["shared"], "shared_consumers": ["mini", "music"]}
-    path = root / ".github/agent-workspaces.json"
+    path = root / "agents/manifest.json"
     path.parent.mkdir()
     path.write_text(json.dumps(manifest))
     git(root, "add", ".")
@@ -155,7 +155,7 @@ def test_unspecified_scope_never_calls_luna(session_repo, planner_calls):
 
 def test_invalidated_cache_requires_explicit_model_selection(session_repo, planner_calls):
     first = prepare(session_repo, "Fix Mini hockey", "agent-a", slices=["mini-sports"])
-    path = session_repo / ".github/agent-workspaces.json"
+    path = session_repo / "agents/manifest.json"
     manifest = json.loads(path.read_text())
     manifest["components"]["mini"]["owner"] = "Updated Mini owner"
     path.write_text(json.dumps(manifest))
@@ -230,11 +230,13 @@ def test_configured_session_commands_execute_from_a_nested_directory(tmp_path):
 
 def test_instruction_bridges_and_root_budget_have_one_owner():
     root = (ROOT / "AGENTS.md").read_text()
-    assert len(root.split()) < 750
-    assert "tools/workspaces/start.py" in root
-    for name in ("CLAUDE.md", "GEMINI.md"):
-        bridge = (ROOT / name).read_text()
-        assert "@AGENTS.md" in bridge and len(bridge.split()) < 25
+    # AGENTS.md is the only instruction file, so it holds the folder rules too.
+    assert len(root.split()) < 2000
+    assert "agents/start.py" in root
+    assert not [path for path in ROOT.rglob("AGENTS.md") if path != ROOT / "AGENTS.md" and ".git" not in path.parts]
+    bridge = (ROOT / ".claude/CLAUDE.md").read_text()
+    assert "@../AGENTS.md" in bridge and len(bridge.split()) < 25
+    assert json.loads((ROOT / ".gemini/settings.json").read_text())["context"]["fileName"] == "AGENTS.md"
     assert len((ROOT / ".github/copilot-instructions.md").read_text().split()) < 50
     for name in (".claude/settings.local.json", ".codex/config.toml", ".gemini/oauth_creds.json"):
         with pytest.raises(WorkspaceError):

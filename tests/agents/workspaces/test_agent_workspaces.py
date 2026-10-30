@@ -5,11 +5,11 @@ import sys
 
 import pytest
 
-from tools.workspaces.manage import (
+from agents.manage import (
     MANIFEST, ROOT, WorkspaceError, audit, create, expand, git, load,
     input_digest, main, manifest_read, resolve, run_check, safe_path, select, tree,
 )
-from tools.workspaces.start import inventory
+from agents.start import inventory
 
 pytestmark = pytest.mark.critical
 

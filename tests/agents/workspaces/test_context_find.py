@@ -6,9 +6,9 @@ import sys
 
 import pytest
 
-from tools.workspaces.find import main
-from tools.workspaces.manage import MANIFEST, ROOT, manifest_read, resolve
-from tools.workspaces.start import inventory
+from agents.find import main
+from agents.manage import MANIFEST, ROOT, manifest_read, resolve
+from agents.start import inventory
 
 pytestmark = pytest.mark.critical
 
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.critical
 def test_find_lists_matching_paths_without_model_calls(monkeypatch, capsys):
     def prohibited(*_args, **_kwargs):
         raise AssertionError("Discovery started a model")
-    monkeypatch.setattr("tools.workspaces.planner.run_codex", prohibited)
+    monkeypatch.setattr("agents.planner.run_codex", prohibited)
     assert main(["--repo", str(ROOT), "--search", "station_retry"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert "mini/src/mini/platform/station_retry.h" in data["files"]
@@ -30,7 +30,7 @@ def test_find_rejects_credential_excerpt_without_printing_source(capsys):
 
 
 def test_find_reads_one_named_definition(capsys):
-    assert main(["--repo", str(ROOT), "--excerpt", "tools/workspaces/start.py", "--symbol", "prepare"]) == 0
+    assert main(["--repo", str(ROOT), "--excerpt", "agents/start.py", "--symbol", "prepare"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["symbol_found"]
     assert "def prepare(" in data["source"]
@@ -41,8 +41,8 @@ def test_manifest_build_set_can_import_startup_without_unselected_dependencies(t
     manifest = manifest_read(MANIFEST)
     tracked = inventory(ROOT, manifest, "HEAD")
     selected = resolve(manifest, ["instructions"], tracked)
-    expected = {"tools/workspaces/start.py", "tools/workspaces/planner.py",
-                "tools/workspaces/discovery.py", "tools/workspaces/find.py"}
+    expected = {"agents/start.py", "agents/planner.py",
+                "agents/discovery.py", "agents/find.py"}
     assert expected <= set(selected["build_files"])
     # Copy only the declared startup closure. No credentials or production state enter this directory.
     for relative in selected["build_files"]:
@@ -52,7 +52,7 @@ def test_manifest_build_set_can_import_startup_without_unselected_dependencies(t
         shutil.copy2(source, target)
     result = subprocess.run([sys.executable, "-I", "-c",
         "import sys; sys.path.insert(0, sys.argv[1]); "
-        "import tools.workspaces.start, tools.workspaces.find", str(tmp_path)],
+        "import agents.start, agents.find", str(tmp_path)],
         cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 

@@ -6,12 +6,12 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.workspaces.discovery import allowed_files, discover, excerpt
-from tools.workspaces.manage import WorkspaceError, git, load, manifest_read
-from tools.workspaces.start import inventory
+from agents.discovery import allowed_files, discover, excerpt
+from agents.manage import WorkspaceError, git, load, manifest_read
+from agents.start import inventory
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = Path(git(args.repo, "rev-parse", "--show-toplevel").strip()).resolve()
         git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
-        manifest = load(root)[2] if (git_dir / "agent-workspace/state.json").is_file() else manifest_read(root / ".github/agent-workspaces.json")
+        manifest = load(root)[2] if (git_dir / "agent-workspace/state.json").is_file() else manifest_read(root / "agents/manifest.json")
         tracked = inventory(root, manifest, git(root, "rev-parse", "HEAD").strip())
         allowed = set(allowed_files(root, tracked))
         if args.excerpt:

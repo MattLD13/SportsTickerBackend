@@ -2,8 +2,8 @@
 
 ## Ownership
 
-`tools/workspaces/manage.py` owns task workspace creation, expansion, and evidence.
-`.github/agent-workspaces.json` owns component dependencies, context files, build files, and checks.
+`agents/manage.py` owns task workspace creation, expansion, and evidence.
+`agents/manifest.json` owns component dependencies, context files, build files, and checks.
 Git owns commits, branches, staging, and history.
 
 Workspace selection does not control deployment selection.
@@ -13,16 +13,15 @@ Workspace selection does not control deployment selection.
 
 | Part | Responsibility |
 |---|---|
-| `AGENTS.md` | Shared repository rules. The file does not create an agent. |
-| Scoped `AGENTS.md` files | Rules for the directories involved in the task. |
-| `CLAUDE.md` and `GEMINI.md` | Small bridges to the shared guide. |
+| `AGENTS.md` | Every repository rule, with one section for each product folder. The file does not create an agent. |
+| `.claude/CLAUDE.md` | A small bridge that imports `AGENTS.md`. |
 | Startup hooks | Reuse an existing packet or provide search guidance without a model call. |
 | GPT-6 Luna | Plan context only after an explicit `--plan` or `--replan` request. |
 | Workspace manager | Enforce dependency, ownership, and credential rules. |
 | Coding agent | Implement the task, validate the change, and report results. |
 
 `AGENTS.md` owns shared agent instructions.
-`CLAUDE.md` and `GEMINI.md` import that one guide.
+`.claude/CLAUDE.md` imports that one guide. `.gemini/settings.json` names `AGENTS.md` as the Gemini context file.
 Copilot's bridge points to the same guide. Cursor uses `AGENTS.md` directly.
 
 | Agent | Automatic entry |
@@ -37,13 +36,13 @@ Hooks never start Luna, inspect prompt text, or create a task packet.
 They perform no source edits, test execution, checkout changes, or hardware operations.
 
 Use ordinary targeted searches for small tasks with a clear code location.
-Read the relevant scoped instructions and source sections.
+Read the relevant AGENTS.md sections and source sections.
 These tasks do not require a startup command or model call.
 
 For a known component, select a manifest slice directly:
 
 ```powershell
-python tools/workspaces/start.py --slice mini-sports --task "Fix Mini hockey shootout rendering"
+python agents/start.py --slice mini-sports --task "Fix Mini hockey shootout rendering"
 ```
 
 This command resolves component dependencies and checks without Luna.
@@ -52,7 +51,7 @@ The manifest and sparse workspace tools remain available independently of model 
 For broad, unfamiliar, or cross-component tasks, request Luna explicitly:
 
 ```powershell
-python tools/workspaces/start.py --plan --task "Trace shared hockey shootout data through both renderers"
+python agents/start.py --plan --task "Trace shared hockey shootout data through both renderers"
 ```
 
 The coding agent decides when planning is useful. Hooks do not classify tasks or invoke another agent.
@@ -67,21 +66,21 @@ Luna suggestions cannot narrow a shared contract change below its affected consu
 For a dependency expansion, use the current packet's scope ID:
 
 ```powershell
-python tools/workspaces/start.py --scope <scope-id> --slice weather --task "Inspect forecast integration" --reason "The alert depends on forecast state"
-python tools/workspaces/start.py --scope <scope-id> --path tools/workspaces/new_helper.py --reason "Add the context helper"
+python agents/start.py --scope <scope-id> --slice weather --task "Inspect forecast integration" --reason "The alert depends on forecast state"
+python agents/start.py --scope <scope-id> --path agents/new_helper.py --reason "Add the context helper"
 ```
 
 For an independent task in the same client session, reset that scope:
 
 ```powershell
-python tools/workspaces/start.py --scope <scope-id> --new-task --slice mini-weather --task "Fix Mini weather"
+python agents/start.py --scope <scope-id> --new-task --slice mini-weather --task "Fix Mini weather"
 ```
 
 Continuation prompts reuse the recorded plan without another model call.
 For a broad task that needs another model plan, request it explicitly:
 
 ```powershell
-python tools/workspaces/start.py --scope <scope-id> --replan --task "Also inspect Mini artwork scheduling"
+python agents/start.py --scope <scope-id> --replan --task "Also inspect Mini artwork scheduling"
 ```
 
 New plans preserve the original task scope and add discovered dependencies.
@@ -145,11 +144,11 @@ The [NFL comparison](../research/2026-10-19-nfl-alert-agent-comparison.md) recor
 The coding agent can inspect paths and symbols without invoking Luna:
 
 ```powershell
-python tools/workspaces/find.py --search "station_retry"
-python tools/workspaces/find.py --search "ticker/server/providers ScoreAlertTracker"
-python tools/workspaces/find.py --component mini-runtime
-python tools/workspaces/find.py --symbols ticker/server/providers/score_alerts.py
-python tools/workspaces/find.py --excerpt ticker/server/providers/score_alerts.py --symbol ScoreAlertTracker
+python agents/find.py --search "station_retry"
+python agents/find.py --search "ticker/server/providers ScoreAlertTracker"
+python agents/find.py --component mini-runtime
+python agents/find.py --symbols ticker/server/providers/score_alerts.py
+python agents/find.py --excerpt ticker/server/providers/score_alerts.py --symbol ScoreAlertTracker
 ```
 
 Search uses literal words. It does not execute expressions or shell text.
@@ -165,13 +164,13 @@ Use `start.py --path` with the current scope and a reason when discovery expands
 The benchmark checks three predefined task classes without model calls by default:
 
 ```powershell
-python tools/benchmarks/context_discovery.py --output previews/context-evaluation/offline.json
+python agents/context_discovery.py --output previews/context-evaluation/offline.json
 ```
 
 A live comparison requires an explicit flag, a frozen baseline planner, and an output file:
 
 ```powershell
-python tools/benchmarks/context_discovery.py --live --baseline-planner previews/context-evaluation/baseline_planner.py --repeat 2 --output previews/context-evaluation/report.json
+python agents/context_discovery.py --live --baseline-planner previews/context-evaluation/baseline_planner.py --repeat 2 --output previews/context-evaluation/report.json
 ```
 
 Expected paths and consumers remain outside both model inputs.
@@ -199,8 +198,8 @@ The commit must contain every selected manifest path.
 
 ```powershell
 $taskSha = gh api repos/MattLD13/SportsTickerBackend/commits/main --jq .sha
-python tools/workspaces/manage.py plan --slice mini-sports --sha $taskSha
-python tools/workspaces/manage.py create --slice mini-sports --sha $taskSha --dest C:/agent-workspaces/hockey --task "Fix Mini hockey shootout rendering"
+python agents/manage.py plan --slice mini-sports --sha $taskSha
+python agents/manage.py create --slice mini-sports --sha $taskSha --dest C:/agent-workspaces/hockey --task "Fix Mini hockey shootout rendering"
 ```
 
 The manager fetches one pinned commit with `blob:none` filtering and checks out selected files with non-cone sparse patterns.
@@ -237,14 +236,14 @@ The first validated task boundary is Mini sports. Runtime and Mini feature slice
 If a task changes shared behavior, select every consumer:
 
 ```powershell
-python tools/workspaces/manage.py create --slice mini-sports --shared-change --sha $taskSha --dest C:/agent-workspaces/shared-hockey --task "Change shared hockey behavior"
+python agents/manage.py create --slice mini-sports --shared-change --sha $taskSha --dest C:/agent-workspaces/shared-hockey --task "Change shared hockey behavior"
 ```
 
 If a dependency appears during work, record its reason:
 
 ```powershell
-python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --component sports-server --reason "The shootout field changes both device contracts"
-python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --path mini/src/mini/ui/new_helper.h --reason "Add a shared pane helper"
+python agents/manage.py expand --workspace C:/agent-workspaces/hockey --component sports-server --reason "The shootout field changes both device contracts"
+python agents/manage.py expand --workspace C:/agent-workspaces/hockey --path mini/src/mini/ui/new_helper.h --reason "Add a shared pane helper"
 ```
 
 An explicit shared component expansion includes Mini, Six, and iOS consumers.
@@ -259,11 +258,11 @@ Install the dependencies from `requirements/base.txt` and install pytest in your
 Run commands from the source checkout:
 
 ```powershell
-python tools/workspaces/manage.py run --workspace C:/agent-workspaces/hockey --check sports-contracts
-python tools/workspaces/manage.py run --workspace C:/agent-workspaces/hockey --check mini-fields
-python tools/workspaces/manage.py run --workspace C:/agent-workspaces/hockey --check mini-ui
-python tools/workspaces/manage.py run --workspace C:/agent-workspaces/hockey --check mini-native
-python tools/workspaces/manage.py audit --workspace C:/agent-workspaces/hockey
+python agents/manage.py run --workspace C:/agent-workspaces/hockey --check sports-contracts
+python agents/manage.py run --workspace C:/agent-workspaces/hockey --check mini-fields
+python agents/manage.py run --workspace C:/agent-workspaces/hockey --check mini-ui
+python agents/manage.py run --workspace C:/agent-workspaces/hockey --check mini-native
+python agents/manage.py audit --workspace C:/agent-workspaces/hockey
 ```
 
 Each run records its command, exit code, duration, source revision, diff digest, and log path.
@@ -272,7 +271,7 @@ An input digest includes selected file content, new files, missing files, and st
 The record identifies inputs that changed during a check.
 Evidence stays inside Git metadata and cannot enter `git add -A`.
 `mini-native` requires a C++17 compiler named `g++`.
-It fetches the ArduinoJson 7.4.3 commit recorded by `tools/workspaces/native_hockey.py`.
+It fetches the ArduinoJson 7.4.3 commit recorded by `tools/mini/native_hockey.py`.
 `{tools}` in a check command selects the installed manager tools directory outside the task workspace.
 It compiles the production protocol and renderer headers against the real hockey vectors.
 The dependency and executable stay inside Git metadata.
@@ -303,7 +302,7 @@ Keep production credentials and customer data outside Git.
 ## Validation commands
 
 ```powershell
-python -m pytest -q tests/tools/workspaces/test_agent_workspaces.py
+python -m pytest -q tests/agents/workspaces/test_agent_workspaces.py
 python -m pytest -m critical -q
 python -m pytest -q
 ```

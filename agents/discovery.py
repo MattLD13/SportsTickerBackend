@@ -12,7 +12,7 @@ import re
 import stat
 import tokenize
 
-from tools.workspaces.manage import WorkspaceError, safe_path
+from agents.manage import WorkspaceError, safe_path
 
 SOURCE_SUFFIXES = frozenset({".py", ".cpp", ".cc", ".c", ".hpp", ".h", ".inc", ".swift",
                              ".md", ".json", ".toml", ".yml", ".yaml", ".ini", ".sh"})

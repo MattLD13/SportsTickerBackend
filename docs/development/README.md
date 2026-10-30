@@ -1,9 +1,9 @@
 # Contributing
 
 Read [AGENTS.md](../../AGENTS.md) before changing code.
-Read nested agent guides for the directories you change.
+Read the `AGENTS.md` section for each folder that you change.
 Preserve existing local changes and runtime data.
-Read [agent workspaces](agent-workspaces.md) for automatic task context and isolated sparse workspaces.
+Read [agent workspaces](../../agents/README.md) for automatic task context and isolated sparse workspaces.
 
 ## Local development
 
@@ -25,7 +25,7 @@ Install development tools:
 python -m pip install "pytest>=8,<9" "ruff>=0.14,<0.15" "mypy>=1.18,<2"
 ```
 
-Copy `.env.example` to `.env` for local backend settings.
+Copy `docs/development/env.example` to `.env` for local backend settings.
 Keep credentials in `.env` and exclude them from Git.
 
 ## Static checks
@@ -33,7 +33,7 @@ Keep credentials in `.env` and exclude them from Git.
 Run static checks from the repository root:
 
 ```powershell
-python -m ruff check ticker tools
+python -m ruff check ticker agents tools
 python -m mypy
 ```
 
@@ -49,9 +49,9 @@ Only affected publishing steps run.
 ## Validation
 
 `pyproject.toml` selects `tests` and keeps the pytest patterns and markers.
-Read [tests/AGENTS.md](../../tests/AGENTS.md) for focused validation and release checks.
+Read the Tests section of [AGENTS.md](../../AGENTS.md) for focused validation and release checks.
 If you change display output, render and inspect a real 384x32 PNG.
-Read [tools/AGENTS.md](../../tools/AGENTS.md) before changing preview tools.
+Read the Tools section of [AGENTS.md](../../AGENTS.md) before changing preview tools.
 
 ## Change notes
 

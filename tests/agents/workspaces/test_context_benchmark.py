@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tools.benchmarks import context_discovery as benchmark
+from agents import context_discovery as benchmark
 
 pytestmark = pytest.mark.critical
 
@@ -181,8 +181,8 @@ def test_observation_counts_exact_utf8_request_and_repeated_source_text():
 
 def test_cli_defaults_to_offline_and_never_loads_model_runners(inputs, monkeypatch, capsys):
     root, manifest, tracked, cases = inputs
-    (root / ".github").mkdir()
-    (root / ".github/agent-workspaces.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (root / "agents").mkdir()
+    (root / "agents/manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     case_path = root / "cases.json"
     case_path.write_text(json.dumps({"version": 1, "cases": cases}), encoding="utf-8")
     monkeypatch.setattr(benchmark, "ROOT", root)

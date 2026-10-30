@@ -8,8 +8,8 @@ import subprocess
 import tempfile
 import time
 
-from tools.workspaces.manage import WorkspaceError, safe_path
-from tools.workspaces.discovery import allowed_files, catalog, discover, excerpt, initial_hints
+from agents.manage import WorkspaceError, safe_path
+from agents.discovery import allowed_files, catalog, discover, excerpt, initial_hints
 
 MODEL = "gpt-6-luna"
 VERSION = 5

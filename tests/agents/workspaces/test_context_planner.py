@@ -5,11 +5,11 @@ import subprocess
 
 import pytest
 
-from tools.workspaces.manage import MANIFEST, ROOT, WorkspaceError, manifest_read, resolve
-from tools.workspaces.planner import (
+from agents.manage import MANIFEST, ROOT, WorkspaceError, manifest_read, resolve
+from agents.planner import (
     MODEL, PlannerFailure, allowed_files, codex_command, excerpt, plan_task, run_codex, validate,
 )
-from tools.workspaces.start import edit_owners, inventory
+from agents.start import edit_owners, inventory
 
 pytestmark = pytest.mark.critical
 
@@ -142,7 +142,7 @@ def test_failed_validation_preserves_usage_and_bounded_evidence(source):
 
 def test_request_bytes_stop_large_tasks_before_any_model_call(source, monkeypatch):
     root, manifest, tracked = source
-    monkeypatch.setattr("tools.workspaces.planner.MAX_REQUEST_BYTES", 50)
+    monkeypatch.setattr("agents.planner.MAX_REQUEST_BYTES", 50)
     calls = []
     with pytest.raises(PlannerFailure, match="byte budget") as raised:
         plan_task(root, "Inspect a pane", manifest, tracked, runner=lambda *_: calls.append(1), clock=lambda: 0)
@@ -163,11 +163,11 @@ def test_latest_results_replace_earlier_source_excerpts(source):
 
 
 def test_transport_failures_retain_completed_usage(monkeypatch):
-    monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: "codex")
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "codex")
     def execute(args, **kwargs):
         events = [{"type": "turn.completed", "usage": {"input_tokens": 12, "output_tokens": 4}}]
         return subprocess.CompletedProcess(args, 1, "\n".join(json.dumps(row) for row in events), "Private runner text")
-    monkeypatch.setattr("tools.workspaces.planner.subprocess.run", execute)
+    monkeypatch.setattr("agents.planner.subprocess.run", execute)
     with pytest.raises(PlannerFailure) as raised:
         run_codex({}, {}, 10)
     assert raised.value.evidence["usage"] == {"input_tokens": 12, "output_tokens": 4}
@@ -175,13 +175,13 @@ def test_transport_failures_retain_completed_usage(monkeypatch):
 
 
 def test_transport_sums_completed_turns_and_keeps_subsets_separate(monkeypatch):
-    monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: "codex")
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "codex")
     def execute(args, **kwargs):
         (Path(kwargs["cwd"]) / "result.json").write_text(json.dumps(ready()))
         events = [{"type": "turn.completed", "usage": {"input_tokens": 20, "cached_input_tokens": 8,
                     "output_tokens": 4, "reasoning_output_tokens": 2}}] * 2
         return subprocess.CompletedProcess(args, 0, "\n".join(json.dumps(row) for row in events), "")
-    monkeypatch.setattr("tools.workspaces.planner.subprocess.run", execute)
+    monkeypatch.setattr("agents.planner.subprocess.run", execute)
     _, usage = run_codex({}, {}, 10)
     assert usage["input_tokens"] == 40 and usage["output_tokens"] == 8
     assert usage["cached_input_tokens"] == 16 and usage["reasoning_output_tokens"] == 4
@@ -206,11 +206,11 @@ def test_local_validation_enforces_bounds_independently_of_model_schema(source, 
 @pytest.mark.parametrize("event", [[], {"type": "turn.completed", "usage": None},
                                    {"type": "item.completed", "item": None}])
 def test_transport_handles_malformed_json_events_without_losing_failure_type(monkeypatch, event):
-    monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: "codex")
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "codex")
     def execute(args, **kwargs):
         (Path(kwargs["cwd"]) / "result.json").write_text(json.dumps(ready()))
         return subprocess.CompletedProcess(args, 0, json.dumps(event), "")
-    monkeypatch.setattr("tools.workspaces.planner.subprocess.run", execute)
+    monkeypatch.setattr("agents.planner.subprocess.run", execute)
     with pytest.raises(PlannerFailure):
         run_codex({}, {}, 10)
 
@@ -232,7 +232,7 @@ def test_later_failure_cannot_make_prior_unknown_usage_complete(source):
 
 
 def test_final_schema_requires_ready_and_no_more_requests(source):
-    from tools.workspaces.planner import schema
+    from agents.planner import schema
     specification = schema(source[1], 2, final=True)
     assert specification["properties"]["phase"]["enum"] == ["ready"]
     assert specification["properties"]["discover"]["maxItems"] == 0
@@ -240,11 +240,11 @@ def test_final_schema_requires_ready_and_no_more_requests(source):
 
 
 def test_timeout_preserves_measured_tokens_as_an_incomplete_lower_bound(monkeypatch):
-    monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: "codex")
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "codex")
     def execute(args, **kwargs):
         output = json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 2}})
         raise subprocess.TimeoutExpired(args, 10, output=output)
-    monkeypatch.setattr("tools.workspaces.planner.subprocess.run", execute)
+    monkeypatch.setattr("agents.planner.subprocess.run", execute)
     with pytest.raises(PlannerFailure) as raised:
         run_codex({}, {}, 10)
     assert raised.value.evidence["usage"] == {"input_tokens": 10, "output_tokens": 2}
@@ -272,7 +272,7 @@ def test_transport_disables_recursive_hooks_tools_and_memory(tmp_path):
 
 
 def test_transport_collects_usage_and_rejects_tool_events(monkeypatch):
-    monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: "codex")
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "codex")
     tool_event = []
     def execute(args, **kwargs):
         folder = Path(kwargs["cwd"])
@@ -281,7 +281,7 @@ def test_transport_collects_usage_and_rejects_tool_events(monkeypatch):
         (folder / "result.json").write_text(json.dumps(ready()))
         events = tool_event or [{"type": "turn.completed", "usage": {"input_tokens": 12}}]
         return subprocess.CompletedProcess(args, 0, "\n".join(json.dumps(row) for row in events), "")
-    monkeypatch.setattr("tools.workspaces.planner.subprocess.run", execute)
+    monkeypatch.setattr("agents.planner.subprocess.run", execute)
     result, usage = run_codex({"task": "Fix a pane"}, {"type": "object"}, 10)
     assert result["phase"] == "ready" and usage["input_tokens"] == 12
     tool_event.extend([{"type": "item.completed", "item": {"type": "error", "message": "Client startup notice"}},
@@ -294,7 +294,7 @@ def test_transport_collects_usage_and_rejects_tool_events(monkeypatch):
 
 
 def test_missing_cli_returns_an_actionable_error(monkeypatch):
-    monkeypatch.setattr("tools.workspaces.planner.shutil.which", lambda name: None)
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: None)
     with pytest.raises(WorkspaceError, match="Install Codex CLI"):
         run_codex({}, {}, 10)
 

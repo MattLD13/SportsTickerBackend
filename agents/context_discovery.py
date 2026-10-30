@@ -10,16 +10,16 @@ from pathlib import Path
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.workspaces.manage import WorkspaceError, git, manifest_read, resolve, safe_path
-from tools.workspaces.start import edit_owners, inventory
+from agents.manage import WorkspaceError, git, manifest_read, resolve, safe_path
+from agents.start import edit_owners, inventory
 
-CASES = ROOT / "docs/contracts/agent-context-cases.json"
+CASES = ROOT / "agents/context-cases.json"
 TOKEN_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
-EVALUATION_PATHS = frozenset(("docs/contracts/agent-context-cases.json", "tools/benchmarks/context_discovery.py",
-                              "tests/tools/benchmarks/test_context_benchmark.py",
+EVALUATION_PATHS = frozenset(("agents/context-cases.json", "agents/context_discovery.py",
+                              "tests/agents/workspaces/test_context_benchmark.py",
                               "docs/research/2026-10-19-progressive-agent-context.md",
                               "docs/research/agent-context-v5-evidence.json"))
 
@@ -289,15 +289,15 @@ def main(argv=None) -> int:
         parser.error("--live requires a frozen --baseline-planner")
     if args.live and not args.output:
         parser.error("--live requires --output to retain attempt evidence")
-    manifest = manifest_read(ROOT / ".github/agent-workspaces.json")
+    manifest = manifest_read(ROOT / "agents/manifest.json")
     revision = git(ROOT, "rev-parse", "HEAD").strip()
     tracked = inventory(ROOT, manifest, revision)
     cases = load_cases(args.cases, manifest, tracked)
     if args.live:
-        from tools.workspaces import planner
+        from agents import planner
         baseline = load_planner(args.baseline_planner)
-        implementation_paths = ("tools/workspaces/planner.py", "tools/workspaces/discovery.py", "tools/workspaces/start.py",
-                                "tools/benchmarks/context_discovery.py", ".github/agent-workspaces.json")
+        implementation_paths = ("agents/planner.py", "agents/discovery.py", "agents/start.py",
+                                "agents/context_discovery.py", "agents/manifest.json")
         hashes = {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in implementation_paths}
         def checkpoint(report):
             report.update(revision=revision, implementation_sha256=hashes)
