@@ -13,7 +13,7 @@ from ticker_core.features.racing.renderer import RacingRenderer
 from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
 from ticker_core.features.sports.pinned import PreparedSportsFullRenderer
 from ticker_core.features.utility.renderer import UtilityRenderer
-from ticker_core.features.weather.renderer import WeatherRenderer
+from ticker_core.ui.cards.weather import WeatherCard
 from ticker_core.ui import load_default_font_set
 from ticker_core.ui.cards.clock import ClockCard
 from ticker_core.ui.layers import ImageTemplates
@@ -141,7 +141,7 @@ def test_mode_templates_match_fresh_layers_when_values_change():
     racing_ref._scroll_templates = NoTemplates()
     flight, flight_ref = FlightCard(fonts,logos), FlightCard(fonts,logos)
     flight_ref._boards = NoTemplates()
-    weather, weather_ref = WeatherRenderer(fonts), WeatherRenderer(fonts)
+    weather, weather_ref = WeatherCard(fonts), WeatherCard(fonts)
     clock, clock_ref = ClockCard(fonts), ClockCard(fonts)
     clock_ref._dates = NoTemplates()
     music, music_ref = MusicCard(fonts,logos), MusicCard(fonts,logos)
@@ -168,7 +168,7 @@ def test_mode_templates_match_fresh_layers_when_values_change():
                  (racing._render_scroll(race),racing_ref._render_scroll(race)),
                  (flight.visitor(visitor),flight_ref.visitor(visitor)),
                  (flight.board(airport,[{'flight_number':str(index)}],[]),flight_ref.board(airport,[{'flight_number':str(index)}],[])),
-                 (weather.detailed(context,weather_item),weather_ref.detailed(context,weather_item)),
+                 (weather.frame(context.now,weather_item),weather_ref.frame(context.now,weather_item)),
                  (clock.frame(now),clock_ref.frame(now)),
                  (music._label(artwork),music_ref._label(artwork))]
         for actual, expected in pairs:

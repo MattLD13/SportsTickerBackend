@@ -241,7 +241,7 @@
       "owner": "Music provider and device presentation",
       "owned": [
         "sports_ticker/providers/music.py",
-        "ticker_core/features/music/*"
+        "ticker_core/ui/cards/music.py"
       ],
       "dependencies": [
         "server-core",
@@ -251,7 +251,7 @@
         "sports_ticker/providers/music.py"
       ],
       "build": [
-        "ticker_core/features/music/*",
+        "ticker_core/ui/cards/music.py",
         "tests/python/protocol/test_music_stale_scope.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
@@ -264,7 +264,7 @@
       "owner": "Weather provider and device presentation",
       "owned": [
         "sports_ticker/providers/weather.py",
-        "ticker_core/features/weather/*",
+        "ticker_core/ui/cards/weather.py",
         "tests/python/features/weather/*"
       ],
       "dependencies": [
@@ -276,7 +276,7 @@
         "sports_ticker/providers/weather.py"
       ],
       "build": [
-        "ticker_core/features/weather/*",
+        "ticker_core/ui/cards/weather.py",
         "tests/python/protocol/test_weather_provider.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py",
@@ -316,7 +316,7 @@
       "owner": "Flights provider and device presentation",
       "owned": [
         "sports_ticker/providers/flights.py",
-        "ticker_core/features/flight/*"
+        "ticker_core/ui/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
@@ -326,7 +326,7 @@
         "sports_ticker/providers/flights.py"
       ],
       "build": [
-        "ticker_core/features/flight/*",
+        "ticker_core/ui/cards/flight.py",
         "tests/python/protocol/test_flights.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
@@ -339,7 +339,7 @@
       "owner": "Airports provider and device presentation",
       "owned": [
         "sports_ticker/providers/flights.py",
-        "ticker_core/features/flight/*"
+        "ticker_core/ui/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
@@ -349,7 +349,7 @@
         "sports_ticker/providers/flights.py"
       ],
       "build": [
-        "ticker_core/features/flight/*",
+        "ticker_core/ui/cards/flight.py",
         "tests/python/protocol/test_flights.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
@@ -626,13 +626,13 @@
     "clock": {
       "owner": "Clock presentation",
       "owned": [
-        "ticker_core/features/clock/*"
+        "ticker_core/ui/cards/clock.py"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "ticker_core/features/clock/renderer.py"
+        "ticker_core/ui/cards/clock.py"
       ],
       "build": [
         "tests/python/clock/test_clock_renderer.py"
@@ -756,7 +756,7 @@
     "weather-art": {
       "owner": "Shared Six and Mini weather icon timing and generated artwork",
       "owned": [
-        "ticker_core/features/weather/drawing.py",
+        "ticker_core/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py",
         "esp32_hub75/src/mini/rendering/weather_art_generated.h"
       ],
@@ -765,7 +765,7 @@
         "mini-firmware"
       ],
       "context": [
-        "ticker_core/features/weather/drawing.py",
+        "ticker_core/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py"
       ],
       "build": [

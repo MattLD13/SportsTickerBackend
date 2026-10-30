@@ -301,7 +301,7 @@ def test_missing_cli_returns_an_actionable_error(monkeypatch):
 
 def test_weather_art_and_catalog_tests_have_precise_consumer_ownership():
     manifest = manifest_read(MANIFEST)
-    owners = edit_owners(manifest, ["ticker_core/features/weather/drawing.py",
+    owners = edit_owners(manifest, ["ticker_core/ui/weather_art.py",
                                     "tests/python/rendering/test_catalog.py"], False)
     assert {"weather", "weather-art", "six-rendering"} <= owners
     plan = resolve(manifest, sorted(owners), inventory(ROOT, manifest, "HEAD"))

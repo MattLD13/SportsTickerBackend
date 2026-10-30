@@ -1,7 +1,7 @@
 """Keep the exported Mini track aligned with the shared weather drawing period."""
 import pytest
 
-from ticker_core.features.weather.drawing import ANIMATION_PERIOD
+from ticker_core.ui.weather_art import ANIMATION_PERIOD
 from tools.mini.generate_mini_weather import FRAMES, STEP_MS, animation_frame_count
 
 pytestmark = pytest.mark.critical

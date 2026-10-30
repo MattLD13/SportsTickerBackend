@@ -12,12 +12,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from ticker_core.ui import load_default_font_set
-
-# Load the drawing owner without importing the weather runtime and its web dependencies.
-SPEC = importlib.util.spec_from_file_location("mini_weather_art_owner", ROOT / "ticker_core/features/weather/drawing.py")
-OWNER = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(OWNER)
+from ticker_core.ui import weather_art
 
 TARGET = ROOT / "esp32_hub75/src/mini/rendering/weather_art_generated.h"
 ICONS = ("sun", "moon", "cloud", "rain", "snow", "fog", "storm")
@@ -34,18 +29,17 @@ def animation_frame_count(period_seconds: float, step_ms: int) -> int:
     return frames
 
 
-FRAMES = animation_frame_count(OWNER.ANIMATION_PERIOD, STEP_MS)
+FRAMES = animation_frame_count(weather_art.ANIMATION_PERIOD, STEP_MS)
 
 
 def header() -> str:
     """Fit the original artwork into one stable Mini icon rectangle."""
-    renderer = OWNER.PreparedWeatherRenderer(load_default_font_set(), datetime(2026, 1, 1, tzinfo=timezone.utc))
     unique, indices, tracks = [], {}, []
     for icon in ICONS:
         originals = []
         for index in range(FRAMES):
             image = Image.new("RGB", (48, 48))
-            renderer.draw_weather_pixel_art(ImageDraw.Draw(image), icon, 17, 17, t=index * STEP_MS / 1000)
+            weather_art.draw_icon(ImageDraw.Draw(image), icon, 17, 17, index * STEP_MS / 1000)
             originals.append(image)
         bounds = [image.getbbox() for image in originals]
         box = (min(row[0] for row in bounds), min(row[1] for row in bounds),

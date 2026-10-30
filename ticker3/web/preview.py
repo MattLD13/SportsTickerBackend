@@ -93,7 +93,7 @@ class PreviewRenderer:
         """Render one bounded three-second atlas through production drawing code."""
         from ticker_core.bootstrap import CachedLogoView
         from ticker_core.ui.cards.music import MusicCard, MusicState
-        from ticker_core.features.weather import WeatherRenderer
+        from ticker_core.ui.cards.weather import WeatherCard
         from ticker_core.ui import load_default_font_set
 
         key = ("animation", mode, start.isoformat(), json.dumps(items, sort_keys=True), self._assets.revision)
@@ -112,7 +112,7 @@ class PreviewRenderer:
                 for index in range(60):
                     _, state = renderer.frame(warm + timedelta(seconds=index / 30), game, state)
             elif items:
-                renderer = WeatherRenderer(fonts)
+                renderer = WeatherCard(fonts)
             else:
                 frame = Image.open(BytesIO(self.render([], mode, "pinned", start))).convert("RGB")
             for index in range(90):
@@ -120,7 +120,7 @@ class PreviewRenderer:
                 if mode == "music" and items:
                     frame, state = renderer.frame(context.now, game, state)
                 elif items:
-                    frame = renderer.detailed(context, game)
+                    frame = renderer.frame(context.now, game)
                 atlas.paste(frame.convert("RGB"), (0, index * 32))
             stream = BytesIO()
             atlas.save(stream, format="PNG")

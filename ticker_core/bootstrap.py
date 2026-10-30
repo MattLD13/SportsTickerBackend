@@ -13,7 +13,7 @@ from .ui.cards.music import MusicCard
 from .features.racing import RacingRenderer
 from .features.sports import SportsRenderer
 from .features.utility import UtilityRenderer
-from .features.weather import WeatherRenderer
+from .ui.cards.weather import WeatherCard
 from .ui import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
 from .ui.text import load_display_font, load_monospace_font
 
@@ -44,7 +44,7 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     catalog.register("sports", sports)
     catalog.register("racing", RacingRenderer(fonts, assets))
     catalog.register("golf", GolfRenderer(fonts))
-    catalog.register("weather", WeatherRenderer(fonts))
+    catalog.register("weather", WeatherCard(fonts))
     catalog.register("music", MusicCard(fonts, logos))
     catalog.register("flight", FlightCard(fonts, logos))
     catalog.register("stock", utility)

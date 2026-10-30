@@ -142,7 +142,7 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
 def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
     from ticker3.web import routes
     from ticker_core.ui.frame import RenderContext
-    from ticker_core.features.weather import WeatherRenderer
+    from ticker_core.ui.cards.weather import WeatherCard
     from ticker_core.ui import load_default_font_set
 
     weather = layout_case("MD04")["game"]
@@ -158,7 +158,7 @@ def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
     assert atlas.crop((0, 0, 384, 32)).tobytes() != atlas.crop((0, 960, 384, 992)).tobytes()
     if mode == "weather":
         when = datetime.fromtimestamp(segment * 3, ZoneInfo("America/New_York")) + timedelta(seconds=43 / 30)
-        expected = WeatherRenderer(load_default_font_set()).detailed(RenderContext(when), weather)
+        expected = WeatherCard(load_default_font_set()).frame(when, weather)
         assert atlas.crop((0, 43 * 32, 384, 44 * 32)).tobytes() == expected.convert("RGB").tobytes()
     else:
         with demo_app.app_context():

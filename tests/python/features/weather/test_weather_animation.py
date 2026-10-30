@@ -6,8 +6,9 @@ import pytest
 from PIL import Image, ImageChops, ImageDraw
 
 from ticker_core.ui.frame import RenderContext
-from ticker_core.features.weather import WeatherRenderer
-from ticker_core.features.weather.drawing import ANIMATION_PERIOD, PreparedWeatherRenderer
+from ticker_core.ui.cards.weather import WeatherCard
+from ticker_core.ui import weather_art
+from ticker_core.ui.weather_art import ANIMATION_PERIOD
 from ticker_core.ui import ContentScene, load_default_font_set
 from tools.rendering.render_frame import render_snapshot
 
@@ -44,7 +45,7 @@ def weather_item(icon="sun", *, night=False):
 
 def panel(fonts, item, seconds):
     context = RenderContext(START + timedelta(seconds=seconds))
-    return WeatherRenderer(fonts).render(context, ContentScene(item, "weather")).image
+    return WeatherCard(fonts).render(context, ContentScene(item, "weather")).image
 
 
 @pytest.mark.parametrize("icon", ICONS)
@@ -58,12 +59,11 @@ def test_weather_panel_repeats_with_all_forecast_offsets(fonts, icon, seconds):
 
 
 @pytest.mark.parametrize("icon", ICONS)
-def test_small_weather_icons_repeat_at_each_forecast_offset(fonts, icon):
-    renderer = PreparedWeatherRenderer(fonts, START)
+def test_small_weather_icons_repeat_at_each_forecast_offset(icon):
     for offset in (0, 1.7, 3.4, 5.1, 6.8):
         images = [Image.new("RGB", (32, 32)) for _ in range(2)]
         for image, time in zip(images, (offset, offset + ANIMATION_PERIOD)):
-            renderer.draw_weather_pixel_art(ImageDraw.Draw(image), icon, 8, 8, t=time)
+            weather_art.draw_icon(ImageDraw.Draw(image), icon, 8, 8, time)
         assert images[0].tobytes() == images[1].tobytes()
 
 
@@ -116,7 +116,7 @@ def test_production_catalog_keeps_the_loop_at_panel_size(tmp_path):
 
 @pytest.mark.parametrize("days", [0, 2])
 def test_missing_forecast_days_show_no_invented_weather(fonts, days):
-    from ticker_core.features.weather.drawing import FORECAST_DAYS, _forecast_column
+    from ticker_core.ui.cards.weather import FORECAST_DAYS, _column as _forecast_column
 
     item = weather_item()
     item["situation"]["forecast"] = item["situation"]["forecast"][:days]

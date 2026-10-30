@@ -116,7 +116,7 @@ def renderers(present: bool) -> dict[str, Any]:
     from ticker_core.features.racing import RacingRenderer
     from ticker_core.features.sports import SportsRenderer
     from ticker_core.features.utility import UtilityRenderer
-    from ticker_core.features.weather import WeatherRenderer
+    from ticker_core.ui.cards.weather import WeatherCard
     from ticker_core.ui import load_default_font_set
     from ticker_core.ui.cards.clock import ClockCard
     from ticker_core.ui.screens import connection_lost
@@ -126,7 +126,7 @@ def renderers(present: bool) -> dict[str, Any]:
     logos = CachedLogoView(assets)
     return {
         "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingRenderer(fonts, assets),
-        "golf": GolfRenderer(fonts), "weather": WeatherRenderer(fonts), "music": MusicCard(fonts, logos),
+        "golf": GolfRenderer(fonts), "weather": WeatherCard(fonts), "music": MusicCard(fonts, logos),
         "flight": FlightCard(fonts, logos), "utility": UtilityRenderer(fonts, logos),
         "clock": ClockCard(fonts), "alert": ScoreAlertRenderer(fonts, logos),
         "news": NewsBannerRenderer(fonts), "connection": connection_lost,
@@ -140,7 +140,7 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
 
     renderer = renderer_set[kind]
     if kind == "weather" and method == "detailed":
-        return renderer.detailed(RenderContext(args["now"]), args["item"])
+        return renderer.frame(args["now"], args["item"])
     if method == "render" and kind == "clock":
         return renderer.frame(args["now"])
     if method == "render" and "item" in args and kind not in {"news"}:
