@@ -12,7 +12,7 @@ Encode = Callable[[Any], Any]
 
 
 def cases(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
-    for source, kind, mode, items, elapsed in (*_golf(),):
+    for source, kind, mode, items, elapsed in (*_golf(), *_racing()):
         for item in items:
             for logos in (True, False):
                 calls = [[kind, "render", encode({"now": base + timedelta(seconds=value), "item": item, "mode": mode,
@@ -76,3 +76,67 @@ def _golf() -> Iterator[tuple[str, str, str, list[dict[str, Any]], tuple[float, 
     elapsed = (0.0, 4.0, 8.5, 12.0, 16.0, 30.0)
     yield "synthetic:golf", "golf", "sports", items, elapsed
     yield "synthetic:golf-pinned", "golf", "sports", [{**item, "sports_presentation": "pinned"} for item in items], elapsed
+
+
+def _racing() -> Iterator[tuple[str, str, str, list[dict[str, Any]], tuple[float, ...]]]:
+    """Racing items in each series and session, projected by the real racing display contract."""
+    from ticker3.web.preview import project_preview_game
+
+    def driver(pos, name, car, **values):
+        return {"pos": pos, "name": name, "car": car, **values}
+
+    field = [
+        driver("1", "Max Verstappen", "1", abbr="VER", team="Red Bull", gap="LEADER", best_time="1:32.110", speed="201.5",
+               team_logo="https://logos.example/redbull.png", livery_primary="#1E41FF", livery_secondary="#FFD700"),
+        driver("2", "Lando Norris", "4", abbr="NOR", team="McLaren", gap="+1.204", interval="+1.204", best_time="1:32.400",
+               car_illustration="https://cars.example/mclaren.png"),
+        driver("T3", "Alexander Albon With A Very Long Display Name", "23", team="Williams", gap="+5.9",
+               livery_primary="#005AFF", livery_secondary="112233"),
+        driver("DNF", "Retired Driver", "88", gap="DNF", livery_primary="#101010"),
+        driver("5", "Badge Driver", "7", team_logo="https://logos.example/badge.png", gap="+10.0"),
+        driver("6", "Missing Logo Car", "9", team_logo="https://logos.example/missing.png", gap="+11.1", livery_primary="zzzzzz"),
+        driver("", "", "", gap=""),
+    ]
+    classes = [
+        driver("1", "Hypercar Leader", "50", **{"class": "HYPERCAR", "class_pos": "1"}, gap="LEADER", team="Ferrari"),
+        driver("2", "LMP2 Runner", "22", **{"class": "LMP2", "class_pos": "1"}, gap="+30.2", team="United Autosports"),
+        driver("3", "GT Runner", "91", **{"class": "LMGT3", "class_pos": "1"}, gap="+1 LAP", manufacturer="Porsche",
+               car_illustration="https://cars.example/porsche.png"),
+    ]
+    sessions = (
+        {"session_type": "Race", "lap": 34, "total_laps": 57},
+        {"session_type": "Race", "time_to_go": "01:12:30"},
+        {"session_type": "Race", "time_to_go": "00:00:00"},
+        {"session_name": "Qualifying", "qualifying_metric": "time"},
+        {"session_name": "Qualifying", "qualifying_metric": "mph"},
+        {"session_name": "Practice 2"},
+        {"session_name": "Sprint Qualifying"},
+    )
+    flags = (("GREEN", "in", []), ("YELLOW", "in", [{"active": True, "code": "YELLOW", "scope": "sector", "sector": 2}]),
+             ("RED", "in", []), ("SC", "in", [{"active": True, "code": "SC"}]), (None, "pre", []), (None, "post", []),
+             ("CHECKERED", "post", []))
+    weather = {"air_temp": 81.6, "wind_mph": 7.2, "wind_dir": 200}
+    items = []
+    names = {"f1": "Example Grand Prix", "nascar": "NASCAR Cup Series Example 400 Presented by Sponsor",
+             "indycar": "110th Running of the Example 500", "wec": "6 Hours of Example Championship", "imsa": "Example Grand Prix"}
+    for sport in ("f1", "nascar", "indycar", "wec", "imsa"):
+        drivers = classes if sport in {"wec", "imsa"} else field
+        for session in sessions:
+            for flag, state, signals in flags:
+                payload = {"short_name": names[sport], "flag": flag, "signals": signals, "drivers": drivers, "weather": weather,
+                           **session}
+                if sport == "nascar":
+                    payload = {**payload, "laps_remaining": 0 if state == "post" else 23}
+                game = {"sport": sport, "state": state, "status": "SUN 3:30 PM", sport: payload, "type": "racing", "id": f"{sport}-race"}
+                items.append(project_preview_game(game))
+        for count in (0, 1):
+            game = {"sport": sport, "state": "pre", "status": "SUN 3:30 PM", "type": "racing", "id": f"{sport}-{count}",
+                    sport: {"short_name": names[sport], "drivers": drivers[:count], "session_type": "Race"}}
+            items.append(project_preview_game(game))
+            items.append({**game, "racing_display": {"cards": [{"race_name": "WAITING RACE", "signals": [], "rows": []}]}})
+    # No projected cards, and a series name with no payload of its own, which reads the IndyCar payload.
+    items.append({"sport": "racing", "type": "racing", "id": "no-cards", "state": "in",
+                  "indycar": {"short_name": "Fallback 200", "drivers": field[:2], "flag": "GREEN", "session_type": "Race"}})
+    elapsed = (0.0, 0.4, 3.0, 9.0, 21.0)
+    yield "synthetic:racing", "racing", "sports", items, elapsed
+    yield "synthetic:racing-pinned", "racing", "sports", [{**item, "sports_presentation": "pinned"} for item in items], elapsed
