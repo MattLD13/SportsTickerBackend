@@ -1,7 +1,13 @@
-"""Select task context with GPT-6 Luna and controlled source inspection."""
+"""Select task context with a smaller subagent and controlled source inspection.
+
+The subagent is the small model of an installed agent CLI. It reads a bounded catalog and source excerpts,
+returns schema-checked JSON, and edits nothing. `subagent()` selects the CLI and the model.
+"""
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,8 +17,11 @@ import time
 from agents.manage import WorkspaceError, safe_path
 from agents.discovery import allowed_files, catalog, discover, excerpt, initial_hints
 
-MODEL = "gpt-6-luna"
-VERSION = 5
+# The small model of each supported agent CLI. TICKER_CONTEXT_MODEL replaces the model.
+SUBAGENT_MODELS = {"claude": "haiku", "codex": "gpt-6-luna"}
+# Without TICKER_CONTEXT_SUBAGENT, the planner uses the first installed CLI in this order.
+SUBAGENT_ORDER = ("claude", "codex")
+VERSION = 6
 MAX_ROUNDS = 3
 MAX_INSPECTIONS = 8
 MAX_REQUESTS_PER_ROUND = 2
@@ -111,8 +120,8 @@ def _usage(stdout: str) -> tuple[dict, int, bool, bool]:
     return usage, notices, completed, failed
 
 
-def codex_command(executable: str, folder: Path) -> list[str]:
-    command = [executable, "exec", "--model", MODEL, "--sandbox", "read-only", "--ephemeral",
+def codex_command(executable: str, folder: Path, model: str = SUBAGENT_MODELS["codex"]) -> list[str]:
+    command = [executable, "exec", "--model", model, "--sandbox", "read-only", "--ephemeral",
                "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
                "--output-schema", str(folder / "schema.json"), "--output-last-message", str(folder / "result.json")]
     for feature in DISABLED_FEATURES:
@@ -123,92 +132,165 @@ def codex_command(executable: str, folder: Path) -> list[str]:
     return command + ["-"]
 
 
-def run_codex(prompt: dict, specification: dict, timeout: float) -> tuple[dict, dict]:
+def run_codex(prompt: dict, specification: dict, timeout: float, model: str = SUBAGENT_MODELS["codex"]) -> tuple[dict, dict]:
     executable = shutil.which("codex")
     if not executable:
-        raise WorkspaceError("Install Codex CLI and sign in before running the Luna context planner")
+        raise WorkspaceError("Install Codex CLI and sign in before you request a Codex context subagent")
     with tempfile.TemporaryDirectory(prefix="ticker-context-planner-") as temporary:
         folder = Path(temporary).resolve()
         if not folder.is_relative_to(Path(tempfile.gettempdir()).resolve()):
             raise WorkspaceError("The planner temporary directory is outside the system temporary folder")
         (folder / "schema.json").write_text(json.dumps(specification), encoding="utf-8")
         try:
-            result = subprocess.run(codex_command(executable, folder), cwd=folder,
+            result = subprocess.run(codex_command(executable, folder, model), cwd=folder,
                                     input=request_text(prompt), text=True,
                                     capture_output=True, encoding="utf-8", timeout=timeout)
         except subprocess.TimeoutExpired as error:
             output = error.stdout or ""
             usage, notices, completed, _ = _usage(output.decode(errors="replace") if isinstance(output, bytes) else output)
-            raise PlannerFailure("The Luna context planner exceeded its time limit. Retry or select explicit slices.",
+            raise PlannerFailure("The context subagent exceeded its time limit. Retry or select explicit slices.",
                                  {"usage": usage, "runner_notices": notices, "usage_complete": False}) from error
         usage, notices, completed, failed = _usage(result.stdout)
         evidence = {"usage": usage, "runner_notices": notices, "usage_complete": completed and not failed}
         if failed:
-            raise PlannerFailure("The Luna planning turn failed or attempted a tool operation", evidence)
+            raise PlannerFailure("The context subagent turn failed or attempted a tool operation", evidence)
         if result.returncode or not (folder / "result.json").is_file():
-            raise PlannerFailure("The Luna context planner failed. Check Codex sign-in and model access, then retry.", evidence)
+            raise PlannerFailure("The context subagent failed. Check Codex sign-in and model access, then retry.", evidence)
         if not completed:
-            raise PlannerFailure("The Luna context planner did not finish its turn", evidence)
+            raise PlannerFailure("The context subagent did not finish its turn", evidence)
         usage["runner_notices"] = notices
         try:
             return json.loads((folder / "result.json").read_text(encoding="utf-8")), usage
         except (ValueError, OSError) as error:
-            raise PlannerFailure("The Luna planner returned an unreadable result", evidence) from error
+            raise PlannerFailure("The context subagent returned an unreadable result", evidence) from error
+
+
+def claude_command(executable: str, specification: dict, model: str = SUBAGENT_MODELS["claude"]) -> list[str]:
+    """Run one Claude Code turn with no tools, no MCP servers, no settings, hooks, or saved session."""
+    return [executable, "--print", "--model", model, "--output-format", "json",
+            "--json-schema", json.dumps(specification, separators=(",", ":")),
+            "--system-prompt", "You select repository context for another agent. Reply only with the structured output.",
+            "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
+            "--no-session-persistence"]
+
+
+def run_claude(prompt: dict, specification: dict, timeout: float, model: str = SUBAGENT_MODELS["claude"]) -> tuple[dict, dict]:
+    executable = shutil.which("claude")
+    if not executable:
+        raise WorkspaceError("Install Claude Code and sign in before you request a Claude context subagent")
+    with tempfile.TemporaryDirectory(prefix="ticker-context-planner-") as temporary:
+        # An empty folder outside the repository keeps CLAUDE.md and the repository hooks out of the turn.
+        try:
+            result = subprocess.run(claude_command(executable, specification, model), cwd=temporary,
+                                    input=request_text(prompt), text=True,
+                                    capture_output=True, encoding="utf-8", timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            raise PlannerFailure("The context subagent exceeded its time limit. Retry or select explicit slices.",
+                                 {"usage": {}, "runner_notices": 0, "usage_complete": False}) from error
+    try:
+        reply = json.loads(result.stdout)
+    except ValueError:
+        reply = None
+    if not isinstance(reply, dict):
+        raise PlannerFailure("The context subagent failed. Check Claude Code sign-in and model access, then retry.",
+                             {"usage": {}, "runner_notices": 0, "usage_complete": False})
+    counts = reply.get("usage") if isinstance(reply.get("usage"), dict) else {}
+    def count(name):
+        value = counts.get(name)
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+    usage = {}
+    if "input_tokens" in counts and "output_tokens" in counts:
+        usage = {"input_tokens": count("input_tokens") + count("cache_creation_input_tokens") + count("cache_read_input_tokens"),
+                 "output_tokens": count("output_tokens")}
+    evidence = {"usage": usage, "runner_notices": 0, "usage_complete": bool(usage)}
+    if reply.get("permission_denials"):
+        raise PlannerFailure("The context subagent attempted a tool operation", evidence)
+    if result.returncode or reply.get("is_error") or reply.get("subtype") != "success":
+        raise PlannerFailure("The context subagent failed. Check Claude Code sign-in and model access, then retry.", evidence)
+    decision = reply.get("structured_output")
+    if not isinstance(decision, dict):
+        raise PlannerFailure("The context subagent returned an unreadable result", evidence)
+    return decision, {**usage, "runner_notices": 0}
+
+
+RUNNERS = {"claude": run_claude, "codex": run_codex}
+
+
+@dataclass(frozen=True)
+class Subagent:
+    """One smaller model behind one agent CLI. Call it as a planner runner."""
+    name: str
+    model: str
+
+    def __call__(self, prompt: dict, specification: dict, timeout: float) -> tuple[dict, dict]:
+        return RUNNERS[self.name](prompt, specification, timeout, model=self.model)
+
+
+def subagent(name: str | None = None, model: str | None = None) -> Subagent:
+    """Select the context subagent: the named CLI, then TICKER_CONTEXT_SUBAGENT, then the first installed CLI."""
+    name = name or os.environ.get("TICKER_CONTEXT_SUBAGENT") or next(
+        (candidate for candidate in SUBAGENT_ORDER if shutil.which(candidate)), None)
+    if name is None:
+        raise WorkspaceError("Install Claude Code or Codex CLI and sign in before you request a context subagent")
+    if name not in RUNNERS:
+        raise WorkspaceError(f"Unknown context subagent: {name}. Use one of: {', '.join(SUBAGENT_ORDER)}")
+    return Subagent(name, model or os.environ.get("TICKER_CONTEXT_MODEL") or SUBAGENT_MODELS[name])
 
 
 def validate(result: dict, manifest: dict, allowed: set[str], remaining: int = MAX_INSPECTIONS) -> None:
     if not isinstance(result, dict) or result.get("phase") not in ("discover", "inspect", "ready") or type(result.get("shared_change")) is not bool:
-        raise WorkspaceError("Luna returned an invalid planning decision")
+        raise WorkspaceError("The context subagent returned an invalid planning decision")
     for field in ("slices", "context", "edit_targets", "discover", "inspect", "checks"):
         if not isinstance(result.get(field), list) or len(result[field]) > 32:
-            raise WorkspaceError("Luna omitted a required planning list")
+            raise WorkspaceError("The context subagent omitted a required planning list")
     def text(value):
         return isinstance(value, str) and len(value.encode("utf-8")) <= 1600 and not any(ord(c) < 32 for c in value)
     for field in ("slices", "edit_targets", "checks"):
         if any(not text(value) for value in result[field]):
-            raise WorkspaceError("Luna returned oversized or invalid planning text")
+            raise WorkspaceError("The context subagent returned oversized or invalid planning text")
     if not result["slices"] or any(not isinstance(name, str) or name not in manifest["slices"] for name in result["slices"]):
-        raise WorkspaceError("Luna selected an unknown or empty task slice")
+        raise WorkspaceError("The context subagent selected an unknown or empty task slice")
     if any(not isinstance(name, str) or name not in manifest["checks"] for name in result["checks"]):
-        raise WorkspaceError("Luna selected a check outside the manifest")
+        raise WorkspaceError("The context subagent selected a check outside the manifest")
     for row in result["context"]:
         if (not isinstance(row, dict) or not isinstance(row.get("symbols"), list)
                 or len(row["symbols"]) > 32 or not text(row.get("reason"))):
-            raise WorkspaceError("Luna returned an invalid source entry point")
+            raise WorkspaceError("The context subagent returned an invalid source entry point")
         if any(not text(symbol) or len(symbol.encode("utf-8")) > 160 for symbol in row["symbols"]):
-            raise WorkspaceError("Luna returned an invalid source symbol")
+            raise WorkspaceError("The context subagent returned an invalid source symbol")
     for row in result["inspect"]:
         if not isinstance(row, dict) or not text(row.get("symbol")) or len(row["symbol"].encode("utf-8")) > 160:
-            raise WorkspaceError("Luna returned an invalid inspection request")
+            raise WorkspaceError("The context subagent returned an invalid inspection request")
     if len(result["inspect"]) + len(result["discover"]) > remaining:
-        raise WorkspaceError("Luna exceeded its source inspection budget")
+        raise WorkspaceError("The context subagent exceeded its source inspection budget")
     for row in result["discover"]:
         if (not isinstance(row, dict) or row.get("kind") not in ("component", "search", "symbols")
                 or not isinstance(row.get("query"), str) or not row["query"].strip() or len(row["query"]) > 400):
-            raise WorkspaceError("Luna returned an invalid discovery request")
+            raise WorkspaceError("The context subagent returned an invalid discovery request")
         if row["kind"] == "component" and row["query"] not in manifest["components"]:
-            raise WorkspaceError("Luna requested an unknown component")
+            raise WorkspaceError("The context subagent requested an unknown component")
         if row["kind"] == "symbols" and row["query"] not in allowed:
-            raise WorkspaceError("Luna requested symbols outside the disclosed source index")
+            raise WorkspaceError("The context subagent requested symbols outside the disclosed source index")
     paths = result["edit_targets"] + [row.get("path") for row in result["context"] + result["inspect"]]
     for path in paths:
         if not text(path):
-            raise WorkspaceError("Luna returned an invalid source path")
+            raise WorkspaceError("The context subagent returned an invalid source path")
         safe_path(path)
         if path not in allowed:
-            raise WorkspaceError("Luna selected a file outside the disclosed source index")
+            raise WorkspaceError("The context subagent selected a file outside the disclosed source index")
     if not text(result.get("reason")) or not result["reason"].strip():
-        raise WorkspaceError("Luna omitted the scope reason")
+        raise WorkspaceError("The context subagent omitted the scope reason")
     if result["phase"] == "ready" and not result["context"]:
-        raise WorkspaceError("Luna returned no source entry points")
+        raise WorkspaceError("The context subagent returned no source entry points")
     if result["phase"] == "ready" and (result["discover"] or result["inspect"]):
         raise WorkspaceError("A ready plan cannot request more discovery")
     if any(len(result[name]) > 32 for name in ("context", "edit_targets", "checks")):
-        raise WorkspaceError("Luna returned an oversized context selection")
+        raise WorkspaceError("The context subagent returned an oversized context selection")
 
 
 def plan_task(root: Path, task: str, manifest: dict, tracked: dict[str, str],
-              previous: list[str] | None = None, runner=run_codex, clock=time.monotonic) -> dict:
+              previous: list[str] | None = None, runner=None, clock=time.monotonic) -> dict:
+    runner = runner or subagent()
     start = clock()
     paths = allowed_files(root, tracked)
     allowed = set(paths)
@@ -237,7 +319,8 @@ def plan_task(root: Path, task: str, manifest: dict, tracked: dict[str, str],
                 tokens[name] = tokens.get(name, 0) + count
 
     def evidence():
-        return {"kind": "luna", "model": MODEL, "version": VERSION,
+        return {"kind": "subagent", "runner": getattr(runner, "name", "injected"), "model": getattr(runner, "model", None),
+                "version": VERSION,
                 "seconds": round(clock() - start, 3), "rounds": rounds,
                 "inspected_files": sorted(inspected), "usage": dict(tokens), "usage_complete": usage_complete,
                 "runner_notices": notices, "initial_prompt_bytes": initial, "max_prompt_bytes": maximum,
@@ -247,7 +330,7 @@ def plan_task(root: Path, task: str, manifest: dict, tracked: dict[str, str],
         for round_index in range(MAX_ROUNDS):
             remaining = DEADLINE_SECONDS - (clock() - start)
             if remaining <= 0:
-                raise WorkspaceError("The Luna context planner exceeded its time limit")
+                raise WorkspaceError("The context subagent exceeded its time limit")
             final = round_index == MAX_ROUNDS - 1
             budget = 0 if final else min(MAX_REQUESTS_PER_ROUND, MAX_INSPECTIONS - inspection_count)
             prompt["rounds_remaining"] = MAX_ROUNDS - round_index
@@ -256,7 +339,7 @@ def plan_task(root: Path, task: str, manifest: dict, tracked: dict[str, str],
             maximum = max(maximum, size)
             initial = initial or size
             if size > MAX_REQUEST_BYTES or request_bytes + size > MAX_TOTAL_REQUEST_BYTES:
-                raise WorkspaceError("The Luna planner exceeded its request byte budget")
+                raise WorkspaceError("The context subagent exceeded its request byte budget")
             request_bytes += size
             rounds += 1
             try:
@@ -278,7 +361,7 @@ def plan_task(root: Path, task: str, manifest: dict, tracked: dict[str, str],
                 return result
             requests = result["discover"] + result["inspect"]
             if not requests:
-                raise WorkspaceError("Luna requested no discovery before its next round")
+                raise WorkspaceError("The context subagent requested no discovery before its next round")
             inspection_count += len(requests)
             # Only the latest bounded responses enter the next call. Disclosed paths remain available.
             prompt["discovery_results"], prompt["inspection_results"] = [], []
@@ -292,6 +375,6 @@ def plan_task(root: Path, task: str, manifest: dict, tracked: dict[str, str],
             for request in result["inspect"]:
                 inspected.add(request["path"])
                 prompt["inspection_results"].append(excerpt(root, request, visible))
-        raise WorkspaceError("Luna did not establish a task boundary within its planning budget")
+        raise WorkspaceError("The context subagent did not establish a task boundary within its planning budget")
     except (WorkspaceError, ValueError, OSError) as error:
         raise PlannerFailure(str(error), evidence()) from error

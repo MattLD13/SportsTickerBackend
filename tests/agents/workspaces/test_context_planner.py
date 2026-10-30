@@ -1,4 +1,4 @@
-"""Verify Luna selection, controlled inspection, and planner isolation."""
+"""Verify subagent selection, controlled inspection, and planner isolation."""
 import json
 from pathlib import Path
 import subprocess
@@ -7,7 +7,8 @@ import pytest
 
 from agents.manage import MANIFEST, ROOT, WorkspaceError, manifest_read, resolve
 from agents.planner import (
-    MODEL, PlannerFailure, allowed_files, codex_command, excerpt, plan_task, run_codex, validate,
+    SUBAGENT_MODELS, PlannerFailure, Subagent, allowed_files, claude_command, codex_command, excerpt, plan_task,
+    run_claude, run_codex, subagent, validate,
 )
 from agents.start import edit_owners, inventory
 
@@ -49,7 +50,8 @@ def test_planner_requests_controlled_inspection_then_returns_a_plan(source):
         return result, {"input_tokens": 100, "output_tokens": 20}
     result = plan_task(root, "Fix a Mini pane", manifest, tracked, runner=runner, clock=lambda: 0)
     assert result["phase"] == "ready"
-    assert result["evidence"]["model"] == MODEL
+    assert result["evidence"]["kind"] == "subagent"
+    assert result["evidence"]["runner"] == "injected" and result["evidence"]["model"] is None
     assert result["evidence"]["rounds"] == 2
     assert result["evidence"]["inspected_files"] == ["mini/pane.h"]
     assert result["evidence"]["usage"]["input_tokens"] == 200
@@ -262,7 +264,7 @@ def test_source_reads_are_bounded_and_known_files_only(source):
 
 def test_transport_disables_recursive_hooks_tools_and_memory(tmp_path):
     args = codex_command("codex", tmp_path)
-    assert args[args.index("--model") + 1] == "gpt-6-luna"
+    assert args[args.index("--model") + 1] == SUBAGENT_MODELS["codex"]
     assert args[args.index("--sandbox") + 1] == "read-only"
     for feature in ("hooks", "shell_tool", "multi_agent", "apps", "browser_use"):
         assert ["--disable", feature] == args[args.index(feature) - 1:args.index(feature) + 1]
@@ -307,3 +309,82 @@ def test_weather_art_and_catalog_tests_have_precise_consumer_ownership():
     plan = resolve(manifest, sorted(owners), inventory(ROOT, manifest, "HEAD"))
     assert "mini-firmware" in plan["components"]
     assert not set(manifest["shared_consumers"]) & set(plan["components"])
+
+
+def test_subagent_records_its_cli_and_model_in_the_plan(source, monkeypatch):
+    root, manifest, tracked = source
+    seen = []
+    def fake(prompt, specification, timeout, model):
+        seen.append(model)
+        return ready(), {"input_tokens": 9, "output_tokens": 3}
+    monkeypatch.setitem(__import__("agents.planner", fromlist=["RUNNERS"]).RUNNERS, "claude", fake)
+    result = plan_task(root, "Fix a Mini pane", manifest, tracked, runner=Subagent("claude", "haiku"), clock=lambda: 0)
+    assert seen == ["haiku"]
+    assert {key: result["evidence"][key] for key in ("kind", "runner", "model")} == \
+        {"kind": "subagent", "runner": "claude", "model": "haiku"}
+
+
+def test_subagent_selection_prefers_the_choice_then_the_first_installed_cli(monkeypatch):
+    installed = {"codex"}
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: name if name in installed else None)
+    monkeypatch.delenv("TICKER_CONTEXT_SUBAGENT", raising=False)
+    monkeypatch.delenv("TICKER_CONTEXT_MODEL", raising=False)
+    assert subagent() == Subagent("codex", SUBAGENT_MODELS["codex"])
+    installed.add("claude")
+    assert subagent() == Subagent("claude", "haiku")
+    monkeypatch.setenv("TICKER_CONTEXT_SUBAGENT", "codex")
+    monkeypatch.setenv("TICKER_CONTEXT_MODEL", "small-model")
+    assert subagent() == Subagent("codex", "small-model")
+    assert subagent("claude", "other-model") == Subagent("claude", "other-model")
+    with pytest.raises(WorkspaceError, match="Unknown context subagent"):
+        subagent("gemini")
+    installed.clear()
+    monkeypatch.delenv("TICKER_CONTEXT_SUBAGENT")
+    with pytest.raises(WorkspaceError, match="Install Claude Code or Codex CLI"):
+        subagent()
+
+
+def test_claude_transport_disables_tools_mcp_settings_and_sessions():
+    args = claude_command("claude", {"type": "object"})
+    assert args[args.index("--model") + 1] == "haiku"
+    assert args[args.index("--tools") + 1] == ""
+    assert args[args.index("--setting-sources") + 1] == ""
+    assert json.loads(args[args.index("--json-schema") + 1]) == {"type": "object"}
+    for flag in ("--print", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"):
+        assert flag in args
+    assert not any("dangerously" in part or "bypass" in part for part in args)
+
+
+def _claude_reply(**fields):
+    reply = {"type": "result", "subtype": "success", "is_error": False, "permission_denials": [],
+             "structured_output": ready(), "usage": {"input_tokens": 2, "cache_creation_input_tokens": 1800,
+                                                     "cache_read_input_tokens": 100, "output_tokens": 70}}
+    reply.update(fields)
+    return json.dumps(reply)
+
+
+def test_claude_transport_runs_outside_the_repository_and_sums_input(monkeypatch):
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "claude")
+    calls = []
+    def execute(args, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(args, 0, _claude_reply(), "")
+    monkeypatch.setattr("agents.planner.subprocess.run", execute)
+    result, usage = run_claude({"task": "Fix a pane"}, {"type": "object"}, 10)
+    assert result == ready()
+    assert usage == {"input_tokens": 1902, "output_tokens": 70, "runner_notices": 0}
+    assert not Path(calls[0]["cwd"]).resolve().is_relative_to(ROOT)
+    assert calls[0]["input"].endswith('{"task":"Fix a pane"}')
+
+
+@pytest.mark.parametrize("reply,message", [
+    (_claude_reply(permission_denials=[{"tool_name": "Bash"}]), "tool operation"),
+    (_claude_reply(is_error=True, subtype="error_during_execution"), "sign-in"),
+    (_claude_reply(structured_output=None), "unreadable"),
+    ("not json", "sign-in"),
+])
+def test_claude_transport_rejects_failed_or_unsafe_turns(monkeypatch, reply, message):
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: "claude")
+    monkeypatch.setattr("agents.planner.subprocess.run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, reply, ""))
+    with pytest.raises(PlannerFailure, match=message):
+        run_claude({}, {}, 10)

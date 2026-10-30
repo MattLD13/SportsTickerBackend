@@ -16,7 +16,7 @@ Workspace selection does not control deployment selection.
 | `AGENTS.md` | Every repository rule, with one section for each product folder. The file does not create an agent. |
 | `.claude/CLAUDE.md` | A small bridge that imports `AGENTS.md`. |
 | Startup hooks | Reuse an existing packet or provide search guidance without a model call. |
-| GPT-6 Luna | Plan context only after an explicit `--plan` or `--replan` request. |
+| Smaller subagent | Plan context only after an explicit `--plan` or `--replan` request. |
 | Workspace manager | Enforce dependency, ownership, and credential rules. |
 | Coding agent | Implement the task, validate the change, and report results. |
 
@@ -32,7 +32,7 @@ Copilot's bridge points to the same guide. Cursor uses `AGENTS.md` directly.
 | Cursor, Copilot, and other compatible agents | Repository instructions describe normal search and optional context planning. |
 
 After the client trusts repository hooks, each prompt receives lightweight guidance or a reference to an existing packet.
-Hooks never start Luna, inspect prompt text, or create a task packet.
+Hooks never start a subagent, inspect prompt text, or create a task packet.
 They perform no source edits, test execution, checkout changes, or hardware operations.
 
 Use ordinary targeted searches for small tasks with a clear code location.
@@ -45,10 +45,10 @@ For a known component, select a manifest slice directly:
 python agents/start.py --slice mini-sports --task "Fix Mini hockey shootout rendering"
 ```
 
-This command resolves component dependencies and checks without Luna.
+This command resolves component dependencies and checks without a model call.
 The manifest and sparse workspace tools remain available independently of model planning.
 
-For broad, unfamiliar, or cross-component tasks, request Luna explicitly:
+For broad, unfamiliar, or cross-component tasks, request a smaller subagent explicitly:
 
 ```powershell
 python agents/start.py --plan --task "Trace shared hockey shootout data through both renderers"
@@ -61,7 +61,7 @@ Task evidence stays under `.git/agent-context/<scope-id>/`.
 The manager hashes task text instead of storing raw prompts.
 
 Unknown edit ownership includes shared consumers.
-Luna suggestions cannot narrow a shared contract change below its affected consumers.
+Subagent suggestions cannot narrow a shared contract change below its affected consumers.
 
 For a dependency expansion, use the current packet's scope ID:
 
@@ -89,23 +89,38 @@ The startup tool uses the current checkout, including existing local edits.
 Its recorded SHA identifies that checkout. It does not certify that the commit exists on GitHub.
 For isolated work pinned to GitHub, use the sparse workspace command below.
 
-## Luna planning
+## Subagent planning
 
-Install Codex CLI and sign in with the account that can use `gpt-6-luna`.
-The planner uses that login. It does not require a separate API key.
+A smaller subagent is the small model of an installed agent CLI. It plans context and edits nothing.
+
+| CLI | Default model | Install |
+|---|---|---|
+| `claude` (Claude Code) | `haiku` | Install Claude Code and sign in. |
+| `codex` (Codex CLI) | `gpt-6-luna` | Install Codex CLI and sign in with an account that can use the model. |
+
+The planner uses the CLI login. It does not require a separate API key.
+Without a choice, the planner uses the first installed CLI in the order of the table.
+Select a CLI with `--subagent claude` or `--subagent codex`, or set `TICKER_CONTEXT_SUBAGENT`.
+Set `TICKER_CONTEXT_MODEL` to use another small model of that CLI.
 Every supported agent client can request this same local planner.
 A normal prompt or session start does not invoke it.
 
-1. Luna receives a compact component catalog, entry paths, and bounded filename hints.
-2. Luna can request a component inventory, literal file search, symbol list, or source excerpt.
+```powershell
+python agents/start.py --plan --subagent claude --task "Trace shared hockey shootout data through both renderers"
+```
+
+1. The subagent receives a compact component catalog, entry paths, and bounded filename hints.
+2. The subagent can request a component inventory, literal file search, symbol list, or source excerpt.
 3. The manager limits discovery and inspection to eight requests. Each source excerpt contains at most 100 lines.
-4. Luna returns slices, source entry points, useful symbols, expected edits, checks, and reasons.
+4. The subagent returns slices, source entry points, useful symbols, expected edits, checks, and reasons.
 5. The manager validates paths, adds dependencies, and includes consumers for shared edits.
 6. The coding agent receives the resulting packet and performs implementation.
 
-The planner has no shell, browsing, delegation, or hardware tools.
+The subagent has no shell, browsing, delegation, MCP, or hardware tools.
 It runs outside the repository in a temporary directory.
-Its child process disables startup hooks, inherited project instructions, and memory injection.
+Its child process disables startup hooks, inherited project instructions, settings, and memory injection.
+Claude Code runs with `--tools ""`, `--strict-mcp-config`, `--setting-sources ""`, and `--no-session-persistence`.
+Codex runs read-only and ephemeral, with its hooks, shell, and delegation features disabled.
 This prevents recursive planner startup.
 The planner does not receive the full conversation or every source file.
 The manager sends only requested excerpts and excludes credential paths.
@@ -120,28 +135,28 @@ Hints rank literal filename and path words. They read no source and do not choos
 Only the latest bounded discovery responses enter the next request. Previously disclosed paths remain available.
 The model cannot select an undisclosed path.
 Shared changes retain the declared owner and consumer entry points even when the model omits them.
-The task record includes model identity, time, tokens, request bytes, inspection paths, and bounded discovery counts.
+The task record includes the CLI and model identity, time, tokens, request bytes, inspection paths, and bounded discovery counts.
 Raw prompts, excerpts, and client event streams do not enter the task record.
 If planning fails, `failures.json` retains its available usage without overwriting the previous valid packet.
 Missing usage remains unknown. Cached input and reasoning remain subsets of the reported input and output totals.
 A normal continuation reuses a valid packet without another model call.
 A changed manifest or planner version invalidates the cached selection.
-If the selection is invalid, choose explicit slices or request Luna again.
+If the selection is invalid, choose explicit slices or request a subagent plan again.
 Invalidation never starts a model automatically.
 If explicit planning fails, the command reports failure. It does not select scope through hidden keyword rules.
 The existing explicit `--slice` and `--path` commands remain available for agent-directed scope changes.
 
-The runner uses [Codex structured output](https://learn.chatgpt.com/docs/non-interactive-mode) with the [GPT-6 Luna model](https://developers.openai.com/api/docs/models/gpt-6-luna).
+Each runner uses the structured output of its CLI: `--json-schema` for Claude Code and `--output-schema` for Codex.
 
 The model selects useful context. Code owns required dependencies and credential exclusions.
 If an expected edit reaches a shared owner, the manager includes every declared consumer.
 Model suggestions do not override repository instructions or authorize publishing.
 
-The [NFL comparison](../research/2026-10-19-nfl-alert-agent-comparison.md) records the measured reason for selective planning.
+The [NFL comparison](../docs/research/2026-10-19-nfl-alert-agent-comparison.md) records the measured reason for selective planning.
 
 ## Bounded discovery without a model
 
-The coding agent can inspect paths and symbols without invoking Luna:
+The coding agent can inspect paths and symbols without a model call:
 
 ```powershell
 python agents/find.py --search "station_retry"

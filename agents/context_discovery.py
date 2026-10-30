@@ -296,6 +296,8 @@ def main(argv=None) -> int:
     if args.live:
         from agents import planner
         baseline = load_planner(args.baseline_planner)
+        # TICKER_CONTEXT_SUBAGENT selects the CLI of the new planner, as in agents/start.py.
+        progressive = planner.subagent()
         implementation_paths = ("agents/planner.py", "agents/discovery.py", "agents/start.py",
                                 "agents/context_discovery.py", "agents/manifest.json")
         hashes = {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in implementation_paths}
@@ -307,13 +309,13 @@ def main(argv=None) -> int:
             excluded_paths.add(args.cases.resolve().relative_to(ROOT.resolve()).as_posix())
         report = evaluate(ROOT, manifest, tracked, cases,
                           planners={"baseline": baseline.plan_task, "progressive": planner.plan_task},
-                          runners={"baseline": baseline.run_codex, "progressive": planner.run_codex},
+                          runners={"baseline": baseline.run_codex, "progressive": progressive},
                           instructions={"baseline": baseline.INSTRUCTIONS, "progressive": planner.INSTRUCTIONS},
                           request_texts={"progressive": planner.request_text},
                           repeats=args.repeat, excluded_paths=excluded_paths, checkpoint=checkpoint)
         report.update(revision=revision, baseline_sha256=hashlib.sha256(args.baseline_planner.read_bytes()).hexdigest(),
                       progressive_sha256=hashlib.sha256(Path(planner.__file__).read_bytes()).hexdigest(),
-                      implementation_sha256=hashes, model=planner.MODEL, mode="live")
+                      implementation_sha256=hashes, subagent=progressive.name, model=progressive.model, mode="live")
     else:
         report = {"version": 1, "mode": "offline-validation", "model_calls": 0, "revision": revision,
                   "cases_sha256": digest(cases), "manifest_sha256": digest(manifest),

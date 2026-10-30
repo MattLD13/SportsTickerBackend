@@ -17,7 +17,7 @@ For a known component, select its manifest slice without a model call:
 python agents/start.py --slice <slice> --task "<task summary>"
 ```
 
-For broad, unfamiliar, or cross-component tasks, request GPT-6 Luna explicitly:
+For broad, unfamiliar, or cross-component tasks, explicitly request a smaller subagent to plan the context:
 
 ```text
 python agents/start.py --plan --task "<task summary>"
@@ -25,7 +25,7 @@ python agents/start.py --plan --task "<task summary>"
 
 Startup hooks reuse existing context and never call a model.
 Use packet files as search entry points. Build files do not need initial reading.
-The manager enforces dependencies and file access rules. The manifest does not require Luna.
+The manager enforces dependencies and file access rules. The manifest needs no model.
 Reuse unchanged instructions and task packets. Request another model plan only with `--replan` and the current scope ID.
 Use `rg` to search selected paths before broad repository searches.
 If a dependency crosses the selected boundary, expand the scope and record the reason.

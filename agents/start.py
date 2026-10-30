@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from fnmatch import fnmatchcase
+from functools import partial
 import hashlib
 import json
 from pathlib import Path
@@ -15,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 from agents.manage import (
     WorkspaceError, expand, git, load, manifest_read, resolve, safe_path, stamp, tree, write_json,
 )
-from agents.planner import VERSION, PlannerFailure, plan_task
+from agents.planner import VERSION, PlannerFailure, plan_task, subagent
 
 
 def edit_owners(manifest: dict, targets: list[str], shared: bool) -> set[str]:
@@ -105,14 +106,14 @@ def prepare(root: Path, task: str, session: str, slices: list[str] | None = None
                 forced.add(name)
         evidence = decision["evidence"]
     else:
-        raise WorkspaceError("Select --slice or --path. Use --plan when Luna context planning is useful.")
+        raise WorkspaceError("Select --slice or --path. Use --plan when a context subagent plan is useful.")
     if reason:
         reasons.append(reason)
     if previous:
         selected = sorted(set(selected) | set(previous["slices"]))
     names = list(dict.fromkeys(name for item in selected for name in manifest["slices"][item])) + sorted(forced)
     plan = resolve(manifest, names, tracked)
-    if evidence["kind"] == "luna":
+    if evidence["kind"] == "subagent":
         required_context = {path for path in plan["context_files"] if Path(path).name == "AGENTS.md"}
         if set(manifest["shared_consumers"]) <= forced:
             for name in manifest["shared_owners"] + manifest["shared_consumers"]:
@@ -192,14 +193,14 @@ def hook(payload: dict, client: str) -> dict:
     git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
     context = ("Follow the root AGENTS.md and use ordinary targeted searches for small, clearly located tasks. "
                "For a known component, use agents/start.py --slice <slice> --task <summary>. "
-               "For broad, unfamiliar, or cross-component work, explicitly request Luna with start.py --plan --task <summary>. "
+               "For broad, unfamiliar, or cross-component work, explicitly request a smaller subagent with agents/start.py --plan --task <summary>. "
                "This hook makes no model call and creates no task packet.")
     for session in sessions:
         recorded = git_dir / "agent-context" / hashlib.sha256(session.encode()).hexdigest()[:24] / "task.md"
         if recorded.is_file():
             context = (f"Resume the task packet at {recorded} if it matches the current task. "
                        "Read only the relevant sections. For an independent task, use ordinary search or create an explicit new scope. "
-                       "Luna planning requires --plan or --replan. This hook makes no model call.")
+                       "A subagent plan requires --plan or --replan. This hook makes no model call.")
             break
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}}
 
@@ -215,7 +216,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--slice", action="append", default=[])
     parser.add_argument("--path", action="append", default=[])
     parser.add_argument("--new-task", action="store_true")
-    parser.add_argument("--plan", action="store_true", help="Request Luna for broad, unfamiliar, or cross-component work")
+    parser.add_argument("--plan", action="store_true",
+                        help="Ask a smaller subagent to plan the context of broad, unfamiliar, or cross-component work")
+    parser.add_argument("--subagent", choices=("claude", "codex"),
+                        help="The agent CLI that runs the smaller subagent. The default is the first installed CLI.")
     parser.add_argument("--replan", action="store_true")
     parser.add_argument("--hook", choices=("codex", "claude", "gemini"))
     args = parser.parse_args(argv)
@@ -224,9 +228,12 @@ def main(argv: list[str] | None = None) -> int:
             result = hook(json.load(sys.stdin), args.hook)
         else:
             task = args.task_file.read_text(encoding="utf-8") if args.task_file else args.task
+            planner = None
+            if args.subagent:
+                planner = partial(plan_task, runner=subagent(args.subagent))
             result = prepare(args.repo, task or "", args.session or "manual:" + uuid4().hex,
                              args.slice, args.path, args.new_task, args.scope, args.reason, args.replan,
-                             use_planner=args.plan)
+                             planner=planner, use_planner=args.plan)
         print(json.dumps(result))
         return 0
     except (WorkspaceError, OSError, ValueError, KeyError) as error:

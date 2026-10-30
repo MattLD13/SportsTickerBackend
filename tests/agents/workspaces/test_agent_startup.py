@@ -10,7 +10,7 @@ import pytest
 
 from agents.manage import MANIFEST, ROOT, WorkspaceError, git, manifest_read, safe_path
 from agents.start import edit_owners, hook, main, prepare
-from agents.planner import MODEL, VERSION, PlannerFailure
+from agents.planner import SUBAGENT_MODELS, VERSION, PlannerFailure, Subagent
 
 pytestmark = pytest.mark.critical
 
@@ -19,7 +19,7 @@ def decision(slices, paths):
     return {"phase": "ready", "slices": slices,
             "context": [{"path": path, "symbols": [], "reason": "Relevant source"} for path in paths],
             "edit_targets": [], "inspect": [], "checks": [], "shared_change": False,
-            "reason": "Focused task scope", "evidence": {"kind": "luna", "model": MODEL, "version": VERSION,
+            "reason": "Focused task scope", "evidence": {"kind": "subagent", "runner": "claude", "model": SUBAGENT_MODELS["claude"], "version": VERSION,
             "seconds": 0, "rounds": 1, "usage": {}, "inspected_files": []}}
 
 
@@ -146,7 +146,7 @@ def test_child_hook_prefers_its_own_packet(session_repo, planner_calls):
     assert planner_calls[1] == []
 
 
-def test_unspecified_scope_never_calls_luna(session_repo, planner_calls):
+def test_unspecified_scope_never_calls_a_subagent(session_repo, planner_calls):
     with pytest.raises(WorkspaceError, match="--slice.*--plan"):
         prepare(session_repo, "Fix Mini hockey", "agent-a")
     assert planner_calls[1] == []
@@ -166,14 +166,27 @@ def test_invalidated_cache_requires_explicit_model_selection(session_repo, plann
     assert planner_calls[1] == []
 
 
-def test_cli_luna_is_an_explicit_choice(session_repo, planner_calls, capsys):
+def test_cli_subagent_plan_is_an_explicit_choice(session_repo, planner_calls, capsys):
     assert main(["--repo", str(session_repo), "--task", "Fix Mini hockey"]) == 1
     assert "--plan" in capsys.readouterr().err
     assert planner_calls[1] == []
     planner_calls[0].append(decision(["mini-sports"], ["mini/pane.h"]))
     assert main(["--repo", str(session_repo), "--plan", "--task", "Fix Mini hockey"]) == 0
-    assert json.loads(capsys.readouterr().out)["planner"]["kind"] == "luna"
+    assert json.loads(capsys.readouterr().out)["planner"]["kind"] == "subagent"
     assert planner_calls[1] == ["Fix Mini hockey"]
+
+
+def test_cli_subagent_option_selects_the_cli(session_repo, monkeypatch, capsys):
+    runners = []
+    def planner(root, task, manifest, tracked, previous=None, runner=None):
+        runners.append(runner)
+        return decision(["mini-sports"], ["mini/pane.h"])
+    monkeypatch.setattr("agents.start.plan_task", planner)
+    monkeypatch.setattr("agents.planner.shutil.which", lambda name: name)
+    monkeypatch.delenv("TICKER_CONTEXT_MODEL", raising=False)
+    assert main(["--repo", str(session_repo), "--plan", "--subagent", "codex", "--task", "Fix Mini hockey"]) == 0
+    assert runners == [Subagent("codex", SUBAGENT_MODELS["codex"])]
+    capsys.readouterr()
 
 
 def test_cli_explicit_slice_needs_no_model(session_repo, planner_calls, capsys):
@@ -188,7 +201,7 @@ def test_failed_planning_saves_usage_without_overwriting_a_valid_scope(session_r
     first = prepare(session_repo, "Inspect Mini", "agent-a", slices=["mini-sports"])
     packet = Path(first["packet"])
     before = packet.with_name("state.json").read_bytes()
-    evidence = {"kind": "luna", "version": VERSION, "usage": {"input_tokens": 23, "output_tokens": 4},
+    evidence = {"kind": "subagent", "version": VERSION, "usage": {"input_tokens": 23, "output_tokens": 4},
                 "usage_complete": True, "rounds": 1}
     def failed(*_):
         raise PlannerFailure("Budget exceeded", evidence)
