@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 import time
 import json
 
-from ticker.six.ui.frame import RenderContext
-from ticker.six.ui.screens import Screens
-from ticker.six.platform import HotspotDetails, WiFiNetwork, WiFiRecoveryService, WiFiSetupState
-from ticker.six.ui import load_default_font_set
+from ticker.panel.frame import RenderContext
+from ticker.panel.screens import Screens
+from ticker.six.platform import WiFiNetwork, WiFiRecoveryService
+from ticker.panel.content import HotspotDetails, WiFiSetupState
+from ticker.panel import load_default_font_set
 
 
 

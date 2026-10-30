@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 import pytest
 
 from ticker.six.protocol import TickerResponse
-from ticker.six.runtime import FrameKind, RuntimeConfig, StripLayout, StripSegment, TickerRuntime, classify_content
+from ticker.six.runtime import RuntimeConfig, TickerRuntime, classify_content
+from ticker.panel.content import FrameKind, StripLayout, StripSegment
 
 pytestmark = pytest.mark.critical
 

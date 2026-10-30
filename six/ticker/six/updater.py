@@ -84,7 +84,8 @@ def _checkout_release(revision: str) -> Path:
 
 def _validate_release(release: Path) -> None:
     """Compile the release packages before activation so syntax errors never become active code."""
-    packages = [path for path in (release / "six/ticker/six", release / "shared/ticker/shared") if path.is_dir()]
+    names = ("six/ticker/six", "shared/ticker/shared", "shared/ticker/panel")
+    packages = [release / name for name in names if (release / name).is_dir()]
     if not packages:
         raise FileNotFoundError(f"Release contains no runtime packages: {release}")
     subprocess.run([sys.executable, "-m", "compileall", "-q", *(str(path) for path in packages)], check=True)

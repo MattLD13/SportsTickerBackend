@@ -1,6 +1,6 @@
 """Define the complete user-facing display modes."""
 
-from ticker.six._enum import StrEnum
+from ticker.shared.strenum import StrEnum
 
 
 class DisplayMode(StrEnum):

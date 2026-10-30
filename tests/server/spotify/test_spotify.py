@@ -22,10 +22,10 @@ from ticker.server.spotify import (
     SpotifyIntegrationService,
 )
 from ticker.server import spotify as spotify_module
-from ticker.six.assets.planner import AssetPlanner
-from ticker.six.ui.frame import RenderContext
-from ticker.six.ui.cards.music import MusicCard, MusicState
-from ticker.six.ui import load_default_font_set
+from ticker.panel.assets.planner import AssetPlanner
+from ticker.panel.frame import RenderContext
+from ticker.panel.cards.music import MusicCard, MusicState
+from ticker.panel import load_default_font_set
 
 
 class FakeSpotifyHttp(SpotifyHttpPort):

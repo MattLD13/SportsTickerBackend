@@ -14,11 +14,11 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from PIL import __version__ as pillow_version, features
-from ticker.six.assets import AssetPlanner
-from ticker.six.bootstrap import create_default_content_catalog
-from ticker.six.ui.frame import RenderContext
-from ticker.six.platform import AssetCoordinator
-from ticker.six.ui import ContentScene
+from ticker.panel.assets import AssetPlanner
+from ticker.panel.bootstrap import create_default_content_catalog
+from ticker.panel.frame import RenderContext
+from ticker.panel.assets.storage import AssetCoordinator
+from ticker.panel import ContentScene
 from tools.rendering.render_frame import content_items, normalize_snapshot, panel_image
 from tools.benchmarks.pi_viewport_baseline import fonts_manifest
 

@@ -8,13 +8,13 @@ from datetime import datetime, timezone
 import pytest
 
 from ticker.server.offline import create_offline_application
-from ticker.six.app.frame_builder import FrameBuilder
-from ticker.six.ui.news_banner import NewsBanner
-from ticker.six.ui.score_alert import ScoreAlert
-from ticker.six.ui.screens import Screens
+from ticker.panel.frame_builder import FrameBuilder
+from ticker.panel.news_banner import NewsBanner
+from ticker.panel.score_alert import ScoreAlert
+from ticker.panel.screens import Screens
 from ticker.six.protocol import DeviceState, TickerResponse
-from ticker.six.ui import CardCatalog, load_default_font_set
-from ticker.six.runtime import FrameDecision, FrameKind
+from ticker.panel import CardCatalog, load_default_font_set
+from ticker.panel.content import FrameDecision, FrameKind
 
 pytestmark = pytest.mark.critical
 

@@ -28,12 +28,11 @@ def test_update_request_launches_once_until_finished() -> None:
 def test_updater_compiles_runtime_packages_before_activation(tmp_path: Path) -> None:
     """Reject releases without runtime packages and compile valid package sources."""
 
-    (tmp_path / "six/ticker/six").mkdir(parents=True)
-    (tmp_path / "shared/ticker/shared").mkdir(parents=True)
-    (tmp_path / "six/ticker/six" / "sample.py").write_text("value = 1\n", encoding="utf-8")
-    (tmp_path / "shared/ticker/shared" / "sample.py").write_text("value = 2\n", encoding="utf-8")
+    packages = ("six/ticker/six", "shared/ticker/shared", "shared/ticker/panel")
+    for number, package in enumerate(packages):
+        (tmp_path / package).mkdir(parents=True)
+        (tmp_path / package / "sample.py").write_text(f"value = {number}\n", encoding="utf-8")
 
     _validate_release(tmp_path)
 
-    assert (tmp_path / "six/ticker/six" / "__pycache__").is_dir()
-    assert (tmp_path / "shared/ticker/shared" / "__pycache__").is_dir()
+    assert all((tmp_path / package / "__pycache__").is_dir() for package in packages)

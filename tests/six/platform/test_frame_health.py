@@ -8,7 +8,7 @@ import pytest
 
 from ticker.six import updater
 from ticker.six.platform.frame_health import PresentedFrameHealth, receipt_matches
-from ticker.six.runtime import FrameKind
+from ticker.panel.content import FrameKind
 
 pytestmark = pytest.mark.critical
 

@@ -78,7 +78,7 @@ def decode(value: Any) -> Any:
     if "$nan" in value:
         return float("nan")
     if "$data" in value:
-        from ticker.six.platform.wifi import HotspotDetails, WiFiSetupState
+        from ticker.panel.content import HotspotDetails, WiFiSetupState
         kinds = {"WiFiSetupState": WiFiSetupState, "HotspotDetails": HotspotDetails}
         return kinds[value["$data"]](**{key: decode(item) for key, item in value["fields"].items()})
     raise ValueError(f"unknown encoded value: {sorted(value)}")
@@ -110,21 +110,21 @@ class StandInAssets:
 
 def renderers(present: bool) -> dict[str, Any]:
     """Build one fresh set of Six renderers on stand-in logos."""
-    from ticker.six.assets import LogoAssetView
-    from ticker.six.bootstrap import CachedLogoView
-    from ticker.six.ui.news_banner import NewsBanner
-    from ticker.six.ui.score_alert import ScoreAlert
-    from ticker.six.ui.cards.flight import FlightCard
-    from ticker.six.ui.cards.golf import GolfCard
-    from ticker.six.ui.cards.music import MusicCard
-    from ticker.six.ui.cards.racing import RacingCard
-    from ticker.six.ui.sports import SportsCard
-    from ticker.six.ui.cards.stock import StockCard
-    from ticker.six.ui.screens import Screens, update_overlay
-    from ticker.six.ui.cards.weather import WeatherCard
-    from ticker.six.ui import load_default_font_set
-    from ticker.six.ui.cards.clock import ClockCard
-    from ticker.six.ui.screens import connection_lost
+    from ticker.panel.assets import LogoAssetView
+    from ticker.panel.bootstrap import CachedLogoView
+    from ticker.panel.news_banner import NewsBanner
+    from ticker.panel.score_alert import ScoreAlert
+    from ticker.panel.cards.flight import FlightCard
+    from ticker.panel.cards.golf import GolfCard
+    from ticker.panel.cards.music import MusicCard
+    from ticker.panel.cards.racing import RacingCard
+    from ticker.panel.sports import SportsCard
+    from ticker.panel.cards.stock import StockCard
+    from ticker.panel.screens import Screens, update_overlay
+    from ticker.panel.cards.weather import WeatherCard
+    from ticker.panel import load_default_font_set
+    from ticker.panel.cards.clock import ClockCard
+    from ticker.panel.screens import connection_lost
 
     assets = StandInAssets(present)
     fonts = load_default_font_set()
@@ -140,8 +140,8 @@ def renderers(present: bool) -> dict[str, Any]:
 
 def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, Any]) -> Image.Image:
     """Run one recorded renderer call and return its image."""
-    from ticker.six.ui.frame import RenderContext
-    from ticker.six.ui import ContentScene
+    from ticker.panel.frame import RenderContext
+    from ticker.panel import ContentScene
 
     if kind == "utility":
         return _screen(renderer_set, method, args)
@@ -164,7 +164,7 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
 
 def _screen(renderer_set: dict[str, Any], method: str, args: dict[str, Any]) -> Image.Image:
     """Run a call of the old utility renderer: a stock pane, an empty item, or a system screen."""
-    from ticker.six.ui.frame import RenderContext, ContentScene
+    from ticker.panel.frame import RenderContext, ContentScene
 
     screens = renderer_set["screens"]
     if method == "render":
@@ -233,14 +233,14 @@ def _images(value: Any) -> Any:
 
 
 def _kind(item: Mapping[str, Any]) -> str:
-    from ticker.six.ui.catalog import card_family
+    from ticker.panel.catalog import card_family
     family = card_family(item)
     return {"scoreboard": "sports", "stock": "utility", "empty": "utility"}.get(family, family)
 
 
 def fixture_items() -> Iterator[tuple[str, dict[str, Any], str]]:
     """Return each content item of each display payload in the fixtures, as the Six runtime prepares it."""
-    from ticker.six.app.frame_builder import _content_mapping
+    from ticker.panel.frame_builder import _content_mapping
     from ticker.six.protocol import TickerResponse
     from ticker.six.runtime.state import _content
 
@@ -318,7 +318,7 @@ def gallery_cases() -> Iterator[dict[str, Any]]:
 
 def _system_cases(source: str, game: Mapping[str, Any]) -> Iterator[dict[str, Any]]:
     """Render the utility screens of one public system example."""
-    from ticker.six.platform.wifi import HotspotDetails, WiFiSetupState
+    from ticker.panel.content import HotspotDetails, WiFiSetupState
 
     times = [BASE_TIME + timedelta(seconds=step) for step in (0, 0.5, 1.0, 13.0)]
     calls = []

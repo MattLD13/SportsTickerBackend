@@ -29,7 +29,7 @@
       "task_class": "shared-contract",
       "task": "Add an explicit NHL shootout completion fact to the V2 sports contract. The server must own its meaning. Mini, Six, and the iOS controller must consume that fact without inferring state from display labels. Find provider, projection, consumer, and contract regression context. Select context only.",
       "expected": {
-        "paths": ["shared/ticker/shared/sports_display.py", "server/ticker/server/projections/mini_fields.py", "mini/src/mini/ui/sports.h", "six/ticker/six/ui/sports/pinned.py", "ios/TickerControl/Core/Models/Feed.swift", "tests/shared/display/test_mini_hockey_contract.py"],
+        "paths": ["shared/ticker/shared/sports_display.py", "server/ticker/server/projections/mini_fields.py", "mini/src/mini/ui/sports.h", "shared/ticker/panel/sports/pinned.py", "ios/TickerControl/Core/Models/Feed.swift", "tests/shared/display/test_mini_hockey_contract.py"],
         "components": ["sports-server", "server-core", "mini-sports-renderer", "six-sports-renderer", "app-contracts"],
         "checks": ["sports-contracts", "mini-fields"],
         "shared_change": true

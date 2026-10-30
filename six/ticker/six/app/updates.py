@@ -6,7 +6,8 @@ from queue import Queue
 from threading import Lock
 
 from ticker.six.protocol import DisplayDelta, TickerResponse, apply_display_delta
-from ticker.six.runtime import Content, prepare_content
+from ticker.six.runtime import prepare_content
+from ticker.panel.content import Content
 
 from ticker.six.app.poller import PollSucceeded
 

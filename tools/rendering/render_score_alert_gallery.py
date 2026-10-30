@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 
 sys.path[:0] = [os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), name) for name in ("shared", "server", "six", "")]
-from ticker.six.ui.score_alert import ScoreAlert
-from ticker.six.ui import load_default_font_set
+from ticker.panel.score_alert import ScoreAlert
+from ticker.panel import load_default_font_set
 
 
 class EmptyLogos:

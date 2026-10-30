@@ -75,7 +75,7 @@ def test_workers_load_no_server_application_code(component):
     assert "server/ticker/server/worker/runner.py" in closure
     assert not [path for path in closure if path.startswith(("server/ticker/server/api/", "server/ticker/server/web/", "server/ticker/server/core/",
                                                              "server/ticker/server/services/", "server/ticker/server/projections/",
-                                                             "six/ticker/six/"))]
+                                                             "shared/ticker/panel/"))]
 
 
 @pytest.mark.critical

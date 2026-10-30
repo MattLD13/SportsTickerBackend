@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from collections import deque
 import json
 import os
@@ -18,6 +17,7 @@ from typing import Any, Protocol
 from flask import Flask, render_template_string, request
 
 
+from ticker.panel.content import HotspotDetails, WiFiSetupState
 from ticker.six.platform.commands import PlatformCommands, WiFiNetwork
 
 
@@ -84,32 +84,6 @@ PORTAL_TEMPLATE = """
 </html>
 """
 
-
-@dataclass(frozen=True, slots=True)
-class HotspotDetails:
-    """Describe the hotspot used for Wi-Fi setup."""
-
-    ssid: str
-    password: str
-    interface: str = "wlan0"
-
-
-@dataclass(frozen=True, slots=True)
-class WiFiSetupState:
-    """Report the current Wi-Fi recovery state."""
-
-    internet_available: bool
-    hotspot_active: bool
-    hotspot: HotspotDetails
-    setup_url: str = "https://10.42.0.1"
-    setup_code: str = "123456"
-    ble_active: bool = False
-
-    @property
-    def local_setup_active(self) -> bool:
-        """Return true when either local setup transport accepts credentials."""
-
-        return self.hotspot_active or self.ble_active
 
 class PortalRunner(Protocol):
     """Run the Flask portal after explicit setup starts."""

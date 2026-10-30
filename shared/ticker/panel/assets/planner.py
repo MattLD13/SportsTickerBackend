@@ -1,0 +1,161 @@
+"""Plan all content assets before a mode selects visible content."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from ticker.panel.assets.model import AssetRequest
+
+
+@dataclass(frozen=True, slots=True)
+class AssetPlan:
+    """Store the unique prepared variants needed by one payload."""
+
+    requests: tuple[AssetRequest, ...]
+
+
+class AssetPlanner:
+    """Extract assets from every parsed payload content family."""
+
+    def plan(self, payload_or_content: object) -> AssetPlan:
+        """Build requests from all content without reading the active mode."""
+        requests: set[AssetRequest] = set()
+        for item in _payload_items(payload_or_content):
+            self._add_item(requests, item)
+        return AssetPlan(tuple(sorted(requests, key=lambda request: (request.url, request.processor, request.size))))
+
+    def _add_item(self, requests: set[AssetRequest], item: Mapping[str, Any]) -> None:
+        family = str(item.get("family") or "").lower()
+        kind = str(item.get("kind") or "").lower()
+        item_type = str(item.get("type") or kind).lower()
+        sport = str(item.get("sport") or family).lower()
+        if item.get("team_logo"):
+            for size in ((16, 16), (24, 24)):
+                _add_team_logo(requests, item, "team_logo", size)
+        if item_type == "fan_duel_joke_ad":
+            _add(requests, item.get("logo"), "logo", (18, 18))
+            return
+        if item_type == "music" or sport == "music" or family == "music" or kind in {"music", "spotify"}:
+            for key in ("cover", "last_cover", "home_logo", "last_logo", "artwork", "cover_url", "album_art"):
+                _add(requests, item.get(key), "logo", (42, 42))
+            for url in (*_urls(item.get("next_logos")), *_urls(item.get("next_artwork")), *_urls(item.get("next_covers"))):
+                _add(requests, url, "logo", (42, 42))
+            last_song = item.get("last_song")
+            if isinstance(last_song, Mapping):
+                _add(requests, last_song.get("cover"), "logo", (42, 42))
+            for next_song in _records(item.get("next_songs")):
+                _add(requests, next_song.get("cover"), "logo", (42, 42))
+            return
+        if item_type in {"flight_visitor", "flight_airport_hud"} or sport in {"flight", "flights"} or family in {"flight", "flights"}:
+            # The flight renderer draws only the backend airline logo, at 22x22.
+            _add(requests, str(item.get("airline_logo") or "").strip(), "logo", (22, 22))
+            return
+        if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar", "wec", "imsa"}:
+            series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar")) or _mapping(item.get("wec")) or _mapping(item.get("imsa"))
+            for driver in series.get("drivers", ()):
+                if not isinstance(driver, Mapping):
+                    continue
+                _add_team_logo(requests, driver, "team_logo", (18, 18))
+                _add_team_logo(requests, driver, "team_logo", (21, 21))
+                car = driver.get("car_illustration")
+                if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar":
+                    processor, size = "nascar_car", (130, 20)
+                elif "imsa.com" in str(car or "") or sport == "imsa" or kind == "imsa":
+                    processor, size = "imsa_car", (120, 19)
+                elif sport == "f1" or kind == "f1":
+                    processor, size = "car", (130, 20)
+                elif sport == "wec" or kind == "wec":
+                    processor, size = "car", (130, 20)
+                else:
+                    processor, size = "image", (120, 19)
+                _add(requests, car, processor, size)
+            return
+        for key in ("home_logo", "away_logo"):
+            for size in ((16, 16), (22, 22), (24, 24)):
+                _add_team_logo(requests, item, key, size)
+
+
+def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
+    """Read content item mappings from protocol data or raw mappings."""
+    content = getattr(value, "content", value)
+    if isinstance(content, Mapping):
+        nested = content.get("content")
+        if isinstance(nested, Mapping):
+            content = nested
+    if isinstance(content, Mapping):
+        for family in content.values():
+            yield from _content_items(family)
+        return
+    for item in content if isinstance(content, Iterable) and not isinstance(content, (str, bytes, Mapping)) else ():
+        data = getattr(item, "data", None)
+        if data is None and isinstance(item, Mapping):
+            nested = item.get("data")
+            data = nested if isinstance(nested, Mapping) else item
+        if isinstance(data, Mapping):
+            family = getattr(item, "family", None)
+            kind = getattr(item, "kind", None)
+            if isinstance(item, Mapping):
+                family = family or item.get("family")
+                kind = kind or item.get("kind")
+            if family or kind:
+                merged = dict(data)
+                if family and "family" not in merged:
+                    merged["family"] = family
+                if kind and "kind" not in merged:
+                    merged["kind"] = kind
+                yield merged
+            else:
+                yield data
+
+
+def _payload_items(value: object) -> Iterable[Mapping[str, Any]]:
+    """Read content and overlay items before display policy filters them."""
+    yield from _content_items(value)
+    events = value.get("events", {}) if isinstance(value, Mapping) else {}
+    for name in ("alerts", "news"):
+        items = getattr(value, name, ())
+        if isinstance(value, Mapping):
+            items = events.get(name, ()) if isinstance(events, Mapping) and name in events else value.get(name, ())
+        if not isinstance(items, (list, tuple)):
+            continue
+        for item in items:
+            data = getattr(item, "data", None)
+            if data is None and isinstance(item, Mapping):
+                data = item.get("payload", item.get("data", item))
+            if isinstance(data, Mapping):
+                yield data
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    """Return one mapping or an empty mapping."""
+    return value if isinstance(value, Mapping) else {}
+
+
+def _urls(value: object) -> Iterable[str]:
+    """Return valid URL strings from a payload value."""
+    return (entry for entry in value if isinstance(entry, str) and entry) if isinstance(value, (list, tuple)) else ()
+
+
+def _records(value: object) -> Iterable[Mapping[str, Any]]:
+    """Return mapping records from one aggregate content field."""
+    return (entry for entry in value if isinstance(entry, Mapping)) if isinstance(value, (list, tuple)) else ()
+
+
+def _add(requests: set[AssetRequest], value: object, processor: str, size: tuple[int, int]) -> None:
+    """Add one nonempty URL request."""
+    if isinstance(value, str) and value:
+        requests.add(AssetRequest(value, processor, size))
+
+
+def _add_team_logo(
+    requests: set[AssetRequest],
+    item: Mapping[str, Any],
+    logo_key: str,
+    size: tuple[int, int],
+) -> None:
+    """Plan one team logo with its selected native-grid processor."""
+    rendering = _mapping(item.get(f"{logo_key}_rendering"))
+    processor = "logo_native_grid" if str(rendering.get("method") or "").lower() == "new" else "logo"
+    _add(requests, item.get(logo_key), processor, size)

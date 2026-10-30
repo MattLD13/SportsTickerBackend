@@ -85,12 +85,14 @@ def main():
     if not 0.5 <= interval <= 30:
         parser.error('Use an update interval from 0.5 to 30 seconds.')
     from ticker.six.app.application import TickerApplication
-    from ticker.six.assets import ShortTermContentCache
-    from ticker.six.bootstrap import create_default_frame_builder
+    from ticker.panel.assets import ShortTermContentCache
+    from ticker.panel.bootstrap import create_default_frame_builder
     from ticker.six.drivers import MemoryFrameSink, RgbMatrixFrameSink
-    from ticker.six.platform import AssetCoordinator, TickerPiLogger
+    from ticker.six.platform import TickerPiLogger
+    from ticker.panel.assets.storage import AssetCoordinator
     from ticker.six.protocol import BackendClient
-    from ticker.six.runtime import FrameKind, FramePacer, TickerRuntime
+    from ticker.six.runtime import FramePacer, TickerRuntime
+    from ticker.panel.content import FrameKind
 
     class DisabledCommands:
         def reboot(self):

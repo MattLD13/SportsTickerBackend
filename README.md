@@ -16,14 +16,14 @@ Provider workers -> core engine -> ticker snapshot -> /data, /poll, /stream -> S
 The repository has one folder for each product:
 
 - `server/` is Ticker Server: the routes, the device stream, the engine, the worker supervisor, the provider workers, the records, and the server operations.
-- `six/` is Ticker Six: transport, content caching, runtime scheduling, rendering, and matrix drivers.
-- `shared/` holds the facts that the server and the Six both use: the content model, the leagues, and the sports display facts.
+- `six/` is Ticker Six: transport, content caching, runtime scheduling, device services, and matrix drivers.
+- `shared/` holds the code that the server and the Six both use: the content model, the leagues, the sports display facts, and the panel drawing code in `ticker.panel`.
 - `mini/` is the Ticker Mini firmware. `ios/` is the iOS controller app. The app uses controller tokens and never receives Spotify tokens.
 
-The Python code of `shared/`, `server/`, and `six/` forms one package, `ticker`. Run a product from the repository root:
+The Python code of `shared/`, `server/`, and `six/` forms one package, `ticker`. Each device gets only its folders. Run a product from the repository root:
 
 ```sh
-PYTHONPATH=shared:server:six python -m ticker.server
+PYTHONPATH=shared:server python -m ticker.server
 PYTHONPATH=shared:six python -m ticker.six
 ```
 

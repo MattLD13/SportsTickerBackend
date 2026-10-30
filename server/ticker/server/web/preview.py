@@ -14,13 +14,13 @@ from threading import RLock
 
 from PIL import Image
 
-from ticker.six.bootstrap import create_default_content_catalog, create_default_frame_builder
-from ticker.six.ui.frame import RenderContext
-from ticker.six.platform.wifi import HotspotDetails, WiFiSetupState
-from ticker.six.ui import ContentScene
-from ticker.six.ui.strip import compose_pane_strip
-from ticker.six.ui.palette import pane_divider_colors
-from ticker.six.runtime import Content, FrameDecision, FrameKind
+from ticker.panel.bootstrap import create_default_content_catalog, create_default_frame_builder
+from ticker.panel.frame import RenderContext
+from ticker.panel.content import HotspotDetails, WiFiSetupState
+from ticker.panel import ContentScene
+from ticker.panel.strip import compose_pane_strip
+from ticker.panel.palette import pane_divider_colors
+from ticker.panel.content import Content, FrameDecision, FrameKind
 from ticker.server.projections.racing_display import racing_cards
 
 
@@ -91,10 +91,10 @@ class PreviewRenderer:
 
     def animation(self, items: list[dict], mode: str, start: datetime) -> bytes:
         """Render one bounded three-second atlas through production drawing code."""
-        from ticker.six.bootstrap import CachedLogoView
-        from ticker.six.ui.cards.music import MusicCard, MusicState
-        from ticker.six.ui.cards.weather import WeatherCard
-        from ticker.six.ui import load_default_font_set
+        from ticker.panel.bootstrap import CachedLogoView
+        from ticker.panel.cards.music import MusicCard, MusicState
+        from ticker.panel.cards.weather import WeatherCard
+        from ticker.panel import load_default_font_set
 
         key = ("animation", mode, start.isoformat(), json.dumps(items, sort_keys=True), self._assets.revision)
         with self._lock:

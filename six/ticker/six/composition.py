@@ -11,11 +11,10 @@ import os
 
 from ticker.six.app.application import TickerApplication
 from ticker.six.app.poller import BackendPoller
-from ticker.six.assets import ShortTermContentCache
-from ticker.six.bootstrap import create_default_frame_builder
+from ticker.panel.assets import ShortTermContentCache
+from ticker.panel.bootstrap import create_default_frame_builder
 from ticker.six.drivers import MemoryFrameSink, RgbMatrixFrameSink, TkFrameSink
 from ticker.six.platform import (
-    AssetCoordinator,
     BleProvisioningService,
     DeviceIdentityStore,
     HealthCollector,
@@ -24,11 +23,12 @@ from ticker.six.platform import (
     SubprocessPlatformCommands,
     TickerPiLogger,
 )
+from ticker.panel.assets.storage import AssetCoordinator
 from ticker.six.platform.frame_health import PresentedFrameHealth
 from ticker.six.platform.device_credentials import load_device_token
 from ticker.six.platform.update_journal import UpdateJournal
 from ticker.six.protocol import BackendClient
-from ticker.six.ui import FrameGeometry
+from ticker.panel import FrameGeometry
 from ticker.six.runtime import FramePacer, TickerRuntime
 
 

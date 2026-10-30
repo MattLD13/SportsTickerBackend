@@ -167,7 +167,8 @@ def test_unknown_two_point_score_does_not_invent_a_safety():
 
 @pytest.mark.parametrize("conversion_detail", [False, True])
 def test_observed_touchdown_and_later_kick_keep_one_v2_takeover(conversion_detail):
-    from ticker.six.runtime import FrameKind, TickerRuntime
+    from ticker.six.runtime import TickerRuntime
+    from ticker.panel.content import FrameKind
 
     clock = [100.0]
     game, plays = captured("nfl")

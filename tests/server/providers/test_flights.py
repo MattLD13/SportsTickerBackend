@@ -7,9 +7,9 @@ from ticker.server.providers.flights import FlightsProvider
 from ticker.server.providers.flight_source import FlightRadarSource
 from ticker.server.providers.contracts import ProviderHealth
 from ticker.server.projections import project_data_v2
-from ticker.six.ui.frame import RenderContext
-from ticker.six.ui.cards.flight import FlightCard
-from ticker.six.ui import ContentScene, load_default_font_set
+from ticker.panel.frame import RenderContext
+from ticker.panel.cards.flight import FlightCard
+from ticker.panel import ContentScene, load_default_font_set
 
 
 NOW = 1_800_000_000.0

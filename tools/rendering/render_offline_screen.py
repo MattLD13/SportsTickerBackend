@@ -8,8 +8,8 @@ import os
 import sys
 
 sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
-from ticker.six.ui import load_default_font_set
-from ticker.six.ui.screens import Screens
+from ticker.panel import load_default_font_set
+from ticker.panel.screens import Screens
 
 STEPS = (("1m", 65), ("12m", 720), ("3h", 10800), ("2d", 172800))
 

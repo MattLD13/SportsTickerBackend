@@ -19,9 +19,9 @@ Read the [project map](project-map.md) for the folder layout, the import directi
 | `server/ticker/server/worker/` | Run one provider in one process and send its results to the core. |
 | `six/ticker/six/protocol/` | Read the backend and validate display responses on the Pi. |
 | `six/ticker/six/app/` | Build frames and manage the card viewport. |
-| `six/ticker/six/ui/` | Draw content cards, screens, and overlays. |
-| `six/ticker/six/platform/assets.py` | Store durable image cache files. |
-| `six/ticker/six/assets/` | Plan assets and provide memory reads. |
+| `shared/ticker/panel/` | Draw content cards, screens, and overlays. |
+| `shared/ticker/panel/assets/storage.py` | Store durable image cache files. |
+| `shared/ticker/panel/assets/` | Plan assets and provide memory reads. |
 | `mini/` | Build the ESP32 display firmware with PlatformIO. |
 | `ios/` | Build the iOS controller with Xcode. |
 

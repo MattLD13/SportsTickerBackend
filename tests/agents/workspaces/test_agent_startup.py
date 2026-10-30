@@ -285,7 +285,7 @@ def test_packet_lists_no_unrelated_initial_mini_context(planner_calls):
     planner_calls[0].append(decision(["mini-sports"], ["mini/src/mini/ui/sports.h"]))
     result = prepare(ROOT, "Fix Mini hockey shootout rendering", "startup-minimal-check", new_task=True, use_planner=True)
     state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
-    assert not any(path.startswith(("ios/", "six/ticker/six/ui/", "server/ticker/server/web/"))
+    assert not any(path.startswith(("ios/", "shared/ticker/panel/", "server/ticker/server/web/"))
                    for path in state["context_files"])
     assert not any(any(word in path for word in ("music", "weather", "stocks", "flights"))
                    for path in state["context_files"])

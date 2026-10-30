@@ -21,11 +21,11 @@ from ticker.server.providers.espn_events import _content_item
 from ticker.server.providers.espn_details import _event_plays, _event_scoring_details, _soccer_event_details, _event_football_details
 from ticker.server.providers.espn_mlb import _mlb_statsapi_summary
 from ticker.server.providers.score_alerts import _describe, _extract_alert_facts
-from ticker.six.assets import AssetPlanner, LogoAssetView
-from ticker.six.ui.score_alert import ScoreAlert, fact_layout
-from ticker.six.platform import AssetCoordinator
+from ticker.panel.assets import AssetPlanner, LogoAssetView
+from ticker.panel.score_alert import ScoreAlert, fact_layout
+from ticker.panel.assets.storage import AssetCoordinator
 from ticker.six.protocol import TickerResponse
-from ticker.six.ui import load_default_font_set
+from ticker.panel import load_default_font_set
 
 
 GROUPS = {

@@ -90,7 +90,7 @@ It registers, streams, loses the connection, resumes from its cursor, and draws 
 ## Run
 
 ```bash
-PYTHONPATH=shared:server:six python -m ticker.server
+PYTHONPATH=shared:server python -m ticker.server
 ```
 
 `server/ticker/server/main.py` lists the settings.

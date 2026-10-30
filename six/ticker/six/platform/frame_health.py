@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from typing import Callable
 
 from PIL import Image
-from ticker.six.runtime import FrameKind
+from ticker.panel.content import FrameKind
 
 
 class PresentedFrameHealth:

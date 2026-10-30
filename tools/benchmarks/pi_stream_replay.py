@@ -85,10 +85,11 @@ def main() -> None:
 
     from ticker.six.app.application import TickerApplication
     from ticker.six.app.poller import BackendPoller
-    from ticker.six.assets import ShortTermContentCache
-    from ticker.six.bootstrap import create_default_frame_builder
+    from ticker.panel.assets import ShortTermContentCache
+    from ticker.panel.bootstrap import create_default_frame_builder
     from ticker.six.drivers import RgbMatrixFrameSink
-    from ticker.six.platform import AssetCoordinator, TickerPiLogger
+    from ticker.six.platform import TickerPiLogger
+    from ticker.panel.assets.storage import AssetCoordinator
     from ticker.six.runtime import FramePacer, TickerRuntime
 
     messages = json.loads(args.messages.read_text(encoding="utf-8-sig"))

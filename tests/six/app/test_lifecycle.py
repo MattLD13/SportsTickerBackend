@@ -8,9 +8,10 @@ import pytest
 from PIL import Image
 
 from ticker.six.app import PollConnected, PollFailed, PollSucceeded, TickerApplication
-from ticker.six.assets import ShortTermContentCache
-from ticker.six.platform import HotspotDetails, WiFiSetupState
-from ticker.six.runtime import FrameKind, FramePacer, RuntimeConfig, TickerRuntime
+from ticker.panel.assets import ShortTermContentCache
+from ticker.panel.content import HotspotDetails, WiFiSetupState
+from ticker.six.runtime import FramePacer, RuntimeConfig, TickerRuntime
+from ticker.panel.content import FrameKind
 from ticker.six.protocol import TickerResponse, display_delta
 
 pytestmark = pytest.mark.critical
@@ -168,7 +169,7 @@ def test_event_budget_keeps_remaining_events_in_order_for_the_next_frame(tmp_pat
 
 def test_scrolling_continues_while_a_delta_waits_for_background_asset_planning(tmp_path):
     from threading import Thread
-    from ticker.six.runtime import StripLayout, StripSegment
+    from ticker.panel.content import StripLayout, StripSegment
 
     class SlowAssets(Assets):
         def __init__(self):
@@ -674,7 +675,7 @@ def test_update_result_reaches_real_failure_overlay_once(tmp_path, monkeypatch, 
     from PIL import ImageChops
     from ticker.six.app import poller as poller_module
     from ticker.six.app.poller import BackendPoller
-    from ticker.six.bootstrap import create_default_frame_builder
+    from ticker.panel.bootstrap import create_default_frame_builder
     from ticker.six.platform import OtaUpdaterService
     from ticker.six.platform.update_journal import UpdateJournal
 

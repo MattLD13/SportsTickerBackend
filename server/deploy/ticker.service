@@ -13,7 +13,7 @@ Environment=TICKER_DATABASE_PATH=/home/ubuntu/ticker_data/ticker-v2.sqlite3
 Environment=TICKER3_RELEASES=/home/ubuntu/ticker3/releases
 Environment=TICKER3_SOCKET=/home/ubuntu/ticker_data/ticker3.sock
 Environment=PYTHONDONTWRITEBYTECODE=1
-Environment=PYTHONPATH=shared:server:six
+Environment=PYTHONPATH=shared:server
 Environment=TICKER_STOCK_CACHE_PATH=/home/ubuntu/ticker_data/stocks.json
 ExecStart=/home/ubuntu/ticker3/current/.venv/bin/python -m ticker.server
 # Stop only the core. The workers keep running, and the next core adopts them.

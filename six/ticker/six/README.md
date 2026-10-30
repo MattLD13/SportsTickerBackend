@@ -1,6 +1,8 @@
 # Raspberry Pi ticker rewrite
 
-`ticker.six` is the Ticker Six application for the Raspberry Pi. It owns every operation between a backend response and the LED panels.
+`ticker.six` is the Ticker Six application for the Raspberry Pi. It owns the device code between a backend response and the LED panels.
+
+`ticker.panel` in `shared/ticker/panel/` draws the frames. Ticker Server uses the same package for its live demo, so the server holds no Six device code.
 
 The golden corpus in `tests/fixtures/six_golden/` records the panel pixels of every card for fixed inputs. `tools/rendering/six_golden.py` checks them.
 
@@ -10,10 +12,8 @@ The golden corpus in `tests/fixtures/six_golden/` records the panel pixels of ev
 | --- | --- |
 | `protocol` | Parse backend responses and perform backend requests. |
 | `runtime` | Choose visible content and control display timing. |
-| `app` | Build frames, run the card viewport, and run the frame loop. |
-| `ui` | Draw cards, screens, and overlays without controller state. Route each item to its card. |
-| `assets` | Plan and warm shared assets before mode filtering. |
-| `platform` | Store device identity and run operating system commands. |
+| `app` | Run the frame loop, the poller, and the update flow. |
+| `platform` | Store device identity, run Wi-Fi and Bluetooth setup, and run operating system commands. |
 | `drivers` | Present complete frames to hardware, memory, or the emulator. |
 
 ## Performance history

@@ -494,7 +494,7 @@ class _PreviewAssets:
     """Read prepared team marks after a route-level prefetch completes."""
 
     def __init__(self, directory: Path) -> None:
-        from ticker.six.platform.assets import AssetCoordinator
+        from ticker.panel.assets.storage import AssetCoordinator
 
         self._coordinator = AssetCoordinator(directory)
         self._album = Image.open(Path(__file__).parent / "static/mr-blue-sky-cover.png").convert("RGBA")
@@ -508,7 +508,7 @@ class _PreviewAssets:
     def prefetch(self, content: dict[str, list[dict[str, object]]]) -> None:
         """Prepare current sports logos before the renderer reads them."""
 
-        from ticker.six.assets import AssetPlanner
+        from ticker.panel.assets import AssetPlanner
 
         requests = [item for item in AssetPlanner().plan(content).requests if not item.url.startswith("demo:")
                     and (set(content) != {"stock"} or item.size == (24, 24))]

@@ -1,8 +1,8 @@
 {
   "backend": [
     "shared/ticker/shared/**",
+    "shared/ticker/panel/**",
     "server/ticker/server/**",
-    "six/ticker/six/**",
     "mini/src/mini/**",
     "mini/platformio.ini",
     "docs/contracts/demo-layouts.json",
@@ -26,6 +26,7 @@
   ],
   "controller": [
     "shared/ticker/shared/**",
+    "shared/ticker/panel/**",
     "six/ticker/six/**",
     "requirements/base.txt",
     "six/deploy/**"

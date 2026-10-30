@@ -28,11 +28,11 @@ if str(REPOSITORY) not in sys.path:
     sys.path[:0] = [os.path.join(str(REPOSITORY), name) for name in ("shared", "server", "six", "")]
 from ticker.six.app.application import TickerApplication
 from ticker.six.app.poller import BackendPoller
-from ticker.six.assets import MemoryAssetView, ShortTermContentCache
-from ticker.six.bootstrap import create_default_frame_builder
+from ticker.panel.assets import MemoryAssetView, ShortTermContentCache
+from ticker.panel.bootstrap import create_default_frame_builder
 from ticker.six.drivers import MemoryFrameSink
 from ticker.six.protocol import BackendClient
-from ticker.six.ui import FrameGeometry
+from ticker.panel import FrameGeometry
 from ticker.six.runtime import FramePacer, RuntimeConfig, TickerRuntime
 from ticker.shared.domain import ContentItem, DisplaySettings, TickerSnapshot
 from ticker.server.store import PairingState

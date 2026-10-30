@@ -53,16 +53,16 @@
         "server/ticker/server/__init__.py",
         "server/ticker/server/providers/*.py",
         "six/ticker/six/protocol/*.py",
-        "six/ticker/six/ui/__init__.py",
-        "six/ticker/six/ui/catalog.py",
-        "six/ticker/six/ui/frame.py",
-        "six/ticker/six/ui/layers.py",
-        "six/ticker/six/ui/palette.py",
-        "six/ticker/six/ui/strip.py",
-        "six/ticker/six/ui/text.py",
-        "six/ticker/six/ui/font_assets/*",
+        "shared/ticker/panel/__init__.py",
+        "shared/ticker/panel/catalog.py",
+        "shared/ticker/panel/frame.py",
+        "shared/ticker/panel/layers.py",
+        "shared/ticker/panel/palette.py",
+        "shared/ticker/panel/strip.py",
+        "shared/ticker/panel/text.py",
+        "shared/ticker/panel/font_assets/*",
         "six/ticker/six/__init__.py",
-        "six/ticker/six/_enum.py"
+        "shared/ticker/shared/strenum.py"
       ],
       "checks": []
     },
@@ -190,13 +190,19 @@
       ]
     },
     "six-runtime": {
-      "owner": "Ticker Six runtime and 384x32 renderers",
+      "owner": "Ticker Six runtime, the panel frame builder, and the panel assets",
       "owned": [
         "six/ticker/six/app/*",
         "six/ticker/six/runtime/*",
         "six/ticker/six/drivers/*",
         "six/ticker/six/platform/*",
-        "six/ticker/six/bootstrap.py",
+        "shared/ticker/panel/bootstrap.py",
+        "shared/ticker/panel/content.py",
+        "shared/ticker/panel/frame_builder.py",
+        "shared/ticker/panel/viewport.py",
+        "shared/ticker/panel/panes.py",
+        "shared/ticker/panel/affinity.py",
+        "shared/ticker/panel/assets/*",
         "six/ticker/six/composition.py",
         "six/ticker/six/__main__.py",
         "six/ticker/six/updater.py",
@@ -215,7 +221,7 @@
       "build": [
         "six/ticker/six/*",
         "tools/rendering/render_frame.py",
-        "tests/six/ui/test_sports_renderers.py",
+        "tests/shared/panel/test_sports_renderers.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
       ],
@@ -243,7 +249,7 @@
       "owner": "Music provider and device presentation",
       "owned": [
         "server/ticker/server/providers/music.py",
-        "six/ticker/six/ui/cards/music.py"
+        "shared/ticker/panel/cards/music.py"
       ],
       "dependencies": [
         "server-core",
@@ -253,7 +259,7 @@
         "server/ticker/server/providers/music.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/music.py",
+        "shared/ticker/panel/cards/music.py",
         "tests/server/providers/test_music_stale_scope.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
@@ -266,8 +272,8 @@
       "owner": "Weather provider and device presentation",
       "owned": [
         "server/ticker/server/providers/weather.py",
-        "six/ticker/six/ui/cards/weather.py",
-        "tests/six/ui/test_weather_*.py"
+        "shared/ticker/panel/cards/weather.py",
+        "tests/shared/panel/test_weather_*.py"
       ],
       "dependencies": [
         "server-core",
@@ -278,11 +284,11 @@
         "server/ticker/server/providers/weather.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/weather.py",
+        "shared/ticker/panel/cards/weather.py",
         "tests/server/providers/test_weather_provider.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py",
-        "tests/six/ui/test_weather_*.py"
+        "tests/shared/panel/test_weather_*.py"
       ],
       "checks": [
         "weather-domain",
@@ -294,7 +300,7 @@
       "owned": [
         "server/ticker/server/providers/stocks.py",
         "server/ticker/server/providers/market_sessions.py",
-        "six/ticker/six/ui/cards/stock.py"
+        "shared/ticker/panel/cards/stock.py"
       ],
       "dependencies": [
         "server-core",
@@ -305,8 +311,8 @@
         "server/ticker/server/providers/market_sessions.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/stock.py",
-        "tests/six/ui/test_utility_renderers.py",
+        "shared/ticker/panel/cards/stock.py",
+        "tests/shared/panel/test_utility_renderers.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
       ],
@@ -318,7 +324,7 @@
       "owner": "Flights provider and device presentation",
       "owned": [
         "server/ticker/server/providers/flights.py",
-        "six/ticker/six/ui/cards/flight.py"
+        "shared/ticker/panel/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
@@ -328,7 +334,7 @@
         "server/ticker/server/providers/flights.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/flight.py",
+        "shared/ticker/panel/cards/flight.py",
         "tests/server/providers/test_flights.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
@@ -341,7 +347,7 @@
       "owner": "Airports provider and device presentation",
       "owned": [
         "server/ticker/server/providers/flights.py",
-        "six/ticker/six/ui/cards/flight.py"
+        "shared/ticker/panel/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
@@ -351,7 +357,7 @@
         "server/ticker/server/providers/flights.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/flight.py",
+        "shared/ticker/panel/cards/flight.py",
         "tests/server/providers/test_flights.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
@@ -364,7 +370,7 @@
       "owner": "Golf provider and device presentation",
       "owned": [
         "server/ticker/server/providers/golf.py",
-        "six/ticker/six/ui/cards/golf.py"
+        "shared/ticker/panel/cards/golf.py"
       ],
       "dependencies": [
         "server-core",
@@ -374,7 +380,7 @@
         "server/ticker/server/providers/golf.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/golf.py",
+        "shared/ticker/panel/cards/golf.py",
         "tests/server/providers/test_golf_provider.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
@@ -388,7 +394,7 @@
       "owned": [
         "server/ticker/server/providers/racing.py",
         "server/ticker/server/providers/racing_live.py",
-        "six/ticker/six/ui/cards/racing.py"
+        "shared/ticker/panel/cards/racing.py"
       ],
       "dependencies": [
         "server-core",
@@ -399,7 +405,7 @@
         "server/ticker/server/providers/racing_live.py"
       ],
       "build": [
-        "six/ticker/six/ui/cards/racing.py",
+        "shared/ticker/panel/cards/racing.py",
         "tests/server/providers/test_racing_live_source.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
@@ -413,8 +419,8 @@
       "owned": [
         "server/ticker/server/providers/news.py",
         "server/ticker/server/providers/news_transactions.py",
-        "six/ticker/six/ui/score_alert.py",
-        "six/ticker/six/ui/news_banner.py"
+        "shared/ticker/panel/score_alert.py",
+        "shared/ticker/panel/news_banner.py"
       ],
       "dependencies": [
         "server-core",
@@ -425,8 +431,8 @@
         "server/ticker/server/providers/news_transactions.py"
       ],
       "build": [
-        "six/ticker/six/ui/score_alert.py",
-        "six/ticker/six/ui/news_banner.py",
+        "shared/ticker/panel/score_alert.py",
+        "shared/ticker/panel/news_banner.py",
         "tests/server/providers/test_news_distribution.py",
         "server/ticker/server/mini_assets/__init__.py",
         "shared/ticker/shared/images.py"
@@ -454,12 +460,12 @@
         "sports-server"
       ],
       "owned": [
-        "six/ticker/six/ui/text.py",
-        "six/ticker/six/ui/palette.py"
+        "shared/ticker/panel/text.py",
+        "shared/ticker/panel/palette.py"
       ],
       "context": [
-        "six/ticker/six/ui/text.py",
-        "six/ticker/six/ui/palette.py"
+        "shared/ticker/panel/text.py",
+        "shared/ticker/panel/palette.py"
       ],
       "build": [],
       "checks": [
@@ -630,16 +636,16 @@
     "clock": {
       "owner": "Clock presentation",
       "owned": [
-        "six/ticker/six/ui/cards/clock.py"
+        "shared/ticker/panel/cards/clock.py"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "six/ticker/six/ui/cards/clock.py"
+        "shared/ticker/panel/cards/clock.py"
       ],
       "build": [
-        "tests/six/ui/test_clock_renderer.py"
+        "tests/shared/panel/test_clock_renderer.py"
       ],
       "checks": [
         "clock-domain"
@@ -711,18 +717,18 @@
     "six-sports-renderer": {
       "owner": "Ticker Six sports presentation",
       "owned": [
-        "six/ticker/six/ui/sports/*"
+        "shared/ticker/panel/sports/*"
       ],
       "dependencies": [
         "sports-server",
         "six-build"
       ],
       "context": [
-        "six/ticker/six/ui/sports/__init__.py",
-        "six/ticker/six/ui/sports/pinned.py"
+        "shared/ticker/panel/sports/__init__.py",
+        "shared/ticker/panel/sports/pinned.py"
       ],
       "build": [
-        "tests/six/ui/test_sports_renderers.py",
+        "tests/shared/panel/test_sports_renderers.py",
         "tools/rendering/render_frame.py"
       ],
       "checks": [
@@ -732,26 +738,26 @@
     "six-rendering": {
       "owner": "Ticker Six renderer contracts, catalog, preview tools, and generic renderer tests",
       "owned": [
-        "six/ticker/six/ui/catalog.py",
-        "six/ticker/six/ui/palette.py",
-        "six/ticker/six/ui/text.py",
-        "six/ticker/six/ui/frame.py",
-        "six/ticker/six/ui/strip.py",
-        "tests/six/ui/test_catalog.py",
-        "tests/six/ui/test_templates.py",
-        "tests/six/ui/test_six_golden.py",
-        "tests/six/ui/test_frozen_baseline.py",
+        "shared/ticker/panel/catalog.py",
+        "shared/ticker/panel/palette.py",
+        "shared/ticker/panel/text.py",
+        "shared/ticker/panel/frame.py",
+        "shared/ticker/panel/strip.py",
+        "tests/shared/panel/test_catalog.py",
+        "tests/shared/panel/test_templates.py",
+        "tests/shared/panel/test_six_golden.py",
+        "tests/shared/panel/test_frozen_baseline.py",
         "tools/rendering/render_frame.py"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "six/ticker/six/ui/catalog.py",
-        "tests/six/ui/test_catalog.py"
+        "shared/ticker/panel/catalog.py",
+        "tests/shared/panel/test_catalog.py"
       ],
       "build": [
-        "tests/six/ui/test_catalog.py",
+        "tests/shared/panel/test_catalog.py",
         "tools/rendering/render_frame.py"
       ],
       "checks": [
@@ -761,7 +767,7 @@
     "weather-art": {
       "owner": "Shared Six and Mini weather icon timing and generated artwork",
       "owned": [
-        "six/ticker/six/ui/weather_art.py",
+        "shared/ticker/panel/weather_art.py",
         "tools/mini/generate_mini_weather.py",
         "mini/src/mini/ui/weather_art_generated.h"
       ],
@@ -770,13 +776,13 @@
         "mini-firmware"
       ],
       "context": [
-        "six/ticker/six/ui/weather_art.py",
+        "shared/ticker/panel/weather_art.py",
         "tools/mini/generate_mini_weather.py"
       ],
       "build": [
         "tools/mini/generate_mini_weather.py",
         "mini/src/mini/ui/weather_art_generated.h",
-        "tests/six/ui/test_weather_art_contract.py"
+        "tests/shared/panel/test_weather_art_contract.py"
       ],
       "checks": [
         "weather-art"
@@ -932,10 +938,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/six/ui/test_sports_renderers.py"
+        "tests/shared/panel/test_sports_renderers.py"
       ],
       "files": [
-        "tests/six/ui/test_sports_renderers.py"
+        "tests/shared/panel/test_sports_renderers.py"
       ]
     },
     "music-domain": {
@@ -968,10 +974,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/six/ui/test_utility_renderers.py"
+        "tests/shared/panel/test_utility_renderers.py"
       ],
       "files": [
-        "tests/six/ui/test_utility_renderers.py"
+        "tests/shared/panel/test_utility_renderers.py"
       ]
     },
     "flights-domain": {
@@ -1062,10 +1068,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/six/ui/test_clock_renderer.py"
+        "tests/shared/panel/test_clock_renderer.py"
       ],
       "files": [
-        "tests/six/ui/test_clock_renderer.py"
+        "tests/shared/panel/test_clock_renderer.py"
       ]
     },
     "six-catalog": {
@@ -1074,10 +1080,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/six/ui/test_catalog.py"
+        "tests/shared/panel/test_catalog.py"
       ],
       "files": [
-        "tests/six/ui/test_catalog.py"
+        "tests/shared/panel/test_catalog.py"
       ]
     },
     "weather-art": {
@@ -1097,11 +1103,11 @@
         "-m",
         "pytest",
         "-q",
-        "tests/six/ui/test_weather_animation.py",
-        "tests/six/ui/test_weather_art_contract.py"
+        "tests/shared/panel/test_weather_animation.py",
+        "tests/shared/panel/test_weather_art_contract.py"
       ],
       "files": [
-        "tests/six/ui/test_weather_*.py"
+        "tests/shared/panel/test_weather_*.py"
       ]
     }
   },

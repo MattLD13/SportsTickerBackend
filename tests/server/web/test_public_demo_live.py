@@ -100,7 +100,7 @@ def test_public_provider_failure_is_explicit_and_old_quotes_expire():
 @pytest.fixture
 def demo_app(tmp_path, monkeypatch):
     from ticker.server.web import routes
-    from ticker.six.platform import assets as asset_module
+    from ticker.panel.assets import storage as asset_module
     monkeypatch.setattr(asset_module, "_fetch_with_requests", lambda url: None)
     monkeypatch.setattr(routes, "time", lambda: 1792168467.0)
     monkeypatch.setattr(routes, "_SAMPLE_STARTED", 1792168355.0)
@@ -113,9 +113,9 @@ def demo_app(tmp_path, monkeypatch):
 
 
 def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch, tmp_path):
-    from ticker.six.ui.cards.stock import StockCard
-    from ticker.six.platform import assets as asset_module
-    from ticker.six.ui import load_default_font_set
+    from ticker.panel.cards.stock import StockCard
+    from ticker.panel.assets import storage as asset_module
+    from ticker.panel import load_default_font_set
 
     records = [{"data": {**dict(item.data), "situation": dict(item.data["situation"])}} for item in (stock("MSFT"), stock("NVDA"))]
     demo_app.extensions["ticker.public_demo"] = SimpleNamespace(content=lambda mode: ({mode: records}, "live"))
@@ -141,9 +141,9 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
 @pytest.mark.parametrize("mode", ["music", "weather"])
 def test_animation_atlas_contains_consecutive_production_frames(demo_app, mode):
     from ticker.server.web import routes
-    from ticker.six.ui.frame import RenderContext
-    from ticker.six.ui.cards.weather import WeatherCard
-    from ticker.six.ui import load_default_font_set
+    from ticker.panel.frame import RenderContext
+    from ticker.panel.cards.weather import WeatherCard
+    from ticker.panel import load_default_font_set
 
     weather = layout_case("MD04")["game"]
     demo_app.extensions["ticker.public_demo"] = SimpleNamespace(content=lambda value: ({value: [{"data": weather}]}, "live"))
@@ -181,10 +181,10 @@ def test_missing_public_feed_does_not_show_fake_flight_or_apple_quote(demo_app):
 
 def test_music_chunks_match_continuous_playback_even_with_a_future_fetch_anchor(demo_app):
     from ticker.server.web import routes
-    from ticker.six.bootstrap import CachedLogoView
-    from ticker.six.ui.frame import RenderContext
-    from ticker.six.ui.cards.music import MusicCard, MusicState
-    from ticker.six.ui import load_default_font_set
+    from ticker.panel.bootstrap import CachedLogoView
+    from ticker.panel.frame import RenderContext
+    from ticker.panel.cards.music import MusicCard, MusicState
+    from ticker.panel import load_default_font_set
 
     start = datetime.fromtimestamp(1792168467, ZoneInfo("America/New_York"))
     game = dict(routes._demo_content("music")["music"][0]["data"])

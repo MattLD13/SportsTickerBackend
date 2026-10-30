@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from PIL import Image
-from ticker.six.ui.sports.logos import Outline, mean_edge_brightness, paste_team_logo, prepare_team_logo, team_logo_layout
+from ticker.panel.sports.logos import Outline, mean_edge_brightness, paste_team_logo, prepare_team_logo, team_logo_layout
 
 
 BACKEND_URL = os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org").rstrip("/")

@@ -7,7 +7,8 @@ from datetime import datetime
 import random
 from typing import Any
 
-from ticker.six.runtime.model import Content, frozen_mapping
+from ticker.six.runtime.model import frozen_mapping
+from ticker.panel.content import Content
 
 
 APRIL_FOOLS_MONTH = 4

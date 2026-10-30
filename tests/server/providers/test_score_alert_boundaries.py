@@ -9,13 +9,14 @@ from ticker.shared.domain import DisplaySettings, TickerSnapshot
 from ticker.server.projections import project_data_v2
 from ticker.server.providers.score_alerts import ScoreAlertTracker
 from ticker.server.providers.espn_events import _team
-from ticker.six.assets import AssetPlanner, AssetRequest, LogoAssetView
+from ticker.panel.assets import AssetPlanner, AssetRequest, LogoAssetView
 from ticker.six.app.updates import delta_asset_source
-from ticker.six.ui.score_alert import ScoreAlert
-from ticker.six.platform import AssetCoordinator
+from ticker.panel.score_alert import ScoreAlert
+from ticker.panel.assets.storage import AssetCoordinator
 from ticker.six.protocol import TickerResponse, display_delta
-from ticker.six.ui import load_default_font_set
-from ticker.six.runtime import TickerRuntime, FrameKind
+from ticker.panel import load_default_font_set
+from ticker.six.runtime import TickerRuntime
+from ticker.panel.content import FrameKind
 
 pytestmark = pytest.mark.critical
 

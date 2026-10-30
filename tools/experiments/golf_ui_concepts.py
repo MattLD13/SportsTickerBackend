@@ -12,7 +12,7 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
-from ticker.six.ui.text import GOLF, clean_text as normal_text
+from ticker.panel.text import GOLF, clean_text as normal_text
 
 
 PANEL_SIZE = (384, 32)

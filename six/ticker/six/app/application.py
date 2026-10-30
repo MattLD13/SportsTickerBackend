@@ -13,23 +13,24 @@ from time import monotonic, time as wall_time
 import os
 from typing import Protocol
 
-from ticker.six.ui.frame import RenderContext
+from ticker.panel.frame import RenderContext
 from ticker.six.drivers import FrameSink
 from ticker.six.platform import (
-    AssetCoordinator,
     OtaUpdaterService,
     PlatformCommands,
     WiFiRecoveryService,
-    WiFiSetupState,
 )
+from ticker.panel.assets.storage import AssetCoordinator
+from ticker.panel.content import WiFiSetupState
 from ticker.six.protocol import BackendClient, TickerResponse
 from ticker.six.platform.frame_health import PresentedFrameHealth
-from ticker.six.platform.affinity import pin_to_cpu
-from ticker.six.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
+from ticker.panel.affinity import pin_to_cpu
+from ticker.six.runtime import FramePacer, TickerRuntime
+from ticker.panel.content import FrameDecision, FrameKind
 
-from ticker.six.app.frame_builder import FrameBuilder
+from ticker.panel.frame_builder import FrameBuilder
 from ticker.six.app.poller import PollConnected, PollEvent, PollFailed, PollStreamEvent, PollSucceeded, PollUpdateResult
-from ticker.six.app.viewport import CardViewport
+from ticker.panel.viewport import CardViewport
 from ticker.six.app.latency import DisplayLatencyTracker
 from ticker.six.app.updates import PreparedEventQueue, PreparedUpdate, RejectedUpdate
 

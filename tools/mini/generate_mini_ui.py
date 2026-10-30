@@ -7,8 +7,8 @@ import os
 import sys
 
 sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
-from ticker.six.ui.text import PANE, HYBRID
-from ticker.six.ui import palette
+from ticker.panel.text import PANE, HYBRID
+from ticker.panel import palette
 from ticker.shared.leagues import LEAGUES
 from ticker.shared.sports_display import sport_family
 

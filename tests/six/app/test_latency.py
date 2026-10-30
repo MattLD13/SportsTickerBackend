@@ -140,7 +140,7 @@ def test_visibility_at_accept_and_ready_time_survive_offscreen_supersession():
 
 def test_visibility_classification_uses_presented_geometry_and_marks_overlays_unknown():
     from ticker.six.app.application import TickerApplication
-    from ticker.six.runtime import Content, FrameDecision, FrameKind
+    from ticker.panel.content import Content, FrameDecision, FrameKind
 
     class Viewport:
         def visible_ids(self, offset, width):

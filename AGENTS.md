@@ -37,9 +37,11 @@ If this file changes, read it again. `agents/README.md` explains the workspace c
 
 - Trace input, durable state, API output, client state, and the frame before fixing a display fact.
 - Give each fact one owner. Shared sports facts belong in `shared/ticker/shared/sports_display.py`.
-- Keep the import direction. `ticker.shared` imports no other product. `ticker.six` imports only `ticker.shared`.
+- Keep the import direction. `ticker.shared` imports no other product. `ticker.panel` imports only `ticker.shared`.
+  `ticker.six` imports `ticker.shared` and `ticker.panel`. `ticker.server` never imports `ticker.six`.
+- Put only the code that a device needs in its folder. The server gets `shared/` and `server/`. The Six gets `shared/` and `six/`.
 - `shared/`, `server/`, and `six/` each hold one part of the namespace package `ticker`. Do not add `ticker/__init__.py`.
-- Run Python from the root with `PYTHONPATH=shared:server:six`. pytest, CI, and the units set it. Each tool adds the roots itself.
+- For development, run Python from the root with `PYTHONPATH=shared:server:six`. pytest and CI set it. Each tool adds the roots itself.
 - Extend explicit contracts when several consumers need a fact.
 - Keep provider reads, persistence, projection, scheduling, and rendering separate. Rendering has no I/O.
 - Replace faulty designs. Remove replaced code, imports, tests, routes, jobs, fixtures, and documentation in the same change.
@@ -102,13 +104,15 @@ Read `docs/architecture/server.md` before you change the routes, the engine, or 
 - Keep public status free of credentials, customer data, and private logs. Encrypt private evidence before upload.
 - Use temporary directories for recovery tests. Do not change production release state during tests.
 
-## Ticker Six: `six/ticker/six/`
+## Ticker Six: `six/ticker/six/` and `shared/ticker/panel/`
 
-- `ui/` owns the drawing. `ui/sports/` owns the sports cards. `ui/cards/` holds one card for each other content family.
+- `shared/ticker/panel/` owns the drawing. The Six and the server demo both use it. It has no hardware code.
+- `panel/sports/` owns the sports cards. `panel/cards/` holds one card for each other content family.
+- `panel/content.py` owns the types that the panel draws. `six/` owns Wi-Fi, Bluetooth, drivers, and updates.
 - Keep rendering free of file access, network access, and scheduling policy.
 - Use the shared backend projection for sports state and lifecycle facts.
 - Each card owns its `visual_key`. The key changes exactly when the drawn image can change.
-- `platform/assets.py` owns durable image storage. `assets/` owns planning and memory reads.
+- `panel/assets/storage.py` owns durable image storage. `panel/assets/` owns planning and memory reads.
 - Keep the panel geometry at `384x32`.
 - If pixels change, run `python tools/rendering/six_golden.py check`. Render with `tools/rendering/render_frame.py` and inspect the PNG.
   Accept a change on purpose with `accept` only after you inspect the frames.
@@ -141,7 +145,7 @@ Read `docs/architecture/server.md` before you change the routes, the engine, or 
 
 ## Tests: `tests/`
 
-- The test folders mirror the code: `shared/`, `server/`, `six/`, `ops/`, `agents/`, and `tools/`.
+- The test folders mirror the code: `shared/`, `server/`, `six/`, `ops/`, `agents/`, and `tools/`. Panel tests are in `shared/panel/`.
   Native Mini checks are in `mini/`. Fixtures are in `fixtures/`.
 - Keep each test three levels deep, such as `tests/server/api/test_asgi.py`. Test file names must be unique.
 - Use real input/output boundaries and deterministic injected clocks for provider tests.

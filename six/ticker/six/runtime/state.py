@@ -14,16 +14,13 @@ from typing import Any, TypeVar
 from ticker.six.runtime.ads import compose_april_fools_ads, is_hardware_ad
 
 from ticker.six.runtime.model import (
-    Content,
     ContentClassification,
-    FrameDecision,
-    FrameKind,
     PayloadSnapshot,
     RuntimeConfig,
-    StripLayout,
     UpdateRequest,
     frozen_mapping,
 )
+from ticker.panel.content import Content, FrameDecision, FrameKind, StripLayout
 
 
 T = TypeVar("T")

@@ -118,10 +118,10 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
 
     from ticker.server.web import routes
     from ticker.server.web.preview import PreviewRenderer, layout_case, layout_library
-    from ticker.six.bootstrap import create_default_frame_builder
-    from ticker.six.ui.sports import SportsCard
-    from ticker.six.ui.text import load_default_font_set
-    from ticker.six.runtime import Content, FrameDecision, FrameKind
+    from ticker.panel.bootstrap import create_default_frame_builder
+    from ticker.panel.sports import SportsCard
+    from ticker.panel.text import load_default_font_set
+    from ticker.panel.content import Content, FrameDecision, FrameKind
 
     app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:
@@ -172,9 +172,9 @@ def test_public_scroll_matches_real_card_viewport(tmp_path) -> None:
 
     from ticker.server.web import routes
     from ticker.server.web.preview import case_items, layout_case, layout_library
-    from ticker.six.bootstrap import create_default_frame_builder
-    from ticker.six.ui.frame import RenderContext
-    from ticker.six.runtime import Content
+    from ticker.panel.bootstrap import create_default_frame_builder
+    from ticker.panel.frame import RenderContext
+    from ticker.panel.content import Content
 
     app = create_offline_application(tmp_path / "ticker.sqlite3", [])
     try:

@@ -18,11 +18,11 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
-from ticker.six.app.viewport import CardViewport
-from ticker.six.bootstrap import create_default_frame_builder
-from ticker.six.ui.frame import RenderContext
-from ticker.six.platform.assets import AssetCoordinator
-from ticker.six.runtime import Content
+from ticker.panel.viewport import CardViewport
+from ticker.panel.bootstrap import create_default_frame_builder
+from ticker.panel.frame import RenderContext
+from ticker.panel.assets.storage import AssetCoordinator
+from ticker.panel.content import Content
 from tools.rendering.render_frame import content_items, normalize_snapshot
 
 

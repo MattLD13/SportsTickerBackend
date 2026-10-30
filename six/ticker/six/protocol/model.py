@@ -9,7 +9,7 @@ import json
 from types import MappingProxyType
 from typing import Any, TypeAlias
 
-from ticker.six._enum import StrEnum
+from ticker.shared.strenum import StrEnum
 
 
 JsonScalar: TypeAlias = str | int | float | bool | None

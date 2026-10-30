@@ -1,1 +1,1 @@
-"""Ticker Six: the controller runtime, the display drivers, and the user interface in `ui/`."""
+"""Ticker Six: the controller runtime, the device services, and the display drivers. `ticker.panel` draws the frames."""

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
-from ticker.six.ui import weather_art
+from ticker.panel import weather_art
 
 TARGET = ROOT / "mini/src/mini/ui/weather_art_generated.h"
 ICONS = ("sun", "moon", "cloud", "rain", "snow", "fog", "storm")

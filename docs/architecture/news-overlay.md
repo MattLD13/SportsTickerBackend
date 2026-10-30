@@ -2,7 +2,7 @@
 
 News is a durable overlay. It shares the panel with the active base mode. It never replaces the base strip or resets its scroll state.
 
-`server/ticker/server/services/events.py` owns event persistence and delivery. `server/ticker/server/projections/data_api.py` projects pending events for one ticker. `six/ticker/six/ui/news_banner.py` draws the overlay.
+`server/ticker/server/services/events.py` owns event persistence and delivery. `server/ticker/server/projections/data_api.py` projects pending events for one ticker. `shared/ticker/panel/news_banner.py` draws the overlay.
 
 Create an event through the operator route:
 
