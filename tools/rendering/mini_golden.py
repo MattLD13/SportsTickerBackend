@@ -42,7 +42,7 @@ def _seed(text: str) -> str:
 def _row(name: str, mode: str, game: dict[str, Any], *, logos: bool = True, frames: tuple[int, int] | None = None,
          **extra: Any) -> dict[str, Any]:
     """Return one renderer row. Sports and stock rows get stand-in sprites for the logos they name."""
-    from sports_ticker.providers.logo_overrides import mini_logo_sources
+    from ticker.server.providers.logo_overrides import mini_logo_sources
 
     row = {"name": name, "mode": mode, "game": game, **extra}
     background = game.get("background") or {} if mode == "message" else {}
@@ -61,8 +61,8 @@ def _row(name: str, mode: str, game: dict[str, Any], *, logos: bool = True, fram
 
 def _mini_game(game: dict[str, Any], name: str) -> dict[str, Any]:
     """Turn a projected racing item into its Mini card. Keep every other game as given."""
-    from sports_ticker.projections.racing_display import mini_racing_cards
-    from ticker3.web.preview import project_preview_game
+    from ticker.server.projections.racing_display import mini_racing_cards
+    from ticker.server.web.preview import project_preview_game
 
     projected = project_preview_game(game)
     if projected.get("racing_display"):
@@ -201,11 +201,11 @@ def renderer(arduinojson: Path | None) -> Path:
     if compiler is None:
         raise RuntimeError("Install g++ to render Mini golden cases")
     if arduinojson is None:
-        arduinojson = ROOT / "esp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src"
+        arduinojson = ROOT / "mini/.pio/libdeps/esp32s3/ArduinoJson/src"
     if not (arduinojson / "ArduinoJson.h").is_file():
         raise RuntimeError(f"ArduinoJson headers are missing. Build the firmware or pass --arduinojson: {arduinojson}")
     output = Path(tempfile.mkdtemp(prefix="mini-golden-")) / "render-mini"
-    subprocess.run([compiler, "-std=c++17", "-O1", "-Iesp32_hub75/src/mini/protocol", "-Iesp32_hub75/src/mini/assets",
+    subprocess.run([compiler, "-std=c++17", "-O1", "-Imini/src/mini/protocol", "-Imini/src/mini/assets",
                     f"-I{arduinojson}", "tools/rendering/render_mini_ui.cpp", "-o", str(output)], cwd=ROOT, check=True)
     return output
 

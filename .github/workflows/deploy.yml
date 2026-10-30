@@ -4,40 +4,26 @@ name: Build and deploy
     branches:
     - main
     paths:
-    - sports_ticker/**
-    - ticker3/**
-    - ticker_core/**
-    - backend_ops/**
-    - esp32_hub75/**
+    - ticker/**
+    - mini/**
     - tools/**
     - tests/**
-    - deploy/backend/**
+    - deploy/**
     - docs/contracts/**
-    - requirements*.txt
+    - requirements/**
     - pyproject.toml
-    - setup.sh
-    - updater.py
-    - test.py
-    - ticker-controller.service
     - .github/workflows/deploy.yml
     - .github/deployment-paths.json
   pull_request:
     paths:
-    - sports_ticker/**
-    - ticker3/**
-    - ticker_core/**
-    - backend_ops/**
-    - esp32_hub75/**
+    - ticker/**
+    - mini/**
     - tools/**
     - tests/**
-    - deploy/backend/**
+    - deploy/**
     - docs/contracts/**
-    - requirements*.txt
+    - requirements/**
     - pyproject.toml
-    - setup.sh
-    - updater.py
-    - test.py
-    - ticker-controller.service
     - .github/workflows/deploy.yml
     - .github/deployment-paths.json
   workflow_dispatch:
@@ -118,11 +104,11 @@ jobs:
       with:
         python-version: '3.13'
     - name: Install test dependencies
-      run: python -m pip install -r requirements-backend.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
+      run: python -m pip install -r requirements/server.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
     - name: Compile Python sources
-      run: python -m compileall -q sports_ticker ticker3 ticker_core backend_ops tools tests/python
+      run: python -m compileall -q ticker tools tests
     - name: Check Python correctness
-      run: python -m ruff check sports_ticker ticker3 ticker_core backend_ops tools
+      run: python -m ruff check ticker tools
     - name: Check scoped Python types
       run: python -m mypy
     - name: Build public layouts from current Mini firmware
@@ -130,7 +116,7 @@ jobs:
     - name: Verify approved public demo assets
       run: python tools/rendering/verify_public_demo.py
     - name: Verify public demo route
-      run: python -m pytest -q tests/python/api/test_public_demo.py
+      run: python -m pytest -q tests/server/web/test_public_demo.py
     - name: Run full test suite
       run: python -m pytest -q
     - name: Verify shared Mini payload fields
@@ -140,18 +126,18 @@ jobs:
     - name: Verify Mini sprite wire and cache
       run: |
         python tools/mini/mini_sprite_vectors.py --output artifacts/mini-sprite-vectors
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
+        g++ -std=c++17 -O1 -Imini/src/mini/assets tests/mini/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
         /tmp/mini-sprite-check artifacts/mini-sprite-vectors /tmp/mini-sprite-cache
     - name: Compare pane render paths
       run: python tools/benchmarks/pi_pane_composition.py --frames 1000 --output artifacts/pane-composition
     - name: Verify Mini display metrics and frame mirror
       run: |
-        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_display_metrics.cpp -o /tmp/mini-display-check
+        g++ -std=c++11 -O1 -Imini/src/mini/platform tests/mini/mini_display_metrics.cpp -o /tmp/mini-display-check
         /tmp/mini-display-check
     - uses: actions/upload-artifact@v4
       with:
         name: public-demo-${{ github.sha }}
-        path: ticker3/web/static/layout-gallery.json
+        path: ticker/server/web/static/layout-gallery.json
         if-no-files-found: error
         retention-days: 1
     - uses: actions/upload-artifact@v4
@@ -163,32 +149,32 @@ jobs:
       run: pip install platformio
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Build mini firmware
-      run: pio run -d esp32_hub75 -e esp32s3
+      run: pio run -d mini -e esp32s3
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Verify Mini response buffer and hockey protocol
       run: |
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_hockey_panes.cpp -o /tmp/mini-hockey-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_hockey_panes.cpp -o /tmp/mini-hockey-check
         /tmp/mini-hockey-check tests/fixtures/display/mini_hockey_panes.json
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_dns_answer.cpp -o /tmp/mini-dns-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_dns_answer.cpp -o /tmp/mini-dns-check
         /tmp/mini-dns-check
-        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
+        g++ -std=c++11 -O1 -Imini/src/mini/platform tests/mini/mini_firmware_validation.cpp -o /tmp/mini-firmware-check
         /tmp/mini-firmware-check
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_logo_residency.cpp -o /tmp/mini-logo-check
+        g++ -std=c++17 -O1 -Imini/src/mini/assets tests/mini/mini_logo_residency.cpp -o /tmp/mini-logo-check
         /tmp/mini-logo-check
-        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_station_retry.cpp -o /tmp/mini-station-check
+        g++ -std=c++11 -O1 -Imini/src/mini/platform tests/mini/mini_station_retry.cpp -o /tmp/mini-station-check
         /tmp/mini-station-check
-        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/platform tests/native/mini_transfer_deadline.cpp -o /tmp/mini-deadline-check
+        g++ -std=c++11 -O1 -Imini/src/mini/platform tests/mini/mini_transfer_deadline.cpp -o /tmp/mini-deadline-check
         /tmp/mini-deadline-check
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_device_payload.cpp esp32_hub75/src/mini/protocol/device_payload.cpp -o /tmp/mini-payload-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_device_payload.cpp mini/src/mini/protocol/device_payload.cpp -o /tmp/mini-payload-check
         /tmp/mini-payload-check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Verify Mini flight, airport, and music layouts
       run: |
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_aviation_panels.cpp -o /tmp/mini-aviation-check
         /tmp/mini-aviation-check docs/contracts/demo-layouts.json
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_system_panels.cpp -o /tmp/mini-system-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_system_panels.cpp -o /tmp/mini-system-check
         /tmp/mini-system-check docs/contracts/demo-layouts.json
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_music_panel.cpp -o /tmp/mini-music-check
         /tmp/mini-music-check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Check Mini golden frames
@@ -197,17 +183,17 @@ jobs:
     - name: Verify Mini racing cards and flag patterns
       run: |
         python tools/mini/racing_vectors.py --check
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_racing.cpp esp32_hub75/src/mini/protocol/device_payload.cpp -o /tmp/mini-racing-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_racing.cpp mini/src/mini/protocol/device_payload.cpp -o /tmp/mini-racing-check
         /tmp/mini-racing-check tests/fixtures/display/mini_racing.json
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Read mini firmware version
       id: mini_version
       shell: bash
       run: |
-        VERSION=$(sed -n 's/.*MINI_FIRMWARE_VERSION\[\].*= "\([^"]*\)";.*/\1/p' esp32_hub75/src/mini/platform/config.h)
+        VERSION=$(sed -n 's/.*MINI_FIRMWARE_VERSION\[\].*= "\([^"]*\)";.*/\1/p' mini/src/mini/platform/config.h)
         test -n "$VERSION"
-        cp esp32_hub75/.pio/build/esp32s3/firmware.bin mini-firmware.bin
-        cp esp32_hub75/.pio/build/esp32s3/firmware.elf mini-firmware.elf
+        cp mini/.pio/build/esp32s3/firmware.bin mini-firmware.bin
+        cp mini/.pio/build/esp32s3/firmware.elf mini-firmware.elf
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - uses: actions/upload-artifact@v4
@@ -223,14 +209,14 @@ jobs:
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Check Mini artwork window and stock layout
       run: |
-        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_artwork_window.cpp -o /tmp/mini-artwork-check
+        g++ -std=c++11 -O1 -Imini/src/mini/assets tests/mini/mini_artwork_window.cpp -o /tmp/mini-artwork-check
         /tmp/mini-artwork-check
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_stock_panel.cpp -o /tmp/mini-stock-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_stock_panel.cpp -o /tmp/mini-stock-check
         /tmp/mini-stock-check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Check Mini weather layout
       run: |
-        g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_weather_panel.cpp -o /tmp/mini-weather-check
+        g++ -std=c++17 -O1 -Imini/src/mini/protocol -Imini/.pio/libdeps/esp32s3/ArduinoJson/src tests/mini/mini_weather_panel.cpp -o /tmp/mini-weather-check
         /tmp/mini-weather-check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
   publish:
@@ -306,7 +292,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: public-demo-${{ github.sha }}
-        path: ticker3/web/static/
+        path: ticker/server/web/static/
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Generate VERSION file
       run: |
@@ -346,12 +332,13 @@ jobs:
       env:
         BASE_REVISION: ${{ steps.base.outputs.revision }}
       run: |
-        python -m backend_ops.components --base "$BASE_REVISION" --output deployment-staging
-        cp deploy/backend/* deployment-staging/
-        mkdir -p deployment-staging/bootstrap/ticker3
-        cp -R backend_ops deployment-staging/bootstrap/backend_ops
-        cp -R ticker3/contract deployment-staging/bootstrap/ticker3/contract
-        cp ticker3/__init__.py deployment-staging/bootstrap/ticker3/__init__.py
+        python -m ticker.ops.components --base "$BASE_REVISION" --output deployment-staging
+        cp deploy/server/* deployment-staging/
+        mkdir -p deployment-staging/bootstrap/ticker/server
+        cp -R ticker/ops deployment-staging/bootstrap/ticker/ops
+        cp -R ticker/server/contract deployment-staging/bootstrap/ticker/server/contract
+        cp ticker/__init__.py deployment-staging/bootstrap/ticker/__init__.py
+        cp ticker/server/__init__.py deployment-staging/bootstrap/ticker/server/__init__.py
         find deployment-staging/bootstrap -type d -name __pycache__ -prune -exec rm -rf '{}' +
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Copy selected component releases
@@ -378,7 +365,7 @@ jobs:
             sudo apt-get install -y python3-venv
           fi
           python3 -c 'import json,pathlib; p=pathlib.Path("plan.json"); pathlib.Path("bootstrap/RELEASE_SHA").write_text(json.loads(p.read_text())["release"])'
-          PYTHONPATH="$PWD/bootstrap" python3 -m backend_ops.manager deploy --staging "$PWD"
+          PYTHONPATH="$PWD/bootstrap" python3 -m ticker.ops.manager deploy --staging "$PWD"
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Capture backend evidence
       if: always() && (needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
@@ -390,7 +377,7 @@ jobs:
         key="$RUNNER_TEMP/backend-key"
         printf '%s\n' "$SSH_KEY" > "$key"
         chmod 600 "$key"
-        ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip'
+        ssh -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cd /home/ubuntu/backend-control/current && python3 -m ticker.ops.diagnostics --output /home/ubuntu/ticker_data/backend-control/latest-report.zip'
         scp -i "$key" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST:/home/ubuntu/ticker_data/backend-control/latest-report.zip" backend-report.zip
         openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
         rm -f backend-report.zip

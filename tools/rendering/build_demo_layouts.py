@@ -18,18 +18,18 @@ from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from sports_ticker.assets.mini_artwork import encode_artwork
-from sports_ticker.assets.mini_sprite import encode_sprite
-from sports_ticker.assets.music_palette import artwork_colors
-from ticker3.web.preview import main_layout, project_preview_game
-from sports_ticker.projections.racing_display import mini_racing_cards
-from sports_ticker.providers.logo_overrides import mini_logo_sources
+from ticker.server.mini_assets.mini_artwork import encode_artwork
+from ticker.server.mini_assets.mini_sprite import encode_sprite
+from ticker.shared.music_palette import artwork_colors
+from ticker.server.web.preview import main_layout, project_preview_game
+from ticker.server.projections.racing_display import mini_racing_cards
+from ticker.server.providers.logo_overrides import mini_logo_sources
 from tools.rendering.render_mini_ui import remote_render
 from tools.mini.generate_mini_weather import FRAMES as WEATHER_FRAMES, STEP_MS as WEATHER_FRAME_MS
 
 SOURCE = ROOT / "docs/contracts/demo-layouts.json"
-DESTINATION = ROOT / "ticker3/web/static/layout-gallery.json"
-ALBUM = ROOT / "ticker3/web/static/mr-blue-sky-cover.png"
+DESTINATION = ROOT / "ticker/server/web/static/layout-gallery.json"
+ALBUM = ROOT / "ticker/server/web/static/mr-blue-sky-cover.png"
 
 
 def encode_image(image: Image.Image) -> str:
@@ -41,15 +41,15 @@ def encode_image(image: Image.Image) -> str:
 
 def provenance() -> dict:
     """Identify every source that determines public Mini frames."""
-    paths = sorted((ROOT / "esp32_hub75/src/mini/ui").glob("*.h"))
+    paths = sorted((ROOT / "mini/src/mini/ui").glob("*.h"))
     paths += [ROOT / name for name in (
-        "esp32_hub75/src/mini/protocol/panes.h", "esp32_hub75/platformio.ini",
-        "esp32_hub75/src/mini/protocol/rotation.h",
-        "sports_ticker/projections/racing_display.py", "sports_ticker/providers/racing_number_colors.json",
-        "sports_ticker/providers/sports_display.py",
-        "sports_ticker/assets/images.py", "sports_ticker/assets/mini_sprite.py",
-        "sports_ticker/assets/mini_artwork.py", "sports_ticker/assets/music_palette.py",
-        "sports_ticker/providers/logo_overrides.py", "tools/rendering/render_mini_ui.cpp", "tools/rendering/build_demo_layouts.py",
+        "mini/src/mini/protocol/panes.h", "mini/platformio.ini",
+        "mini/src/mini/protocol/rotation.h",
+        "ticker/server/projections/racing_display.py", "ticker/shared/racing_number_colors.json",
+        "ticker/shared/sports_display.py",
+        "ticker/shared/images.py", "ticker/server/mini_assets/mini_sprite.py",
+        "ticker/server/mini_assets/mini_artwork.py", "ticker/shared/music_palette.py",
+        "ticker/server/providers/logo_overrides.py", "tools/rendering/render_mini_ui.cpp", "tools/rendering/build_demo_layouts.py",
     )]
     paths += [SOURCE, ALBUM, *sorted((SOURCE.parent / "demo-assets").glob("*.source"))]
     hashes = {}
@@ -58,7 +58,7 @@ def provenance() -> dict:
         if path.suffix in {".h", ".py", ".cpp", ".ini", ".json"}:
             body = body.replace(b"\r\n", b"\n")
         hashes[path.relative_to(ROOT).as_posix()] = hashlib.sha256(body).hexdigest()
-    config = (ROOT / "esp32_hub75/src/mini/platform/config.h").read_text()
+    config = (ROOT / "mini/src/mini/platform/config.h").read_text()
     version = re.search(r'MINI_FIRMWARE_VERSION\[\].*?= "([^"]+)"', config)
     if version is None:
         raise ValueError("Mini firmware version is missing")
@@ -116,9 +116,9 @@ def prepare_rows(source: dict, directory: Path, asset_root: str) -> list[dict]:
 def local_render(directory: Path, include: Path | None) -> None:
     """Compile the same C++ presenters and drawing functions used by firmware."""
     if include is None:
-        include = ROOT / "esp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src"
+        include = ROOT / "mini/.pio/libdeps/esp32s3/ArduinoJson/src"
     if not (include / "ArduinoJson.h").is_file():
-        version = re.search(r"bblanchon/ArduinoJson\s*@\s*([\d.]+)", (ROOT / "esp32_hub75/platformio.ini").read_text())
+        version = re.search(r"bblanchon/ArduinoJson\s*@\s*([\d.]+)", (ROOT / "mini/platformio.ini").read_text())
         if version is None:
             raise ValueError("ArduinoJson dependency must specify one exact version")
         dependency = directory / "ArduinoJson"
@@ -131,12 +131,12 @@ def local_render(directory: Path, include: Path | None) -> None:
         raise RuntimeError("A native C++ compiler is required. Use --host to render on the physical Pi.")
     executable = directory / ("render-mini.exe" if sys.platform == "win32" else "render-mini")
     if Path(compiler).stem.lower() == "cl":
-        arguments = ["/nologo", "/std:c++17", "/EHsc", "/O1", f"/I{ROOT / 'esp32_hub75/src/mini/protocol'}",
-                     f"/I{ROOT / 'esp32_hub75/src/mini/assets'}", f"/I{include}",
+        arguments = ["/nologo", "/std:c++17", "/EHsc", "/O1", f"/I{ROOT / 'mini/src/mini/protocol'}",
+                     f"/I{ROOT / 'mini/src/mini/assets'}", f"/I{include}",
                      str(ROOT / "tools/rendering/render_mini_ui.cpp"), f"/Fe:{executable}", f"/Fo:{directory / 'render-mini.obj'}"]
     else:
-        arguments = ["-std=c++17", "-O1", f"-I{ROOT / 'esp32_hub75/src/mini/protocol'}",
-                     f"-I{ROOT / 'esp32_hub75/src/mini/assets'}", f"-I{include}",
+        arguments = ["-std=c++17", "-O1", f"-I{ROOT / 'mini/src/mini/protocol'}",
+                     f"-I{ROOT / 'mini/src/mini/assets'}", f"-I{include}",
                      str(ROOT / "tools/rendering/render_mini_ui.cpp"), "-o", str(executable)]
     subprocess.run([compiler, *arguments], check=True)
     subprocess.run([str(executable.resolve()), str((directory / "input.json").resolve()), str((directory / "frames").resolve())], check=True)

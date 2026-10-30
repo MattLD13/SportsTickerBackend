@@ -4,11 +4,11 @@ name: iOS app
     branches:
     - main
     paths:
-    - TickerControlApp/**
+    - ios/**
     - .github/workflows/ios.yml
   pull_request:
     paths:
-    - TickerControlApp/**
+    - ios/**
     - .github/workflows/ios.yml
   workflow_dispatch: null
 permissions:
@@ -30,8 +30,8 @@ jobs:
     - name: Report Xcode toolchain
       run: xcodebuild -version
     - name: Check state and contract serialization
-      run: swift test --package-path TickerControlApp --configuration ${{ matrix.package_configuration }}
+      run: swift test --package-path ios --configuration ${{ matrix.package_configuration }}
     - name: Build iOS simulator app
-      run: xcodebuild -project TickerControlApp/TickerControl.xcodeproj -target TickerControl -configuration ${{ matrix.configuration }} -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+      run: xcodebuild -project ios/TickerControl.xcodeproj -target TickerControl -configuration ${{ matrix.configuration }} -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
         build
     name: Build ${{ matrix.configuration }}

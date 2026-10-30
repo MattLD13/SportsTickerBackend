@@ -32,7 +32,7 @@ def main() -> None:
     if args.repeats < 1:
         parser.error("--repeats must be positive")
     sys.path.insert(0, str(args.repository.resolve()))
-    from ticker_core.protocol import DeviceStreamState, StreamMessage
+    from ticker.six.protocol import DeviceStreamState, StreamMessage
 
     raw_messages = json.loads(args.messages.read_text(encoding="utf-8-sig"))
     encoded = [json.dumps(message, separators=(",", ":")) for message in raw_messages]

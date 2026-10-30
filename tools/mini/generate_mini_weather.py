@@ -12,9 +12,9 @@ from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from ticker_core.ui import weather_art
+from ticker.six.ui import weather_art
 
-TARGET = ROOT / "esp32_hub75/src/mini/ui/weather_art_generated.h"
+TARGET = ROOT / "mini/src/mini/ui/weather_art_generated.h"
 ICONS = ("sun", "moon", "cloud", "rain", "snow", "fog", "storm")
 WIDTH, HEIGHT, STEP_MS = 22, 17, 100
 

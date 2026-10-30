@@ -12,7 +12,7 @@ CLAUDE.local.md
 .oci/
 *.key
 *.pem
-!esp32_hub75/certs/backend.pem
+!mini/certs/backend.pem
 *.ppk
 .spotify_token
 

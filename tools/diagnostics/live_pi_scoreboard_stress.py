@@ -232,12 +232,12 @@ def _summarize(samples: list[dict[str, float]], started: float, ended: float) ->
 
 
 def _device_run(args: argparse.Namespace) -> dict[str, object]:
-    from ticker_core.bootstrap import create_default_frame_builder
-    from ticker_core.ui.frame import RenderContext
-    from ticker_core.drivers import RgbMatrixFrameSink
-    from ticker_core.platform import AssetCoordinator
-    from ticker_core.ui import FrameGeometry
-    from ticker_core.runtime import Content
+    from ticker.six.bootstrap import create_default_frame_builder
+    from ticker.six.ui.frame import RenderContext
+    from ticker.six.drivers import RgbMatrixFrameSink
+    from ticker.six.platform import AssetCoordinator
+    from ticker.six.ui import FrameGeometry
+    from ticker.six.runtime import Content
 
     games = json.loads(args.games_file.read_text(encoding="utf-8"))
     if len(games) != 15 or len({game["id"] for game in games}) != 15:

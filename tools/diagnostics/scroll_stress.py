@@ -39,8 +39,8 @@ class ControlledInput:
         self.commands, self.initial = commands, initial
 
     def run(self, stop, events):
-        from ticker_core.app.poller import PollFailed, PollSucceeded
-        from ticker_core.protocol import TickerResponse, display_delta
+        from ticker.six.app.poller import PollFailed, PollSucceeded
+        from ticker.six.protocol import TickerResponse, display_delta
         previous = TickerResponse.from_payload(self.initial)
         events.put(PollSucceeded(previous))
         while not stop.is_set():
@@ -86,19 +86,19 @@ def main():
     interval = args.update_interval if args.update_interval is not None else (3.0 if args.scenario == 'mixed' else 2.0 if args.scenario == 'single' else 5.0)
     if not 0.5 <= interval <= 30:
         parser.error('Use an update interval from 0.5 to 30 seconds.')
-    from ticker_core.app.application import TickerApplication
-    from ticker_core.assets import ShortTermContentCache
-    from ticker_core.bootstrap import create_default_frame_builder
-    from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink
-    from ticker_core.platform import AssetCoordinator, TickerPiLogger
-    from ticker_core.protocol import BackendClient
-    from ticker_core.runtime import FrameKind, FramePacer, TickerRuntime
+    from ticker.six.app.application import TickerApplication
+    from ticker.six.assets import ShortTermContentCache
+    from ticker.six.bootstrap import create_default_frame_builder
+    from ticker.six.drivers import MemoryFrameSink, RgbMatrixFrameSink
+    from ticker.six.platform import AssetCoordinator, TickerPiLogger
+    from ticker.six.protocol import BackendClient
+    from ticker.six.runtime import FrameKind, FramePacer, TickerRuntime
 
     class DisabledCommands:
         def reboot(self):
             raise RuntimeError('Stress-test device commands are disabled')
 
-        def run_update(self, *values):
+        def run_update(self, *values, working_directory=None):
             raise RuntimeError('Stress-test updates are disabled')
 
     class Logger(TickerPiLogger):

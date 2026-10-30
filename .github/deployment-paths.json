@@ -1,10 +1,11 @@
 {
   "backend": [
-    "sports_ticker/**",
-    "ticker3/**",
-    "ticker_core/**",
-    "esp32_hub75/src/mini/**",
-    "esp32_hub75/platformio.ini",
+    "ticker/__init__.py",
+    "ticker/shared/**",
+    "ticker/server/**",
+    "ticker/six/**",
+    "mini/src/mini/**",
+    "mini/platformio.ini",
     "docs/contracts/demo-layouts.json",
     "docs/contracts/demo-assets/**",
     "tools/rendering/build_demo_layouts.py",
@@ -13,23 +14,22 @@
     ".github/workflows/deploy.yml",
     ".github/deployment-paths.json",
     "tools/deployment/deployment_scope.py",
-    "requirements.txt",
-    "requirements-backend.txt",
-    "backend_ops/**",
-    "deploy/backend/**"
+    "requirements/base.txt",
+    "requirements/server.txt",
+    "ticker/ops/**",
+    "deploy/server/**"
   ],
   "mini": [
-    "esp32_hub75/**",
+    "mini/**",
     "tools/rendering/mini_golden.py",
     "tools/rendering/render_mini_ui.cpp",
     "tests/fixtures/mini_golden/**"
   ],
   "controller": [
-    "ticker_core/**",
-    "updater.py",
-    "requirements.txt",
-    "ticker-controller.service",
-    "setup.sh",
-    "sports_ticker/providers/racing_session.py"
+    "ticker/__init__.py",
+    "ticker/shared/**",
+    "ticker/six/**",
+    "requirements/base.txt",
+    "deploy/six/**"
   ]
 }

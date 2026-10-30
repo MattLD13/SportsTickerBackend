@@ -6,7 +6,7 @@ The engine owns loop readiness.
 Each worker owns settings-scoped provider recovery for its provider.
 Providers retain their last healthy data through their existing cache contracts.
 The core supervisor owns worker restarts, worker deploys, and worker rollback.
-`backend_ops/manager.py` owns release files, the core service, and the deployment record.
+`ticker/ops/manager.py` owns release files, the core service, and the deployment record.
 The incident store owns redaction, bounded evidence, and failure deduplication.
 The deployment generates `RELEASE_SHA` as the full backend identity.
 
@@ -35,7 +35,7 @@ The incident store retains release IDs, entrypoints, source locations, exception
 It removes known environment secrets, credential fields, URL queries, and bearer values.
 It bounds incident count and message size.
 
-Run `python -m backend_ops.diagnostics --home /home/ubuntu --output /tmp/backend-report.zip` on the server.
+Run `python -m ticker.ops.diagnostics --home /home/ubuntu --output /tmp/backend-report.zip` on the server.
 The ZIP contains `report.json` and `TRIAGE.md`.
 It excludes environment files, raw user payloads, and database contents.
 The server registers a diagnostic stack signal for the external recovery controller.
@@ -51,7 +51,7 @@ Evidence tests check source tracebacks, redaction, storage limits, and ZIP conte
 
 The core and nine provider workers are separate processes.
 The workers are `espn`, `fotmob`, `weather`, `golf`, `racing`, `stock`, `flights`, `music`, and `news`. The core makes the clock result.
-`deploy/backend/ticker.service` runs the core. The core supervisor starts each worker. No worker has a service unit.
+`deploy/server/ticker.service` runs the core. The core supervisor starts each worker. No worker has a service unit.
 The unit uses `KillMode=process`, so a core restart leaves the workers running. The new core adopts them.
 
 | Path under the home folder | Content |
@@ -63,13 +63,13 @@ The unit uses `KillMode=process`, so a core restart leaves the workers running. 
 | `ticker_data/ticker3-supervisor.json` | The active, previous, and bad release of each worker |
 
 Each release holds every source file, so the core and each worker can run any release.
-`backend_ops/components.py` reads the module import graph to select the processes that a change reaches.
-The core starts at `ticker3.server`. Each worker starts at `ticker3.worker.__main__` and its branch of `create_provider`.
+`ticker/ops/components.py` reads the module import graph to select the processes that a change reaches.
+The core starts at `ticker.server.main`. Each worker starts at `ticker.server.worker.__main__` and its branch of `create_provider`.
 For example, a change in `providers/stock_source.py` selects only `stock`.
 A change in `providers/sports_display.py` selects the core and the four sports workers.
-The worker contract, `backend_ops/`, requirements, units, and workflows select all processes.
+The worker contract, `ticker/ops/`, requirements, units, and workflows select all processes.
 A deleted provider module or a provider data file has no import edge, so it selects all processes.
-`tests/python/operations/test_component_graph.py` checks that each graph covers every module that the process really loads.
+`tests/ops/deploy/test_component_graph.py` checks that each graph covers every module that the process really loads.
 
 User state, credentials, stock caches, and firmware remain outside releases.
 A core deployment creates a private SQLite backup before activation.
@@ -94,7 +94,7 @@ After three further failed checks, it restores the previous core release.
 Three core process crashes within 30 minutes also restore the previous core release, even when a later health sample succeeds.
 If a deployment stops before confirmation, the guard resolves the saved rollback record.
 The guard copies the worker releases from the supervisor record, and reports each worker release that the supervisor marked bad.
-The guard runs on the system Python. It imports only `backend_ops` and `ticker3.contract`.
+The guard runs on the system Python. It imports only `ticker.ops` and `ticker.server.contract`.
 
 ## First Ticker 3 deployment
 
@@ -105,8 +105,16 @@ If the new core becomes ready, the deployment stops and disables the old `ticker
 If the new core fails, the deployment restores the old units, the old guard toolkit, and the old deployment record. The old fetchers keep running.
 The report queue keeps the failure reports in both cases.
 
-The Six and the Mini cannot update themselves across this deployment. Their released code reads the old paths.
-Update each device by hand after the server changes: run `updater.py` on the Six, and flash the Mini over USB.
+The Six and the Mini cannot update themselves across this deployment. Their released code reads the old routes and the old repository layout.
+Update each device by hand after the server changes:
+
+- On each Six, run the install script of the new release. It installs the newest `main` release, its requirements, and its service unit:
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/MattLD13/SportsTickerBackend/main/deploy/six/setup.sh | sudo bash
+  ```
+
+- Flash each Mini over USB.
 
 ## Agent repair workflow
 

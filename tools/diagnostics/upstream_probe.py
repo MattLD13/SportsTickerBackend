@@ -83,19 +83,19 @@ def use_ca_bundle(path: Path | None) -> None:
 def endpoint_catalog(now: datetime | None = None) -> list[Endpoint]:
     """Return each upstream request the workers make, built from production constants."""
 
-    from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, TEAM_CATALOG_PATHS, league_for
-    from sports_ticker.providers.espn import _MLB_SCHEDULE_URL
-    from sports_ticker.providers.espn_college import _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
-    from sports_ticker.providers.espn_fastcast import _DISCOVERY_URL
-    from sports_ticker.providers.fotmob import _MATCHES_URL
-    from sports_ticker.providers.golf_source import ESPN_GOLF_URL
-    from sports_ticker.providers.news_transactions import _tracker_url
-    from sports_ticker.providers.nhl_live import _SCORE_URL
-    from sports_ticker.providers.racing_endurance import _WEC
-    from sports_ticker.providers.racing_live import _F1_ESPN_URL, _INDYCAR_BLOB_BASE, _INDYCAR_ESPN_URL
-    from sports_ticker.providers.stock_source import FINNHUB_QUOTE_URL
-    from sports_ticker.providers.weather import _AIR_QUALITY_URL, _FORECAST_URL, _NWS_POINTS_URL
-    from sports_ticker.providers.weather_location import _GEOCODING_URL
+    from ticker.shared.leagues import ESPN_SCOREBOARD_PATHS, TEAM_CATALOG_PATHS, league_for
+    from ticker.server.providers.espn import _MLB_SCHEDULE_URL
+    from ticker.server.providers.espn_college import _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
+    from ticker.server.providers.espn_fastcast import _DISCOVERY_URL
+    from ticker.server.providers.fotmob import _MATCHES_URL
+    from ticker.server.providers.golf_source import ESPN_GOLF_URL
+    from ticker.server.providers.news_transactions import _tracker_url
+    from ticker.server.providers.nhl_live import _SCORE_URL
+    from ticker.server.providers.racing_endurance import _WEC
+    from ticker.server.providers.racing_live import _F1_ESPN_URL, _INDYCAR_BLOB_BASE, _INDYCAR_ESPN_URL
+    from ticker.server.providers.stock_source import FINNHUB_QUOTE_URL
+    from ticker.server.providers.weather import _AIR_QUALITY_URL, _FORECAST_URL, _NWS_POINTS_URL
+    from ticker.server.providers.weather_location import _GEOCODING_URL
 
     current = now or datetime.now(timezone.utc)
     espn = "https://site.web.api.espn.com/apis/site/v2/sports"
@@ -146,7 +146,7 @@ def _secret(names: tuple[str, ...]) -> str | None:
 def fetch_once(endpoint: Endpoint, *, timeout: float, opener: Callable = urlopen, conditional: dict[str, str] | None = None) -> Sample:
     """Send one GET request and measure it. A secret query value never enters the sample."""
 
-    from sports_ticker.tls import verified_https_context
+    from ticker.server.tls import verified_https_context
 
     url = endpoint.url
     if endpoint.secret_query is not None:
@@ -231,8 +231,8 @@ def probe_fastcast(leagues: list[str], seconds: float, *, clock: Callable[[], fl
                    sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
     """Run the production Fastcast client and count pushed changes for each league."""
 
-    from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS
-    from sports_ticker.providers.espn_fastcast import EspnFastcastSource, fastcast_topic
+    from ticker.shared.leagues import ESPN_SCOREBOARD_PATHS
+    from ticker.server.providers.espn_fastcast import EspnFastcastSource, fastcast_topic
 
     espn = "https://site.web.api.espn.com/apis/site/v2/sports"
     topics = {league: fastcast_topic(f"{espn}/{ESPN_SCOREBOARD_PATHS[league]}/scoreboard") for league in leagues}
@@ -291,7 +291,7 @@ WORKER_MODES = {"weather": "weather", "stock": "stock", "flights": "flights", "m
 def representative_settings(worker: str):
     """Return settings for the worker's own mode, with every league enabled and teams followed."""
 
-    from sports_ticker.domain import DisplaySettings
+    from ticker.shared.domain import DisplaySettings
 
     return DisplaySettings(
         mode=WORKER_MODES.get(worker, "sports"),
@@ -311,8 +311,8 @@ def worker_child(name: str, settle: float = 15.0) -> dict[str, Any]:
 
     import resource
 
-    from sports_ticker.providers.factory import create_provider
-    from sports_ticker.providers.normalization import normalize_provider_result
+    from ticker.server.providers.factory import create_provider
+    from ticker.server.providers.normalization import normalize_provider_result
 
     if name == "music":
         return {"worker": name, "skipped": "needs a linked Spotify account and the fleet database"}
@@ -404,7 +404,7 @@ def _num(value: object) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from backend_ops.worker_contract import PROVIDERS
+    from ticker.server.contract import WORKERS as PROVIDERS
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--all", action="store_true", help="Run the HTTP, Fastcast, and worker probes.")

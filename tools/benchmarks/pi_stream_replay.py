@@ -45,7 +45,7 @@ class ReplayTransportClient:
         return None
 
     def fetch_data(self, device_id):
-        from ticker_core.protocol import TickerResponse
+        from ticker.six.protocol import TickerResponse
 
         payload = self._messages[0]["payload"]
         self.last_response_bytes = len(json.dumps(payload).encode())
@@ -82,13 +82,13 @@ def main() -> None:
     sys.path.insert(0, str(args.repository.resolve()))
     sys.dont_write_bytecode = True
 
-    from ticker_core.app.application import TickerApplication
-    from ticker_core.app.poller import BackendPoller
-    from ticker_core.assets import ShortTermContentCache
-    from ticker_core.bootstrap import create_default_frame_builder
-    from ticker_core.drivers import RgbMatrixFrameSink
-    from ticker_core.platform import AssetCoordinator, TickerPiLogger
-    from ticker_core.runtime import FramePacer, TickerRuntime
+    from ticker.six.app.application import TickerApplication
+    from ticker.six.app.poller import BackendPoller
+    from ticker.six.assets import ShortTermContentCache
+    from ticker.six.bootstrap import create_default_frame_builder
+    from ticker.six.drivers import RgbMatrixFrameSink
+    from ticker.six.platform import AssetCoordinator, TickerPiLogger
+    from ticker.six.runtime import FramePacer, TickerRuntime
 
     messages = json.loads(args.messages.read_text(encoding="utf-8-sig"))
     if not messages or messages[0].get("type") != "snapshot":

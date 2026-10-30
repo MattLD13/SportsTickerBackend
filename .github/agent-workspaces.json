@@ -22,8 +22,8 @@
         ".gitignore",
         ".gitattributes",
         "pyproject.toml",
-        "requirements.txt",
-        "requirements-backend.txt",
+        "requirements/base.txt",
+        "requirements/server.txt",
         "CLAUDE.md",
         "GEMINI.md",
         ".github/copilot-instructions.md",
@@ -49,57 +49,57 @@
       ],
       "context": [],
       "build": [
-        "sports_ticker/__init__.py",
-        "sports_ticker/leagues.py",
-        "sports_ticker/markets.py",
-        "ticker3/__init__.py",
-        "sports_ticker/providers/*.py",
-        "ticker_core/protocol/*.py",
-        "ticker_core/ui/__init__.py",
-        "ticker_core/ui/catalog.py",
-        "ticker_core/ui/frame.py",
-        "ticker_core/ui/layers.py",
-        "ticker_core/ui/palette.py",
-        "ticker_core/ui/strip.py",
-        "ticker_core/ui/text.py",
-        "ticker_core/ui/font_assets/*",
-        "ticker_core/__init__.py",
-        "ticker_core/_enum.py"
+        "ticker/shared/__init__.py",
+        "ticker/shared/leagues.py",
+        "ticker/server/markets.py",
+        "ticker/server/__init__.py",
+        "ticker/server/providers/*.py",
+        "ticker/six/protocol/*.py",
+        "ticker/six/ui/__init__.py",
+        "ticker/six/ui/catalog.py",
+        "ticker/six/ui/frame.py",
+        "ticker/six/ui/layers.py",
+        "ticker/six/ui/palette.py",
+        "ticker/six/ui/strip.py",
+        "ticker/six/ui/text.py",
+        "ticker/six/ui/font_assets/*",
+        "ticker/six/__init__.py",
+        "ticker/six/_enum.py"
       ],
       "checks": []
     },
     "server-core": {
       "owner": "Ticker 3 server: models, projections, API, engine, workers, and persistence",
       "owned": [
-        "sports_ticker/domain/*",
-        "sports_ticker/projections/*",
-        "sports_ticker/application/*",
-        "sports_ticker/fleet/*",
-        "ticker3/*",
+        "ticker/shared/domain/*",
+        "ticker/server/projections/*",
+        "ticker/server/services/*",
+        "ticker/server/store/*",
+        "ticker/server/*",
         "docs/api.md",
         "docs/contracts/*",
-        "ticker_core/protocol/*"
+        "ticker/six/protocol/*"
       ],
       "dependencies": [
         "python-build"
       ],
       "context": [
-        "sports_ticker/domain/models.py",
-        "sports_ticker/projections/data_api.py",
-        "sports_ticker/projections/device_data.py",
-        "sports_ticker/projections/mini_fields.py",
-        "ticker3/api/__init__.py",
+        "ticker/shared/domain/models.py",
+        "ticker/server/projections/data_api.py",
+        "ticker/server/projections/device_data.py",
+        "ticker/server/projections/mini_fields.py",
+        "ticker/server/api/__init__.py",
         "docs/api.md",
         "docs/contracts/overview.md"
       ],
       "build": [
-        "sports_ticker/domain/*.py",
-        "sports_ticker/projections/*",
+        "ticker/shared/domain/*.py",
+        "ticker/server/projections/*",
         "tools/mini/generate_mini_fields.py",
-        "esp32_hub75/src/mini/protocol/fields_generated.h",
-        "sports_ticker/application/*.py",
-        "sports_ticker/fleet/*.py",
-        "ticker3/*"
+        "mini/src/mini/protocol/fields_generated.h",
+        "ticker/server/services/*.py",
+        "ticker/server/store/*.py",
+        "ticker/server/*"
       ],
       "checks": [
         "mini-fields"
@@ -108,33 +108,33 @@
     "sports-server": {
       "owner": "Shared sports provider facts and score alerts for both devices",
       "owned": [
-        "sports_ticker/providers/espn*.py",
-        "sports_ticker/providers/nhl_live.py",
-        "sports_ticker/providers/sports_display.py",
-        "sports_ticker/providers/score_alerts.py",
-        "sports_ticker/providers/fotmob.py"
+        "ticker/server/providers/espn*.py",
+        "ticker/server/providers/nhl_live.py",
+        "ticker/shared/sports_display.py",
+        "ticker/server/providers/score_alerts.py",
+        "ticker/server/providers/fotmob.py"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [
-        "sports_ticker/providers/espn.py",
-        "sports_ticker/providers/sports_display.py",
-        "sports_ticker/providers/nhl_live.py",
-        "sports_ticker/providers/score_alerts.py"
+        "ticker/server/providers/espn.py",
+        "ticker/shared/sports_display.py",
+        "ticker/server/providers/nhl_live.py",
+        "ticker/server/providers/score_alerts.py"
       ],
       "build": [
-        "tests/python/protocol/test_hockey_shootout_alert.py",
-        "tests/python/protocol/test_mini_hockey_contract.py",
-        "tests/python/protocol/test_mini_fields.py",
-        "tests/python/protocol/test_sports_display.py",
-        "tests/python/protocol/test_sports_lifecycle.py",
-        "tests/python/protocol/test_nhl_live.py",
+        "tests/server/providers/test_hockey_shootout_alert.py",
+        "tests/shared/display/test_mini_hockey_contract.py",
+        "tests/server/projections/test_mini_fields.py",
+        "tests/shared/display/test_sports_display.py",
+        "tests/server/projections/test_sports_lifecycle.py",
+        "tests/server/providers/test_nhl_live.py",
         "tests/fixtures/display/*.json",
         "tools/mini/generate_mini_fields.py",
         "tools/mini/generate_mini_ui.py",
-        "esp32_hub75/src/mini/protocol/fields_generated.h",
-        "esp32_hub75/src/mini/ui/generated.h"
+        "mini/src/mini/protocol/fields_generated.h",
+        "mini/src/mini/ui/generated.h"
       ],
       "checks": [
         "sports-contracts",
@@ -144,48 +144,48 @@
     "mini-firmware": {
       "owner": "Mini protocol, runtime, and 64x32 renderers",
       "owned": [
-        "esp32_hub75/*"
+        "mini/*"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [],
       "build": [
-        "esp32_hub75/src/mini/protocol/*",
-        "esp32_hub75/src/mini/ui/*",
-        "esp32_hub75/src/mini/assets/mini_artwork.h",
-        "esp32_hub75/src/mini/assets/mini_sprite.h",
-        "esp32_hub75/platformio.ini",
-        "esp32_hub75/partitions.csv",
-        "tests/native/mini_hockey_panes.cpp",
+        "mini/src/mini/protocol/*",
+        "mini/src/mini/ui/*",
+        "mini/src/mini/assets/mini_artwork.h",
+        "mini/src/mini/assets/mini_sprite.h",
+        "mini/platformio.ini",
+        "mini/partitions.csv",
+        "tests/mini/mini_hockey_panes.cpp",
         "tools/mini/generate_mini_ui.py",
-        "esp32_hub75/src/mini/platform/boot_validation.cpp",
-        "esp32_hub75/src/mini/platform/connectivity.inc",
-        "esp32_hub75/src/mini/platform/deadline_client.h",
-        "esp32_hub75/src/mini/platform/device_credentials.cpp",
-        "esp32_hub75/src/mini/platform/device_credentials.h",
-        "esp32_hub75/src/mini/platform/display_metrics.h",
-        "esp32_hub75/src/mini/platform/firmware_update.cpp",
-        "esp32_hub75/src/mini/platform/firmware_update.h",
-        "esp32_hub75/src/mini/platform/firmware_validation.h",
-        "esp32_hub75/src/mini/platform/http_diagnostics.cpp",
-        "esp32_hub75/src/mini/platform/http_diagnostics.h",
-        "esp32_hub75/src/mini/platform/matrix_driver.cpp",
-        "esp32_hub75/src/mini/platform/matrix_driver.h",
-        "esp32_hub75/src/mini/platform/network_gate.cpp",
-        "esp32_hub75/src/mini/platform/network_gate.h",
-        "esp32_hub75/src/mini/platform/network_recovery.h",
-        "esp32_hub75/src/mini/platform/response_stream.h",
-        "esp32_hub75/src/mini/platform/station_retry.h",
-        "esp32_hub75/src/mini/platform/tls.h",
-        "esp32_hub75/src/mini/platform/tls_client.h",
-        "esp32_hub75/src/mini/platform/transfer_deadline.h",
-        "esp32_hub75/src/mini/platform/wifi_station.cpp",
-        "esp32_hub75/src/mini/platform/wifi_station.h",
-        "esp32_hub75/src/mini/runtime/*",
-        "esp32_hub75/src/mini/runtime/modes.inc",
-        "esp32_hub75/src/mini/assets/*",
-        "esp32_hub75/src/main.cpp"
+        "mini/src/mini/platform/boot_validation.cpp",
+        "mini/src/mini/platform/connectivity.inc",
+        "mini/src/mini/platform/deadline_client.h",
+        "mini/src/mini/platform/device_credentials.cpp",
+        "mini/src/mini/platform/device_credentials.h",
+        "mini/src/mini/platform/display_metrics.h",
+        "mini/src/mini/platform/firmware_update.cpp",
+        "mini/src/mini/platform/firmware_update.h",
+        "mini/src/mini/platform/firmware_validation.h",
+        "mini/src/mini/platform/http_diagnostics.cpp",
+        "mini/src/mini/platform/http_diagnostics.h",
+        "mini/src/mini/platform/matrix_driver.cpp",
+        "mini/src/mini/platform/matrix_driver.h",
+        "mini/src/mini/platform/network_gate.cpp",
+        "mini/src/mini/platform/network_gate.h",
+        "mini/src/mini/platform/network_recovery.h",
+        "mini/src/mini/platform/response_stream.h",
+        "mini/src/mini/platform/station_retry.h",
+        "mini/src/mini/platform/tls.h",
+        "mini/src/mini/platform/tls_client.h",
+        "mini/src/mini/platform/transfer_deadline.h",
+        "mini/src/mini/platform/wifi_station.cpp",
+        "mini/src/mini/platform/wifi_station.h",
+        "mini/src/mini/runtime/*",
+        "mini/src/mini/runtime/modes.inc",
+        "mini/src/mini/assets/*",
+        "mini/src/main.cpp"
       ],
       "checks": [
         "mini-fields"
@@ -194,71 +194,71 @@
     "six-runtime": {
       "owner": "Ticker Six runtime and 384x32 renderers",
       "owned": [
-        "ticker_core/app/*",
-        "ticker_core/runtime/*",
-        "ticker_core/drivers/*",
-        "ticker_core/platform/*",
-        "ticker_core/bootstrap.py",
-        "ticker_core/composition.py",
-        "ticker_core/__main__.py",
-        "updater.py",
-        "setup.sh",
-        "ticker-controller.service"
+        "ticker/six/app/*",
+        "ticker/six/runtime/*",
+        "ticker/six/drivers/*",
+        "ticker/six/platform/*",
+        "ticker/six/bootstrap.py",
+        "ticker/six/composition.py",
+        "ticker/six/__main__.py",
+        "ticker/six/updater.py",
+        "deploy/six/setup.sh",
+        "deploy/six/ticker-controller.service"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "ticker_core/app/application.py",
-        "ticker_core/app/poller.py",
-        "ticker_core/platform/wifi.py",
-        "ticker_core/platform/update.py"
+        "ticker/six/app/application.py",
+        "ticker/six/app/poller.py",
+        "ticker/six/platform/wifi.py",
+        "ticker/six/platform/update.py"
       ],
       "build": [
-        "ticker_core/*",
+        "ticker/six/*",
         "tools/rendering/render_frame.py",
-        "tests/python/features/sports/test_sports_renderers.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "tests/six/ui/test_sports_renderers.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": []
     },
     "app-contracts": {
       "owner": "iOS controller app and its server contract",
       "owned": [
-        "TickerControlApp/*"
+        "ios/*"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [
-        "TickerControlApp/TickerControl/Core/Models/Feed.swift",
-        "TickerControlApp/TickerControl/Core/Store/TickerStore.swift",
-        "TickerControlApp/TickerControlTests/ContractTests.swift"
+        "ios/TickerControl/Core/Models/Feed.swift",
+        "ios/TickerControl/Core/Store/TickerStore.swift",
+        "ios/TickerControlTests/ContractTests.swift"
       ],
       "build": [
-        "TickerControlApp/*"
+        "ios/*"
       ],
       "checks": []
     },
     "music": {
       "owner": "Music provider and device presentation",
       "owned": [
-        "sports_ticker/providers/music.py",
-        "ticker_core/ui/cards/music.py"
+        "ticker/server/providers/music.py",
+        "ticker/six/ui/cards/music.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/music.py"
+        "ticker/server/providers/music.py"
       ],
       "build": [
-        "ticker_core/ui/cards/music.py",
-        "tests/python/protocol/test_music_stale_scope.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/cards/music.py",
+        "tests/server/providers/test_music_stale_scope.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "music-domain"
@@ -267,9 +267,9 @@
     "weather": {
       "owner": "Weather provider and device presentation",
       "owned": [
-        "sports_ticker/providers/weather.py",
-        "ticker_core/ui/cards/weather.py",
-        "tests/python/features/weather/*"
+        "ticker/server/providers/weather.py",
+        "ticker/six/ui/cards/weather.py",
+        "tests/six/ui/test_weather_*.py"
       ],
       "dependencies": [
         "server-core",
@@ -277,14 +277,14 @@
         "weather-art"
       ],
       "context": [
-        "sports_ticker/providers/weather.py"
+        "ticker/server/providers/weather.py"
       ],
       "build": [
-        "ticker_core/ui/cards/weather.py",
-        "tests/python/protocol/test_weather_provider.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py",
-        "tests/python/features/weather/*"
+        "ticker/six/ui/cards/weather.py",
+        "tests/server/providers/test_weather_provider.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py",
+        "tests/six/ui/test_weather_*.py"
       ],
       "checks": [
         "weather-domain",
@@ -294,23 +294,23 @@
     "stocks": {
       "owner": "Stocks provider and device presentation",
       "owned": [
-        "sports_ticker/providers/stocks.py",
-        "sports_ticker/providers/market_sessions.py",
-        "ticker_core/ui/cards/stock.py"
+        "ticker/server/providers/stocks.py",
+        "ticker/server/providers/market_sessions.py",
+        "ticker/six/ui/cards/stock.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/stocks.py",
-        "sports_ticker/providers/market_sessions.py"
+        "ticker/server/providers/stocks.py",
+        "ticker/server/providers/market_sessions.py"
       ],
       "build": [
-        "ticker_core/ui/cards/stock.py",
-        "tests/python/features/utility/*",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/cards/stock.py",
+        "tests/six/ui/test_utility_renderers.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "stocks-domain"
@@ -319,21 +319,21 @@
     "flights": {
       "owner": "Flights provider and device presentation",
       "owned": [
-        "sports_ticker/providers/flights.py",
-        "ticker_core/ui/cards/flight.py"
+        "ticker/server/providers/flights.py",
+        "ticker/six/ui/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/flights.py"
+        "ticker/server/providers/flights.py"
       ],
       "build": [
-        "ticker_core/ui/cards/flight.py",
-        "tests/python/protocol/test_flights.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/cards/flight.py",
+        "tests/server/providers/test_flights.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "flights-domain"
@@ -342,21 +342,21 @@
     "airports": {
       "owner": "Airports provider and device presentation",
       "owned": [
-        "sports_ticker/providers/flights.py",
-        "ticker_core/ui/cards/flight.py"
+        "ticker/server/providers/flights.py",
+        "ticker/six/ui/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/flights.py"
+        "ticker/server/providers/flights.py"
       ],
       "build": [
-        "ticker_core/ui/cards/flight.py",
-        "tests/python/protocol/test_flights.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/cards/flight.py",
+        "tests/server/providers/test_flights.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "airports-domain"
@@ -365,21 +365,21 @@
     "golf": {
       "owner": "Golf provider and device presentation",
       "owned": [
-        "sports_ticker/providers/golf.py",
-        "ticker_core/ui/cards/golf.py"
+        "ticker/server/providers/golf.py",
+        "ticker/six/ui/cards/golf.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/golf.py"
+        "ticker/server/providers/golf.py"
       ],
       "build": [
-        "ticker_core/ui/cards/golf.py",
-        "tests/python/protocol/test_golf_provider.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/cards/golf.py",
+        "tests/server/providers/test_golf_provider.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "golf-domain"
@@ -388,23 +388,23 @@
     "racing": {
       "owner": "Racing provider and device presentation",
       "owned": [
-        "sports_ticker/providers/racing.py",
-        "sports_ticker/providers/racing_live.py",
-        "ticker_core/ui/cards/racing.py"
+        "ticker/server/providers/racing.py",
+        "ticker/server/providers/racing_live.py",
+        "ticker/six/ui/cards/racing.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/racing.py",
-        "sports_ticker/providers/racing_live.py"
+        "ticker/server/providers/racing.py",
+        "ticker/server/providers/racing_live.py"
       ],
       "build": [
-        "ticker_core/ui/cards/racing.py",
-        "tests/python/protocol/test_racing_live_source.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/cards/racing.py",
+        "tests/server/providers/test_racing_live_source.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "racing-domain"
@@ -413,25 +413,25 @@
     "news": {
       "owner": "News provider and device presentation",
       "owned": [
-        "sports_ticker/providers/news.py",
-        "sports_ticker/providers/news_transactions.py",
-        "ticker_core/ui/score_alert.py",
-        "ticker_core/ui/news_banner.py"
+        "ticker/server/providers/news.py",
+        "ticker/server/providers/news_transactions.py",
+        "ticker/six/ui/score_alert.py",
+        "ticker/six/ui/news_banner.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "sports_ticker/providers/news.py",
-        "sports_ticker/providers/news_transactions.py"
+        "ticker/server/providers/news.py",
+        "ticker/server/providers/news_transactions.py"
       ],
       "build": [
-        "ticker_core/ui/score_alert.py",
-        "ticker_core/ui/news_banner.py",
-        "tests/python/protocol/test_news_distribution.py",
-        "sports_ticker/assets/__init__.py",
-        "sports_ticker/assets/images.py"
+        "ticker/six/ui/score_alert.py",
+        "ticker/six/ui/news_banner.py",
+        "tests/server/providers/test_news_distribution.py",
+        "ticker/server/mini_assets/__init__.py",
+        "ticker/shared/images.py"
       ],
       "checks": [
         "news-domain"
@@ -445,8 +445,8 @@
       "owned": [],
       "context": [],
       "build": [
-        "ticker_core/*",
-        "sports_ticker/assets/*.py"
+        "ticker/six/*",
+        "ticker/shared/*.py"
       ],
       "checks": []
     },
@@ -456,12 +456,12 @@
         "sports-server"
       ],
       "owned": [
-        "ticker_core/ui/text.py",
-        "ticker_core/ui/palette.py"
+        "ticker/six/ui/text.py",
+        "ticker/six/ui/palette.py"
       ],
       "context": [
-        "ticker_core/ui/text.py",
-        "ticker_core/ui/palette.py"
+        "ticker/six/ui/text.py",
+        "ticker/six/ui/palette.py"
       ],
       "build": [],
       "checks": [
@@ -471,20 +471,20 @@
     "mini-sports-renderer": {
       "owner": "Mini sports protocol and 64x32 panes",
       "owned": [
-        "esp32_hub75/src/mini/ui/sports.h"
+        "mini/src/mini/ui/sports.h"
       ],
       "dependencies": [
         "sports-server",
         "mini-firmware"
       ],
       "context": [
-        "esp32_hub75/src/mini/protocol/payload.inc",
-        "esp32_hub75/src/mini/runtime/display.inc",
-        "esp32_hub75/src/mini/ui/sports.h",
-        "esp32_hub75/src/mini/ui/text.h",
-        "tests/python/protocol/test_hockey_shootout_alert.py",
-        "tests/python/protocol/test_mini_hockey_contract.py",
-        "tests/native/mini_hockey_panes.cpp"
+        "mini/src/mini/protocol/payload.inc",
+        "mini/src/mini/runtime/display.inc",
+        "mini/src/mini/ui/sports.h",
+        "mini/src/mini/ui/text.h",
+        "tests/server/providers/test_hockey_shootout_alert.py",
+        "tests/shared/display/test_mini_hockey_contract.py",
+        "tests/mini/mini_hockey_panes.cpp"
       ],
       "build": [],
       "checks": [
@@ -495,25 +495,25 @@
     "backend-operations": {
       "owner": "Backend deployment, recovery, and reporting",
       "owned": [
-        "backend_ops/*",
-        "deploy/backend/*",
+        "ticker/ops/*",
+        "deploy/server/*",
         "tools/deployment/*"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [
-        "backend_ops/manager.py",
-        "backend_ops/components.py",
-        "backend_ops/reporting.py",
+        "ticker/ops/manager.py",
+        "ticker/ops/components.py",
+        "ticker/ops/reporting.py",
         "docs/operations/backend-recovery.md"
       ],
       "build": [
-        "backend_ops/*.py",
-        "deploy/backend/*",
+        "ticker/ops/*.py",
+        "deploy/server/*",
         "tools/deployment/*.py",
-        "tests/python/operations/test_backend*.py",
-        "tests/python/operations/test_runtime_reporting.py"
+        "tests/ops/*/test_backend*.py",
+        "tests/ops/recovery/test_runtime_reporting.py"
       ],
       "checks": []
     },
@@ -525,8 +525,8 @@
         "music"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/music.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/music.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -539,8 +539,8 @@
         "weather"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/weather.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/weather.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -553,8 +553,8 @@
         "stocks"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/aviation.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/aviation.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -567,8 +567,8 @@
         "flights"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/aviation.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/aviation.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -581,8 +581,8 @@
         "airports"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/aviation.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/aviation.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -595,8 +595,8 @@
         "golf"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/aviation.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/aviation.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -609,8 +609,8 @@
         "racing"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/aviation.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/aviation.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -623,8 +623,8 @@
         "news"
       ],
       "context": [
-        "esp32_hub75/src/mini/ui/system.h",
-        "esp32_hub75/src/mini/runtime/display.inc"
+        "mini/src/mini/ui/system.h",
+        "mini/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -632,16 +632,16 @@
     "clock": {
       "owner": "Clock presentation",
       "owned": [
-        "ticker_core/ui/cards/clock.py"
+        "ticker/six/ui/cards/clock.py"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "ticker_core/ui/cards/clock.py"
+        "ticker/six/ui/cards/clock.py"
       ],
       "build": [
-        "tests/python/clock/test_clock_renderer.py"
+        "tests/six/ui/test_clock_renderer.py"
       ],
       "checks": [
         "clock-domain"
@@ -661,14 +661,14 @@
         "tools/workspaces/*",
         "docs/development/agent-workspaces.md",
         "docs/development/agent-rules.md",
-        "tests/python/operations/test_agent_workspaces.py",
-        "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_context_planner.py",
+        "tests/tools/workspaces/test_agent_workspaces.py",
+        "tests/tools/workspaces/test_agent_startup.py",
+        "tests/tools/workspaces/test_context_planner.py",
         "tools/benchmarks/context_discovery.py",
         "docs/contracts/agent-context-cases.json",
-        "tests/python/operations/test_context_discovery.py",
-        "tests/python/operations/test_context_benchmark.py",
-        "tests/python/operations/test_context_find.py"
+        "tests/tools/workspaces/test_context_discovery.py",
+        "tests/tools/benchmarks/test_context_benchmark.py",
+        "tests/tools/workspaces/test_context_find.py"
       ],
       "dependencies": [
         "instructions"
@@ -676,20 +676,20 @@
       "context": [
         "tools/workspaces/start.py",
         "tools/workspaces/manage.py",
-        "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_agent_workspaces.py",
+        "tests/tools/workspaces/test_agent_startup.py",
+        "tests/tools/workspaces/test_agent_workspaces.py",
         "docs/development/agent-workspaces.md",
         "tools/workspaces/planner.py",
         "tools/workspaces/discovery.py"
       ],
       "build": [
         "tools/workspaces/native_hockey.py",
-        "tests/python/operations/test_context_planner.py",
+        "tests/tools/workspaces/test_context_planner.py",
         "tools/benchmarks/context_discovery.py",
         "docs/contracts/agent-context-cases.json",
-        "tests/python/operations/test_context_discovery.py",
-        "tests/python/operations/test_context_benchmark.py",
-        "tests/python/operations/test_context_find.py"
+        "tests/tools/workspaces/test_context_discovery.py",
+        "tests/tools/benchmarks/test_context_benchmark.py",
+        "tests/tools/workspaces/test_context_find.py"
       ],
       "checks": [
         "agent-setup"
@@ -698,16 +698,16 @@
     "mini-runtime": {
       "owner": "Mini scheduling, connectivity, and firmware lifecycle",
       "owned": [
-        "esp32_hub75/src/mini/runtime/*",
-        "esp32_hub75/src/mini/platform/*"
+        "mini/src/mini/runtime/*",
+        "mini/src/mini/platform/*"
       ],
       "dependencies": [
         "mini-firmware"
       ],
       "context": [
-        "esp32_hub75/src/mini/runtime/scheduler.inc",
-        "esp32_hub75/src/mini/runtime/network.cpp",
-        "esp32_hub75/src/mini/platform/network_recovery.h"
+        "mini/src/mini/runtime/scheduler.inc",
+        "mini/src/mini/runtime/network.cpp",
+        "mini/src/mini/platform/network_recovery.h"
       ],
       "build": [],
       "checks": []
@@ -715,18 +715,18 @@
     "six-sports-renderer": {
       "owner": "Ticker Six sports presentation",
       "owned": [
-        "ticker_core/ui/sports/*"
+        "ticker/six/ui/sports/*"
       ],
       "dependencies": [
         "sports-server",
         "six-build"
       ],
       "context": [
-        "ticker_core/ui/sports/__init__.py",
-        "ticker_core/ui/sports/pinned.py"
+        "ticker/six/ui/sports/__init__.py",
+        "ticker/six/ui/sports/pinned.py"
       ],
       "build": [
-        "tests/python/features/sports/test_sports_renderers.py",
+        "tests/six/ui/test_sports_renderers.py",
         "tools/rendering/render_frame.py"
       ],
       "checks": [
@@ -736,23 +736,26 @@
     "six-rendering": {
       "owner": "Ticker Six renderer contracts, catalog, preview tools, and generic renderer tests",
       "owned": [
-        "ticker_core/ui/catalog.py",
-        "ticker_core/ui/palette.py",
-        "ticker_core/ui/text.py",
-        "ticker_core/ui/frame.py",
-        "ticker_core/ui/strip.py",
-        "tests/python/rendering/*",
+        "ticker/six/ui/catalog.py",
+        "ticker/six/ui/palette.py",
+        "ticker/six/ui/text.py",
+        "ticker/six/ui/frame.py",
+        "ticker/six/ui/strip.py",
+        "tests/six/ui/test_catalog.py",
+        "tests/six/ui/test_templates.py",
+        "tests/six/ui/test_six_golden.py",
+        "tests/six/ui/test_frozen_baseline.py",
         "tools/rendering/render_frame.py"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "ticker_core/ui/catalog.py",
-        "tests/python/rendering/test_catalog.py"
+        "ticker/six/ui/catalog.py",
+        "tests/six/ui/test_catalog.py"
       ],
       "build": [
-        "tests/python/rendering/test_catalog.py",
+        "tests/six/ui/test_catalog.py",
         "tools/rendering/render_frame.py"
       ],
       "checks": [
@@ -762,22 +765,22 @@
     "weather-art": {
       "owner": "Shared Six and Mini weather icon timing and generated artwork",
       "owned": [
-        "ticker_core/ui/weather_art.py",
+        "ticker/six/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py",
-        "esp32_hub75/src/mini/ui/weather_art_generated.h"
+        "mini/src/mini/ui/weather_art_generated.h"
       ],
       "dependencies": [
         "six-build",
         "mini-firmware"
       ],
       "context": [
-        "ticker_core/ui/weather_art.py",
+        "ticker/six/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py"
       ],
       "build": [
         "tools/mini/generate_mini_weather.py",
-        "esp32_hub75/src/mini/ui/weather_art_generated.h",
-        "tests/python/features/weather/test_weather_art_contract.py"
+        "mini/src/mini/ui/weather_art_generated.h",
+        "tests/six/ui/test_weather_art_contract.py"
       ],
       "checks": [
         "weather-art"
@@ -880,20 +883,20 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_hockey_shootout_alert.py",
-        "tests/python/protocol/test_mini_hockey_contract.py",
-        "tests/python/protocol/test_mini_fields.py",
-        "tests/python/protocol/test_sports_display.py",
-        "tests/python/protocol/test_sports_lifecycle.py",
-        "tests/python/protocol/test_nhl_live.py"
+        "tests/server/providers/test_hockey_shootout_alert.py",
+        "tests/shared/display/test_mini_hockey_contract.py",
+        "tests/server/projections/test_mini_fields.py",
+        "tests/shared/display/test_sports_display.py",
+        "tests/server/projections/test_sports_lifecycle.py",
+        "tests/server/providers/test_nhl_live.py"
       ],
       "files": [
-        "tests/python/protocol/test_hockey_shootout_alert.py",
-        "tests/python/protocol/test_mini_hockey_contract.py",
-        "tests/python/protocol/test_mini_fields.py",
-        "tests/python/protocol/test_sports_display.py",
-        "tests/python/protocol/test_sports_lifecycle.py",
-        "tests/python/protocol/test_nhl_live.py"
+        "tests/server/providers/test_hockey_shootout_alert.py",
+        "tests/shared/display/test_mini_hockey_contract.py",
+        "tests/server/projections/test_mini_fields.py",
+        "tests/shared/display/test_sports_display.py",
+        "tests/server/projections/test_sports_lifecycle.py",
+        "tests/server/providers/test_nhl_live.py"
       ]
     },
     "mini-fields": {
@@ -914,7 +917,7 @@
       ],
       "files": [
         "tools/mini/generate_mini_ui.py",
-        "esp32_hub75/src/mini/ui/generated.h"
+        "mini/src/mini/ui/generated.h"
       ]
     },
     "mini-native": {
@@ -923,7 +926,7 @@
         "{tools}/workspaces/native_hockey.py"
       ],
       "files": [
-        "tests/native/mini_hockey_panes.cpp",
+        "tests/mini/mini_hockey_panes.cpp",
         "tests/fixtures/display/mini_hockey_panes.json"
       ]
     },
@@ -933,10 +936,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/features/sports/test_sports_renderers.py"
+        "tests/six/ui/test_sports_renderers.py"
       ],
       "files": [
-        "tests/python/features/sports/test_sports_renderers.py"
+        "tests/six/ui/test_sports_renderers.py"
       ]
     },
     "music-domain": {
@@ -945,10 +948,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_music_stale_scope.py"
+        "tests/server/providers/test_music_stale_scope.py"
       ],
       "files": [
-        "tests/python/protocol/test_music_stale_scope.py"
+        "tests/server/providers/test_music_stale_scope.py"
       ]
     },
     "weather-domain": {
@@ -957,10 +960,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_weather_provider.py"
+        "tests/server/providers/test_weather_provider.py"
       ],
       "files": [
-        "tests/python/protocol/test_weather_provider.py"
+        "tests/server/providers/test_weather_provider.py"
       ]
     },
     "stocks-domain": {
@@ -969,10 +972,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/features/utility"
+        "tests/six/ui/test_utility_renderers.py"
       ],
       "files": [
-        "tests/python/features/utility/*"
+        "tests/six/ui/test_utility_renderers.py"
       ]
     },
     "flights-domain": {
@@ -981,10 +984,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_flights.py"
+        "tests/server/providers/test_flights.py"
       ],
       "files": [
-        "tests/python/protocol/test_flights.py"
+        "tests/server/providers/test_flights.py"
       ]
     },
     "airports-domain": {
@@ -993,10 +996,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_flights.py"
+        "tests/server/providers/test_flights.py"
       ],
       "files": [
-        "tests/python/protocol/test_flights.py"
+        "tests/server/providers/test_flights.py"
       ]
     },
     "golf-domain": {
@@ -1005,10 +1008,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_golf_provider.py"
+        "tests/server/providers/test_golf_provider.py"
       ],
       "files": [
-        "tests/python/protocol/test_golf_provider.py"
+        "tests/server/providers/test_golf_provider.py"
       ]
     },
     "racing-domain": {
@@ -1017,10 +1020,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_racing_live_source.py"
+        "tests/server/providers/test_racing_live_source.py"
       ],
       "files": [
-        "tests/python/protocol/test_racing_live_source.py"
+        "tests/server/providers/test_racing_live_source.py"
       ]
     },
     "news-domain": {
@@ -1029,10 +1032,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/protocol/test_news_distribution.py"
+        "tests/server/providers/test_news_distribution.py"
       ],
       "files": [
-        "tests/python/protocol/test_news_distribution.py"
+        "tests/server/providers/test_news_distribution.py"
       ]
     },
     "agent-setup": {
@@ -1041,20 +1044,20 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/operations/test_agent_workspaces.py",
-        "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_context_planner.py",
-        "tests/python/operations/test_context_discovery.py",
-        "tests/python/operations/test_context_benchmark.py",
-        "tests/python/operations/test_context_find.py"
+        "tests/tools/workspaces/test_agent_workspaces.py",
+        "tests/tools/workspaces/test_agent_startup.py",
+        "tests/tools/workspaces/test_context_planner.py",
+        "tests/tools/workspaces/test_context_discovery.py",
+        "tests/tools/benchmarks/test_context_benchmark.py",
+        "tests/tools/workspaces/test_context_find.py"
       ],
       "files": [
-        "tests/python/operations/test_agent_workspaces.py",
-        "tests/python/operations/test_agent_startup.py",
-        "tests/python/operations/test_context_planner.py",
-        "tests/python/operations/test_context_discovery.py",
-        "tests/python/operations/test_context_benchmark.py",
-        "tests/python/operations/test_context_find.py"
+        "tests/tools/workspaces/test_agent_workspaces.py",
+        "tests/tools/workspaces/test_agent_startup.py",
+        "tests/tools/workspaces/test_context_planner.py",
+        "tests/tools/workspaces/test_context_discovery.py",
+        "tests/tools/benchmarks/test_context_benchmark.py",
+        "tests/tools/workspaces/test_context_find.py"
       ]
     },
     "clock-domain": {
@@ -1063,10 +1066,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/clock/test_clock_renderer.py"
+        "tests/six/ui/test_clock_renderer.py"
       ],
       "files": [
-        "tests/python/clock/test_clock_renderer.py"
+        "tests/six/ui/test_clock_renderer.py"
       ]
     },
     "six-catalog": {
@@ -1075,10 +1078,10 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/rendering/test_catalog.py"
+        "tests/six/ui/test_catalog.py"
       ],
       "files": [
-        "tests/python/rendering/test_catalog.py"
+        "tests/six/ui/test_catalog.py"
       ]
     },
     "weather-art": {
@@ -1089,7 +1092,7 @@
       ],
       "files": [
         "tools/mini/generate_mini_weather.py",
-        "esp32_hub75/src/mini/ui/weather_art_generated.h"
+        "mini/src/mini/ui/weather_art_generated.h"
       ]
     },
     "weather-animation": {
@@ -1098,10 +1101,11 @@
         "-m",
         "pytest",
         "-q",
-        "tests/python/features/weather"
+        "tests/six/ui/test_weather_animation.py",
+        "tests/six/ui/test_weather_art_contract.py"
       ],
       "files": [
-        "tests/python/features/weather/*"
+        "tests/six/ui/test_weather_*.py"
       ]
     }
   },

@@ -21,7 +21,7 @@ DENIED = (".git/*", ".env*", "*/.env*", "*.key", "*.pem", "*.ppk", "*.secret",
           ".ssh/*", ".claude/*", ".codex/*", ".gemini/*", ".oci/*", ".tmp/*", "ticker_data/*", "hardware/*",
           "previews/*", "caches/*", "*.log", ".spotify_token", "*credentials*.json",
           "stock_cache.json", "game_cache.json", "global_config.json", "*.sqlite*", "*.db",
-          "esp32_hub75/src/mini/platform/config.h")
+          "mini/src/mini/platform/config.h")
 PUBLIC_AGENT_CONFIGS = frozenset((".claude/settings.json", ".codex/hooks.json", ".gemini/settings.json"))
 
 

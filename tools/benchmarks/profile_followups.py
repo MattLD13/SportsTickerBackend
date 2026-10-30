@@ -33,11 +33,11 @@ def metrics(values):
 
 
 def demand(args):
-    from sports_ticker.application.provider_demand import ProviderDemand
-    from sports_ticker.application.schedule import ScheduleService
-    from sports_ticker.application.state_store import SnapshotStore
-    from sports_ticker.domain import DisplaySettings
-    from sports_ticker.fleet import TickerRepository
+    from ticker.server.services.provider_demand import ProviderDemand
+    from ticker.server.services.schedule import ScheduleService
+    from ticker.server.services.state_store import SnapshotStore
+    from ticker.shared.domain import DisplaySettings
+    from ticker.server.store import TickerRepository
 
     now = datetime(2026, 5, 5, 12, tzinfo=timezone.utc)
     providers = ("espn", "golf", "stock", "flights", "weather")
@@ -73,7 +73,7 @@ def demand(args):
 
 
 def fastcast(args):
-    from sports_ticker.providers.espn_fastcast import EspnFastcastSource
+    from ticker.server.providers.espn_fastcast import EspnFastcastSource
 
     payload = json.loads(args.espn_snapshot.read_text(encoding="utf-8"))
     source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
@@ -108,7 +108,7 @@ def https(args):
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.x509.oid import NameOID
-    from sports_ticker.providers import http
+    from ticker.server.providers import http
 
     with tempfile.TemporaryDirectory(prefix="ticker-https-") as temporary:
         root = Path(temporary)

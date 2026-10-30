@@ -146,10 +146,10 @@ The coding agent can inspect paths and symbols without invoking Luna:
 
 ```powershell
 python tools/workspaces/find.py --search "station_retry"
-python tools/workspaces/find.py --search "sports_ticker/providers ScoreAlertTracker"
+python tools/workspaces/find.py --search "ticker/server/providers ScoreAlertTracker"
 python tools/workspaces/find.py --component mini-runtime
-python tools/workspaces/find.py --symbols sports_ticker/providers/score_alerts.py
-python tools/workspaces/find.py --excerpt sports_ticker/providers/score_alerts.py --symbol ScoreAlertTracker
+python tools/workspaces/find.py --symbols ticker/server/providers/score_alerts.py
+python tools/workspaces/find.py --excerpt ticker/server/providers/score_alerts.py --symbol ScoreAlertTracker
 ```
 
 Search uses literal words. It does not execute expressions or shell text.
@@ -244,7 +244,7 @@ If a dependency appears during work, record its reason:
 
 ```powershell
 python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --component sports-server --reason "The shootout field changes both device contracts"
-python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --path esp32_hub75/src/mini/ui/new_helper.h --reason "Add a shared pane helper"
+python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --path mini/src/mini/ui/new_helper.h --reason "Add a shared pane helper"
 ```
 
 An explicit shared component expansion includes Mini, Six, and iOS consumers.
@@ -255,7 +255,7 @@ Record new files with `--path` before editing them.
 
 ## Run focused checks
 
-Install the dependencies from `requirements.txt` and install pytest in your development environment.
+Install the dependencies from `requirements/base.txt` and install pytest in your development environment.
 Run commands from the source checkout:
 
 ```powershell
@@ -303,7 +303,7 @@ Keep production credentials and customer data outside Git.
 ## Validation commands
 
 ```powershell
-python -m pytest -q tests/python/operations/test_agent_workspaces.py
+python -m pytest -q tests/tools/workspaces/test_agent_workspaces.py
 python -m pytest -m critical -q
 python -m pytest -q
 ```

@@ -26,18 +26,18 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
-from ticker_core.app.application import TickerApplication
-from ticker_core.app.poller import BackendPoller
-from ticker_core.assets import MemoryAssetView, ShortTermContentCache
-from ticker_core.bootstrap import create_default_frame_builder
-from ticker_core.drivers import MemoryFrameSink
-from ticker_core.protocol import BackendClient
-from ticker_core.ui import FrameGeometry
-from ticker_core.runtime import FramePacer, RuntimeConfig, TickerRuntime
-from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
-from sports_ticker.fleet import PairingState
-from ticker3.api.asgi import TickerASGI
-from ticker3.offline import create_offline_application
+from ticker.six.app.application import TickerApplication
+from ticker.six.app.poller import BackendPoller
+from ticker.six.assets import MemoryAssetView, ShortTermContentCache
+from ticker.six.bootstrap import create_default_frame_builder
+from ticker.six.drivers import MemoryFrameSink
+from ticker.six.protocol import BackendClient
+from ticker.six.ui import FrameGeometry
+from ticker.six.runtime import FramePacer, RuntimeConfig, TickerRuntime
+from ticker.shared.domain import ContentItem, DisplaySettings, TickerSnapshot
+from ticker.server.store import PairingState
+from ticker.server.api.asgi import TickerASGI
+from ticker.server.offline import create_offline_application
 
 
 DEVICE_ID = "virtual-ticker-01"
@@ -215,8 +215,8 @@ class VirtualPlatformCommands:
     def reboot(self) -> None:
         raise RuntimeError("reboot is disabled in the virtual hardware lab")
 
-    def run_update(self, command) -> None:
-        del command
+    def run_update(self, command, *, working_directory) -> None:
+        del command, working_directory
         raise RuntimeError("updates are disabled in the virtual hardware lab")
 
     def list_wifi_networks(self):

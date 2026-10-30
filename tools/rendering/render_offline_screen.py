@@ -8,8 +8,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ticker_core.ui import load_default_font_set
-from ticker_core.ui.screens import Screens
+from ticker.six.ui import load_default_font_set
+from ticker.six.ui.screens import Screens
 
 STEPS = (("1m", 65), ("12m", 720), ("3h", 10800), ("2d", 172800))
 

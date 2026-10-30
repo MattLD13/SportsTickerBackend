@@ -13,13 +13,14 @@ Provider workers -> core engine -> ticker snapshot -> /data, /poll, /stream -> S
       +-- supervisor ---+-> SQLite ticker settings, pairing, events, and integrations
 ```
 
-`ticker3/` owns the routes, the device stream, the engine, the worker supervisor, and the provider worker process.
+All Python code is in one package, `ticker`. Run each product as a module.
 
-`sports_ticker/` owns provider reads, per-ticker settings, snapshots, projections, pairing, Spotify connections, and events.
+- `ticker/server/` is Ticker Server: the routes, the device stream, the engine, the worker supervisor, the provider workers, and the records. Run it with `python -m ticker.server`.
+- `ticker/six/` is Ticker Six: transport, content caching, runtime scheduling, rendering, and matrix drivers. Run it with `python -m ticker.six`.
+- `ticker/shared/` holds the facts that the server and the Six both use: the content model, the leagues, and the sports display facts.
+- `ticker/ops/` deploys and checks the server.
 
-`ticker_core/` owns Six transport, content caching, runtime scheduling, rendering, and matrix drivers.
-
-`TickerControlApp/` is the iOS controller app. It uses controller tokens and never receives Spotify tokens.
+`mini/` is the Ticker Mini firmware. `ios/` is the iOS controller app. The app uses controller tokens and never receives Spotify tokens.
 
 ## Modes
 
@@ -98,14 +99,16 @@ Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace th
 
 | Folder | Owner |
 |---|---|
-| `ticker3/` | Server routes, device stream, engine, worker supervisor, and provider workers. |
-| `sports_ticker/` | Domain data, projections, persistence, and providers. |
-| `backend_ops/` | Release packaging, core activation, rollback, and diagnostics. |
-| `ticker_core/` | Ticker Six runtime and rendering. |
-| `esp32_hub75/` | Ticker Mini firmware. |
-| `TickerControlApp/` | iOS controller app. |
-| `deploy/backend/` | Core service and guard timer units. |
-| `tests/` | Python tests, native firmware checks, and fixtures. |
+| `ticker/shared/` | The content model, the leagues, and the sports display facts. Used by the server and the Six. |
+| `ticker/server/` | Ticker Server: API, web pages, engine, workers, providers, projections, and records. |
+| `ticker/six/` | Ticker Six runtime, rendering, platform services, and the release updater. |
+| `ticker/ops/` | Release packaging, core activation, rollback, and diagnostics. |
+| `mini/` | Ticker Mini firmware (PlatformIO). |
+| `ios/` | iOS controller app (Xcode). |
+| `deploy/server/` | Server service and guard timer units. |
+| `deploy/six/` | Six install script and service unit. |
+| `requirements/` | `base.txt` for the Six and the server, `server.txt` for the server. |
+| `tests/` | Tests in folders that mirror the code: `shared/`, `server/`, `six/`, `ops/`, `mini/`, `tools/`, and `fixtures/`. |
 | `tools/` | Utilities grouped by purpose. |
 | `docs/` | Architecture, contracts, development, operations, plans, and research. |
 

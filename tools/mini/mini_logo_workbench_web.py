@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from PIL import Image
-from ticker_core.ui.sports.logos import Outline, mean_edge_brightness, paste_team_logo, prepare_team_logo, team_logo_layout
+from ticker.six.ui.sports.logos import Outline, mean_edge_brightness, paste_team_logo, prepare_team_logo, team_logo_layout
 
 
 BACKEND_URL = os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org").rstrip("/")
@@ -285,7 +285,7 @@ def comparison_picks():
 @app.post("/api/rendering-manifest")
 def rendering_manifest():
     """Apply saved review choices to the versioned V2 logo policy manifest."""
-    from tools.export_logo_rendering_decisions import build_manifest
+    from tools.rendering.export_logo_rendering_decisions import build_manifest
 
     catalog_response = catalog()
     if catalog_response.status_code >= 400:
@@ -300,7 +300,7 @@ def rendering_manifest():
         manifest = build_manifest(teams, picks)
     except (TypeError, ValueError) as error:
         return jsonify({"error": str(error)}), 400
-    target = ROOT / "sports_ticker" / "projections" / "logo_rendering_decisions.json"
+    target = ROOT / "ticker/server/projections/logo_rendering_decisions.json"
     target.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     decisions = manifest["decisions"]
     return jsonify({

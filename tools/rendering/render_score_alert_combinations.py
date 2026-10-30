@@ -15,17 +15,17 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from sports_ticker.domain import DisplaySettings, TickerSnapshot
-from sports_ticker.projections.data_api import project_data_v2
-from sports_ticker.providers.espn_events import _content_item
-from sports_ticker.providers.espn_details import _event_plays, _event_scoring_details, _soccer_event_details, _event_football_details
-from sports_ticker.providers.espn_mlb import _mlb_statsapi_summary
-from sports_ticker.providers.score_alerts import _describe, _extract_alert_facts
-from ticker_core.assets import AssetPlanner, LogoAssetView
-from ticker_core.ui.score_alert import ScoreAlert, fact_layout
-from ticker_core.platform import AssetCoordinator
-from ticker_core.protocol import TickerResponse
-from ticker_core.ui import load_default_font_set
+from ticker.shared.domain import DisplaySettings, TickerSnapshot
+from ticker.server.projections.data_api import project_data_v2
+from ticker.server.providers.espn_events import _content_item
+from ticker.server.providers.espn_details import _event_plays, _event_scoring_details, _soccer_event_details, _event_football_details
+from ticker.server.providers.espn_mlb import _mlb_statsapi_summary
+from ticker.server.providers.score_alerts import _describe, _extract_alert_facts
+from ticker.six.assets import AssetPlanner, LogoAssetView
+from ticker.six.ui.score_alert import ScoreAlert, fact_layout
+from ticker.six.platform import AssetCoordinator
+from ticker.six.protocol import TickerResponse
+from ticker.six.ui import load_default_font_set
 
 
 GROUPS = {

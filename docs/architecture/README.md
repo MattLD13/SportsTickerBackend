@@ -2,28 +2,28 @@
 
 Sports Ticker serves display content to Pi displays, ESP32 displays, the dashboard, and the iOS controller.
 
-Read the [project map and cleanup plan](project-map.md) for component boundaries, confirmed overlaps, deployment links, and the complete file inventory.
+Read the [project map](project-map.md) for the folder layout, the import direction, and the deployment links.
 
 ## Ownership
 
 | Path | Responsibility |
 |---|---|
-| `sports_ticker/providers/` | Read upstream sources and normalize provider content. |
-| `sports_ticker/providers/sports_display.py` | Project shared sports display facts. |
-| `sports_ticker/domain/` | Define immutable content, settings, schedules, and events. |
-| `sports_ticker/application/` | Compose content, apply schedules, and retain snapshots. |
-| `sports_ticker/fleet/repository.py` | Persist fleet settings, pairing, schedules, and integration state in SQLite. |
-| `sports_ticker/projections/` | Produce JSON representations for API consumers. |
-| `ticker3/api/` | Define the routes, request checks, authorization, and the device stream. |
-| `ticker3/core/` | Turn tickers into worker subscriptions, publish snapshots, and supervise worker processes. |
-| `ticker3/worker/` | Run one provider in one process and send its results to the core. |
-| `ticker_core/protocol/` | Read the backend and validate display responses on the Pi. |
-| `ticker_core/app/` | Build frames and manage the card viewport. |
-| `ticker_core/ui/` | Draw content cards, screens, and overlays. |
-| `ticker_core/platform/assets.py` | Store durable image cache files. |
-| `ticker_core/assets/` | Plan assets and provide memory reads. |
-| `esp32_hub75/` | Build the ESP32 display firmware with PlatformIO. |
-| `TickerControlApp/` | Build the iOS controller with Xcode. |
+| `ticker/server/providers/` | Read upstream sources and normalize provider content. |
+| `ticker/shared/sports_display.py` | Project shared sports display facts. |
+| `ticker/shared/domain/` | Define immutable content, settings, schedules, and events. |
+| `ticker/server/services/` | Compose content, apply schedules, and retain snapshots. |
+| `ticker/server/store/repository.py` | Persist fleet settings, pairing, schedules, and integration state in SQLite. |
+| `ticker/server/projections/` | Produce JSON representations for API consumers. |
+| `ticker/server/api/` | Define the routes, request checks, authorization, and the device stream. |
+| `ticker/server/core/` | Turn tickers into worker subscriptions, publish snapshots, and supervise worker processes. |
+| `ticker/server/worker/` | Run one provider in one process and send its results to the core. |
+| `ticker/six/protocol/` | Read the backend and validate display responses on the Pi. |
+| `ticker/six/app/` | Build frames and manage the card viewport. |
+| `ticker/six/ui/` | Draw content cards, screens, and overlays. |
+| `ticker/six/platform/assets.py` | Store durable image cache files. |
+| `ticker/six/assets/` | Plan assets and provide memory reads. |
+| `mini/` | Build the ESP32 display firmware with PlatformIO. |
+| `ios/` | Build the iOS controller with Xcode. |
 
 ## Data flow
 
@@ -38,13 +38,13 @@ Snapshot revisions identify backend replacements. They do not define a replayabl
 
 ## Deployment
 
-`ticker3/server.py` starts Hypercorn with one ASGI process.
-`ticker3/api/asgi.py` starts the engine through the ASGI lifespan and adapts the Flask routes with `WsgiToAsgi`.
-`deploy/backend/ticker.service` starts that entry point. The engine supervisor starts the provider workers.
-`ticker-controller.service` starts `python3 -m ticker_core` on the Pi.
-`setup.sh` installs Pi releases as immutable Git worktrees under `/opt/sports-ticker`.
+`ticker/server/main.py` starts Hypercorn with one ASGI process.
+`ticker/server/api/asgi.py` starts the engine through the ASGI lifespan and adapts the Flask routes with `WsgiToAsgi`.
+`deploy/server/ticker.service` starts that entry point. The engine supervisor starts the provider workers.
+`deploy/six/ticker-controller.service` starts `python3 -m ticker.six` on the Pi.
+`deploy/six/setup.sh` installs Pi releases as immutable Git worktrees under `/opt/sports-ticker`.
 The Pi service stores runtime data under `/home/mld/ticker` outside each release.
-`updater.py` manages release updates. Existing deployment workflows remain in `.github/workflows/`.
+`python3 -m ticker.six.updater` installs later releases. The deployment workflows are in `.github/workflows/`.
 
 ## Device stream status
 
@@ -66,17 +66,17 @@ Read [the agent guide](../../AGENTS.md) for domain ownership and change rules.
 
 ## Deployment ownership
 
-`backend_ops/` owns process selection, immutable backend releases, core recovery, and encrypted evidence collection.
+`ticker/ops/` owns process selection, immutable backend releases, core recovery, and encrypted evidence collection.
 The core and nine provider workers are separate processes. Each process has its own release identity.
-The core supervisor restarts, deploys, and rolls back the workers. `deploy/backend/` stores the core unit and the guard timer.
+The core supervisor restarts, deploys, and rolls back the workers. `deploy/server/` stores the core unit and the guard timer.
 Read [backend recovery](../operations/backend-recovery.md) for activation, quarantine, and rollback rules.
 
-The root `setup.sh`, `updater.py`, and `ticker-controller.service` remain public installation entry points for deployed Pi releases.
-Their stable paths let installed tickers activate later releases.
+`deploy/six/setup.sh` installs a new Pi. `ticker.six.updater` installs each later release and copies `deploy/six/ticker-controller.service` from that release.
+Keep these paths stable, because an installed Six reads them from each new release.
 
 ## Repository layout
 
-`tests/python/` contains the current Python suite.
-`tests/native/` contains firmware contract and layout checks.
+`tests/shared/`, `tests/server/`, `tests/six/`, `tests/ops/`, and `tests/tools/` contain the Python tests. They mirror the code.
+`tests/mini/` contains the native firmware checks.
 `tests/fixtures/` contains captured provider data and deterministic display inputs.
 `tools/` groups rendering, Mini utilities, diagnostics, deployment, benchmarks, and experiments.

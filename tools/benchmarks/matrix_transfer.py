@@ -55,8 +55,8 @@ def main():
             parser.error("--cpu requires CPU affinity support")
         os.sched_setaffinity(0, {args.cpu})
     sys.path.insert(0, str(args.repository.resolve()))
-    from ticker_core.drivers.memory import _prepare_frame
-    from ticker_core.drivers.rgbmatrix import RgbMatrixFrameSink, _set_image
+    from ticker.six.drivers.memory import _prepare_frame
+    from ticker.six.drivers.rgbmatrix import RgbMatrixFrameSink, _set_image
 
     frames = [(path.stem, Image.open(path).convert("RGB")) for path in sorted(args.frames.glob("*.png"))]
     if not frames or any(image.size != (384, 32) for _, image in frames):

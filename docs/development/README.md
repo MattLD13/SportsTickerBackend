@@ -12,10 +12,10 @@ Create a Python virtual environment and install runtime dependencies:
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -r requirements/base.txt
 ```
 
-The Pi uses `requirements.txt`. The backend uses `requirements-backend.txt`.
+The Pi uses `requirements/base.txt`. The backend uses `requirements/server.txt`.
 The `dev` dependency group in `pyproject.toml` describes optional development tools.
 It does not replace deployment installation or define a distributable Python package.
 
@@ -33,11 +33,11 @@ Keep credentials in `.env` and exclude them from Git.
 Run static checks from the repository root:
 
 ```powershell
-python -m ruff check sports_ticker ticker_core
+python -m ruff check ticker tools
 python -m mypy
 ```
 
-Ruff starts with syntax and selected correctness rules. Mypy starts with `sports_ticker/markets.py`.
+Ruff starts with syntax and selected correctness rules. Mypy starts with `ticker/server/markets.py`.
 Expand coverage after resolving findings in the affected modules.
 
 `.github/workflows/deploy.yml` owns Python checks, shared layout checks, Mini firmware validation, and publishing.
@@ -48,7 +48,7 @@ Only affected publishing steps run.
 
 ## Validation
 
-`pyproject.toml` selects `tests/python` and retains the existing pytest patterns and markers.
+`pyproject.toml` selects `tests` and keeps the pytest patterns and markers.
 Read [tests/AGENTS.md](../../tests/AGENTS.md) for focused validation and release checks.
 If you change display output, render and inspect a real 384x32 PNG.
 Read [tools/AGENTS.md](../../tools/AGENTS.md) before changing preview tools.

@@ -24,12 +24,12 @@ from PIL import Image
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from tools.deployment.device_auth import device_headers
-from ticker_core.ui.frame import RenderContext
-from ticker_core.assets import AssetPlanner
-from ticker_core.modes import DisplayMode, display_mode
-from ticker_core.platform import AssetCoordinator
-from ticker_core.protocol.model import ContentItem, thaw
-from ticker_core.ui import ContentScene
+from ticker.six.ui.frame import RenderContext
+from ticker.six.assets import AssetPlanner
+from ticker.six.modes import DisplayMode, display_mode
+from ticker.six.platform import AssetCoordinator
+from ticker.six.protocol.model import ContentItem, thaw
+from ticker.six.ui import ContentScene
 
 
 PANEL_SIZE = (384, 32)
@@ -137,7 +137,7 @@ def render_snapshot(
     pinned: bool = False,
 ) -> Image.Image:
     """Render one ticker frame using its catalog and asset coordinator."""
-    from ticker_core.bootstrap import create_default_content_catalog
+    from ticker.six.bootstrap import create_default_content_catalog
 
     selected_mode = display_mode(mode)
     coordinator = AssetCoordinator(asset_directory)
@@ -148,14 +148,14 @@ def render_snapshot(
                 future.result()
         context = RenderContext(now or datetime.now())
         if selected_mode is DisplayMode.CLOCK:
-            from ticker_core.ui.cards.clock import ClockCard
-            from ticker_core.ui.text import load_default_font_set
+            from ticker.six.ui.cards.clock import ClockCard
+            from ticker.six.ui.text import load_default_font_set
 
             return panel_image(ClockCard(load_default_font_set()).frame(context.now))
         item = choose_item(content_items(snapshot, str(selected_mode)), item_id, index)
         if item is None:
-            from ticker_core.ui.text import load_default_font_set
-            from ticker_core.ui.screens import Screens
+            from ticker.six.ui.text import load_default_font_set
+            from ticker.six.ui.screens import Screens
 
             return panel_image(Screens(load_default_font_set()).empty(context.now))
         item = dict(item)

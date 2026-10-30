@@ -1,0 +1,589 @@
+"""Validate version two ticker responses at the Pi boundary."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
+import hashlib
+import json
+from types import MappingProxyType
+from typing import Any, TypeAlias
+
+from ticker.six._enum import StrEnum
+
+
+JsonScalar: TypeAlias = str | int | float | bool | None
+FrozenJson: TypeAlias = JsonScalar | tuple["FrozenJson", ...] | Mapping[str, "FrozenJson"]
+
+
+_CONTENT_FAMILY_ORDER = {
+    "sports": 0,
+    "golf": 1,
+    "racing": 2,
+    "weather": 3,
+    "music": 4,
+    "flights": 5,
+    "airports": 6,
+    "stock": 7,
+    "clock": 8,
+    "status": 9,
+}
+
+
+class PayloadValidationError(ValueError):
+    """Report an invalid version two backend response."""
+
+
+class DeviceState(StrEnum):
+    """Name the effective display state from the version two settings."""
+
+    ACTIVE = "active"
+    PAIRING = "pairing"
+
+
+def _freeze(value: Any, path: str = "payload") -> FrozenJson:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        frozen: dict[str, FrozenJson] = {}
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise PayloadValidationError(f"{path} has a non-string key")
+            frozen[key] = _freeze(child, f"{path}.{key}")
+        return MappingProxyType(frozen)
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(child, f"{path}[]") for child in value)
+    raise PayloadValidationError(f"{path} has unsupported value type {type(value).__name__}")
+
+
+def _mapping(value: Any, path: str) -> Mapping[str, FrozenJson]:
+    _object(value, path)
+    frozen = _freeze(value, path)
+    assert isinstance(frozen, Mapping)
+    return frozen
+
+
+def _object(value: Any, path: str) -> Mapping[str, FrozenJson]:
+    """Check one object inside a tree that the boundary already froze."""
+    if not isinstance(value, Mapping):
+        raise PayloadValidationError(f"{path} must be an object")
+    return value
+
+
+def _items(value: Any, path: str) -> tuple[Mapping[str, FrozenJson], ...]:
+    if not isinstance(value, (list, tuple)):
+        raise PayloadValidationError(f"{path} must be a list")
+    return tuple(_object(item, f"{path}[{index}]") for index, item in enumerate(value))
+
+
+def _string(value: Any, path: str, *, default: str | None = None) -> str | None:
+    if value is None and default is not None:
+        return default
+    if not isinstance(value, str):
+        raise PayloadValidationError(f"{path} must be a string")
+    return value
+
+
+def _number(value: Any, path: str, default: float) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PayloadValidationError(f"{path} must be a number")
+    return float(value)
+
+
+def _boolean(value: Any, path: str, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise PayloadValidationError(f"{path} must be a boolean")
+    return value
+
+
+def thaw(value: FrozenJson) -> Any:
+    """Return plain lists and dicts for one frozen payload value, as renderers expect."""
+    if value is None or isinstance(value, (str, int, float)):
+        return value
+    if isinstance(value, tuple):
+        return [thaw(child) for child in value]
+    return {key: thaw(child) for key, child in value.items()}
+
+
+def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
+    """Return a stable hash for a JSON-compatible payload."""
+
+    frozen = _mapping(payload, "payload")
+    return _json_payload_hash(frozen)
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    """Expose one frozen object to the JSON encoder without copying its children."""
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise TypeError(f"unsupported JSON value type {type(value).__name__}")
+
+
+def _json_payload_hash(payload: Any) -> str:
+    """Hash validated values without rebuilding the complete frozen tree."""
+
+    try:
+        encoded = json.dumps(
+            payload, allow_nan=False, ensure_ascii=False,
+            separators=(",", ":"), sort_keys=True, default=_json_object,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise PayloadValidationError("payload is not canonical JSON") from error
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _display_payload_hash(payload: Mapping[str, Any]) -> str:
+    """Hash display data while excluding transport-only snapshot fields."""
+
+    normalized = dict(payload)
+    snapshot = normalized.get("snapshot")
+    if isinstance(snapshot, Mapping):
+        normalized["snapshot"] = {
+            key: value for key, value in snapshot.items()
+            if key not in {"observed_at", "revision", "timing"}
+        }
+    return _json_payload_hash(normalized)
+
+
+def _render_data(family: str, kind: str, data: Mapping[str, FrozenJson]) -> Mapping[str, FrozenJson]:
+    """Prepare canonical item data for the existing 384x32 renderer catalog."""
+
+    rendered = dict(data)
+    canonical = data.get("canonical")
+    if isinstance(canonical, Mapping):
+        for key, value in canonical.items():
+            rendered[key] = value
+    if family == "sports" and "competition_stage" in rendered:
+        stage = rendered["competition_stage"]
+        if type(stage) is not int or stage not in (0, 1, 2):
+            raise PayloadValidationError("sports competition_stage must be 0, 1, or 2")
+    rendered["family"] = family
+    rendered["kind"] = kind
+    rendered["type"] = _renderer_type(family, kind)
+    if not str(rendered.get("sport", "")).strip():
+        rendered["sport"] = _renderer_sport(family, kind, rendered)
+    return MappingProxyType(rendered)
+
+
+def _renderer_type(family: str, kind: str) -> str:
+    if family == "stock":
+        return "stock_ticker"
+    if family == "flights":
+        return "flight_visitor"
+    if family == "airports":
+        return "flight_airport_hud"
+    return kind
+
+
+def _renderer_sport(family: str, kind: str, data: Mapping[str, FrozenJson]) -> str:
+    if family == "sports":
+        canonical = data.get("canonical")
+        if isinstance(canonical, Mapping):
+            league = canonical.get("league")
+            if isinstance(league, str) and league:
+                return league
+        league = data.get("league")
+        return str(league) if league is not None else "sports"
+    if family in {"flights", "airports"}:
+        return "flight"
+    return family or kind
+
+
+@dataclass(frozen=True, slots=True)
+class ContentItem(Mapping[str, FrozenJson]):
+    """Represent one canonical version two content item."""
+
+    id: str
+    family: str
+    kind: str
+    is_shown: bool
+    data: Mapping[str, FrozenJson]
+
+    def __getitem__(self, key: str) -> FrozenJson:
+        return self.data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.data)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    @classmethod
+    def from_payload(cls, payload: Any, path: str) -> "ContentItem":
+        return cls._from_frozen(_mapping(payload, path), path)
+
+    @classmethod
+    def _from_frozen(cls, envelope: Mapping[str, FrozenJson], path: str) -> "ContentItem":
+        identifier = _string(envelope.get("id"), f"{path}.id")
+        family = _string(envelope.get("family"), f"{path}.family")
+        kind = _string(envelope.get("kind"), f"{path}.kind")
+        if not identifier or not family or not kind:
+            raise PayloadValidationError(f"{path} needs non-empty id, family, and kind")
+        return cls(
+            id=identifier,
+            family=family,
+            kind=kind,
+            is_shown=_boolean(envelope.get("is_shown"), f"{path}.is_shown", True),
+            data=_render_data(family, kind, _object(envelope.get("data", {}), f"{path}.data")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayItem(Mapping[str, FrozenJson]):
+    """Represent a version two alert or news overlay for the renderer."""
+
+    id: str
+    kind: str
+    data: Mapping[str, FrozenJson]
+
+    def __getitem__(self, key: str) -> FrozenJson:
+        return self.data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.data)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    @classmethod
+    def from_payload(cls, payload: Any, path: str) -> "OverlayItem":
+        return cls._from_frozen(_mapping(payload, path), path)
+
+    @classmethod
+    def _from_frozen(cls, envelope: Mapping[str, FrozenJson], path: str) -> "OverlayItem":
+        identifier = _string(envelope.get("event_id"), f"{path}.event_id")
+        kind = _string(envelope.get("kind"), f"{path}.kind")
+        if not identifier or not kind:
+            raise PayloadValidationError(f"{path} needs non-empty event_id and kind")
+        event = dict(_object(envelope.get("payload", {}), f"{path}.payload"))
+        event.setdefault("id", identifier)
+        event.setdefault("event_id", identifier)
+        event.setdefault("kind", kind)
+        return cls(identifier, kind, MappingProxyType(event))
+
+
+Alert = OverlayItem
+NewsItem = OverlayItem
+
+
+@dataclass(frozen=True, slots=True)
+class TickerSettings:
+    """Expose display settings from the canonical version two response."""
+
+    mode: str
+    sports_presentation: str
+    pinned_content_id: str
+    brightness: float
+    scroll_speed: float
+    inverted: bool
+    data: Mapping[str, FrozenJson]
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> "TickerSettings":
+        return cls._from_frozen(_mapping(payload, "settings"))
+
+    @classmethod
+    def _from_frozen(cls, data: Mapping[str, FrozenJson]) -> "TickerSettings":
+        mode = _string(data.get("mode"), "settings.mode", default="sports")
+        presentation = _string(data.get("sports_presentation"), "settings.sports_presentation", default="rotation")
+        pinned = _string(data.get("pinned_content_id"), "settings.pinned_content_id", default="")
+        assert mode is not None and presentation is not None and pinned is not None
+        return cls(
+            mode=mode.strip().lower() or "sports",
+            sports_presentation=presentation.strip().lower() or "rotation",
+            pinned_content_id=pinned.strip(),
+            brightness=_number(data.get("brightness"), "settings.brightness", 100.0),
+            scroll_speed=_number(data.get("scroll_speed"), "settings.scroll_speed", 0.05),
+            inverted=_boolean(data.get("inverted"), "settings.inverted", False),
+            data=data,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TickerResponse:
+    """Represent one complete `/data` response."""
+
+    status: DeviceState
+    ticker_id: str
+    pairing_code: str | None
+    settings: TickerSettings
+    content: tuple[ContentItem, ...]
+    alerts: tuple[Alert, ...]
+    news: tuple[NewsItem, ...]
+    update_version: str | None
+    reboot_request_id: str | None
+    payload_key: str
+    data: Mapping[str, FrozenJson]
+    update_request_id: str | None = None
+
+    @property
+    def fingerprint(self) -> str:
+        return self.payload_key
+
+    @property
+    def profile(self) -> Mapping[str, FrozenJson]:
+        """Return the backend-declared hardware profile when present."""
+
+        meta = self.data.get("meta")
+        if isinstance(meta, Mapping):
+            profile = meta.get("profile")
+            if isinstance(profile, Mapping):
+                return profile
+        return MappingProxyType({})
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return one mutable JSON payload for a process boundary."""
+
+        value = thaw(self.data)
+        assert isinstance(value, dict)
+        return value
+
+    def __reduce__(self):
+        """Keep process transfers serializable without reparsing twice."""
+        settings = self.settings
+        serialized = (
+            self.status.value,
+            self.ticker_id,
+            self.pairing_code,
+            (
+                settings.mode,
+                settings.sports_presentation,
+                settings.pinned_content_id,
+                settings.brightness,
+                settings.scroll_speed,
+                settings.inverted,
+                thaw(settings.data),
+            ),
+            tuple((item.id, item.family, item.kind, item.is_shown, thaw(item.data)) for item in self.content),
+            tuple((item.id, item.kind, thaw(item.data)) for item in self.alerts),
+            tuple((item.id, item.kind, thaw(item.data)) for item in self.news),
+            self.update_version,
+            self.reboot_request_id,
+            self.payload_key,
+            thaw(self.data),
+            self.update_request_id,
+        )
+        return _restore_pickled_response, (serialized,)
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> "TickerResponse":
+        return cls._from_frozen(_mapping(payload, "response"))
+
+    def apply_projection_delta(
+        self, changes: Mapping[str, Any], removed: tuple[str, ...]
+    ) -> "TickerResponse":
+        """Validate replacements once and retain unchanged immutable projection sections."""
+        data = dict(self.data)
+        data.update(_mapping(changes, "response"))
+        for key in removed:
+            data.pop(key, None)
+        return self._from_frozen(MappingProxyType(data))
+
+    @classmethod
+    def _from_frozen(cls, data: Mapping[str, FrozenJson]) -> "TickerResponse":
+        snapshot = _object(data.get("snapshot"), "response.snapshot")
+        ticker_id = _string(snapshot.get("ticker_id"), "response.snapshot.ticker_id")
+        if not ticker_id or not ticker_id.strip():
+            raise PayloadValidationError("response.snapshot.ticker_id must be a non-empty string")
+        settings = TickerSettings._from_frozen(_object(data.get("settings", MappingProxyType({})), "settings"))
+        content_root = _object(data.get("content", {}), "response.content")
+        content: list[ContentItem] = []
+        for family in sorted(content_root, key=lambda value: (_CONTENT_FAMILY_ORDER.get(value, 99), value)):
+            records = content_root[family]
+            if not isinstance(records, tuple):
+                raise PayloadValidationError(f"response.content.{family} must be a list")
+            for index, item in enumerate(_items(records, f"response.content.{family}")):
+                parsed = ContentItem._from_frozen(item, f"response.content.{family}[{index}]")
+                if parsed.family != family:
+                    raise PayloadValidationError(f"response.content.{family}[{index}].family does not match its group")
+                content.append(parsed)
+
+        events = _object(data.get("events", {}), "response.events")
+        alerts = tuple(
+            OverlayItem._from_frozen(item, f"response.events.alerts[{index}]")
+            for index, item in enumerate(_items(events.get("alerts", ()), "response.events.alerts"))
+        )
+        news = tuple(
+            OverlayItem._from_frozen(item, f"response.events.news[{index}]")
+            for index, item in enumerate(_items(events.get("news", ()), "response.events.news"))
+        )
+        meta = _object(data.get("meta", {}), "response.meta")
+        pairing = _object(meta.get("pairing", {}), "response.meta.pairing")
+        pairing_code = pairing.get("code")
+        if pairing_code is not None and not isinstance(pairing_code, str):
+            raise PayloadValidationError("response.meta.pairing.code must be a string")
+        update = _object(meta.get("update", {}), "response.meta.update")
+        update_id = _string(update.get("id"), "response.meta.update.id", default="") or None
+        update_version = update.get("version")
+        if update_version is not None and not isinstance(update_version, str):
+            raise PayloadValidationError("response.meta.update.version must be a string")
+        reboot = _object(meta.get("reboot", {}), "response.meta.reboot")
+        reboot_request_id = reboot.get("id")
+        if reboot_request_id is not None and not isinstance(reboot_request_id, str):
+            raise PayloadValidationError("response.meta.reboot.id must be a string")
+        return cls(
+            status=DeviceState.PAIRING if settings.mode == "pairing" else DeviceState.ACTIVE,
+            ticker_id=ticker_id.strip(),
+            pairing_code=pairing_code,
+            settings=settings,
+            content=tuple(content),
+            alerts=alerts,
+            news=news,
+            update_version=update_version.strip() if isinstance(update_version, str) else None,
+            update_request_id=update_id,
+            reboot_request_id=reboot_request_id.strip() if isinstance(reboot_request_id, str) else None,
+            payload_key=_display_payload_hash(data),
+            data=data,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayItemDelta:
+    """Carry one changed renderer scene across the poll process boundary."""
+
+    id: str
+    family: str
+    kind: str
+    is_shown: bool
+    data: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayDelta:
+    """Carry one compact update after the first complete display snapshot."""
+
+    status: str
+    ticker_id: str
+    pairing_code: str | None
+    settings: dict[str, Any]
+    settings_changed: bool
+    order: tuple[str, ...]
+    changed: tuple[DisplayItemDelta, ...]
+    alerts: tuple[tuple[str, str, dict[str, Any]], ...]
+    news: tuple[tuple[str, str, dict[str, Any]], ...]
+    update_version: str | None
+    reboot_request_id: str | None
+    payload_key: str
+    update_request_id: str | None = None
+
+
+def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayDelta:
+    """Return only renderer scenes that changed since one valid response."""
+    before = {item.id: item for item in previous.content}
+    changed = tuple(
+        DisplayItemDelta(item.id, item.family, item.kind, item.is_shown, thaw(item.data))
+        for item in current.content
+        if (prior := before.get(item.id)) is None
+        or prior.family != item.family
+        or prior.kind != item.kind
+        or prior.is_shown != item.is_shown
+        or prior.data != item.data
+    )
+    return DisplayDelta(
+        current.status.value,
+        current.ticker_id,
+        current.pairing_code,
+        thaw(current.settings.data),
+        previous.settings.data != current.settings.data,
+        tuple(item.id for item in current.content),
+        changed,
+        tuple((item.id, item.kind, thaw(item.data)) for item in current.alerts),
+        tuple((item.id, item.kind, thaw(item.data)) for item in current.news),
+        current.update_version,
+        current.reboot_request_id,
+        current.payload_key,
+        current.update_request_id,
+    )
+
+
+def apply_display_delta(previous: TickerResponse, delta: DisplayDelta) -> TickerResponse:
+    """Apply a poll-process delta without parsing the complete payload again."""
+    content_by_id = {item.id: item for item in previous.content}
+    for item in delta.changed:
+        content_by_id[item.id] = ContentItem(
+            item.id,
+            item.family,
+            item.kind,
+            item.is_shown,
+            _frozen_mapping(item.data),
+        )
+    content = tuple(content_by_id[item_id] for item_id in delta.order if item_id in content_by_id)
+    settings = TickerSettings.from_payload(delta.settings)
+    alerts = tuple(OverlayItem(identifier, kind, _frozen_mapping(data)) for identifier, kind, data in delta.alerts)
+    news = tuple(OverlayItem(identifier, kind, _frozen_mapping(data)) for identifier, kind, data in delta.news)
+    return TickerResponse(
+        DeviceState(delta.status),
+        delta.ticker_id,
+        delta.pairing_code,
+        settings,
+        content,
+        alerts,
+        news,
+        delta.update_version,
+        delta.reboot_request_id,
+        delta.payload_key,
+        previous.data,
+        delta.update_request_id,
+    )
+
+
+DisplayPayload = TickerResponse | DisplayDelta
+
+
+def _restore_pickled_response(serialized: tuple[Any, ...]) -> TickerResponse:
+    """Restore a validated response without repeating payload validation."""
+    (
+        status,
+        ticker_id,
+        pairing_code,
+        settings_data,
+        content_data,
+        alerts_data,
+        news_data,
+        update_version,
+        reboot_request_id,
+        payload_key,
+        data,
+        update_request_id,
+    ) = serialized
+    mode, presentation, pinned, brightness, scroll_speed, inverted, raw_settings = settings_data
+    settings = TickerSettings(
+        mode,
+        presentation,
+        pinned,
+        brightness,
+        scroll_speed,
+        inverted,
+        _frozen_mapping(raw_settings),
+    )
+    content = tuple(
+        ContentItem(identifier, family, kind, is_shown, _frozen_mapping(raw_data))
+        for identifier, family, kind, is_shown, raw_data in content_data
+    )
+    alerts = tuple(OverlayItem(identifier, kind, _frozen_mapping(raw_data)) for identifier, kind, raw_data in alerts_data)
+    news = tuple(OverlayItem(identifier, kind, _frozen_mapping(raw_data)) for identifier, kind, raw_data in news_data)
+    return TickerResponse(
+        DeviceState(status),
+        ticker_id,
+        pairing_code,
+        settings,
+        content,
+        alerts,
+        news,
+        update_version,
+        reboot_request_id,
+        payload_key,
+        _frozen_mapping(data),
+        update_request_id,
+    )
+
+
+def _frozen_mapping(value: Mapping[str, Any]) -> Mapping[str, FrozenJson]:
+    """Freeze trusted process data without validating it again."""
+    frozen = _freeze(value)
+    assert isinstance(frozen, Mapping)
+    return frozen

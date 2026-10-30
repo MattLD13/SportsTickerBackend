@@ -2,8 +2,8 @@
 
 ## Owners
 
-`sports_ticker/providers/sports_display.py` owns signal identity, meaning, scope, and flag patterns.
-`sports_ticker/projections/racing_display.py` owns class cards and compact Mini data.
+`ticker/shared/sports_display.py` owns signal identity, meaning, scope, and flag patterns.
+`ticker/server/projections/racing_display.py` owns class cards and compact Mini data.
 Provider adapters own current source reads. Renderers read explicit display facts without I/O.
 
 The supported series are F1, IndyCar, NASCAR Cup, WEC, and IMSA WeatherTech.
@@ -113,6 +113,6 @@ Positions one, two, and three use gold, silver, and bronze. Time and gap colors 
 ## Validation
 
 `tools/mini/racing_vectors.py` exports the Mini contract cases.
-`tests/native/mini_racing.cpp` checks the retained filter, class rotation, podium colors, and every signal raster at 64x32.
+`tests/mini/mini_racing.cpp` checks the retained filter, class rotation, podium colors, and every signal raster at 64x32.
 Python checks cover source aliases, white-flag meanings, signal scope, unknown values, and all three raster sizes.
 Recorded Cup, WEC, IMSA, and F1 responses verify the data boundary independently of the synthetic flag cases.

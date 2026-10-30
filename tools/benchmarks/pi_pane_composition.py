@@ -18,11 +18,11 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ticker_core.app.viewport import CardViewport
-from ticker_core.bootstrap import create_default_frame_builder
-from ticker_core.ui.frame import RenderContext
-from ticker_core.platform.assets import AssetCoordinator
-from ticker_core.runtime import Content
+from ticker.six.app.viewport import CardViewport
+from ticker.six.bootstrap import create_default_frame_builder
+from ticker.six.ui.frame import RenderContext
+from ticker.six.platform.assets import AssetCoordinator
+from ticker.six.runtime import Content
 from tools.rendering.render_frame import content_items, normalize_snapshot
 
 

@@ -13,11 +13,11 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from PIL import __version__ as pillow_version, features
-from ticker_core.assets import AssetPlanner
-from ticker_core.bootstrap import create_default_content_catalog
-from ticker_core.ui.frame import RenderContext
-from ticker_core.platform import AssetCoordinator
-from ticker_core.ui import ContentScene
+from ticker.six.assets import AssetPlanner
+from ticker.six.bootstrap import create_default_content_catalog
+from ticker.six.ui.frame import RenderContext
+from ticker.six.platform import AssetCoordinator
+from ticker.six.ui import ContentScene
 from tools.rendering.render_frame import content_items, normalize_snapshot, panel_image
 from tools.benchmarks.pi_viewport_baseline import fonts_manifest
 

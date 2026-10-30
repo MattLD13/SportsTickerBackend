@@ -11,9 +11,9 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers.weather import HybridWeatherProvider
-from sports_ticker.projections.data_api import _content_item
+from ticker.shared.domain import DisplaySettings
+from ticker.server.providers.weather import HybridWeatherProvider
+from ticker.server.projections.data_api import _content_item
 from tools.rendering.render_mini_ui import remote_render
 from tools.rendering.render_frame import normalize_snapshot, render_snapshot
 

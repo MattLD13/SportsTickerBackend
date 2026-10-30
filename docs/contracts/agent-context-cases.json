@@ -5,9 +5,9 @@
     {
       "id": "known-football-conversion",
       "task_class": "narrow-known",
-      "task": "In sports_ticker/providers/score_alerts.py, inspect football conversion handling. After an announced touchdown, a later successful PAT must enrich the same alert without another takeover. Select the owner and focused regression context. Do not implement the change.",
+      "task": "In ticker/server/providers/score_alerts.py, inspect football conversion handling. After an announced touchdown, a later successful PAT must enrich the same alert without another takeover. Select the owner and focused regression context. Do not implement the change.",
       "expected": {
-        "paths": ["sports_ticker/providers/score_alerts.py", "tests/python/protocol/test_score_alert_boundaries.py"],
+        "paths": ["ticker/server/providers/score_alerts.py", "tests/server/providers/test_score_alert_boundaries.py"],
         "components": ["sports-server"],
         "checks": ["sports-contracts"],
         "shared_change": null
@@ -18,7 +18,7 @@
       "task_class": "unfamiliar-component",
       "task": "Investigate Mini Wi-Fi recovery after a temporary access point outage. Find the owner of station reconnect delays, its runtime caller, and the native regression check. Keep retries bounded and do not reset saved device credentials. Select context only.",
       "expected": {
-        "paths": ["esp32_hub75/src/mini/platform/station_retry.h", "esp32_hub75/src/mini/platform/wifi_station.cpp", "tests/native/mini_station_retry.cpp"],
+        "paths": ["mini/src/mini/platform/station_retry.h", "mini/src/mini/platform/wifi_station.cpp", "tests/mini/mini_station_retry.cpp"],
         "components": ["mini-runtime"],
         "checks": [],
         "shared_change": false
@@ -29,7 +29,7 @@
       "task_class": "shared-contract",
       "task": "Add an explicit NHL shootout completion fact to the V2 sports contract. The server must own its meaning. Mini, Six, and the iOS controller must consume that fact without inferring state from display labels. Find provider, projection, consumer, and contract regression context. Select context only.",
       "expected": {
-        "paths": ["sports_ticker/providers/sports_display.py", "sports_ticker/projections/mini_fields.py", "esp32_hub75/src/mini/ui/sports.h", "ticker_core/features/sports/pinned.py", "TickerControlApp/TickerControl/Models/TickerContentModels.swift", "tests/python/protocol/test_mini_hockey_contract.py"],
+        "paths": ["ticker/shared/sports_display.py", "ticker/server/projections/mini_fields.py", "mini/src/mini/ui/sports.h", "ticker/six/ui/sports/pinned.py", "ios/TickerControl/Core/Models/Feed.swift", "tests/shared/display/test_mini_hockey_contract.py"],
         "components": ["sports-server", "server-core", "mini-sports-renderer", "six-sports-renderer", "app-contracts"],
         "checks": ["sports-contracts", "mini-fields"],
         "shared_change": true

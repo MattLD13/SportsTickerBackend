@@ -14,7 +14,7 @@ python -m pytest -q
 
 See [`tests/AGENTS.md`](../../tests/AGENTS.md) for the domain test command matrix and test procedures.
 
-The tests live in `tests/python/`. They use temporary SQLite files, injected provider ports, and memory frame sinks. They do not start the production scheduler or require panel hardware.
+The Python tests live in `tests/`, in folders that mirror the code. They use temporary SQLite files, injected provider ports, and memory frame sinks. They do not start the production scheduler or require panel hardware.
 
 Use the renderer for display verification:
 
@@ -39,19 +39,19 @@ Run it on the backend host. Use `--http`, `--fastcast SECONDS`, or `--workers es
 Run the Pi manufacturing diagnostic with a persistent report:
 
 ```powershell
-python test.py --sink hardware --report C:\ticker\diagnostic.json
+python -m ticker.six.diagnostics --sink hardware --report C:\ticker\diagnostic.json
 ```
 
 Run the destructive hotspot and portal check only on a controlled bench:
 
 ```powershell
-python test.py --sink hardware --wifi-setup --portal --report C:\ticker\wifi-diagnostic.json
+python -m ticker.six.diagnostics --sink hardware --wifi-setup --portal --report C:\ticker\wifi-diagnostic.json
 ```
 
 Force the running ticker service into its real Wi-Fi setup mode without changing saved credentials:
 
 ```bash
-python3 test.py --force-wifi-setup
+python3 -m ticker.six.diagnostics --force-wifi-setup
 ```
 
 Keep the command running while the app joins `SportsTicker_Setup` and submits the network. Press `Ctrl+C` after setup so the command removes its fifteen-minute test marker.

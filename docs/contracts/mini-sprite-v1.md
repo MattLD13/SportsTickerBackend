@@ -70,7 +70,7 @@ python tools/mini/mini_sprite_vectors.py --output .tmp/mini-sprites/vectors
 On Linux, compile the native check with the firmware header directory:
 
 ```sh
-g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
+g++ -std=c++17 -O1 -Imini/src/mini/assets tests/mini/mini_sprite_cache.cpp -ldl -o /tmp/mini-sprite-check
 /tmp/mini-sprite-check .tmp/mini-sprites/vectors /tmp/mini-sprite-cache
 ```
 

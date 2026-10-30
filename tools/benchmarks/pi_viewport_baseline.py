@@ -21,12 +21,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from PIL import __version__ as pillow_version
-from ticker_core.bootstrap import create_default_frame_builder
-from ticker_core.ui.frame import RenderContext
-from ticker_core.drivers.memory import MemoryFrameSink
-from ticker_core.platform.assets import AssetCoordinator
-from ticker_core.ui.text import load_default_font_set
-from ticker_core.runtime import Content, FrameDecision, FrameKind, RuntimeConfig
+from ticker.six.bootstrap import create_default_frame_builder
+from ticker.six.ui.frame import RenderContext
+from ticker.six.drivers.memory import MemoryFrameSink
+from ticker.six.platform.assets import AssetCoordinator
+from ticker.six.ui.text import load_default_font_set
+from ticker.six.runtime import Content, FrameDecision, FrameKind, RuntimeConfig
 from tools.rendering.render_frame import content_items, normalize_snapshot
 
 

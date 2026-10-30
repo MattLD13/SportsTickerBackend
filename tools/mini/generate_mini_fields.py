@@ -6,9 +6,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from sports_ticker.projections.mini_fields import payload_filter
+from ticker.server.projections.mini_fields import payload_filter
 
-TARGET = ROOT / "esp32_hub75/src/mini/protocol/fields_generated.h"
+TARGET = ROOT / "mini/src/mini/protocol/fields_generated.h"
 
 
 def header():

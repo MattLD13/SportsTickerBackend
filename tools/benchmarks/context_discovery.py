@@ -19,7 +19,7 @@ from tools.workspaces.start import edit_owners, inventory
 CASES = ROOT / "docs/contracts/agent-context-cases.json"
 TOKEN_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
 EVALUATION_PATHS = frozenset(("docs/contracts/agent-context-cases.json", "tools/benchmarks/context_discovery.py",
-                              "tests/python/operations/test_context_benchmark.py",
+                              "tests/tools/benchmarks/test_context_benchmark.py",
                               "docs/research/2026-10-19-progressive-agent-context.md",
                               "docs/research/agent-context-v5-evidence.json"))
 

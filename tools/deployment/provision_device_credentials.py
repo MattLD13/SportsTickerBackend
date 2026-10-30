@@ -13,7 +13,7 @@ import time
 import serial
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from ticker_core.platform.device_credentials import load_device_token
+from ticker.six.platform.device_credentials import load_device_token
 
 
 def mini_digest(port: str, identity: str) -> str:

@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from ticker_core.ui.score_alert import ScoreAlert
-from ticker_core.ui import load_default_font_set
+from ticker.six.ui.score_alert import ScoreAlert
+from ticker.six.ui import load_default_font_set
 
 
 class EmptyLogos:

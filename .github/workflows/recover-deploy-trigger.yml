@@ -88,10 +88,10 @@ jobs:
           queue_home="/home/ubuntu"
           if [ "$VERIFY_REPORTING" = true ]; then
             queue_home="/tmp/ticker-reporting-test-$GITHUB_RUN_ID"
-            ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.reporting seed-test --home '$queue_home' --release '$GITHUB_SHA'"
+            ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m ticker.ops.reporting seed-test --home '$queue_home' --release '$GITHUB_SHA'"
           fi
           echo "queue_home=$queue_home" >> "$GITHUB_OUTPUT"
-          ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.reporting export --home '$queue_home'" > "$RUNNER_TEMP/runtime-reports.json"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m ticker.ops.reporting export --home '$queue_home'" > "$RUNNER_TEMP/runtime-reports.json"
           python - "$RUNNER_TEMP/runtime-reports.json" >> "$GITHUB_OUTPUT" <<'PY'
           import json, sys
           from pathlib import Path
@@ -112,7 +112,7 @@ jobs:
           set -eu
           key="$RUNNER_TEMP/runtime-report-key"
           remote_report="/home/ubuntu/ticker_data/backend-control/runtime-$GITHUB_RUN_ID.zip"
-          ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.diagnostics --output '$remote_report'"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m ticker.ops.diagnostics --output '$remote_report'"
           scp -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST:$remote_report" backend-report.zip
           openssl cms -encrypt -binary -aes-256-gcm -in backend-report.zip -out backend-report.p7m -outform DER .github/backend-diagnostics-recipient.pem
           rm -f backend-report.zip
@@ -139,7 +139,7 @@ jobs:
           if [ "$EVIDENCE_READY" = true ]; then
             args+=(--evidence)
           fi
-          python -m backend_ops.github_reports --input "$RUNNER_TEMP/runtime-reports.json" --repository "$GITHUB_REPOSITORY" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ack-output "$RUNNER_TEMP/runtime-report-ack.json" "${args[@]}"
+          python -m ticker.ops.github_reports --input "$RUNNER_TEMP/runtime-reports.json" --repository "$GITHUB_REPOSITORY" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ack-output "$RUNNER_TEMP/runtime-report-ack.json" "${args[@]}"
 
       - name: Acknowledge confirmed reports on the server
         if: always() && steps.reports.outcome == 'success' && steps.reports.outputs.count != '0'
@@ -152,5 +152,5 @@ jobs:
           set -eu
           key="$RUNNER_TEMP/runtime-report-key"
           if [ -f "$RUNNER_TEMP/runtime-report-ack.json" ]; then
-            ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m backend_ops.reporting ack --home '$QUEUE_HOME'" < "$RUNNER_TEMP/runtime-report-ack.json"
+            ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_USER@$SSH_HOST" "cd /home/ubuntu/backend-control/current && python3 -m ticker.ops.reporting ack --home '$QUEUE_HOME'" < "$RUNNER_TEMP/runtime-report-ack.json"
           fi

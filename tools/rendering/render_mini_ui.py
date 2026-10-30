@@ -13,9 +13,9 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from sports_ticker.assets.mini_service import MiniSpriteService
-from sports_ticker.providers.logo_overrides import mini_logo_sources
-from sports_ticker.providers.sports_display import baseball_inning_display, nhl_manpower_situation, sport_family
+from ticker.server.mini_assets.mini_service import MiniSpriteService
+from ticker.server.providers.logo_overrides import mini_logo_sources
+from ticker.shared.sports_display import baseball_inning_display, nhl_manpower_situation, sport_family
 from tools.rendering.render_frame import normalize_snapshot, render_snapshot
 
 
@@ -125,9 +125,9 @@ def prepare(snapshot: Path, output: Path, native_root: str) -> list[dict]:
                 row[side + "_sprite"] = f'{native_root}/assets/{ref["asset_id"]}.mts' if ref["state"] == "ready" else ""
             mode = row.get("mode", "sports")
             if mode == "pairing":
-                from ticker_core.ui.screens import Screens
-                from ticker_core.ui import load_default_font_set
-                from ticker_core.ui.frame import RenderContext
+                from ticker.six.ui.screens import Screens
+                from ticker.six.ui import load_default_font_set
+                from ticker.six.ui.frame import RenderContext
                 image = Screens(load_default_font_set()).pairing(datetime.fromisoformat("2026-10-15T12:34:27+00:00"), row["game"]["app_code"])
             else:
                 envelope = {"content":{mode:[{"id":row["name"], "family":mode, "kind":"scoreboard", "data":row["game"]}]}}
@@ -145,14 +145,14 @@ def remote_render(host: str, key: Path, output: Path, native_root: str) -> None:
     ssh = ["ssh", "-i", str(key), "-o", "IdentitiesOnly=yes", host]
     scp = ["scp", "-i", str(key), "-o", "IdentitiesOnly=yes"]
     subprocess.run(ssh + [f"mkdir -p {native_root}/src/mini/ui {native_root}/src/mini/protocol {native_root}/src/mini/assets {native_root}/arduino {native_root}/assets"], check=True)
-    headers = list((ROOT / "esp32_hub75/src/mini/ui").glob("*.h"))
+    headers = list((ROOT / "mini/src/mini/ui").glob("*.h"))
     subprocess.run(scp + [str(p) for p in headers] + [f"{host}:{native_root}/src/mini/ui/"], check=True)
-    protocol = [ROOT / "esp32_hub75/src/mini/protocol" / name for name in ("panes.h", "rotation.h")]
+    protocol = [ROOT / "mini/src/mini/protocol" / name for name in ("panes.h", "rotation.h")]
     subprocess.run(scp + [str(p) for p in protocol] + [f"{host}:{native_root}/src/mini/protocol/"], check=True)
-    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_sprite.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
-    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_artwork.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
+    subprocess.run(scp + [str(ROOT / "mini/src/mini/assets/mini_sprite.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
+    subprocess.run(scp + [str(ROOT / "mini/src/mini/assets/mini_artwork.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
     subprocess.run(scp + [str(ROOT / "tools/rendering/render_mini_ui.cpp"), f"{host}:{native_root}/src/"], check=True)
-    library = ROOT / "esp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src"
+    library = ROOT / "mini/.pio/libdeps/esp32s3/ArduinoJson/src"
     subprocess.run(scp + ["-r", str(library / "ArduinoJson"), str(library / "ArduinoJson.h"), str(library / "ArduinoJson.hpp"), f"{host}:{native_root}/arduino/"], check=True)
     sprites = list((output / "assets").glob("*.mts")) + list((output / "assets").glob("*.mta"))
     if sprites: subprocess.run(scp + [str(p) for p in sprites] + [f"{host}:{native_root}/assets/"], check=True)

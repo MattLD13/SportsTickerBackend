@@ -164,7 +164,7 @@ def _golf() -> Iterator[tuple[str, str, str, list[dict[str, Any]], tuple[float, 
 
 def _racing() -> Iterator[tuple[str, str, str, list[dict[str, Any]], tuple[float, ...]]]:
     """Racing items in each series and session, projected by the real racing display contract."""
-    from ticker3.web.preview import project_preview_game
+    from ticker.server.web.preview import project_preview_game
 
     def driver(pos, name, car, **values):
         return {"pos": pos, "name": name, "car": car, **values}
@@ -231,7 +231,7 @@ def _sports(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
     import json
     from copy import deepcopy
 
-    from ticker3.web.preview import project_preview_game
+    from ticker.server.web.preview import project_preview_game
 
     library = json.loads(open("docs/contracts/demo-layouts.json", encoding="utf-8").read())
     games = [project_preview_game(row["game"]) for row in library["cases"] if row["mode"] == "sports"]
@@ -330,7 +330,7 @@ def _sports(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
 
 def _ads(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
     """Every April Fools campaign card in the strip, with and without its logo."""
-    from ticker_core.runtime.ads import SPORTS_ADS
+    from ticker.six.runtime.ads import SPORTS_ADS
 
     for index, ad in enumerate(SPORTS_ADS):
         for spot in ad["spots"]:

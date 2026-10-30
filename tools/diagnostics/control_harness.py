@@ -18,12 +18,12 @@ _REPOSITORY = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY))
 
-from sports_ticker.projections import select_display_content
-from sports_ticker.application import BackendApplication, SnapshotStore
-from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
-from sports_ticker.fleet import TickerRepository
-from ticker_core.protocol import TickerResponse
-from ticker_core.runtime import TickerRuntime, classify_content
+from ticker.server.projections import select_display_content
+from ticker.server.services import BackendApplication, SnapshotStore
+from ticker.shared.domain import ContentItem, DisplaySettings, TickerSnapshot
+from ticker.server.store import TickerRepository
+from ticker.six.protocol import TickerResponse
+from ticker.six.runtime import TickerRuntime, classify_content
 
 
 _SETTINGS_FIELDS = (

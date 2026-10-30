@@ -78,7 +78,7 @@ def decode(value: Any) -> Any:
     if "$nan" in value:
         return float("nan")
     if "$data" in value:
-        from ticker_core.platform.wifi import HotspotDetails, WiFiSetupState
+        from ticker.six.platform.wifi import HotspotDetails, WiFiSetupState
         kinds = {"WiFiSetupState": WiFiSetupState, "HotspotDetails": HotspotDetails}
         return kinds[value["$data"]](**{key: decode(item) for key, item in value["fields"].items()})
     raise ValueError(f"unknown encoded value: {sorted(value)}")
@@ -110,21 +110,21 @@ class StandInAssets:
 
 def renderers(present: bool) -> dict[str, Any]:
     """Build one fresh set of Six renderers on stand-in logos."""
-    from ticker_core.assets import LogoAssetView
-    from ticker_core.bootstrap import CachedLogoView
-    from ticker_core.ui.news_banner import NewsBanner
-    from ticker_core.ui.score_alert import ScoreAlert
-    from ticker_core.ui.cards.flight import FlightCard
-    from ticker_core.ui.cards.golf import GolfCard
-    from ticker_core.ui.cards.music import MusicCard
-    from ticker_core.ui.cards.racing import RacingCard
-    from ticker_core.ui.sports import SportsCard
-    from ticker_core.ui.cards.stock import StockCard
-    from ticker_core.ui.screens import Screens, update_overlay
-    from ticker_core.ui.cards.weather import WeatherCard
-    from ticker_core.ui import load_default_font_set
-    from ticker_core.ui.cards.clock import ClockCard
-    from ticker_core.ui.screens import connection_lost
+    from ticker.six.assets import LogoAssetView
+    from ticker.six.bootstrap import CachedLogoView
+    from ticker.six.ui.news_banner import NewsBanner
+    from ticker.six.ui.score_alert import ScoreAlert
+    from ticker.six.ui.cards.flight import FlightCard
+    from ticker.six.ui.cards.golf import GolfCard
+    from ticker.six.ui.cards.music import MusicCard
+    from ticker.six.ui.cards.racing import RacingCard
+    from ticker.six.ui.sports import SportsCard
+    from ticker.six.ui.cards.stock import StockCard
+    from ticker.six.ui.screens import Screens, update_overlay
+    from ticker.six.ui.cards.weather import WeatherCard
+    from ticker.six.ui import load_default_font_set
+    from ticker.six.ui.cards.clock import ClockCard
+    from ticker.six.ui.screens import connection_lost
 
     assets = StandInAssets(present)
     fonts = load_default_font_set()
@@ -140,8 +140,8 @@ def renderers(present: bool) -> dict[str, Any]:
 
 def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, Any]) -> Image.Image:
     """Run one recorded renderer call and return its image."""
-    from ticker_core.ui.frame import RenderContext
-    from ticker_core.ui import ContentScene
+    from ticker.six.ui.frame import RenderContext
+    from ticker.six.ui import ContentScene
 
     if kind == "utility":
         return _screen(renderer_set, method, args)
@@ -164,7 +164,7 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
 
 def _screen(renderer_set: dict[str, Any], method: str, args: dict[str, Any]) -> Image.Image:
     """Run a call of the old utility renderer: a stock pane, an empty item, or a system screen."""
-    from ticker_core.ui.frame import RenderContext, ContentScene
+    from ticker.six.ui.frame import RenderContext, ContentScene
 
     screens = renderer_set["screens"]
     if method == "render":
@@ -233,16 +233,16 @@ def _images(value: Any) -> Any:
 
 
 def _kind(item: Mapping[str, Any]) -> str:
-    from ticker_core.ui.catalog import card_family
+    from ticker.six.ui.catalog import card_family
     family = card_family(item)
     return {"scoreboard": "sports", "stock": "utility", "empty": "utility"}.get(family, family)
 
 
 def fixture_items() -> Iterator[tuple[str, dict[str, Any], str]]:
     """Return each content item of each display payload in the fixtures, as the Six runtime prepares it."""
-    from ticker_core.app.frame_builder import _content_mapping
-    from ticker_core.protocol import TickerResponse
-    from ticker_core.runtime.state import _content
+    from ticker.six.app.frame_builder import _content_mapping
+    from ticker.six.protocol import TickerResponse
+    from ticker.six.runtime.state import _content
 
     paths = sorted(ROOT.glob("tests/fixtures/**/*.json")) + sorted(ROOT.glob("docs/contracts/fixtures/**/*.json"))
     seen = set()
@@ -293,7 +293,7 @@ def fixture_cases() -> Iterator[dict[str, Any]]:
 
 def gallery_cases() -> Iterator[dict[str, Any]]:
     """Render each public layout example: as a pane, pinned, and as an animation of eight frames."""
-    from ticker3.web.preview import project_preview_game
+    from ticker.server.web.preview import project_preview_game
 
     library = json.loads((ROOT / "docs/contracts/demo-layouts.json").read_text(encoding="utf-8"))
     for row in library["cases"]:
@@ -318,7 +318,7 @@ def gallery_cases() -> Iterator[dict[str, Any]]:
 
 def _system_cases(source: str, game: Mapping[str, Any]) -> Iterator[dict[str, Any]]:
     """Render the utility screens of one public system example."""
-    from ticker_core.platform.wifi import HotspotDetails, WiFiSetupState
+    from ticker.six.platform.wifi import HotspotDetails, WiFiSetupState
 
     times = [BASE_TIME + timedelta(seconds=step) for step in (0, 0.5, 1.0, 13.0)]
     calls = []

@@ -83,15 +83,15 @@ def _repo_root() -> Path:
 
 _repo_root()
 
-from ticker_core.assets import AssetPlanner  # noqa: E402
-from ticker_core.bootstrap import create_default_content_catalog  # noqa: E402
-from ticker_core.ui.frame import RenderContext  # noqa: E402
-from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink  # noqa: E402
-from ticker_core.platform import AssetCoordinator  # noqa: E402
-from ticker_core.protocol import TickerResponse  # noqa: E402
-from ticker_core.ui.text import load_default_font_set  # noqa: E402
-from ticker_core.runtime import Content  # noqa: E402
-from ticker_core.app.viewport import CardViewport  # noqa: E402
+from ticker.six.assets import AssetPlanner  # noqa: E402
+from ticker.six.bootstrap import create_default_content_catalog  # noqa: E402
+from ticker.six.ui.frame import RenderContext  # noqa: E402
+from ticker.six.drivers import MemoryFrameSink, RgbMatrixFrameSink  # noqa: E402
+from ticker.six.platform import AssetCoordinator  # noqa: E402
+from ticker.six.protocol import TickerResponse  # noqa: E402
+from ticker.six.ui.text import load_default_font_set  # noqa: E402
+from ticker.six.runtime import Content  # noqa: E402
+from ticker.six.app.viewport import CardViewport  # noqa: E402
 
 
 def speed_interval(level: int) -> float:

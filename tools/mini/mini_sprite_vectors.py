@@ -10,8 +10,8 @@ import sys
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from sports_ticker.assets.images import prepare_contained
-from sports_ticker.assets.mini_sprite import encode_sprite
+from ticker.shared.images import prepare_contained
+from ticker.server.mini_assets.mini_sprite import encode_sprite
 
 
 def generate(output: Path) -> None:

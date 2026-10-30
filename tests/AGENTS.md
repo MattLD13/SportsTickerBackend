@@ -1,23 +1,26 @@
 # Tests
 
 Run the focused checks listed in the task packet.
-The Python suite lives in `tests/python/`. Native checks live in `tests/native/`.
-Fixtures live in `tests/fixtures/`.
+The test folders mirror the code. A test lives in the folder of the code that it checks:
+`tests/shared/`, `tests/server/`, `tests/six/`, `tests/ops/`, and `tests/tools/`.
+Native Mini checks live in `tests/mini/`. Fixtures live in `tests/fixtures/`.
+Keep each test three levels deep, such as `tests/server/api/test_asgi.py`. Test file names must be unique.
 
 ## Commands
 
 | Changed boundary | Focused checks |
 |---|---|
-| Sports facts | `tests/python/protocol/test_sports_display.py`, `test_sports_lifecycle.py`, and relevant provider tests |
-| Mini hockey | `test_mini_hockey_contract.py`, `test_hockey_shootout_alert.py`, and `tests/native/mini_hockey_panes.cpp` |
-| Music | `tests/python/integrations/test_spotify.py`, `tests/python/protocol/test_music_stale_scope.py` |
-| Weather | `tests/python/protocol/test_weather_provider.py` |
-| Flights and airports | `tests/python/protocol/test_flights.py` |
-| Golf | `tests/python/protocol/test_golf_provider.py`, `test_golf_source.py` |
-| Racing | `tests/python/protocol/test_racing_live_source.py`, `tests/python/features/racing/` |
-| Operations | `tests/python/operations/`, `tests/python/platform/` |
-| Assets | `tests/python/assets/` |
-| Agent workflow | `tests/python/operations/test_agent_workspaces.py`, `test_agent_startup.py`, `test_context_planner.py` |
+| Sports facts | `tests/shared/display/test_sports_display.py`, `tests/server/projections/test_sports_lifecycle.py`, and relevant provider tests |
+| Mini hockey | `tests/shared/display/test_mini_hockey_contract.py`, `tests/server/providers/test_hockey_shootout_alert.py`, and `tests/mini/mini_hockey_panes.cpp` |
+| Music | `tests/server/spotify/test_spotify.py`, `tests/server/providers/test_music_stale_scope.py` |
+| Weather | `tests/server/providers/test_weather_provider.py` |
+| Flights and airports | `tests/server/providers/test_flights.py` |
+| Golf | `tests/server/providers/test_golf_provider.py`, `test_golf_source.py` |
+| Racing | `tests/server/providers/test_racing_live_source.py`, `tests/six/ui/test_racing_renderer.py` |
+| Server operations | `tests/ops/` |
+| Six platform and updates | `tests/six/platform/` |
+| Assets | `tests/six/assets/`, `tests/server/mini_assets/` |
+| Agent workflow | `tests/tools/workspaces/` |
 
 Run selected Python paths with `python -m pytest -q <paths>`.
 Before every push, run `python -m pytest -m critical -q`.

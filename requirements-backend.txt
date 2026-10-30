@@ -1,5 +1,0 @@
--r requirements.txt
-urllib3>=2.6,<3
-hypercorn>=0.17,<1
-asgiref>=3.12.1,<4
-exchange-calendars==4.13.2

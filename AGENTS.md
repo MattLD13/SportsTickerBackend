@@ -36,7 +36,8 @@ If repository instructions change, read the changed instructions again.
 ## Engineering rules
 
 - Trace input, durable state, API output, client state, and the frame before fixing a display fact.
-- Give each fact one owner. Shared sports facts belong in `sports_ticker/providers/sports_display.py`.
+- Give each fact one owner. Shared sports facts belong in `ticker/shared/sports_display.py`.
+- Keep the import direction of `docs/architecture/project-map.md`. `ticker.shared` imports no other product, and `ticker.six` imports only `ticker.shared`.
 - Extend explicit contracts when several consumers need a fact.
 - Keep provider reads, persistence, projection, scheduling, and rendering separate. Rendering has no I/O.
 - Replace faulty designs. Remove replaced code, imports, tests, routes, jobs, fixtures, and documentation in the same change.
@@ -69,12 +70,12 @@ Pi releases are immutable. Never pull, reset, or clean a running release.
 
 | Work | Read when needed |
 |---|---|
-| Providers, projections, and fleet records | `sports_ticker/AGENTS.md` |
-| Server routes, engine, and workers | `ticker3/AGENTS.md` |
-| Six | `ticker_core/AGENTS.md` |
-| Mini | `esp32_hub75/AGENTS.md` |
-| Controller app | `TickerControlApp/AGENTS.md` |
-| Backend operations | `backend_ops/AGENTS.md` |
+| Providers, projections, and fleet records | `ticker/server/providers/AGENTS.md` |
+| Server routes, engine, and workers | `ticker/server/AGENTS.md` |
+| Six | `ticker/six/AGENTS.md` |
+| Mini | `mini/AGENTS.md` |
+| Controller app | `ios/AGENTS.md` |
+| Backend operations | `ticker/ops/AGENTS.md` |
 | Tests | `tests/AGENTS.md` |
 | Tools | `tools/AGENTS.md` |
 | Writing and change rules | `docs/development/agent-rules.md` |

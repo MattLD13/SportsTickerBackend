@@ -6,12 +6,12 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from ticker_core.ui.text import PANE, HYBRID
-from ticker_core.ui import palette
-from sports_ticker.leagues import LEAGUES
-from sports_ticker.providers.sports_display import sport_family
+from ticker.six.ui.text import PANE, HYBRID
+from ticker.six.ui import palette
+from ticker.shared.leagues import LEAGUES
+from ticker.shared.sports_display import sport_family
 
-TARGET = Path(__file__).resolve().parents[2] / "esp32_hub75/src/mini/ui/generated.h"
+TARGET = Path(__file__).resolve().parents[2] / "mini/src/mini/ui/generated.h"
 
 
 def header() -> str:

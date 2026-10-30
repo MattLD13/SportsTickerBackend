@@ -9,8 +9,8 @@ Read [the revised engineering SOW](../plans/engineering-sow.md) before adding ru
 ## Data response
 
 A Six reads `GET /data`. A Mini sends `POST /poll` and gets the compact view. The device token names the ticker.
-`sports_ticker/projections/data_api.py` owns the JSON envelope.
-`ticker3/api/` owns route authorization and response construction. `docs/api.md` lists every route.
+`ticker/server/projections/data_api.py` owns the JSON envelope.
+`ticker/server/api/` owns route authorization and response construction. `docs/api.md` lists every route.
 
 | Field | Current meaning |
 |---|---|
@@ -70,14 +70,14 @@ Controller schedule override actions use this field. An inactive time window doe
 
 | Boundary | Source |
 |---|---|
-| Domain models | `sports_ticker/domain/models.py` and `sports_ticker/domain/snapshot.py` |
-| Overlay events | `sports_ticker/domain/events.py` |
-| Fleet persistence | `sports_ticker/fleet/repository.py` |
-| JSON projection | `sports_ticker/projections/data_api.py` |
-| HTTP routes | `sports_ticker/api/routes.py` |
-| Pi response parsing | `ticker_core/protocol/model.py` |
-| Pi polling | `ticker_core/protocol/client.py` and `ticker_core/protocol/polling.py` |
-| Protocol validation coverage | `tests/python/protocol/` |
+| Domain models | `ticker/shared/domain/models.py` and `ticker/shared/domain/snapshot.py` |
+| Overlay events | `ticker/shared/domain/events.py` |
+| Fleet persistence | `ticker/server/store/repository.py` |
+| JSON projection | `ticker/server/projections/data_api.py` |
+| HTTP routes | `ticker/server/api/` |
+| Pi response parsing | `ticker/six/protocol/model.py` |
+| Pi polling | `ticker/six/protocol/client.py` and `ticker/six/protocol/polling.py` |
+| Protocol validation coverage | `tests/server/providers/`, `tests/server/projections/`, `tests/shared/display/` |
 
 The HTTP snapshot route remains the Pi boot path. The main Pi uses Device Stream V1 for sequenced updates.
 Snapshot revisions do not define stream ordering or replay. Provider WebSockets do not define the device stream contract.

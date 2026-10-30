@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ticker_core.ui.text import GOLF, clean_text as normal_text
+from ticker.six.ui.text import GOLF, clean_text as normal_text
 
 
 PANEL_SIZE = (384, 32)

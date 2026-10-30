@@ -13,7 +13,7 @@ import time
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from sports_ticker.assets.mini_sprite import validate_sprite
+from ticker.server.mini_assets.mini_sprite import validate_sprite
 from tools.deployment.device_auth import device_headers
 
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the ticker core and restore a healthy release
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/backend-control/current
+ExecStart=/usr/bin/python3 -m ticker.ops.manager guard
+TimeoutStartSec=150
+UMask=0077
