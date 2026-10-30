@@ -383,7 +383,7 @@
       "owned": [
         "sports_ticker/providers/racing.py",
         "sports_ticker/providers/racing_live.py",
-        "ticker_core/features/racing/*"
+        "ticker_core/ui/cards/racing.py"
       ],
       "dependencies": [
         "server-core",
@@ -394,7 +394,7 @@
         "sports_ticker/providers/racing_live.py"
       ],
       "build": [
-        "ticker_core/features/racing/*",
+        "ticker_core/ui/cards/racing.py",
         "tests/python/protocol/test_racing_live_source.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"

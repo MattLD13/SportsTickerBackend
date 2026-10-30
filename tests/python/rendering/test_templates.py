@@ -9,7 +9,7 @@ from ticker_core.ui.frame import RenderContext
 from ticker_core.ui.cards.flight import FlightCard
 from ticker_core.ui.cards.golf import GolfCard
 from ticker_core.ui.cards.music import MusicCard
-from ticker_core.features.racing.renderer import RacingRenderer
+from ticker_core.ui.cards.racing import RacingCard
 from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
 from ticker_core.features.sports.pinned import PreparedSportsFullRenderer
 from ticker_core.ui.cards.stock import StockCard
@@ -137,8 +137,8 @@ def test_mode_templates_match_fresh_layers_when_values_change():
     utility_ref._layers = NoTemplates()
     golf, golf_ref = GolfCard(fonts), GolfCard(fonts)
     golf_ref._panes = NoTemplates()
-    racing, racing_ref = RacingRenderer(fonts,logos), RacingRenderer(fonts,logos)
-    racing_ref._scroll_templates = NoTemplates()
+    racing, racing_ref = RacingCard(fonts,logos), RacingCard(fonts,logos)
+    racing_ref._headers = NoTemplates()
     flight, flight_ref = FlightCard(fonts,logos), FlightCard(fonts,logos)
     flight_ref._boards = NoTemplates()
     weather, weather_ref = WeatherCard(fonts), WeatherCard(fonts)
@@ -165,7 +165,7 @@ def test_mode_templates_match_fresh_layers_when_values_change():
         airport = {'iata':'EWR','city':'Newark','away_abbr':f'{70+index}F','status':'CLEAR'}
         artwork = logos.get('logo',(42,42))
         pairs = [(utility.pane(stock),utility_ref.pane(stock)), (golf.pane(golf_game),golf_ref.pane(golf_game)),
-                 (racing._render_scroll(race),racing_ref._render_scroll(race)),
+                 (racing.strip(race, 0),racing_ref.strip(race, 0)),
                  (flight.visitor(visitor),flight_ref.visitor(visitor)),
                  (flight.board(airport,[{'flight_number':str(index)}],[]),flight_ref.board(airport,[{'flight_number':str(index)}],[])),
                  (weather.frame(context.now,weather_item),weather_ref.frame(context.now,weather_item)),
@@ -173,4 +173,4 @@ def test_mode_templates_match_fresh_layers_when_values_change():
                  (music._label(artwork),music_ref._label(artwork))]
         for actual, expected in pairs:
             assert actual.size == expected.size and actual.tobytes() == expected.tobytes()
-    assert racing._scroll_templates.hits > 0
+    assert racing._headers.hits > 0

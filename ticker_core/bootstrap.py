@@ -10,7 +10,7 @@ from .features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from .ui.cards.flight import FlightCard
 from .ui.cards.golf import GolfCard
 from .ui.cards.music import MusicCard
-from .features.racing import RacingRenderer
+from .ui.cards.racing import RacingCard
 from .features.sports import SportsRenderer
 from .ui.cards.stock import StockCard
 from .ui.screens import Screens
@@ -42,7 +42,7 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     catalog.register("clock", ClockCard(fonts))
     catalog.register("scoreboard", sports)
     catalog.register("sports", sports)
-    catalog.register("racing", RacingRenderer(fonts, assets))
+    catalog.register("racing", RacingCard(fonts, assets))
     catalog.register("golf", GolfCard(fonts))
     catalog.register("weather", WeatherCard(fonts))
     catalog.register("music", MusicCard(fonts, logos))

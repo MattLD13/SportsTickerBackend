@@ -6,7 +6,8 @@ import pytest
 from PIL import Image
 
 from ticker_core.ui.frame import RenderContext
-from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
+from ticker_core.assets import MemoryAssetView as MemoryRacingAssets
+from ticker_core.ui.cards.racing import RacingCard
 from ticker_core.ui import ContentScene, load_default_font_set
 from ticker_core.ui.catalog import content_family
 from sports_ticker.projections.racing_display import racing_cards
@@ -28,7 +29,7 @@ def _item(series: str) -> dict:
 
 
 def test_each_racing_series_renders_a_panel_frame() -> None:
-    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    renderer = RacingCard(load_default_font_set(), MemoryRacingAssets())
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
 
     for series in ("indycar", "f1", "nascar", "wec", "imsa"):
@@ -45,7 +46,7 @@ def test_each_racing_series_renders_a_panel_frame() -> None:
 
 
 def test_completed_f1_cards_show_leader_time_and_following_gaps(monkeypatch) -> None:
-    import ticker_core.features.racing.renderer as rendering
+    import ticker_core.ui.cards.racing as rendering
 
     drawn = []
     original = rendering.draw_tiny
@@ -62,7 +63,7 @@ def test_completed_f1_cards_show_leader_time_and_following_gaps(monkeypatch) -> 
         {"pos": 2, "abbr": "VER", "name": "Max Verstappen", "gap": "+0.084", "best_time": "1:36.136"},
     ])
     item["racing_display"] = {"cards": racing_cards(item)}
-    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    renderer = RacingCard(load_default_font_set(), MemoryRacingAssets())
     renderer.render(RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
     assert "1:36.052" in drawn
     assert "+0.084" in drawn
@@ -77,9 +78,9 @@ def test_pinned_carousel_builds_the_entire_field(series, count):
         {"pos": n, "car": str(n), "name": f"Car {n}", "gap": f"+{n}.123"}
         for n in range(1, count + 1)
     ]
-    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    renderer = RacingCard(load_default_font_set(), MemoryRacingAssets())
     result = renderer.render(RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
-    cards, strip, width = next(iter(renderer._strip_cache.values()))
+    cards, strip, width = next(iter(renderer._strip.values()))
     assert len(cards) == count
     assert width == sum(card.width + 6 for card in cards)
     assert strip.width > width
@@ -88,7 +89,7 @@ def test_pinned_carousel_builds_the_entire_field(series, count):
 
 def test_pinned_racing_visual_key_ignores_unrelated_asset_revisions() -> None:
     assets = MemoryRacingAssets()
-    renderer = RacingRenderer(load_default_font_set(), assets)
+    renderer = RacingCard(load_default_font_set(), assets)
     item = _item("f1")
     item["sports_presentation"] = "pinned"
     car_url = "https://assets.example/f1-car.png"
@@ -107,7 +108,7 @@ def test_pinned_racing_visual_key_ignores_unrelated_asset_revisions() -> None:
 
 
 def test_pinned_carousel_reuses_unchanged_driver_cards(monkeypatch) -> None:
-    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    renderer = RacingCard(load_default_font_set(), MemoryRacingAssets())
     context = RenderContext(datetime(2026, 10, 25, tzinfo=timezone.utc))
     item = _item("f1")
     item["sports_presentation"] = "pinned"
@@ -116,13 +117,13 @@ def test_pinned_carousel_reuses_unchanged_driver_cards(monkeypatch) -> None:
         {"pos": 2, "abbr": "BBB", "name": "Driver BBB", "car": "2", "gap": "+0.2"},
     ]
     calls = []
-    original = RacingRenderer._driver_card_base
+    original = RacingCard._identity
 
     def count_card(self, driver, f1):
         calls.append(str(driver.get("abbr")))
         return original(self, driver, f1)
 
-    monkeypatch.setattr(RacingRenderer, "_driver_card_base", count_card)
+    monkeypatch.setattr(RacingCard, "_identity", count_card)
     first = renderer.render(context, ContentScene(item, "sports")).image
     updated = {**item, "f1": {**item["f1"], "drivers": [
         item["f1"]["drivers"][0], {**item["f1"]["drivers"][1], "gap": "+0.3"},
@@ -134,7 +135,7 @@ def test_pinned_carousel_reuses_unchanged_driver_cards(monkeypatch) -> None:
 
 
 def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
-    import ticker_core.features.racing.renderer as rendering
+    import ticker_core.ui.cards.racing as rendering
 
     drawn = []
     original = rendering.draw_tiny
@@ -148,7 +149,7 @@ def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
     item["sports_presentation"] = "pinned"
     item["indycar"]["drivers"] = [{"pos": 2, "car": "2", "name": "Driver", "gap": "+1.234", "speed": "220.123"}]
     item["racing_display"] = {"cards": racing_cards(item)}
-    RacingRenderer(load_default_font_set(), MemoryRacingAssets()).render(
+    RacingCard(load_default_font_set(), MemoryRacingAssets()).render(
         RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
     assert "+1.234" in drawn
     assert "220.123" not in drawn
@@ -158,14 +159,14 @@ def test_scroll_has_separate_class_cards_in_class_order():
     from tools.mini.racing_vectors import game
     item = game("imsa")
     item["racing_display"] = {"cards": racing_cards(item)}
-    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    renderer = RacingCard(load_default_font_set(), MemoryRacingAssets())
     result = renderer.render(RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports"))
     assert result.image.size == (128 * 4 + 6 * 3, 32)
     assert [card["class_label"] for card in item["racing_display"]["cards"]] == ["GTP", "LMP2", "GTD PRO", "GTD"]
 
 
 def test_safety_car_labels_stay_distinct_in_both_six_layouts(monkeypatch):
-    import ticker_core.features.racing.renderer as rendering
+    import ticker_core.ui.cards.racing as rendering
     from tools.mini.racing_vectors import game
     drawn = []
     original = rendering.draw_tiny
@@ -178,7 +179,7 @@ def test_safety_car_labels_stay_distinct_in_both_six_layouts(monkeypatch):
     for code in ("SAFETY CAR", "VSC", "FCY", "UNKNOWN"):
         item = game("f1", code)
         item["racing_display"] = {"cards": racing_cards(item)}
-        renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+        renderer = RacingCard(load_default_font_set(), MemoryRacingAssets())
         label = item["racing_display"]["cards"][0]["signals"][0]["label"]
         for pinned in (False, True):
             drawn.clear()

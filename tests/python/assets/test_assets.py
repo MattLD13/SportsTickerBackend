@@ -368,7 +368,8 @@ def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) 
     from datetime import datetime, timezone
     from sports_ticker.providers.racing_live import _f1_car_url
     from ticker_core.ui.frame import RenderContext
-    from ticker_core.features.racing import MemoryRacingAssets, RacingRenderer
+    from ticker_core.assets import MemoryAssetView as MemoryRacingAssets
+    from ticker_core.ui.cards.racing import RacingCard
     from ticker_core.protocol import TickerResponse
     from ticker_core.ui import ContentScene, load_default_font_set
 
@@ -393,8 +394,8 @@ def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) 
         context = RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc))
         scene = ContentScene(data, "sports")
         fonts = load_default_font_set()
-        photo = RacingRenderer(fonts, coordinator).render(context, scene).image
-        placeholder = RacingRenderer(fonts, MemoryRacingAssets()).render(context, scene).image
+        photo = RacingCard(fonts, coordinator).render(context, scene).image
+        placeholder = RacingCard(fonts, MemoryRacingAssets()).render(context, scene).image
         assert photo.size == (384, 32)
         assert photo.tobytes() != placeholder.tobytes()
     finally:

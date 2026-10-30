@@ -113,7 +113,7 @@ def renderers(present: bool) -> dict[str, Any]:
     from ticker_core.ui.cards.flight import FlightCard
     from ticker_core.ui.cards.golf import GolfCard
     from ticker_core.ui.cards.music import MusicCard
-    from ticker_core.features.racing import RacingRenderer
+    from ticker_core.ui.cards.racing import RacingCard
     from ticker_core.features.sports import SportsRenderer
     from ticker_core.ui.cards.stock import StockCard
     from ticker_core.ui.screens import Screens, update_overlay
@@ -126,7 +126,7 @@ def renderers(present: bool) -> dict[str, Any]:
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     return {
-        "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingRenderer(fonts, assets),
+        "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingCard(fonts, assets),
         "golf": GolfCard(fonts), "weather": WeatherCard(fonts), "music": MusicCard(fonts, logos),
         "flight": FlightCard(fonts, logos), "stock": StockCard(fonts, logos), "screens": Screens(fonts), "update_overlay": update_overlay,
         "clock": ClockCard(fonts), "alert": ScoreAlertRenderer(fonts, logos),
