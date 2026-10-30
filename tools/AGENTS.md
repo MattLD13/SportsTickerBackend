@@ -31,6 +31,16 @@ python tools/rendering/build_demo_layouts.py
 python tools/rendering/verify_public_demo.py
 ```
 
+Check the golden pixels of every Six card and every Mini pane:
+
+```powershell
+python tools/rendering/six_golden.py check
+python tools/rendering/mini_golden.py check --arduinojson <ArduinoJson src directory>
+```
+
+Each check renders a fixed input corpus and compares one digest for each case.
+After a pixel change on purpose, inspect real frames of the changed cases. Then run the same tool with `accept`.
+
 Check shared Mini data:
 
 ```powershell
@@ -46,4 +56,3 @@ Keep file access and network access outside rendering functions.
 Store generated images, captures, and reports under `previews/`.
 Keep device credentials outside Git and tool output.
 If a tool changes hardware state, require an explicit command option and document its recovery path.
-Remove tools that depend on deleted V1 modules.

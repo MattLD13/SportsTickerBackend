@@ -1,5 +1,8 @@
-// Render the production Mini panels into portable RGB frame atlases.
+// Render the production Mini panels into portable RGB frame atlases, or print one digest for each row.
+// A sprite or artwork path "standin:<seed>" gives deterministic stand-in pixels, so a golden case reads no file.
 #include <array>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -12,6 +15,17 @@ struct Sprite {
   std::array<uint16_t, ticker_ui::MINI_LOGO_SIZE * ticker_ui::MINI_LOGO_SIZE> pixels{};
   std::array<uint8_t, ticker_ui::MINI_LOGO_SIZE * ticker_ui::MINI_LOGO_SIZE> mask{};
   explicit Sprite(const std::string& path) {
+    if (path.rfind("standin:", 0) == 0) {
+      const uint32_t seed = static_cast<uint32_t>(std::stoul(path.substr(8)));
+      const int size = ticker_ui::MINI_LOGO_SIZE, middle = size / 2;
+      for (int index = 0; index < size * size; ++index) {
+        const int x = index % size - middle, y = index / size - middle;
+        mask[index] = x * x + y * y <= (middle - 1) * (middle - 1);
+        pixels[index] = static_cast<uint16_t>((seed * 2654435761u >> (y == 0 ? 3 : 16)) & 0xffff);
+      }
+      ready = true;
+      return;
+    }
     std::ifstream stream(path, std::ios::binary);
     std::array<uint8_t, mini_sprite::kBytes> bytes{};
     if (stream.read(reinterpret_cast<char*>(bytes.data()), bytes.size())) {
@@ -27,6 +41,17 @@ struct Canvas {
   std::array<uint8_t, mini_artwork::Bytes> cover{};
   bool coverReady = false;
   Canvas(const std::string& a, const std::string& h, const std::string& artwork = "") : away(a), home(h) {
+    if (artwork.rfind("standin:", 0) == 0) {
+      const uint32_t seed = static_cast<uint32_t>(std::stoul(artwork.substr(8)));
+      memcpy(cover.data(), "MTA1", 4);
+      for (size_t index = 0; index < 32 * 32; ++index) {
+        const uint16_t value = static_cast<uint16_t>((seed * 40503u + index * (index % 7 + 1)) & 0xffff);
+        cover[16 + index * 2] = value & 0xff;
+        cover[17 + index * 2] = value >> 8;
+      }
+      coverReady = true;
+      return;
+    }
     std::ifstream input(artwork, std::ios::binary);
     coverReady = static_cast<bool>(input.read(reinterpret_cast<char*>(cover.data()), cover.size())) && memcmp(cover.data(), "MTA1", 4) == 0;
   }
@@ -94,27 +119,40 @@ bool renderPanel(Canvas& canvas, const std::string& mode, JsonObjectConst game, 
   return true;
 }
 
+// Usage: render_mini_ui input.json frames-directory   (write one PPM atlas for each row)
+//        render_mini_ui input.json --digest              (print one FNV-1a digest for each row)
 int main(int argc, char** argv) {
   if (argc != 3) return 2;
   std::ifstream input(argv[1]);
   JsonDocument document;
   if (deserializeJson(document, input)) return 3;
-  std::filesystem::create_directories(argv[2]);
+  const bool digest = std::string(argv[2]) == "--digest";
+  if (!digest) std::filesystem::create_directories(argv[2]);
   int count = 0;
   for (JsonObjectConst row : document.as<JsonArrayConst>()) {
     const std::string name = row["name"] | "frame";
     const int frames = row["frame_count"] | 1;
     if (frames < 1 || frames > 2000) return 4;
-    std::ofstream output(std::filesystem::path(argv[2]) / (name + ".ppm"), std::ios::binary);
-    output << "P6\n64 " << frames * 32 << "\n255\n";
+    std::ofstream output;
+    if (!digest) {
+      output.open(std::filesystem::path(argv[2]) / (name + ".ppm"), std::ios::binary);
+      output << "P6\n64 " << frames * 32 << "\n255\n";
+    }
+    uint64_t hash = 1469598103934665603ull;
     for (int index = 0; index < frames; ++index) {
       const uint32_t elapsed = index * (row["frame_ms"] | 100);
       Canvas canvas(row["away_sprite"] | "", row["home_sprite"] | "", row["cover_artwork"] | "");
       const std::string mode = row["mode"] | "sports";
-      if (!renderPanel(canvas, mode, row["game"].as<JsonObjectConst>(), row, elapsed)) return 5;
-      output.write(reinterpret_cast<const char*>(canvas.pixels.data()), canvas.pixels.size());
+      if (!renderPanel(canvas, mode, row["game"].as<JsonObjectConst>(), row, elapsed)) {
+        if (!digest) return 5;
+        hash = 0;
+        break;
+      }
+      if (digest) for (uint8_t value : canvas.pixels) hash = (hash ^ value) * 1099511628211ull;
+      else output.write(reinterpret_cast<const char*>(canvas.pixels.data()), canvas.pixels.size());
       ++count;
     }
+    if (digest) std::printf("%016llx\n", static_cast<unsigned long long>(hash));
   }
-  std::cout << "Rendered " << count << " Mini frames from the firmware drawing code\n";
+  if (!digest) std::cout << "Rendered " << count << " Mini frames from the firmware drawing code\n";
 }

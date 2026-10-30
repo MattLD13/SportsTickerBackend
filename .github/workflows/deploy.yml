@@ -191,6 +191,9 @@ jobs:
         g++ -std=c++17 -O1 -Iesp32_hub75/src/mini/protocol -Iesp32_hub75/.pio/libdeps/esp32s3/ArduinoJson/src tests/native/mini_music_panel.cpp -o /tmp/mini-music-check
         /tmp/mini-music-check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
+    - name: Check Mini golden frames
+      run: python tools/rendering/mini_golden.py check
+      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Verify Mini racing cards and flag patterns
       run: |
         python tools/mini/racing_vectors.py --check

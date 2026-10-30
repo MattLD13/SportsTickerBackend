@@ -14,7 +14,7 @@ def timestamp(value: object) -> float | None:
 
 
 def received_timing(response, message, *, received_ms: float, received_mono: float, decoded_mono: float, queued_mono: float, item_ids) -> dict:
-    """Detach optional V2 timing metadata for the polling process boundary."""
+    """Detach optional timing metadata for the polling process boundary."""
     snapshot = response.data.get("snapshot", {})
     source = snapshot.get("timing", {}) if isinstance(snapshot, Mapping) else {}
     items = source.get("items", {}) if isinstance(source, Mapping) else {}
