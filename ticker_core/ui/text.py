@@ -124,29 +124,32 @@ def plain_text(value: object) -> str:
 
 @dataclass(frozen=True)
 class BitmapFont:
-    """Draw one bitmap glyph table."""
+    """Draw one bitmap glyph table. A character with no glyph draws as a space."""
 
     glyphs: dict[str, list[int]]
     columns: tuple[int, ...]
+    advance: int = 5
+    # The width of "~", a narrow space. None draws "~" as an ordinary character.
+    tilde: int | None = 2
     keep_lowercase_v: bool = False
 
     def width(self, text: object) -> int:
-        return sum(2 if char == "~" else 5 for char in plain_text(text))
+        return sum(self.tilde if char == "~" and self.tilde is not None else self.advance for char in plain_text(text))
 
     def draw(self, draw: ImageDraw.ImageDraw, x: int, y: int, text: object, color: object) -> int:
         cursor = int(x)
         y = int(y)
         space = self.glyphs[" "]
         for char in plain_text(text):
-            if char == "~":
-                cursor += 2
+            if char == "~" and self.tilde is not None:
+                cursor += self.tilde
                 continue
             rows = HYBRID_SMALL_V if self.keep_lowercase_v and char == "v" else self.glyphs.get(char.upper(), space)
             for row, value in enumerate(rows):
                 for column, bit in enumerate(self.columns):
                     if value & bit:
                         draw.point((cursor + column, y + row), fill=color)
-            cursor += 5
+            cursor += self.advance
         return cursor - int(x)
 
 
@@ -154,6 +157,7 @@ class BitmapFont:
 HYBRID_SMALL_V = [0, 0, 10, 4, 0, 0]
 TINY_FONT = BitmapFont(TINY, (8, 4, 2, 1, 16))
 HYBRID_FONT = BitmapFont(HYBRID, (8, 4, 2, 1), keep_lowercase_v=True)
+GOLF_FONT = BitmapFont(GOLF, (4, 2, 1), advance=4, tilde=None)
 
 
 def draw_tiny(draw: ImageDraw.ImageDraw, x: int | float, y: int | float, text: object, color: object) -> int:

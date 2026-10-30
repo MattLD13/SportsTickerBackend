@@ -362,7 +362,7 @@
       "owner": "Golf provider and device presentation",
       "owned": [
         "sports_ticker/providers/golf.py",
-        "ticker_core/features/golf/*"
+        "ticker_core/ui/cards/golf.py"
       ],
       "dependencies": [
         "server-core",
@@ -372,7 +372,7 @@
         "sports_ticker/providers/golf.py"
       ],
       "build": [
-        "ticker_core/features/golf/*",
+        "ticker_core/ui/cards/golf.py",
         "tests/python/protocol/test_golf_provider.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"

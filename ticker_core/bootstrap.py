@@ -8,7 +8,7 @@ from .app.viewport import CardViewport
 from .ui.cards.clock import ClockCard
 from .features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from .ui.cards.flight import FlightCard
-from .features.golf import GolfRenderer
+from .ui.cards.golf import GolfCard
 from .ui.cards.music import MusicCard
 from .features.racing import RacingRenderer
 from .features.sports import SportsRenderer
@@ -43,7 +43,7 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     catalog.register("scoreboard", sports)
     catalog.register("sports", sports)
     catalog.register("racing", RacingRenderer(fonts, assets))
-    catalog.register("golf", GolfRenderer(fonts))
+    catalog.register("golf", GolfCard(fonts))
     catalog.register("weather", WeatherCard(fonts))
     catalog.register("music", MusicCard(fonts, logos))
     catalog.register("flight", FlightCard(fonts, logos))

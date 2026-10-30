@@ -12,12 +12,11 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ticker_core.features.golf.renderer import GolfRenderer
-from ticker_core.features.utility.primitives import normal_text
+from ticker_core.ui.text import GOLF, clean_text as normal_text
 
 
 PANEL_SIZE = (384, 32)
-FONT = GolfRenderer._font
+FONT = GOLF
 PARS = [4, 5, 4, 3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 5, 3, 4, 4]
 
 
