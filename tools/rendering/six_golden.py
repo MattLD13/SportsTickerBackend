@@ -109,7 +109,8 @@ def renderers(present: bool) -> dict[str, Any]:
     """Build one fresh set of Six renderers on stand-in logos."""
     from ticker_core.assets import LogoAssetView
     from ticker_core.bootstrap import CachedLogoView
-    from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
+    from ticker_core.ui.news_banner import NewsBanner
+    from ticker_core.ui.score_alert import ScoreAlert
     from ticker_core.ui.cards.flight import FlightCard
     from ticker_core.ui.cards.golf import GolfCard
     from ticker_core.ui.cards.music import MusicCard
@@ -129,8 +130,8 @@ def renderers(present: bool) -> dict[str, Any]:
         "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingCard(fonts, assets),
         "golf": GolfCard(fonts), "weather": WeatherCard(fonts), "music": MusicCard(fonts, logos),
         "flight": FlightCard(fonts, logos), "stock": StockCard(fonts, logos), "screens": Screens(fonts), "update_overlay": update_overlay,
-        "clock": ClockCard(fonts), "alert": ScoreAlertRenderer(fonts, logos),
-        "news": NewsBannerRenderer(fonts), "connection": connection_lost,
+        "clock": ClockCard(fonts), "alert": ScoreAlert(fonts, logos),
+        "news": NewsBanner(), "connection": connection_lost,
     }
 
 
@@ -150,9 +151,9 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
         rendered = renderer.render(RenderContext(args["now"]), ContentScene(args["item"], args["mode"], args["elapsed"]))
         return rendered.image
     if kind == "alert":
-        return renderer.render(args["alert"], args["elapsed"], args["under"])
+        return renderer.frame(args["alert"], args["elapsed"], args["under"])
     if kind == "news":
-        return renderer.render(args["item"]) if method == "render" else renderer.apply(args["frame"], args["item"], args["elapsed"])
+        return renderer.banner(args["item"]) if method == "render" else renderer.apply(args["frame"], args["item"], args["elapsed"])
     if kind == "connection":
         return renderer(args["frame"])
     raise ValueError(f"unknown call {kind}.{method}")

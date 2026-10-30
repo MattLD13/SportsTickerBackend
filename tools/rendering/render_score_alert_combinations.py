@@ -22,7 +22,7 @@ from sports_ticker.providers.espn_details import _event_plays, _event_scoring_de
 from sports_ticker.providers.espn_mlb import _mlb_statsapi_summary
 from sports_ticker.providers.score_alerts import _describe, _extract_alert_facts
 from ticker_core.assets import AssetPlanner, LogoAssetView
-from ticker_core.features.alerts.score_alert import PreparedScoreAlertRenderer, _score_alert_fact_layout
+from ticker_core.ui.score_alert import ScoreAlert, fact_layout
 from ticker_core.platform import AssetCoordinator
 from ticker_core.protocol import TickerResponse
 from ticker_core.ui import load_default_font_set
@@ -237,7 +237,7 @@ def render_gallery(examples, output):
     unique = {}
     for example in examples:
         alert = example["alert"]
-        layout = _score_alert_fact_layout(alert, 42, 283)
+        layout = fact_layout(alert, 42, 283)
         fields = tuple(kind for kind, _, _, _ in layout)
         assists = sum(bool(alert.get(key)) for key in ("primary_assist", "secondary_assist"))
         zone = alert.get("is_red_zone") if alert.get("down_distance") else "no down"
@@ -248,7 +248,7 @@ def render_gallery(examples, output):
     groups = {sport: [] for sport in GROUPS}
     assets = AssetCoordinator(output / "assets")
     try:
-        renderer = PreparedScoreAlertRenderer(load_default_font_set(), LogoAssetView(assets))
+        renderer = ScoreAlert(load_default_font_set(), LogoAssetView(assets))
         for index, example in enumerate(selected, 1):
             alert = example["alert"]
             settings = DisplaySettings(mode="sports", score_alerts=True, my_teams=(f"{alert['sport']}:{alert['team_abbr']}",))
@@ -257,14 +257,14 @@ def render_gallery(examples, output):
             response = TickerResponse.from_payload(payload)
             for future in assets.prefetch(AssetPlanner().plan(response).requests):
                 future.result()
-            frame = renderer.draw_score_alert(response.alerts[0].data, 3.0)
+            frame = renderer.frame(response.alerts[0].data, 3.0)
             assert frame.size == (384, 32)
-            assert all(x >= 42 and x + width <= 283 for _, _, x, width in _score_alert_fact_layout(alert, 42, 283))
+            assert all(x >= 42 and x + width <= 283 for _, _, x, width in fact_layout(alert, 42, 283))
             image_path = output / f"alert-{index:02d}.png"
             frame.save(image_path)
             (output / f"alert-{index:02d}.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
             encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
-            fields = " + ".join(kind for kind, _, _, _ in _score_alert_fact_layout(alert, 42, 283)) or "headline only"
+            fields = " + ".join(kind for kind, _, _, _ in fact_layout(alert, 42, 283)) or "headline only"
             zone = " Â· red zone" if alert.get("is_red_zone") is True else " Â· outside red zone" if alert.get("is_red_zone") is False and alert.get("down_distance") else ""
             label = f"{alert['headline']} Â· {fields}{zone}"
             title = f"{alert['away_abbr']} {alert['away_score']} â€” {alert['home_abbr']} {alert['home_score']} Â· {alert['status']}"

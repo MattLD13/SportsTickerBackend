@@ -408,7 +408,8 @@
       "owned": [
         "sports_ticker/providers/news.py",
         "sports_ticker/providers/news_transactions.py",
-        "ticker_core/features/alerts/*"
+        "ticker_core/ui/score_alert.py",
+        "ticker_core/ui/news_banner.py"
       ],
       "dependencies": [
         "server-core",
@@ -419,7 +420,8 @@
         "sports_ticker/providers/news_transactions.py"
       ],
       "build": [
-        "ticker_core/features/alerts/*",
+        "ticker_core/ui/score_alert.py",
+        "ticker_core/ui/news_banner.py",
         "tests/python/protocol/test_news_distribution.py",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"

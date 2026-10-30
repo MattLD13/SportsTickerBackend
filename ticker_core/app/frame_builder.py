@@ -8,7 +8,8 @@ from typing import Any, Protocol
 from PIL import Image
 
 from ticker_core.ui.frame import RenderContext
-from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
+from ticker_core.ui.news_banner import NewsBanner
+from ticker_core.ui.score_alert import ScoreAlert
 from ticker_core.ui import ContentRendererCatalog, ContentScene
 from ticker_core.ui import FrameGeometry
 from ticker_core.ui.frame import plain_mapping as _plain_mapping
@@ -34,8 +35,8 @@ class FrameBuilder:
         self,
         catalog: ContentRendererCatalog,
         screens: Screens,
-        score_alerts: ScoreAlertRenderer,
-        news_banners: NewsBannerRenderer,
+        score_alerts: ScoreAlert,
+        news_banners: NewsBanner,
         viewport: ViewportSource,
         geometry: FrameGeometry | None = None,
     ) -> None:
@@ -105,7 +106,7 @@ class FrameBuilder:
             frame = self._screens.offline(decision.wall_time, decision.offline_for or 0.0)
         elif decision.kind == FrameKind.SCORE_ALERT:
             base = False
-            frame = self._score_alerts.render(
+            frame = self._score_alerts.frame(
                 decision.alert or {},
                 decision.alert_elapsed or 0.0,
                 self._last_base,

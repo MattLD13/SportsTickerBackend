@@ -11,7 +11,8 @@ import pytest
 from sports_ticker.providers.nhl_live import _game_events
 from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootout_display, nhl_manpower_situation, project_baseball_display
 from ticker_core.ui.frame import RenderContext
-from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
+from ticker_core.ui.news_banner import NewsBanner
+from ticker_core.ui.score_alert import ScoreAlert
 from ticker_core.features.sports import SportsRenderer
 from ticker_core.features.sports import pinned as sports_full_port
 from ticker_core.features.sports import stadium_port as sports_stadium_port
@@ -597,20 +598,20 @@ def test_full_baseball_draws_second_abs_challenge_marker(sports: SportsRenderer)
 
 def test_score_alert_uses_full_panel_and_is_deterministic() -> None:
     """Keep score takeovers stable for one elapsed time."""
-    renderer = ScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    renderer = ScoreAlert(load_default_font_set(), EmptyLogos())
     alert = {"team_abbr": "AAA", "team_color": "#006341", "away_abbr": "AAA", "home_abbr": "AAA", "away_score": 2, "home_score": 1, "headline": "GOAL"}
-    first = renderer.render(alert, 1.0)
-    second = renderer.render(alert, 1.0)
+    first = renderer.frame(alert, 1.0)
+    second = renderer.frame(alert, 1.0)
     assert first.size == (384, 32)
     assert first.tobytes() == second.tobytes()
 
 
 def test_news_banner_keeps_live_frame_geometry() -> None:
     """Keep news overlay output at the panel size."""
-    renderer = NewsBannerRenderer(load_default_font_set())
+    renderer = NewsBanner()
     frame = Image.new("RGB", (384, 32), (0, 0, 0))
     item = {"kind": "TRADE", "from_abbr": "VAN", "to_abbr": "NYR", "text": "Miller for Kakko"}
-    assert renderer.render(item).size == (192, 32)
+    assert renderer.banner(item).size == (192, 32)
     first = renderer.apply(frame, item, 1.0)
     second = renderer.apply(frame, item, 1.0)
     assert first.size == (384, 32)

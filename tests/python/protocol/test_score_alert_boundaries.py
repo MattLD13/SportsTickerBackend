@@ -11,7 +11,7 @@ from sports_ticker.providers.score_alerts import ScoreAlertTracker
 from sports_ticker.providers.espn_events import _team
 from ticker_core.assets import AssetPlanner, AssetRequest, LogoAssetView
 from ticker_core.app.updates import delta_asset_source
-from ticker_core.features.alerts import ScoreAlertRenderer
+from ticker_core.ui.score_alert import ScoreAlert
 from ticker_core.platform import AssetCoordinator
 from ticker_core.protocol import TickerResponse, display_delta
 from ticker_core.ui import load_default_font_set
@@ -321,8 +321,8 @@ def test_display_delta_prepares_and_renders_alert_logo_without_a_game_card(tmp_p
         assert with_asset.image(game["home_logo"], "logo", (24, 24)) is not None
         fonts = load_default_font_set()
         alert = current.alerts[0].data
-        actual = ScoreAlertRenderer(fonts, LogoAssetView(with_asset)).render(alert, 4.0)
-        missing = ScoreAlertRenderer(fonts, LogoAssetView(without_asset)).render(alert, 4.0)
+        actual = ScoreAlert(fonts, LogoAssetView(with_asset)).frame(alert, 4.0)
+        missing = ScoreAlert(fonts, LogoAssetView(without_asset)).frame(alert, 4.0)
         assert actual.size == (384, 32)
         assert actual.crop((0, 0, 36, 32)).tobytes() != missing.crop((0, 0, 36, 32)).tobytes()
     finally:

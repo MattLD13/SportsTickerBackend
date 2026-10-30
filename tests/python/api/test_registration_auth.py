@@ -9,7 +9,8 @@ import pytest
 
 from ticker3.offline import create_offline_application
 from ticker_core.app.frame_builder import FrameBuilder
-from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
+from ticker_core.ui.news_banner import NewsBanner
+from ticker_core.ui.score_alert import ScoreAlert
 from ticker_core.ui.screens import Screens
 from ticker_core.protocol import DeviceState, TickerResponse
 from ticker_core.ui import ContentRendererCatalog, load_default_font_set
@@ -66,8 +67,8 @@ def test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap(tmp_path) 
         builder = FrameBuilder(
             ContentRendererCatalog(),
             Screens(fonts),
-            ScoreAlertRenderer(fonts, Logos()),
-            NewsBannerRenderer(fonts),
+            ScoreAlert(fonts, Logos()),
+            NewsBanner(),
             Viewport(),
         )
         frame = builder.build(

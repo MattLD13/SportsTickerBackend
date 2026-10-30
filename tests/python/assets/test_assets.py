@@ -410,7 +410,7 @@ def _png() -> bytes:
 
 
 def test_v2_alert_only_logo_reaches_the_production_frame(tmp_path) -> None:
-    from ticker_core.features.alerts import ScoreAlertRenderer
+    from ticker_core.ui.score_alert import ScoreAlert
     from ticker_core.protocol.model import OverlayItem
     from ticker_core.ui import load_default_font_set
 
@@ -431,10 +431,10 @@ def test_v2_alert_only_logo_reaches_the_production_frame(tmp_path) -> None:
             assert future.result() is not None
         view = LogoAssetView(coordinator)
         assert view.get(logo, (24, 24)) is not None
-        renderer = ScoreAlertRenderer(load_default_font_set(), view)
-        frame = renderer.render(parsed.data, 2.0)
+        renderer = ScoreAlert(load_default_font_set(), view)
+        frame = renderer.frame(parsed.data, 2.0)
         assert frame.size == (384, 32)
-        assert frame.tobytes() != renderer.render({**parsed.data, "team_logo": ""}, 2.0).tobytes()
+        assert frame.tobytes() != renderer.frame({**parsed.data, "team_logo": ""}, 2.0).tobytes()
     finally:
         coordinator.close()
 

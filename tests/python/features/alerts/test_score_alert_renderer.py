@@ -3,18 +3,15 @@
 from PIL import Image
 import pytest
 
-from ticker_core.features.alerts.score_alert import (
-    PreparedScoreAlertRenderer,
-    _score_alert_fact_layout,
-)
-from ticker_core.features.alerts.news_banner import PreparedNewsBannerRenderer
+from ticker_core.ui.news_banner import NewsBanner
+from ticker_core.ui.score_alert import ScoreAlert, fact_layout
 from ticker_core.ui import load_default_font_set
 
 
 @pytest.mark.critical
 @pytest.mark.parametrize("value,label", [("1&GOAL", "1&G"), ("4&GOAL", "4&G"), ("4&15", "4&15")])
 def test_football_goal_distance_chip_fits_beside_the_scoring_clock(monkeypatch, value, label):
-    from ticker_core.features.alerts import score_alert
+    from ticker_core.ui import score_alert
     calls = []
     original = score_alert.draw_tiny
 
@@ -23,8 +20,8 @@ def test_football_goal_distance_chip_fits_beside_the_scoring_clock(monkeypatch, 
         return original(draw, x, y, text, color)
 
     monkeypatch.setattr(score_alert, "draw_tiny", capture)
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
-    frame = renderer.draw_score_alert({"sport": "nfl", "headline": "RUSH TD", "status": "Q4 12:52",
+    renderer = ScoreAlert(load_default_font_set(), EmptyLogos())
+    frame = renderer.frame({"sport": "nfl", "headline": "RUSH TD", "status": "Q4 12:52",
         "team_abbr": "HOM", "away_abbr": "AWY", "home_abbr": "HOM", "home_score": 7, "away_score": 0,
         "down_distance": value, "is_red_zone": True}, 4.0)
     assert frame.size == (384, 32)
@@ -37,7 +34,7 @@ def test_football_goal_distance_chip_fits_beside_the_scoring_clock(monkeypatch, 
 
 
 def test_news_banner_cache_reuses_pixels_and_keeps_animation_output() -> None:
-    renderer = PreparedNewsBannerRenderer()
+    renderer = NewsBanner()
     item = {
         "kind": "TRADE",
         "from_abbr": "VAN",
@@ -47,16 +44,16 @@ def test_news_banner_cache_reuses_pixels_and_keeps_animation_output() -> None:
         "text": "Miller for Kakko",
     }
     base = Image.new("RGB", (384, 32), (12, 20, 28))
-    banner = renderer.draw_news_banner(item)
+    banner = renderer.banner(item)
 
-    assert renderer.draw_news_banner(dict(item)) is banner
+    assert renderer.banner(dict(item)) is banner
     for elapsed in (0.0, 0.15, 0.30, 2.0, 6.7):
-        actual = renderer.apply_news_banner(base, item, elapsed)
-        expected = PreparedNewsBannerRenderer().apply_news_banner(base, item, elapsed)
+        actual = renderer.apply(base, item, elapsed)
+        expected = NewsBanner().apply(base, item, elapsed)
         assert actual.tobytes() == expected.tobytes()
 
     changed = {**item, "to_color": "#00A3E0"}
-    changed_banner = renderer.draw_news_banner(changed)
+    changed_banner = renderer.banner(changed)
     assert changed_banner is not banner
     assert changed_banner.tobytes() != banner.tobytes()
 
@@ -70,17 +67,17 @@ class EmptyLogos:
 
 
 def test_baseball_alert_shows_top_bottom_and_mid_inning_markers() -> None:
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    from ticker_core.ui.score_alert import _status
 
-    assert renderer._alert_status_label({"sport": "mlb", "status": "Top 7th"}) == ("▲", "7")
-    assert renderer._alert_status_label({"sport": "mlb", "status": "Bottom 7th"}) == ("▼", "7")
-    assert renderer._alert_status_label({"sport": "mlb", "status": "Mid 7th"}) == ("-", "7")
+    assert _status({"sport": "mlb", "status": "Top 7th"}) == ("▲", "7")
+    assert _status({"sport": "mlb", "status": "Bottom 7th"}) == ("▼", "7")
+    assert _status({"sport": "mlb", "status": "Mid 7th"}) == ("-", "7")
 
 
 def test_baseball_alert_keeps_final_status_without_an_inning_marker() -> None:
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    from ticker_core.ui.score_alert import _status
 
-    assert renderer._alert_status_label({"sport": "mlb", "status": "Final"}) == ("", "FINAL")
+    assert _status({"sport": "mlb", "status": "Final"}) == ("", "FINAL")
 
 
 def test_score_alert_groups_labeled_hockey_assists_in_a_separate_box() -> None:
@@ -90,7 +87,7 @@ def test_score_alert_groups_labeled_hockey_assists_in_a_separate_box() -> None:
         "secondary_assist": "Mika Zibanejad",
     }
 
-    layout = _score_alert_fact_layout(alert, 42, 283)
+    layout = fact_layout(alert, 42, 283)
 
     assert [kind for kind, _, _, _ in layout] == [
         "player", "assists",
@@ -103,12 +100,12 @@ def test_score_alert_groups_labeled_hockey_assists_in_a_separate_box() -> None:
         current[2] >= previous[2] + previous[3]
         for previous, current in zip(layout, layout[1:])
     )
-    single = _score_alert_fact_layout({"primary_assist": "Adam Fox"}, 42, 283)
+    single = fact_layout({"primary_assist": "Adam Fox"}, 42, 283)
     assert single[0][1] == "ASSIST: FOX"
 
 
 def test_score_alert_places_football_down_distance_in_its_own_chip() -> None:
-    layout = _score_alert_fact_layout({
+    layout = fact_layout({
         "headline": "FIELD GOAL",
         "player": "Daniel Jones",
         "data": "50YD FIELD GOAL",
@@ -121,7 +118,7 @@ def test_score_alert_places_football_down_distance_in_its_own_chip() -> None:
 
 
 def test_score_alert_long_facts_keep_every_box_inside_the_center_panel() -> None:
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    renderer = ScoreAlert(load_default_font_set(), EmptyLogos())
     cases = (
         {
             "player": "Ryan Nugent-Hopkins",
@@ -142,7 +139,7 @@ def test_score_alert_long_facts_keep_every_box_inside_the_center_panel() -> None
             "home_abbr": "EDM", "away_abbr": "VAN", "home_score": 3, "away_score": 2,
             **facts,
         }
-        layout = _score_alert_fact_layout(alert, 42, 283)
+        layout = fact_layout(alert, 42, 283)
         assert [kind for kind, _, _, _ in layout] == [
             "player", *(["data"] if facts.get("data") else []), "assists",
         ]
@@ -153,14 +150,14 @@ def test_score_alert_long_facts_keep_every_box_inside_the_center_panel() -> None
             current[2] >= previous[2] + previous[3] + 2
             for previous, current in zip(layout, layout[1:])
         )
-        frame = renderer.draw_score_alert(alert, 2.0)
-        empty = renderer.draw_score_alert({**alert, **dict.fromkeys(facts, "")}, 2.0)
+        frame = renderer.frame(alert, 2.0)
+        empty = renderer.frame({**alert, **dict.fromkeys(facts, "")}, 2.0)
         for bounds in ((0, 0, 38, 32), (286, 0, 384, 32)):
             assert frame.crop(bounds).tobytes() == empty.crop(bounds).tobytes()
 
 
 def test_score_alert_colors_down_distance_red_inside_the_red_zone() -> None:
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    renderer = ScoreAlert(load_default_font_set(), EmptyLogos())
     alert = {
         "headline": "RUSH TD",
         "sport": "ncf_fcs",
@@ -177,7 +174,7 @@ def test_score_alert_colors_down_distance_red_inside_the_red_zone() -> None:
         "away_score": 0,
     }
 
-    frame = renderer.draw_score_alert(alert, 2.0)
+    frame = renderer.frame(alert, 2.0)
 
     assert frame.size == (384, 32)
     assert frame.getbbox() == (0, 0, 384, 32)
@@ -188,7 +185,7 @@ def test_score_alert_colors_down_distance_red_inside_the_red_zone() -> None:
 
 
 def test_score_alert_colors_down_distance_green_outside_the_red_zone() -> None:
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    renderer = ScoreAlert(load_default_font_set(), EmptyLogos())
     alert = {
         "headline": "RUSH TD",
         "sport": "ncf_fcs",
@@ -206,7 +203,7 @@ def test_score_alert_colors_down_distance_green_outside_the_red_zone() -> None:
         "away_score": 0,
     }
 
-    frame = renderer.draw_score_alert(alert, 2.0)
+    frame = renderer.frame(alert, 2.0)
     corner = frame.crop((350, 23, 384, 32))
     colors = {color for _, color in corner.convert("RGB").getcolors(34 * 9)}
 
@@ -223,7 +220,7 @@ def test_score_alert_fact_boxes_keep_one_assist_label_without_repeating_the_head
         "secondary_assist": "Adam Fox",
     }
 
-    layout = _score_alert_fact_layout(alert, 42, 283)
+    layout = fact_layout(alert, 42, 283)
 
     assert [kind for kind, _, _, _ in layout] == [
         "player", "data", "assists",
@@ -234,9 +231,9 @@ def test_score_alert_fact_boxes_keep_one_assist_label_without_repeating_the_head
 
 
 def test_sports_news_kinds_use_distinct_banner_accents() -> None:
-    renderer = PreparedNewsBannerRenderer()
+    renderer = NewsBanner()
     colors = [
-        renderer.draw_news_banner({
+        renderer.banner({
             "kind": kind,
             "from_abbr": "VAN",
             "to_abbr": "NYR",

@@ -6,7 +6,8 @@ from .assets import LogoAssetView
 from .app.frame_builder import FrameBuilder
 from .app.viewport import CardViewport
 from .ui.cards.clock import ClockCard
-from .features.alerts import NewsBannerRenderer, ScoreAlertRenderer
+from .ui.news_banner import NewsBanner
+from .ui.score_alert import ScoreAlert
 from .ui.cards.flight import FlightCard
 from .ui.cards.golf import GolfCard
 from .ui.cards.music import MusicCard
@@ -74,8 +75,8 @@ def create_default_frame_builder(
     return FrameBuilder(
         catalog,
         Screens(fonts),
-        ScoreAlertRenderer(fonts, logos),
-        NewsBannerRenderer(fonts),
+        ScoreAlert(fonts, logos),
+        NewsBanner(),
         viewport,
         geometry=geometry,
     ), viewport

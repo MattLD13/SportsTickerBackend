@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from ticker_core.features.alerts.score_alert import PreparedScoreAlertRenderer
+from ticker_core.ui.score_alert import ScoreAlert
 from ticker_core.ui import load_default_font_set
 
 
@@ -136,12 +136,12 @@ EXAMPLES = (
 
 
 def render_gallery(output_dir: Path) -> Path:
-    renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
+    renderer = ScoreAlert(load_default_font_set(), EmptyLogos())
     sections = []
     for index, example in enumerate(EXAMPLES, 1):
         title = example["title"]
         alert = {key: value for key, value in example.items() if key not in {"title", "source", "url"}}
-        frame = renderer.draw_score_alert(alert, 2.0)
+        frame = renderer.frame(alert, 2.0)
         path = output_dir / f"score-alert-{index:02d}.png"
         frame.save(path)
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
