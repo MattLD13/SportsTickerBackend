@@ -8,7 +8,7 @@ import SwiftUI
 /// `-singleDaySchedulePreview` puts the weather block on Monday only, `-scheduleReadFailure` fails the first read,
 /// `-scheduleWriteFailure` fails every block write, and `-homeOverrideFailure` fails the Home override.
 struct SchedulePreview: View {
-    static let tickerID = "schedule-preview"
+    nonisolated static let tickerID = "schedule-preview"
     static var isRequested: Bool { arguments.contains("-schedulePreview") }
     private static var arguments: [String] { ProcessInfo.processInfo.arguments }
 
