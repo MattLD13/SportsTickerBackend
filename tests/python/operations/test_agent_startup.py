@@ -267,7 +267,7 @@ def test_scope_ids_support_expansion_reset_and_path_safety(session_repo, planner
 
 
 def test_packet_lists_no_unrelated_initial_mini_context(planner_calls):
-    planner_calls[0].append(decision(["mini-sports"], ["esp32_hub75/src/mini/rendering/sports_pane.h"]))
+    planner_calls[0].append(decision(["mini-sports"], ["esp32_hub75/src/mini/ui/sports.h"]))
     result = prepare(ROOT, "Fix Mini hockey shootout rendering", "startup-minimal-check", new_task=True, use_planner=True)
     state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
     assert not any(path.startswith(("TickerControlApp/", "ticker_core/ui/", "ticker3/web/"))

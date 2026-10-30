@@ -134,7 +134,7 @@
         "tools/mini/generate_mini_fields.py",
         "tools/mini/generate_mini_ui.py",
         "esp32_hub75/src/mini/protocol/fields_generated.h",
-        "esp32_hub75/src/mini/rendering/ui_generated.h"
+        "esp32_hub75/src/mini/ui/generated.h"
       ],
       "checks": [
         "sports-contracts",
@@ -152,7 +152,7 @@
       "context": [],
       "build": [
         "esp32_hub75/src/mini/protocol/*",
-        "esp32_hub75/src/mini/rendering/*",
+        "esp32_hub75/src/mini/ui/*",
         "esp32_hub75/src/mini/assets/mini_artwork.h",
         "esp32_hub75/src/mini/assets/mini_sprite.h",
         "esp32_hub75/platformio.ini",
@@ -183,7 +183,7 @@
         "esp32_hub75/src/mini/platform/wifi_station.cpp",
         "esp32_hub75/src/mini/platform/wifi_station.h",
         "esp32_hub75/src/mini/runtime/*",
-        "esp32_hub75/src/mini/features/*",
+        "esp32_hub75/src/mini/runtime/modes.inc",
         "esp32_hub75/src/mini/assets/*",
         "esp32_hub75/src/main.cpp"
       ],
@@ -470,7 +470,7 @@
     "mini-sports-renderer": {
       "owner": "Mini sports protocol and 64x32 panes",
       "owned": [
-        "esp32_hub75/src/mini/rendering/sports_pane.h"
+        "esp32_hub75/src/mini/ui/sports.h"
       ],
       "dependencies": [
         "sports-server",
@@ -478,9 +478,9 @@
       ],
       "context": [
         "esp32_hub75/src/mini/protocol/payload.inc",
-        "esp32_hub75/src/mini/rendering/presentation.inc",
-        "esp32_hub75/src/mini/rendering/sports_pane.h",
-        "esp32_hub75/src/mini/rendering/glyphs.h",
+        "esp32_hub75/src/mini/runtime/display.inc",
+        "esp32_hub75/src/mini/ui/sports.h",
+        "esp32_hub75/src/mini/ui/text.h",
         "tests/python/protocol/test_hockey_shootout_alert.py",
         "tests/python/protocol/test_mini_hockey_contract.py",
         "tests/native/mini_hockey_panes.cpp"
@@ -524,8 +524,8 @@
         "music"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/music_pane.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/music.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -538,8 +538,8 @@
         "weather"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/weather_pane.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/weather.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -552,8 +552,8 @@
         "stocks"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/aviation.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -566,8 +566,8 @@
         "flights"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/aviation.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -580,8 +580,8 @@
         "airports"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/aviation.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -594,8 +594,8 @@
         "golf"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/aviation.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -608,8 +608,8 @@
         "racing"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/auxiliary_panels.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/aviation.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -622,8 +622,8 @@
         "news"
       ],
       "context": [
-        "esp32_hub75/src/mini/rendering/utility_panels.h",
-        "esp32_hub75/src/mini/rendering/presentation.inc"
+        "esp32_hub75/src/mini/ui/system.h",
+        "esp32_hub75/src/mini/runtime/display.inc"
       ],
       "build": [],
       "checks": []
@@ -763,7 +763,7 @@
       "owned": [
         "ticker_core/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py",
-        "esp32_hub75/src/mini/rendering/weather_art_generated.h"
+        "esp32_hub75/src/mini/ui/weather_art_generated.h"
       ],
       "dependencies": [
         "six-build",
@@ -775,7 +775,7 @@
       ],
       "build": [
         "tools/mini/generate_mini_weather.py",
-        "esp32_hub75/src/mini/rendering/weather_art_generated.h",
+        "esp32_hub75/src/mini/ui/weather_art_generated.h",
         "tests/python/features/weather/test_weather_art_contract.py"
       ],
       "checks": [
@@ -913,7 +913,7 @@
       ],
       "files": [
         "tools/mini/generate_mini_ui.py",
-        "esp32_hub75/src/mini/rendering/ui_generated.h"
+        "esp32_hub75/src/mini/ui/generated.h"
       ]
     },
     "mini-native": {
@@ -1088,7 +1088,7 @@
       ],
       "files": [
         "tools/mini/generate_mini_weather.py",
-        "esp32_hub75/src/mini/rendering/weather_art_generated.h"
+        "esp32_hub75/src/mini/ui/weather_art_generated.h"
       ]
     },
     "weather-animation": {

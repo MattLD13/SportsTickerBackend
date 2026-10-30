@@ -1,6 +1,6 @@
 # ESP32 HUB75 mini ticker
 
-This firmware drives one 64x32, 1/16-scan HUB75 panel from an Adafruit Matrix Portal ESP32-S3. It reads V2 ticker data, registers itself, supports backend pairing, and reports presence with each device poll.
+This firmware drives one 64x32, 1/16-scan HUB75 panel from an Adafruit Matrix Portal ESP32-S3. It reads ticker data, registers itself, supports backend pairing, and reports presence with each device poll.
 
 Selectable display modes are `sports`, `stock`, `weather`, `music`, `flights`, `airports`, and `clock`. The firmware uses one compact 64x32 layout for each mode.
 
@@ -50,13 +50,13 @@ ESP32-S3 outputs use 3.3 V logic. If colors are wrong or the panel shows sparkle
 | `src/mini/platform/connectivity.inc` | Saved credentials, BLE provisioning, and pairing transition |
 | `src/mini/platform/wifi_station.h/.cpp` | Station events, association, and bounded background retries |
 | `src/mini/platform/station_retry.h` | Deterministic association timeout and retry policy |
-| `src/mini/protocol/backend.inc` | V2 registration, eFuse device identity, and endpoint construction |
-| `src/mini/protocol/payload.inc` | V2 payload filtering and retained runtime state |
+| `src/mini/protocol/backend.inc` | Registration, eFuse device identity, and endpoint construction |
+| `src/mini/protocol/payload.inc` | Payload filtering and retained runtime state |
 | `src/mini/platform/firmware_update.h/.cpp` | Manifest checks, SHA-256 download, OTA rollback, and update progress |
-| `src/mini/features/renderers.inc` | Sports indicators and all seven mode renderers |
-| `src/mini/rendering/text_primitives.h`, `text_primitives.cpp` | Text drawing through an explicit graphics surface |
-| `src/mini/rendering/text_layout.h`, `glyphs.h` | Pure pane-text layout and shared glyph lookup |
-| `src/mini/rendering/presentation.inc` | Status panels, rotation selection, and page timing |
+| `src/mini/ui/` | Pure pane drawing: the text engine and one header for each content family |
+| `src/mini/protocol/panes.h` | Read the display facts of one item into the view of its pane |
+| `src/mini/runtime/display.inc` | Present frames, rotate pages, and draw device notices |
+| `src/mini/runtime/modes.inc` | Draw the selected item of the active mode |
 | `src/mini/assets/logo_sources.h/.cpp` | Validated backend sprite references |
 | `src/mini/assets/sprite_pipeline.inc` | Sprite transfer, persistent cache, RAM reads, and worker task |
 | `src/mini/assets/mini_sprite.h` | Portable sprite validation, decoding, and cache transactions |
@@ -72,37 +72,43 @@ Read [Mini Sprite V1](../docs/contracts/mini-sprite-v1.md) for the binary format
 ## Shared display style
 
 The main ticker owns compact glyphs in `ticker_core/ui/text.py` and shared colors in `ticker_core/ui/palette.py`.
-`tools/mini/generate_mini_ui.py` exports these definitions into `src/mini/rendering/ui_generated.h`.
+`tools/mini/generate_mini_ui.py` exports these definitions into `src/mini/ui/generated.h`.
 If either Python owner changes, regenerate the header before building firmware:
 
 ```powershell
 python tools/mini/generate_mini_ui.py
 ```
 
-`src/mini/rendering/sports_pane.h` draws the compact sports layout. `src/mini/protocol/panels.h` reads the V2 fields.
+`src/mini/ui/sports.h` draws the compact sports layout. `src/mini/protocol/panes.h` reads the display fields.
 The worker prepares 16x16 RAM marks from the validated 18x18 wire sprites.
 The layout centers each mark in the game body. Scores fit between the logo bounds.
 Long down-and-distance text uses two center rows. It does not cover either logo.
 Baseball reads `baseball_inning` for its number, half, and phase. It draws the shared top or bottom inning glyph.
 The backend owns batting state through `activeTeam`. The Mini does not parse status text to infer inning state.
 Hockey reads `powerPlayTeam`, `emptyNetSide`, `manpower.scrollLabel`, and the backend shootout window.
-`utility_panels.h` owns the compact stock and clock layouts.
+`ui/stock.h` and `ui/clock.h` own the compact stock and clock layouts.
 Clock mode shows seconds and a one-pixel progress rail. Sports clocks continue to show backend values.
 
 Render the firmware sports, stock, and clock code beside main ticker frames:
 
 ```powershell
-python tools/rendering/render_mini_ui.py --snapshot PATH_TO_V2_SNAPSHOT --output previews/mini-ui --ssh mld@ticker2.local --identity "$env:USERPROFILE/.ssh/ticker2_codex"
+python tools/rendering/render_mini_ui.py --snapshot PATH_TO_SNAPSHOT --output previews/mini-ui --ssh mld@ticker2.local --identity "$env:USERPROFILE/.ssh/ticker2_codex"
 ```
 
 The tool compiles a native preview under `/tmp/mini-ui-preview`. It does not change the Pi display service or settings.
 It requires the PlatformIO ArduinoJson dependency and an SSH host with `g++`.
 
+Check the golden pixels of every pane locally:
+
+```powershell
+python tools/rendering/mini_golden.py check --arduinojson PATH_TO_ARDUINOJSON_SRC
+```
+
 ## Logo workbench
 
 Run `python tools\mini\mini_logo_workbench_web.py` from the repository root. Open `http://127.0.0.1:8765` in a browser.
 
-The page loads team logos from the ticker server's V2 catalog. It lists teams across supported leagues and saves completion state in the local app folder.
+The page loads team logos from the ticker server catalog. It lists teams across supported leagues and saves completion state in the local app folder.
 
 The page connects to `COM11` automatically. If the device uses another port, enter that port and select **Connect**.
 

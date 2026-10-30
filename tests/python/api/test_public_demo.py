@@ -364,7 +364,7 @@ def test_public_mini_gallery_rejects_stale_renderer_provenance(monkeypatch):
     """Stop release verification when a renderer input changes without rebuilt frames."""
     from tools.rendering import build_demo_layouts, verify_public_demo
     changed = build_demo_layouts.provenance()
-    changed["mini_source_hashes"]["esp32_hub75/src/mini/rendering/utility_panels.h"] = "changed"
+    changed["mini_source_hashes"]["esp32_hub75/src/mini/ui/stock.h"] = "changed"
     monkeypatch.setattr(build_demo_layouts, "provenance", lambda: changed)
     with pytest.raises(SystemExit, match="current renderer"):
         verify_public_demo.main()

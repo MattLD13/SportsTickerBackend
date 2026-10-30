@@ -392,7 +392,7 @@ void startPairingMode() {
   Serial.println("Wi-Fi credential setup is available.");
 }
 
-void showFetchError(ticker_ui::SystemKind kind, const String& value) {
+void showFetchError(mini_ui::SystemKind kind, const String& value) {
   if (pairingMode) {
     message = "";
     renderCurrent();

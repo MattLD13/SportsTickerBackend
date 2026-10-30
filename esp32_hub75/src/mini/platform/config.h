@@ -1,5 +1,5 @@
 #pragma once
-#include "../rendering/ui_generated.h"
+#include "../ui/generated.h"
 
 // Set these network values before flashing the ESP32.
 static const char* WIFI_SSID = "MattsWifi2.4";
@@ -45,7 +45,7 @@ static constexpr size_t FIRMWARE_MIN_IMAGE_SIZE = 64 * 1024;
 static constexpr size_t FIRMWARE_MAX_IMAGE_SIZE = 2 * 1024 * 1024 - 4096;
 
 // Logo cache and decoder limits.
-static constexpr uint8_t RUNTIME_LOGO_SIZE = ticker_ui::MINI_LOGO_SIZE;
+static constexpr uint8_t RUNTIME_LOGO_SIZE = mini_ui::MINI_LOGO_SIZE;
 static constexpr uint8_t RUNTIME_LOGO_SLOTS = 32;
 static constexpr uint8_t LOGO_FOREGROUND_GAMES = 2;
 static constexpr uint8_t LOGO_FAILURE_SLOTS = 64;

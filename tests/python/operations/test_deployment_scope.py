@@ -43,7 +43,7 @@ def test_recovery_compares_backend_changes_only(tmp_path):
     assert not recovery_needed(tmp_path, git("rev-parse", "HEAD"))
     assert recovery_needed(tmp_path, "unknown")
     assert recovery_needed(tmp_path, "f" * 40)
-    for path in ("esp32_hub75/src/mini/rendering/music_pane.h", "docs/contracts/demo-layouts.json", "tools/rendering/render_mini_ui.cpp"):
+    for path in ("esp32_hub75/src/mini/ui/music.h", "docs/contracts/demo-layouts.json", "tools/rendering/render_mini_ui.cpp"):
         deployed = git("rev-parse", "HEAD")
         commit(path, "Updated demo source")
         assert recovery_needed(tmp_path, deployed)

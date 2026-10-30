@@ -1,4 +1,4 @@
-#include "panels.h"
+#include "panes.h"
 #include "device_payload.h"
 #include <array>
 #include <cassert>
@@ -8,17 +8,17 @@
 #include <vector>
 
 struct Canvas {
-  std::array<ticker_ui::Rgb, 64 * 32> pixels{};
-  void pixel(int x, int y, ticker_ui::Rgb ink) {
+  std::array<mini_ui::Rgb, 64 * 32> pixels{};
+  void pixel(int x, int y, mini_ui::Rgb ink) {
     assert(x >= 0 && x < 64 && y >= 0 && y < 32);
     pixels[y * 64 + x] = ink;
   }
-  void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) {
+  void rect(int x, int y, int width, int height, mini_ui::Rgb ink) {
     for (int row = 0; row < height; ++row) for (int column = 0; column < width; ++column) pixel(x + column, y + row, ink);
   }
 };
 
-bool same(ticker_ui::Rgb a, ticker_ui::Rgb b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
+bool same(mini_ui::Rgb a, mini_ui::Rgb b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
 
 int main(int argc, char** argv) {
   assert(argc >= 2);
@@ -36,18 +36,18 @@ int main(int argc, char** argv) {
     JsonArrayConst items = retained.document()["content"]["racing"].as<JsonArrayConst>();
     assert(items.size() > 0);
     for (JsonObjectConst item : items) {
-      const auto view = ticker_ui::racingPane(item["data"], example["elapsed_ms"] | 0U, example["elapsed_ms"] | 0U);
+      const auto view = mini_ui::racingPane(item["data"], example["elapsed_ms"] | 0U, example["elapsed_ms"] | 0U);
       assert(view.signalPresent);
       assert(!view.race.empty() && !view.group.empty());
       if (example["name"] == "car-signal") assert(view.signal.label == "PI45");
       if (example["name"] == "sector-signal") assert(view.signal.label == "2 S2");
       Canvas canvas;
-      ticker_ui::renderRacing(canvas, view);
+      mini_ui::draw(canvas, view);
       if (view.signal.flashing) {
         Canvas alternate;
         auto next = view;
         next.signalPhaseMs += 350;
-        ticker_ui::renderRacing(alternate, next);
+        mini_ui::draw(alternate, next);
         bool changed = false;
         for (int y = 6; y < 11; ++y) for (int x = 59; x < 64; ++x)
           changed = changed || !same(canvas.pixels[y * 64 + x], alternate.pixels[y * 64 + x]);
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
         for (int y = 13; y < 32; ++y) for (int x = 33; x < 64; ++x)
           assert(same(canvas.pixels[y * 64 + x], alternate.pixels[y * 64 + x]));
       }
-      const ticker_ui::Rgb expected[] = {{255, 215, 0}, {192, 192, 192}, {205, 127, 50}};
+      const mini_ui::Rgb expected[] = {{255, 215, 0}, {192, 192, 192}, {205, 127, 50}};
       for (int row = 0; row < view.count; ++row) {
         bool medal = false;
         for (int y = 13 + row * 7; y < 18 + row * 7; ++y)
@@ -74,12 +74,12 @@ int main(int argc, char** argv) {
     }
   }
   std::vector<std::string> ids;
-  ticker_ui::forEachRotationItem(fixture["rotation"]["content"].as<JsonObjectConst>(), true,
+  mini_ui::forEachRotationItem(fixture["rotation"]["content"].as<JsonObjectConst>(), true,
                                [&](JsonObjectConst item) { ids.push_back(item["id"] | ""); });
   assert(ids.size() == 5 && ids[0] == "hockey");
   assert(ids[1] == "vector:GTP" && ids[2] == "vector:LMP2" && ids[3] == "vector:GTDPRO" && ids[4] == "vector:GTD");
   ids.clear();
-  ticker_ui::forEachRotationItem(fixture["rotation"]["content"].as<JsonObjectConst>(), false,
+  mini_ui::forEachRotationItem(fixture["rotation"]["content"].as<JsonObjectConst>(), false,
                                [&](JsonObjectConst item) { ids.push_back(item["id"] | ""); });
   assert(ids.size() == 1 && ids[0] == "stock");
   std::cout << "Validated " << frames << " Mini racing frames, retained filters, class rotation, and podium colors\n";

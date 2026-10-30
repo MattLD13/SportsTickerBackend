@@ -25,9 +25,7 @@
 #include "../platform/matrix_driver.h"
 #include "../platform/device_sensors.h"
 #include "../assets/logo_sources.h"
-#include "../rendering/sports_pane.h"
-#include "../rendering/utility_panels.h"
-#include "../rendering/text_primitives.h"
+#include "../ui/system.h"
 #include "../protocol/payload_reader.h"
 #include "network.h"
 #include "../platform/firmware_update.h"
@@ -55,7 +53,7 @@ uint16_t pageIndex = 0;
 uint16_t pageCount = 0;
 float pageHoldSeconds = 3.0f;
 String message = "PLEASE WAIT";
-ticker_ui::SystemKind messageKind = ticker_ui::SystemKind::Startup;
+mini_ui::SystemKind messageKind = mini_ui::SystemKind::Startup;
 uint8_t solidColorIndex = 0;
 uint32_t lastSolidColorAt = 0;
 String tickerId;
@@ -201,9 +199,9 @@ void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
 
 #include "../platform/connectivity.inc"
 #include "../protocol/backend.inc"
-#include "../rendering/presentation.inc"
+#include "display.inc"
 #include "../assets/sprite_pipeline.inc"
-#include "../features/renderers.inc"
+#include "modes.inc"
 #include "diagnostics.inc"
 #include "../protocol/payload.inc"
 #include "network_results.inc"

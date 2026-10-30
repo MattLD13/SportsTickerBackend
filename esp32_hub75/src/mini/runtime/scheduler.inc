@@ -93,7 +93,7 @@ void serviceWifi(uint32_t now) {
     if (wifiWaitStartedAt == 0) wifiWaitStartedAt = now;
     if (!pairingMode) {
       message = wifiKnownWorking ? "RECONNECTING" : "JOINING WIFI";
-      messageKind = wifiKnownWorking ? ticker_ui::SystemKind::Offline : ticker_ui::SystemKind::Connecting;
+      messageKind = wifiKnownWorking ? mini_ui::SystemKind::Offline : mini_ui::SystemKind::Connecting;
     }
     if (wifiStation.setupReady() && !wifiPairingMode) startPairingMode();
     if (!wifiKnownWorking && !wifiPairingMode && now - wifiWaitStartedAt >= WIFI_PAIRING_TIMEOUT_MS) wifiStation.requestSetup();
@@ -135,7 +135,7 @@ void applyPendingWifiCredentials(uint32_t now) {
   wifiWasConnected = false;
   wifiWaitStartedAt = now;
   message = "JOINING WIFI";
-  messageKind = ticker_ui::SystemKind::Connecting;
+  messageKind = mini_ui::SystemKind::Connecting;
   renderCurrent();
   Serial.print("Applying Wi-Fi network: ");
   Serial.println(wifiSsid);
@@ -161,7 +161,7 @@ void miniSetup() {
   deviceSensors.begin();
   deviceSensors.tick(millis());
   deviceCredentials.load();
-  drawSystemNotice(deviceCredentials.ready() ? ticker_ui::SystemKind::Startup : ticker_ui::SystemKind::DeviceKey, deviceCredentials.ready() ? "PLEASE WAIT" : "AUTH REQUIRED");
+  drawSystemNotice(deviceCredentials.ready() ? mini_ui::SystemKind::Startup : mini_ui::SystemKind::DeviceKey, deviceCredentials.ready() ? "PLEASE WAIT" : "AUTH REQUIRED");
   Serial.println("Boot stage: first frame ready");
   logoWorkMutex = xSemaphoreCreateMutex();
   networkWorker.begin();

@@ -244,7 +244,7 @@ If a dependency appears during work, record its reason:
 
 ```powershell
 python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --component sports-server --reason "The shootout field changes both device contracts"
-python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --path esp32_hub75/src/mini/rendering/new_helper.h --reason "Add a shared pane helper"
+python tools/workspaces/manage.py expand --workspace C:/agent-workspaces/hockey --path esp32_hub75/src/mini/ui/new_helper.h --reason "Add a shared pane helper"
 ```
 
 An explicit shared component expansion includes Mini, Six, and iOS consumers.

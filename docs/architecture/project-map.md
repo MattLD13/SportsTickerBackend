@@ -83,7 +83,7 @@ Pairing is an effective output state. Alerts, news, connection loss, and updates
 | Six hardware | `drivers/`, `platform/` | Drive matrices or emulators, provision Wi-Fi, collect health, execute updates. |
 | Mini entry | `esp32_hub75/src/main.cpp`, `mini/runtime/mini_runtime.cpp` | Enter Arduino lifecycle and coordinate firmware state. |
 | Mini transport | `mini/runtime/network*`, `http_session*`, `mini/protocol/` | Run network work, parse explicit V2 data, select rotation and pane inputs. |
-| Mini presentation | `mini/features/`, `mini/rendering/` | Select and draw production 64x32 panes. |
+| Mini presentation | `mini/ui/`, `mini/protocol/panes.h`, `mini/runtime/display.inc`, `mini/runtime/modes.inc` | Read pane facts, draw production 64x32 panes, and present them. |
 | Mini hardware | `mini/platform/` | Own Wi-Fi, TLS, BLE provisioning, credentials, firmware updates, sensors, and matrix output. |
 | Mini assets | `mini/assets/` | Load sprites and artwork, enforce cache and residency constraints. |
 | iOS entry | `TickerControlApp/TickerControl/TickerControlApp.swift`, `ContentView.swift` | Start the app and present its root views. |

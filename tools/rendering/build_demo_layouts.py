@@ -41,9 +41,9 @@ def encode_image(image: Image.Image) -> str:
 
 def provenance() -> dict:
     """Identify every source that determines public Mini frames."""
-    paths = sorted((ROOT / "esp32_hub75/src/mini/rendering").glob("*.h"))
+    paths = sorted((ROOT / "esp32_hub75/src/mini/ui").glob("*.h"))
     paths += [ROOT / name for name in (
-        "esp32_hub75/src/mini/protocol/panels.h", "esp32_hub75/src/mini/protocol/racing_pane.h", "esp32_hub75/platformio.ini",
+        "esp32_hub75/src/mini/protocol/panes.h", "esp32_hub75/platformio.ini",
         "esp32_hub75/src/mini/protocol/rotation.h",
         "sports_ticker/projections/racing_display.py", "sports_ticker/providers/racing_number_colors.json",
         "sports_ticker/providers/sports_display.py",

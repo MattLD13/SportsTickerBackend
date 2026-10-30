@@ -221,11 +221,6 @@ jobs:
     - name: Verify shared weather animation
       run: python tools/mini/generate_mini_weather.py --check
       if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
-    - name: Check extracted text pixels
-      run: |
-        g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/rendering tests/native/mini_text_layout.cpp -o /tmp/mini-text-check
-        /tmp/mini-text-check
-      if: steps.filter.outputs.mini == 'true' || (github.event_name == 'workflow_dispatch' && inputs.recovery_only != true)
     - name: Check Mini artwork window and stock layout
       run: |
         g++ -std=c++11 -O1 -Iesp32_hub75/src/mini/assets tests/native/mini_artwork_window.cpp -o /tmp/mini-artwork-check

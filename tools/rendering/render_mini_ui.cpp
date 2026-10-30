@@ -6,18 +6,18 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <panels.h>
+#include <panes.h>
 #include <mini_sprite.h>
 #include <mini_artwork.h>
 
 struct Sprite {
   bool ready = false;
-  std::array<uint16_t, ticker_ui::MINI_LOGO_SIZE * ticker_ui::MINI_LOGO_SIZE> pixels{};
-  std::array<uint8_t, ticker_ui::MINI_LOGO_SIZE * ticker_ui::MINI_LOGO_SIZE> mask{};
+  std::array<uint16_t, mini_ui::MINI_LOGO_SIZE * mini_ui::MINI_LOGO_SIZE> pixels{};
+  std::array<uint8_t, mini_ui::MINI_LOGO_SIZE * mini_ui::MINI_LOGO_SIZE> mask{};
   explicit Sprite(const std::string& path) {
     if (path.rfind("standin:", 0) == 0) {
       const uint32_t seed = static_cast<uint32_t>(std::stoul(path.substr(8)));
-      const int size = ticker_ui::MINI_LOGO_SIZE, middle = size / 2;
+      const int size = mini_ui::MINI_LOGO_SIZE, middle = size / 2;
       for (int index = 0; index < size * size; ++index) {
         const int x = index % size - middle, y = index / size - middle;
         mask[index] = x * x + y * y <= (middle - 1) * (middle - 1);
@@ -29,7 +29,7 @@ struct Sprite {
     std::ifstream stream(path, std::ios::binary);
     std::array<uint8_t, mini_sprite::kBytes> bytes{};
     if (stream.read(reinterpret_cast<char*>(bytes.data()), bytes.size())) {
-      mini_sprite::decodeScaled(bytes.data(), pixels.data(), mask.data(), ticker_ui::MINI_LOGO_SIZE);
+      mini_sprite::decodeScaled(bytes.data(), pixels.data(), mask.data(), mini_ui::MINI_LOGO_SIZE);
       ready = true;
     }
   }
@@ -64,23 +64,23 @@ struct Canvas {
     }
     return true;
   }
-  void pixel(int x, int y, ticker_ui::Rgb ink) {
+  void pixel(int x, int y, mini_ui::Rgb ink) {
     if (x < 0 || x >= 64 || y < 0 || y >= 32) return;
     const int offset = (y * 64 + x) * 3;
     pixels[offset] = (ink.r & 248) | (ink.r >> 5);
     pixels[offset + 1] = (ink.g & 252) | (ink.g >> 6);
     pixels[offset + 2] = (ink.b & 248) | (ink.b >> 5);
   }
-  void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) {
+  void rect(int x, int y, int width, int height, mini_ui::Rgb ink) {
     for (int dy = 0; dy < height; ++dy) for (int dx = 0; dx < width; ++dx) pixel(x + dx, y + dy, ink);
   }
-  bool logo(ticker_ui::Side side, int x, int y) {
-    const Sprite& source = side == ticker_ui::Side::Away ? away : home;
+  bool logo(mini_ui::Side side, int x, int y) {
+    const Sprite& source = side == mini_ui::Side::Away ? away : home;
     if (!source.ready) return false;
-    for (int index = 0; index < ticker_ui::MINI_LOGO_SIZE * ticker_ui::MINI_LOGO_SIZE; ++index) {
+    for (int index = 0; index < mini_ui::MINI_LOGO_SIZE * mini_ui::MINI_LOGO_SIZE; ++index) {
       if (!source.mask[index]) continue;
       const uint16_t value = source.pixels[index];
-      pixel(x + index % ticker_ui::MINI_LOGO_SIZE, y + index / ticker_ui::MINI_LOGO_SIZE, {static_cast<uint8_t>(((value >> 11) & 31) * 255 / 31),
+      pixel(x + index % mini_ui::MINI_LOGO_SIZE, y + index / mini_ui::MINI_LOGO_SIZE, {static_cast<uint8_t>(((value >> 11) & 31) * 255 / 31),
           static_cast<uint8_t>(((value >> 5) & 63) * 255 / 63), static_cast<uint8_t>((value & 31) * 255 / 31)});
     }
     return true;
@@ -89,31 +89,31 @@ struct Canvas {
 };
 
 bool renderPanel(Canvas& canvas, const std::string& mode, JsonObjectConst game, JsonObjectConst row, uint32_t elapsed) {
-      if (mode == "pairing") ticker_ui::renderPairing(canvas, ticker_ui::pairingPane(game["wifi_setup"] | false, game["wifi_pin"] | "", game["app_code"] | "", elapsed));
-      else if (mode == "stock") ticker_ui::renderStock(canvas, ticker_ui::stockPane(game));
-      else if (mode == "weather") ticker_ui::renderWeather(canvas, ticker_ui::weatherPane(game, (row["elapsed_ms"] | 0) + elapsed));
-      else if (mode == "music") ticker_ui::renderMusic(canvas, ticker_ui::musicPane(game, (row["now_epoch"] | 1800000000.0) + elapsed / 1000.0, (row["scroll_ms"] | 0) + elapsed));
-      else if (mode == "flights") ticker_ui::renderFlight(canvas, ticker_ui::flightPane(game));
-      else if (mode == "airports") ticker_ui::renderAirport(canvas, ticker_ui::airportPane(game, (row["elapsed_ms"] | 0) + elapsed));
+      if (mode == "pairing") mini_ui::draw(canvas, mini_ui::pairingPane(game["wifi_setup"] | false, game["wifi_pin"] | "", game["app_code"] | "", elapsed));
+      else if (mode == "stock") mini_ui::draw(canvas, mini_ui::stockPane(game));
+      else if (mode == "weather") mini_ui::draw(canvas, mini_ui::weatherPane(game, (row["elapsed_ms"] | 0) + elapsed));
+      else if (mode == "music") mini_ui::draw(canvas, mini_ui::musicPane(game, (row["now_epoch"] | 1800000000.0) + elapsed / 1000.0, (row["scroll_ms"] | 0) + elapsed));
+      else if (mode == "flights") mini_ui::draw(canvas, mini_ui::flightPane(game));
+      else if (mode == "airports") mini_ui::draw(canvas, mini_ui::airportPane(game, (row["elapsed_ms"] | 0) + elapsed));
       else if (mode == "message") {
-        ticker_ui::SystemPane view;
-        if (!ticker_ui::systemPane(game, (row["elapsed_ms"] | 0) + elapsed, view)) return false;
+        mini_ui::SystemPane view;
+        if (!mini_ui::systemPane(game, (row["elapsed_ms"] | 0) + elapsed, view)) return false;
         JsonObjectConst background = game["background"].as<JsonObjectConst>();
         const std::string backgroundMode = background["mode"] | "";
-        if (!background.isNull() && ticker_ui::systemOverlay(view.kind) && backgroundMode != "message") {
+        if (!background.isNull() && mini_ui::systemOverlay(view.kind) && backgroundMode != "message") {
           if (!renderPanel(canvas, backgroundMode, background["game"].as<JsonObjectConst>(), row, elapsed)) return false;
-          ticker_ui::renderSystemOverlay(canvas, view);
-        } else ticker_ui::renderSystem(canvas, view);
+          mini_ui::drawOverlay(canvas, view);
+        } else mini_ui::draw(canvas, view);
       }
       else if (mode == "clock") {
-        ticker_ui::ClockPane view;
+        mini_ui::ClockPane view;
         view.elapsedMs = elapsed;
         view.ready = game["ready"] | true; view.date = game["date"] | ""; view.time = game["time"] | ""; view.seconds = game["seconds"] | 0;
-        ticker_ui::renderClock(canvas, view);
+        mini_ui::draw(canvas, view);
       } else if (mode == "sports") {
         if (game["racing_display"].is<JsonObjectConst>())
-          ticker_ui::renderRacing(canvas, ticker_ui::racingPane(game, (row["elapsed_ms"] | 0) + elapsed, (row["signal_ms"] | 0) + elapsed));
-        else ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game));
+          mini_ui::draw(canvas, mini_ui::racingPane(game, (row["elapsed_ms"] | 0) + elapsed, (row["signal_ms"] | 0) + elapsed));
+        else mini_ui::draw(canvas, mini_ui::sportsPane(game));
       }
       else return false;
   return true;

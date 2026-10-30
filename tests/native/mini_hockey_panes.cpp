@@ -1,4 +1,4 @@
-#include "panels.h"
+#include "panes.h"
 #include "payload_reader.h"
 #include "response_body.h"
 #include <array>
@@ -9,19 +9,19 @@
 #include <iterator>
 
 struct Canvas {
-  std::array<ticker_ui::Rgb, 64 * 32> pixels{};
-  void pixel(int x, int y, ticker_ui::Rgb ink) {
+  std::array<mini_ui::Rgb, 64 * 32> pixels{};
+  void pixel(int x, int y, mini_ui::Rgb ink) {
     if (x >= 0 && y >= 0 && x < 64 && y < 32) pixels[y * 64 + x] = ink;
   }
-  void rect(int x, int y, int width, int height, ticker_ui::Rgb ink) {
+  void rect(int x, int y, int width, int height, mini_ui::Rgb ink) {
     for (int row = y; row < y + height; ++row)
       for (int column = x; column < x + width; ++column) pixel(column, row, ink);
   }
-  bool logo(ticker_ui::Side, int, int) { return false; }
+  bool logo(mini_ui::Side, int, int) { return false; }
 };
 
-ticker_ui::Shot expected(const std::string& value) {
-  using ticker_ui::Shot;
+mini_ui::Shot expected(const std::string& value) {
+  using mini_ui::Shot;
   if (value == "goal") return Shot::Goal;
   if (value == "miss") return Shot::Miss;
   if (value == "next") return Shot::Next;
@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
   JsonDocument document;
   assert(!deserializeJson(document, reader));
   for (JsonObjectConst row : document.as<JsonArrayConst>()) {
-    const auto view = ticker_ui::sportsPane(row["game"]);
+    const auto view = mini_ui::sportsPane(row["game"]);
     const auto rounds = row["game"]["situation"]["shootout"]["displayRounds"].as<JsonArrayConst>();
     assert(view.shootout == (rounds.size() > 0));
     assert(view.shotCount == static_cast<int>(rounds.size()));
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
       assert(view.homeShots[index] == expected(row["home_shots"][index].as<std::string>()));
     }
     Canvas canvas;
-    ticker_ui::renderSports(canvas, view);
+    mini_ui::draw(canvas, view);
     if (!row["expected_power_label"].isNull()) {
       assert(view.powerPlayLabel == row["expected_power_label"].as<std::string>());
       if (!view.powerPlayLabel.empty()) {
@@ -81,9 +81,9 @@ int main(int argc, char** argv) {
       const std::string badge = row["expected_badge"].as<std::string>();
       if (!badge.empty()) {
         Canvas expectedBadge;
-        const int left = (row["badge_home"] | false) ? ticker_ui::HOME_LOGO_X : 1;
-        ticker_ui::centered(expectedBadge, badge, left, ticker_ui::MINI_LOGO_SIZE, 2, ticker_ui::POWER_PLAY);
-        for (int y = 2; y < 7; ++y) for (int x = left; x < left + ticker_ui::MINI_LOGO_SIZE; ++x) {
+        const int left = (row["badge_home"] | false) ? mini_ui::HOME_LOGO_X : 1;
+        mini_ui::center(expectedBadge, badge, left, mini_ui::MINI_LOGO_SIZE, 2, mini_ui::POWER_PLAY);
+        for (int y = 2; y < 7; ++y) for (int x = left; x < left + mini_ui::MINI_LOGO_SIZE; ++x) {
           const auto expected = expectedBadge.pixels[y * 64 + x];
           if (expected.r || expected.g || expected.b) {
             const auto actual = canvas.pixels[y * 64 + x];
@@ -95,10 +95,10 @@ int main(int argc, char** argv) {
     for (int index = 0; index < view.shotCount; ++index) {
       for (int side = 0; side < 2; ++side) {
         const auto state = side ? view.homeShots[index] : view.awayShots[index];
-        const int x = side ? 64 - ticker_ui::CONTENT_LEFT - 3 : ticker_ui::CONTENT_LEFT;
+        const int x = side ? 64 - mini_ui::CONTENT_LEFT - 3 : mini_ui::CONTENT_LEFT;
         const auto color = canvas.pixels[(9 + index * 6) * 64 + x];
-        if (state == ticker_ui::Shot::Next) assert(color.r == 255 && color.g == 210 && color.b == 40);
-        if (state == ticker_ui::Shot::NotTaken) assert(color.r == 0 && color.g == 0 && color.b == 0);
+        if (state == mini_ui::Shot::Next) assert(color.r == 255 && color.g == 210 && color.b == 40);
+        if (state == mini_ui::Shot::NotTaken) assert(color.r == 0 && color.g == 0 && color.b == 0);
       }
     }
     if (argc > 2) {
@@ -109,20 +109,20 @@ int main(int argc, char** argv) {
       for (auto ink : canvas.pixels) { image.put(ink.r); image.put(ink.g); image.put(ink.b); }
     }
   }
-  assert(ticker_ui::textWidth("3RD & 6") == 23);
+  assert(mini_ui::measure("3RD & 6") == 23);
   JsonDocument college;
   college["sport"] = "march_madness";
   college["status"] = "2H 04:32";
   college["away_seed"] = "1";
   college["home_seed"] = "16";
-  const auto seeded = ticker_ui::sportsPane(college.as<JsonObjectConst>());
+  const auto seeded = mini_ui::sportsPane(college.as<JsonObjectConst>());
   assert(seeded.awaySeed == "1" && seeded.homeSeed == "16");
   assert(seeded.awayRank.empty() && seeded.homeRank.empty());
   Canvas seededCanvas;
-  ticker_ui::renderSports(seededCanvas, seeded);
+  mini_ui::draw(seededCanvas, seeded);
   Canvas seedReference;
-  ticker_ui::text(seedReference, "1", 2, 2, {66, 117, 199});
-  ticker_ui::text(seedReference, "16", 62 - ticker_ui::textWidth("16"), 2, {66, 117, 199});
+  mini_ui::drawText(seedReference, "1", 2, 2, {66, 117, 199});
+  mini_ui::drawText(seedReference, "16", 62 - mini_ui::measure("16"), 2, {66, 117, 199});
   for (int y = 2; y < 7; ++y) for (int x = 0; x < 64; ++x) {
     const auto expected = seedReference.pixels[y * 64 + x];
     if (expected.r || expected.g || expected.b) {
@@ -130,43 +130,43 @@ int main(int argc, char** argv) {
       assert(actual.r == expected.r && actual.g == expected.g && actual.b == expected.b);
     }
   }
-  assert(ticker_ui::textWidth("4TH & 15") == 27);
-  assert(ticker_ui::textWidth("2ND & GOAL", 3, 0, false, 2) == 28);
-  assert(ticker_ui::textWidth("4TH & 15") <= ticker_ui::CONTENT_WIDTH);
-  ticker_ui::SportsPane football;
-  football.sport = ticker_ui::Sport::Football;
+  assert(mini_ui::measure("4TH & 15") == 27);
+  assert(mini_ui::measure("2ND & GOAL", {3, 5, 0, false, 2}) == 28);
+  assert(mini_ui::measure("4TH & 15") <= mini_ui::CONTENT_WIDTH);
+  mini_ui::SportsPane football;
+  football.sport = mini_ui::Sport::Football;
   football.live = true;
   football.awayScore = "23";
   football.homeScore = "7";
   football.footer = "4TH & 15";
   Canvas down;
-  ticker_ui::renderSports(down, football);
+  mini_ui::draw(down, football);
   for (int y = 20; y < 23; ++y) {
-    for (int x = ticker_ui::CONTENT_LEFT; x < ticker_ui::CONTENT_LEFT + ticker_ui::CONTENT_WIDTH; ++x) {
+    for (int x = mini_ui::CONTENT_LEFT; x < mini_ui::CONTENT_LEFT + mini_ui::CONTENT_WIDTH; ++x) {
       const auto pixel = down.pixels[y * 64 + x];
       assert(pixel.r == 0 && pixel.g == 0 && pixel.b == 0);
     }
   }
   bool footerDrawn = false;
   for (int y = 23; y < 28; ++y) {
-    for (int x = ticker_ui::CONTENT_LEFT; x < ticker_ui::CONTENT_LEFT + ticker_ui::CONTENT_WIDTH; ++x) {
+    for (int x = mini_ui::CONTENT_LEFT; x < mini_ui::CONTENT_LEFT + mini_ui::CONTENT_WIDTH; ++x) {
       const auto pixel = down.pixels[y * 64 + x];
       footerDrawn |= pixel.r || pixel.g || pixel.b;
     }
   }
   assert(footerDrawn);
-  for (auto side : {ticker_ui::Side::Away, ticker_ui::Side::Home}) {
+  for (auto side : {mini_ui::Side::Away, mini_ui::Side::Home}) {
     football.active = side;
     Canvas possession;
-    ticker_ui::renderSports(possession, football);
-    const int center = side == ticker_ui::Side::Away ? 7 : 55;
+    mini_ui::draw(possession, football);
+    const int center = side == mini_ui::Side::Away ? 7 : 55;
     assert(possession.pixels[3 * 64 + center - 4].r == 110);
     assert(possession.pixels[3 * 64 + center + 4].r == 110);
   }
   for (const std::string label : {"0:45 #88", "10:00 #20"}) {
-    assert(ticker_ui::textWidth(label, 3, 0) <= ticker_ui::CONTENT_WIDTH);
+    assert(mini_ui::measure(label, {3, 5, 0}) <= mini_ui::CONTENT_WIDTH);
     Canvas penalty;
-    ticker_ui::footer(penalty, label, {255, 255, 255});
+    mini_ui::sports::footer(penalty, label, {255, 255, 255});
     bool drawn = false;
     for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
       const bool lit = penalty.pixels[y * 64 + x].r;
@@ -179,13 +179,13 @@ int main(int argc, char** argv) {
   longPenalty["sport"] = "nhl";
   longPenalty["state"] = "in";
   longPenalty["situation"]["manpower"]["scrollLabel"] = "0:45 #88 | 1:30 #99";
-  const auto longView = ticker_ui::sportsPane(longPenalty.as<JsonObjectConst>());
+  const auto longView = mini_ui::sportsPane(longPenalty.as<JsonObjectConst>());
   assert(longView.footer == "0:45 #88 | 1:30 #99");
   Canvas paired;
-  ticker_ui::footer(paired, longView.footer, {255, 255, 255});
+  mini_ui::sports::footer(paired, longView.footer, {255, 255, 255});
   Canvas pairedExpected;
-  ticker_ui::centered(pairedExpected, "0:45 #88", ticker_ui::CONTENT_LEFT, ticker_ui::CONTENT_WIDTH, 20, {255, 255, 255}, 3, 5, 0);
-  ticker_ui::centered(pairedExpected, "1:30 #99", ticker_ui::CONTENT_LEFT, ticker_ui::CONTENT_WIDTH, 26, {255, 255, 255}, 3, 5, 0);
+  mini_ui::center(pairedExpected, "0:45 #88", mini_ui::CONTENT_LEFT, mini_ui::CONTENT_WIDTH, 20, {255, 255, 255}, {3, 5, 0});
+  mini_ui::center(pairedExpected, "1:30 #99", mini_ui::CONTENT_LEFT, mini_ui::CONTENT_WIDTH, 26, {255, 255, 255}, {3, 5, 0});
   for (size_t index = 0; index < paired.pixels.size(); ++index) assert(paired.pixels[index].r == pairedExpected.pixels[index].r);
   JsonArray penaltyRows = longPenalty["situation"]["manpower"]["penalties"].to<JsonArray>();
   for (int number : {88, 99}) {
@@ -193,25 +193,25 @@ int main(int argc, char** argv) {
     entry["timeRemaining"] = "0:45";
     entry["jerseyNumber"] = number;
   }
-  const auto stacked = ticker_ui::sportsPane(longPenalty.as<JsonObjectConst>());
+  const auto stacked = mini_ui::sportsPane(longPenalty.as<JsonObjectConst>());
   assert(stacked.penaltyCount == 2 && stacked.footer.empty());
   assert(stacked.penalties[0].number == "88" && stacked.penalties[1].number == "99");
   Canvas actualRows, expectedRows;
-  ticker_ui::renderSports(actualRows, stacked);
-  ticker_ui::penaltyLine(expectedRows, stacked.penalties[0], 20, ticker_ui::MUTED_TEXT);
-  ticker_ui::penaltyLine(expectedRows, stacked.penalties[1], 26, ticker_ui::MUTED_TEXT);
-  for (int y = 20; y < 31; ++y) for (int x = ticker_ui::CONTENT_LEFT; x < ticker_ui::CONTENT_LEFT + ticker_ui::CONTENT_WIDTH; ++x) {
+  mini_ui::draw(actualRows, stacked);
+  mini_ui::sports::penalty(expectedRows, stacked.penalties[0], 20, mini_ui::MUTED_TEXT);
+  mini_ui::sports::penalty(expectedRows, stacked.penalties[1], 26, mini_ui::MUTED_TEXT);
+  for (int y = 20; y < 31; ++y) for (int x = mini_ui::CONTENT_LEFT; x < mini_ui::CONTENT_LEFT + mini_ui::CONTENT_WIDTH; ++x) {
     const auto actual = actualRows.pixels[y * 64 + x], expected = expectedRows.pixels[y * 64 + x];
     assert(actual.r == expected.r && actual.g == expected.g && actual.b == expected.b);
   }
-  for (const ticker_ui::Penalty penalty : {ticker_ui::Penalty{"0:45", "88"}, ticker_ui::Penalty{"10:00", "20"}}) {
-    const int numberWidth = ticker_ui::textWidth("#" + penalty.number);
-    const int gap = ticker_ui::inkTextWidth(penalty.clock, 1) + 2 + numberWidth <= ticker_ui::CONTENT_WIDTH ? 1 : 0;
-    assert(ticker_ui::inkTextWidth(penalty.clock, gap) + 2 + numberWidth == ticker_ui::CONTENT_WIDTH);
+  for (const mini_ui::Penalty penalty : {mini_ui::Penalty{"0:45", "88"}, mini_ui::Penalty{"10:00", "20"}}) {
+    const int numberWidth = mini_ui::measure("#" + penalty.number);
+    const int gap = mini_ui::measureInk(penalty.clock, 1) + 2 + numberWidth <= mini_ui::CONTENT_WIDTH ? 1 : 0;
+    assert(mini_ui::measureInk(penalty.clock, gap) + 2 + numberWidth == mini_ui::CONTENT_WIDTH);
   }
   Canvas glyph;
-  ticker_ui::text(glyph, "#", 0, 0, {255, 255, 255});
-  assert(ticker_ui::textWidth("#88") == 13);
+  mini_ui::drawText(glyph, "#", 0, 0, {255, 255, 255});
+  assert(mini_ui::measure("#88") == 13);
   for (int y = 0; y < 5; ++y) {
     for (int x = 0; x < 5; ++x) {
       const bool lit = x == 1 || x == 3 || y == 1 || y == 3;
@@ -226,9 +226,9 @@ int main(int argc, char** argv) {
       game["state"] = "post";
       game["competition_stage"] = stage;
       Canvas canvas;
-      ticker_ui::renderSports(canvas, ticker_ui::sportsPane(game.as<JsonObjectConst>()));
-      const auto expectedRule = stage == 2 ? ticker_ui::FINALS_RULE :
-                                stage == 1 ? ticker_ui::PLAYOFF_RULE : ticker_ui::HEADER_RULE;
+      mini_ui::draw(canvas, mini_ui::sportsPane(game.as<JsonObjectConst>()));
+      const auto expectedRule = stage == 2 ? mini_ui::FINALS_RULE :
+                                stage == 1 ? mini_ui::PLAYOFF_RULE : mini_ui::HEADER_RULE;
       for (int x = 0; x < 64; ++x) {
         const auto actual = canvas.pixels[7 * 64 + x];
         assert(actual.r == expectedRule.r && actual.g == expectedRule.g && actual.b == expectedRule.b);

@@ -1,7 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
 
-namespace ticker_ui {
+namespace mini_ui {
 template<class Callback>
 void forEachRotationItem(JsonObjectConst content, bool sports, Callback callback) {
   const char* families[] = {sports ? "sports" : "stock", "racing"};
@@ -10,4 +10,4 @@ void forEachRotationItem(JsonObjectConst content, bool sports, Callback callback
     for (JsonObjectConst item : content[families[family]].as<JsonArrayConst>())
       if (item["is_shown"].isNull() || item["is_shown"].as<bool>()) callback(item);
 }
-}  // namespace ticker_ui
+}  // namespace mini_ui

@@ -144,10 +144,11 @@ def remote_render(host: str, key: Path, output: Path, native_root: str) -> None:
     """Compile and run the preview without changing the Pi display service."""
     ssh = ["ssh", "-i", str(key), "-o", "IdentitiesOnly=yes", host]
     scp = ["scp", "-i", str(key), "-o", "IdentitiesOnly=yes"]
-    subprocess.run(ssh + [f"mkdir -p {native_root}/src/mini/rendering {native_root}/src/mini/protocol {native_root}/src/mini/assets {native_root}/arduino {native_root}/assets"], check=True)
-    headers = list((ROOT / "esp32_hub75/src/mini/rendering").glob("*.h"))
-    subprocess.run(scp + [str(p) for p in headers] + [f"{host}:{native_root}/src/mini/rendering/"], check=True)
-    subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/protocol/panels.h"), f"{host}:{native_root}/src/mini/protocol/"], check=True)
+    subprocess.run(ssh + [f"mkdir -p {native_root}/src/mini/ui {native_root}/src/mini/protocol {native_root}/src/mini/assets {native_root}/arduino {native_root}/assets"], check=True)
+    headers = list((ROOT / "esp32_hub75/src/mini/ui").glob("*.h"))
+    subprocess.run(scp + [str(p) for p in headers] + [f"{host}:{native_root}/src/mini/ui/"], check=True)
+    protocol = [ROOT / "esp32_hub75/src/mini/protocol" / name for name in ("panes.h", "rotation.h")]
+    subprocess.run(scp + [str(p) for p in protocol] + [f"{host}:{native_root}/src/mini/protocol/"], check=True)
     subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_sprite.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
     subprocess.run(scp + [str(ROOT / "esp32_hub75/src/mini/assets/mini_artwork.h"), f"{host}:{native_root}/src/mini/assets/"], check=True)
     subprocess.run(scp + [str(ROOT / "tools/rendering/render_mini_ui.cpp"), f"{host}:{native_root}/src/"], check=True)
