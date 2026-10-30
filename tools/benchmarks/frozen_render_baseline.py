@@ -6,12 +6,13 @@ import hashlib
 import json
 from pathlib import Path
 import statistics
+import os
 import sys
 import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from PIL import __version__ as pillow_version, features
 from ticker.six.assets import AssetPlanner
 from ticker.six.bootstrap import create_default_content_catalog

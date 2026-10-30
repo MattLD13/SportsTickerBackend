@@ -160,10 +160,10 @@ The coding agent can inspect paths and symbols without a model call:
 
 ```powershell
 python agents/find.py --search "station_retry"
-python agents/find.py --search "ticker/server/providers ScoreAlertTracker"
+python agents/find.py --search "server/ticker/server/providers ScoreAlertTracker"
 python agents/find.py --component mini-runtime
-python agents/find.py --symbols ticker/server/providers/score_alerts.py
-python agents/find.py --excerpt ticker/server/providers/score_alerts.py --symbol ScoreAlertTracker
+python agents/find.py --symbols server/ticker/server/providers/score_alerts.py
+python agents/find.py --excerpt server/ticker/server/providers/score_alerts.py --symbol ScoreAlertTracker
 ```
 
 Search uses literal words. It does not execute expressions or shell text.

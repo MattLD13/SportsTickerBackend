@@ -11,10 +11,10 @@ import html
 import json
 from pathlib import Path
 import re
+import os
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
+sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
 from ticker.shared.domain import DisplaySettings, TickerSnapshot
 from ticker.server.projections.data_api import project_data_v2
 from ticker.server.providers.espn_events import _content_item

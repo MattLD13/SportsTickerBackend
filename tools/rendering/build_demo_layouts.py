@@ -12,12 +12,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import os
 import sys
 
 from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.server.mini_assets.mini_artwork import encode_artwork
 from ticker.server.mini_assets.mini_sprite import encode_sprite
 from ticker.shared.music_palette import artwork_colors
@@ -28,8 +29,8 @@ from tools.rendering.render_mini_ui import remote_render
 from tools.mini.generate_mini_weather import FRAMES as WEATHER_FRAMES, STEP_MS as WEATHER_FRAME_MS
 
 SOURCE = ROOT / "docs/contracts/demo-layouts.json"
-DESTINATION = ROOT / "ticker/server/web/static/layout-gallery.json"
-ALBUM = ROOT / "ticker/server/web/static/mr-blue-sky-cover.png"
+DESTINATION = ROOT / "server/ticker/server/web/static/layout-gallery.json"
+ALBUM = ROOT / "server/ticker/server/web/static/mr-blue-sky-cover.png"
 
 
 def encode_image(image: Image.Image) -> str:
@@ -45,11 +46,11 @@ def provenance() -> dict:
     paths += [ROOT / name for name in (
         "mini/src/mini/protocol/panes.h", "mini/platformio.ini",
         "mini/src/mini/protocol/rotation.h",
-        "ticker/server/projections/racing_display.py", "ticker/shared/racing_number_colors.json",
-        "ticker/shared/sports_display.py",
-        "ticker/shared/images.py", "ticker/server/mini_assets/mini_sprite.py",
-        "ticker/server/mini_assets/mini_artwork.py", "ticker/shared/music_palette.py",
-        "ticker/server/providers/logo_overrides.py", "tools/rendering/render_mini_ui.cpp", "tools/rendering/build_demo_layouts.py",
+        "server/ticker/server/projections/racing_display.py", "shared/ticker/shared/racing_number_colors.json",
+        "shared/ticker/shared/sports_display.py",
+        "shared/ticker/shared/images.py", "server/ticker/server/mini_assets/mini_sprite.py",
+        "server/ticker/server/mini_assets/mini_artwork.py", "shared/ticker/shared/music_palette.py",
+        "server/ticker/server/providers/logo_overrides.py", "tools/rendering/render_mini_ui.cpp", "tools/rendering/build_demo_layouts.py",
     )]
     paths += [SOURCE, ALBUM, *sorted((SOURCE.parent / "demo-assets").glob("*.source"))]
     hashes = {}

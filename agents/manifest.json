@@ -47,57 +47,57 @@
       ],
       "context": [],
       "build": [
-        "ticker/shared/__init__.py",
-        "ticker/shared/leagues.py",
-        "ticker/server/markets.py",
-        "ticker/server/__init__.py",
-        "ticker/server/providers/*.py",
-        "ticker/six/protocol/*.py",
-        "ticker/six/ui/__init__.py",
-        "ticker/six/ui/catalog.py",
-        "ticker/six/ui/frame.py",
-        "ticker/six/ui/layers.py",
-        "ticker/six/ui/palette.py",
-        "ticker/six/ui/strip.py",
-        "ticker/six/ui/text.py",
-        "ticker/six/ui/font_assets/*",
-        "ticker/six/__init__.py",
-        "ticker/six/_enum.py"
+        "shared/ticker/shared/__init__.py",
+        "shared/ticker/shared/leagues.py",
+        "server/ticker/server/markets.py",
+        "server/ticker/server/__init__.py",
+        "server/ticker/server/providers/*.py",
+        "six/ticker/six/protocol/*.py",
+        "six/ticker/six/ui/__init__.py",
+        "six/ticker/six/ui/catalog.py",
+        "six/ticker/six/ui/frame.py",
+        "six/ticker/six/ui/layers.py",
+        "six/ticker/six/ui/palette.py",
+        "six/ticker/six/ui/strip.py",
+        "six/ticker/six/ui/text.py",
+        "six/ticker/six/ui/font_assets/*",
+        "six/ticker/six/__init__.py",
+        "six/ticker/six/_enum.py"
       ],
       "checks": []
     },
     "server-core": {
       "owner": "Ticker 3 server: models, projections, API, engine, workers, and persistence",
       "owned": [
-        "ticker/shared/domain/*",
-        "ticker/server/projections/*",
-        "ticker/server/services/*",
-        "ticker/server/store/*",
-        "ticker/server/*",
+        "shared/ticker/shared/domain/*",
+        "server/ticker/server/projections/*",
+        "server/ticker/server/services/*",
+        "server/ticker/server/store/*",
+        "server/ticker/server/*",
         "docs/api.md",
         "docs/contracts/*",
-        "ticker/six/protocol/*"
+        "six/ticker/six/protocol/*"
       ],
       "dependencies": [
         "python-build"
       ],
       "context": [
-        "ticker/shared/domain/models.py",
-        "ticker/server/projections/data_api.py",
-        "ticker/server/projections/device_data.py",
-        "ticker/server/projections/mini_fields.py",
-        "ticker/server/api/__init__.py",
+        "shared/ticker/shared/domain/models.py",
+        "server/ticker/server/projections/data_api.py",
+        "server/ticker/server/projections/device_data.py",
+        "server/ticker/server/projections/mini_fields.py",
+        "server/ticker/server/api/__init__.py",
         "docs/api.md",
         "docs/contracts/overview.md"
       ],
       "build": [
-        "ticker/shared/domain/*.py",
-        "ticker/server/projections/*",
+        "shared/ticker/shared/domain/*.py",
+        "server/ticker/server/projections/*",
         "tools/mini/generate_mini_fields.py",
         "mini/src/mini/protocol/fields_generated.h",
-        "ticker/server/services/*.py",
-        "ticker/server/store/*.py",
-        "ticker/server/*"
+        "server/ticker/server/services/*.py",
+        "server/ticker/server/store/*.py",
+        "server/ticker/server/*"
       ],
       "checks": [
         "mini-fields"
@@ -106,20 +106,20 @@
     "sports-server": {
       "owner": "Shared sports provider facts and score alerts for both devices",
       "owned": [
-        "ticker/server/providers/espn*.py",
-        "ticker/server/providers/nhl_live.py",
-        "ticker/shared/sports_display.py",
-        "ticker/server/providers/score_alerts.py",
-        "ticker/server/providers/fotmob.py"
+        "server/ticker/server/providers/espn*.py",
+        "server/ticker/server/providers/nhl_live.py",
+        "shared/ticker/shared/sports_display.py",
+        "server/ticker/server/providers/score_alerts.py",
+        "server/ticker/server/providers/fotmob.py"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [
-        "ticker/server/providers/espn.py",
-        "ticker/shared/sports_display.py",
-        "ticker/server/providers/nhl_live.py",
-        "ticker/server/providers/score_alerts.py"
+        "server/ticker/server/providers/espn.py",
+        "shared/ticker/shared/sports_display.py",
+        "server/ticker/server/providers/nhl_live.py",
+        "server/ticker/server/providers/score_alerts.py"
       ],
       "build": [
         "tests/server/providers/test_hockey_shootout_alert.py",
@@ -192,32 +192,32 @@
     "six-runtime": {
       "owner": "Ticker Six runtime and 384x32 renderers",
       "owned": [
-        "ticker/six/app/*",
-        "ticker/six/runtime/*",
-        "ticker/six/drivers/*",
-        "ticker/six/platform/*",
-        "ticker/six/bootstrap.py",
-        "ticker/six/composition.py",
-        "ticker/six/__main__.py",
-        "ticker/six/updater.py",
-        "deploy/six/setup.sh",
-        "deploy/six/ticker-controller.service"
+        "six/ticker/six/app/*",
+        "six/ticker/six/runtime/*",
+        "six/ticker/six/drivers/*",
+        "six/ticker/six/platform/*",
+        "six/ticker/six/bootstrap.py",
+        "six/ticker/six/composition.py",
+        "six/ticker/six/__main__.py",
+        "six/ticker/six/updater.py",
+        "six/deploy/setup.sh",
+        "six/deploy/ticker-controller.service"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "ticker/six/app/application.py",
-        "ticker/six/app/poller.py",
-        "ticker/six/platform/wifi.py",
-        "ticker/six/platform/update.py"
+        "six/ticker/six/app/application.py",
+        "six/ticker/six/app/poller.py",
+        "six/ticker/six/platform/wifi.py",
+        "six/ticker/six/platform/update.py"
       ],
       "build": [
-        "ticker/six/*",
+        "six/ticker/six/*",
         "tools/rendering/render_frame.py",
         "tests/six/ui/test_sports_renderers.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": []
     },
@@ -242,21 +242,21 @@
     "music": {
       "owner": "Music provider and device presentation",
       "owned": [
-        "ticker/server/providers/music.py",
-        "ticker/six/ui/cards/music.py"
+        "server/ticker/server/providers/music.py",
+        "six/ticker/six/ui/cards/music.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/music.py"
+        "server/ticker/server/providers/music.py"
       ],
       "build": [
-        "ticker/six/ui/cards/music.py",
+        "six/ticker/six/ui/cards/music.py",
         "tests/server/providers/test_music_stale_scope.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "music-domain"
@@ -265,8 +265,8 @@
     "weather": {
       "owner": "Weather provider and device presentation",
       "owned": [
-        "ticker/server/providers/weather.py",
-        "ticker/six/ui/cards/weather.py",
+        "server/ticker/server/providers/weather.py",
+        "six/ticker/six/ui/cards/weather.py",
         "tests/six/ui/test_weather_*.py"
       ],
       "dependencies": [
@@ -275,13 +275,13 @@
         "weather-art"
       ],
       "context": [
-        "ticker/server/providers/weather.py"
+        "server/ticker/server/providers/weather.py"
       ],
       "build": [
-        "ticker/six/ui/cards/weather.py",
+        "six/ticker/six/ui/cards/weather.py",
         "tests/server/providers/test_weather_provider.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py",
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py",
         "tests/six/ui/test_weather_*.py"
       ],
       "checks": [
@@ -292,23 +292,23 @@
     "stocks": {
       "owner": "Stocks provider and device presentation",
       "owned": [
-        "ticker/server/providers/stocks.py",
-        "ticker/server/providers/market_sessions.py",
-        "ticker/six/ui/cards/stock.py"
+        "server/ticker/server/providers/stocks.py",
+        "server/ticker/server/providers/market_sessions.py",
+        "six/ticker/six/ui/cards/stock.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/stocks.py",
-        "ticker/server/providers/market_sessions.py"
+        "server/ticker/server/providers/stocks.py",
+        "server/ticker/server/providers/market_sessions.py"
       ],
       "build": [
-        "ticker/six/ui/cards/stock.py",
+        "six/ticker/six/ui/cards/stock.py",
         "tests/six/ui/test_utility_renderers.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "stocks-domain"
@@ -317,21 +317,21 @@
     "flights": {
       "owner": "Flights provider and device presentation",
       "owned": [
-        "ticker/server/providers/flights.py",
-        "ticker/six/ui/cards/flight.py"
+        "server/ticker/server/providers/flights.py",
+        "six/ticker/six/ui/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/flights.py"
+        "server/ticker/server/providers/flights.py"
       ],
       "build": [
-        "ticker/six/ui/cards/flight.py",
+        "six/ticker/six/ui/cards/flight.py",
         "tests/server/providers/test_flights.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "flights-domain"
@@ -340,21 +340,21 @@
     "airports": {
       "owner": "Airports provider and device presentation",
       "owned": [
-        "ticker/server/providers/flights.py",
-        "ticker/six/ui/cards/flight.py"
+        "server/ticker/server/providers/flights.py",
+        "six/ticker/six/ui/cards/flight.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/flights.py"
+        "server/ticker/server/providers/flights.py"
       ],
       "build": [
-        "ticker/six/ui/cards/flight.py",
+        "six/ticker/six/ui/cards/flight.py",
         "tests/server/providers/test_flights.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "airports-domain"
@@ -363,21 +363,21 @@
     "golf": {
       "owner": "Golf provider and device presentation",
       "owned": [
-        "ticker/server/providers/golf.py",
-        "ticker/six/ui/cards/golf.py"
+        "server/ticker/server/providers/golf.py",
+        "six/ticker/six/ui/cards/golf.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/golf.py"
+        "server/ticker/server/providers/golf.py"
       ],
       "build": [
-        "ticker/six/ui/cards/golf.py",
+        "six/ticker/six/ui/cards/golf.py",
         "tests/server/providers/test_golf_provider.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "golf-domain"
@@ -386,23 +386,23 @@
     "racing": {
       "owner": "Racing provider and device presentation",
       "owned": [
-        "ticker/server/providers/racing.py",
-        "ticker/server/providers/racing_live.py",
-        "ticker/six/ui/cards/racing.py"
+        "server/ticker/server/providers/racing.py",
+        "server/ticker/server/providers/racing_live.py",
+        "six/ticker/six/ui/cards/racing.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/racing.py",
-        "ticker/server/providers/racing_live.py"
+        "server/ticker/server/providers/racing.py",
+        "server/ticker/server/providers/racing_live.py"
       ],
       "build": [
-        "ticker/six/ui/cards/racing.py",
+        "six/ticker/six/ui/cards/racing.py",
         "tests/server/providers/test_racing_live_source.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "racing-domain"
@@ -411,25 +411,25 @@
     "news": {
       "owner": "News provider and device presentation",
       "owned": [
-        "ticker/server/providers/news.py",
-        "ticker/server/providers/news_transactions.py",
-        "ticker/six/ui/score_alert.py",
-        "ticker/six/ui/news_banner.py"
+        "server/ticker/server/providers/news.py",
+        "server/ticker/server/providers/news_transactions.py",
+        "six/ticker/six/ui/score_alert.py",
+        "six/ticker/six/ui/news_banner.py"
       ],
       "dependencies": [
         "server-core",
         "six-build"
       ],
       "context": [
-        "ticker/server/providers/news.py",
-        "ticker/server/providers/news_transactions.py"
+        "server/ticker/server/providers/news.py",
+        "server/ticker/server/providers/news_transactions.py"
       ],
       "build": [
-        "ticker/six/ui/score_alert.py",
-        "ticker/six/ui/news_banner.py",
+        "six/ticker/six/ui/score_alert.py",
+        "six/ticker/six/ui/news_banner.py",
         "tests/server/providers/test_news_distribution.py",
-        "ticker/server/mini_assets/__init__.py",
-        "ticker/shared/images.py"
+        "server/ticker/server/mini_assets/__init__.py",
+        "shared/ticker/shared/images.py"
       ],
       "checks": [
         "news-domain"
@@ -443,8 +443,8 @@
       "owned": [],
       "context": [],
       "build": [
-        "ticker/six/*",
-        "ticker/shared/*.py"
+        "six/ticker/six/*",
+        "shared/ticker/shared/*.py"
       ],
       "checks": []
     },
@@ -454,12 +454,12 @@
         "sports-server"
       ],
       "owned": [
-        "ticker/six/ui/text.py",
-        "ticker/six/ui/palette.py"
+        "six/ticker/six/ui/text.py",
+        "six/ticker/six/ui/palette.py"
       ],
       "context": [
-        "ticker/six/ui/text.py",
-        "ticker/six/ui/palette.py"
+        "six/ticker/six/ui/text.py",
+        "six/ticker/six/ui/palette.py"
       ],
       "build": [],
       "checks": [
@@ -493,22 +493,22 @@
     "backend-operations": {
       "owner": "Backend deployment, recovery, and reporting",
       "owned": [
-        "ticker/ops/*",
-        "deploy/server/*",
+        "server/ticker/ops/*",
+        "server/deploy/*",
         "tools/deployment/*"
       ],
       "dependencies": [
         "server-core"
       ],
       "context": [
-        "ticker/ops/manager.py",
-        "ticker/ops/components.py",
-        "ticker/ops/reporting.py",
+        "server/ticker/ops/manager.py",
+        "server/ticker/ops/components.py",
+        "server/ticker/ops/reporting.py",
         "docs/operations/backend-recovery.md"
       ],
       "build": [
-        "ticker/ops/*.py",
-        "deploy/server/*",
+        "server/ticker/ops/*.py",
+        "server/deploy/*",
         "tools/deployment/*.py",
         "tests/ops/*/test_backend*.py",
         "tests/ops/recovery/test_runtime_reporting.py"
@@ -630,13 +630,13 @@
     "clock": {
       "owner": "Clock presentation",
       "owned": [
-        "ticker/six/ui/cards/clock.py"
+        "six/ticker/six/ui/cards/clock.py"
       ],
       "dependencies": [
         "six-build"
       ],
       "context": [
-        "ticker/six/ui/cards/clock.py"
+        "six/ticker/six/ui/cards/clock.py"
       ],
       "build": [
         "tests/six/ui/test_clock_renderer.py"
@@ -711,15 +711,15 @@
     "six-sports-renderer": {
       "owner": "Ticker Six sports presentation",
       "owned": [
-        "ticker/six/ui/sports/*"
+        "six/ticker/six/ui/sports/*"
       ],
       "dependencies": [
         "sports-server",
         "six-build"
       ],
       "context": [
-        "ticker/six/ui/sports/__init__.py",
-        "ticker/six/ui/sports/pinned.py"
+        "six/ticker/six/ui/sports/__init__.py",
+        "six/ticker/six/ui/sports/pinned.py"
       ],
       "build": [
         "tests/six/ui/test_sports_renderers.py",
@@ -732,11 +732,11 @@
     "six-rendering": {
       "owner": "Ticker Six renderer contracts, catalog, preview tools, and generic renderer tests",
       "owned": [
-        "ticker/six/ui/catalog.py",
-        "ticker/six/ui/palette.py",
-        "ticker/six/ui/text.py",
-        "ticker/six/ui/frame.py",
-        "ticker/six/ui/strip.py",
+        "six/ticker/six/ui/catalog.py",
+        "six/ticker/six/ui/palette.py",
+        "six/ticker/six/ui/text.py",
+        "six/ticker/six/ui/frame.py",
+        "six/ticker/six/ui/strip.py",
         "tests/six/ui/test_catalog.py",
         "tests/six/ui/test_templates.py",
         "tests/six/ui/test_six_golden.py",
@@ -747,7 +747,7 @@
         "six-build"
       ],
       "context": [
-        "ticker/six/ui/catalog.py",
+        "six/ticker/six/ui/catalog.py",
         "tests/six/ui/test_catalog.py"
       ],
       "build": [
@@ -761,7 +761,7 @@
     "weather-art": {
       "owner": "Shared Six and Mini weather icon timing and generated artwork",
       "owned": [
-        "ticker/six/ui/weather_art.py",
+        "six/ticker/six/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py",
         "mini/src/mini/ui/weather_art_generated.h"
       ],
@@ -770,7 +770,7 @@
         "mini-firmware"
       ],
       "context": [
-        "ticker/six/ui/weather_art.py",
+        "six/ticker/six/ui/weather_art.py",
         "tools/mini/generate_mini_weather.py"
       ],
       "build": [

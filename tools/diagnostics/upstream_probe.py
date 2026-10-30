@@ -36,8 +36,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 USER_AGENT = "SportsTickerBackend/8"
 REPORT_DIRECTORY = ROOT / "previews" / "upstream-probe"
 FINNHUB_KEY_NAMES = ("FINNHUB_API_KEY", "FINNHUB_KEY_1", "FINNHUB_KEY_2", "FINNHUB_KEY_3", "FINNHUB_KEY_4", "FINNHUB_KEY_5")

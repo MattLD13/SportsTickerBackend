@@ -6,12 +6,13 @@ from datetime import datetime, timezone
 import importlib.util
 import math
 from pathlib import Path
+import os
 import sys
 
 from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.six.ui import weather_art
 
 TARGET = ROOT / "mini/src/mini/ui/weather_art_generated.h"

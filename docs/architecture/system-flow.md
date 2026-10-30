@@ -13,7 +13,7 @@ flowchart LR
     HEART["Heartbeat, updates,\nreboot acknowledgements"]
     REPO["Fleet repository\nticker/server/store/repository.py"]
     STATE["Durable ticker state\nsettings, pairing, tokens, events"]
-    SCHED["Engine and provider workers\nticker/server/core/ + ticker/server/worker/"]
+    SCHED["Engine and provider workers\nticker/server/core/ + server/ticker/server/worker/"]
     PROVIDERS["Providers\nESPN, racing, golf, weather, stocks,\nmusic, flights, news, alerts"]
     NORM["Normalization and shared display projection\nproviders/normalization.py\nprojections/data_api.py"]
     EVENTS["Overlay events\nnews, score alerts, updates"]

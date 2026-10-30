@@ -9,8 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
+sys.path[:0] = [os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), name) for name in ("shared", "server", "six", "")]
 from ticker.six.ui.score_alert import ScoreAlert
 from ticker.six.ui import load_default_font_set
 

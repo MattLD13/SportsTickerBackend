@@ -18,8 +18,7 @@ import time
 
 STARTED = time.perf_counter()
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from PIL import __version__ as pillow_version
 from ticker.six.bootstrap import create_default_frame_builder
 from ticker.six.ui.frame import RenderContext

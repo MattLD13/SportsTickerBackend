@@ -36,8 +36,10 @@ If this file changes, read it again. `agents/README.md` explains the workspace c
 ## Engineering rules
 
 - Trace input, durable state, API output, client state, and the frame before fixing a display fact.
-- Give each fact one owner. Shared sports facts belong in `ticker/shared/sports_display.py`.
+- Give each fact one owner. Shared sports facts belong in `shared/ticker/shared/sports_display.py`.
 - Keep the import direction. `ticker.shared` imports no other product. `ticker.six` imports only `ticker.shared`.
+- `shared/`, `server/`, and `six/` each hold one part of the namespace package `ticker`. Do not add `ticker/__init__.py`.
+- Run Python from the root with `PYTHONPATH=shared:server:six`. pytest, CI, and the units set it. Each tool adds the roots itself.
 - Extend explicit contracts when several consumers need a fact.
 - Keep provider reads, persistence, projection, scheduling, and rendering separate. Rendering has no I/O.
 - Replace faulty designs. Remove replaced code, imports, tests, routes, jobs, fixtures, and documentation in the same change.
@@ -53,7 +55,7 @@ If this file changes, read it again. `agents/README.md` explains the workspace c
 - Alerts, news, connection loss, and updates are overlays over the active mode.
 - Clients use explicit state. They do not infer domain state from display text.
 
-## Ticker Server: `ticker/server/`
+## Ticker Server: `server/ticker/server/`
 
 Read `docs/architecture/server.md` before you change the routes, the engine, or the workers.
 
@@ -83,15 +85,15 @@ Read `docs/architecture/server.md` before you change the routes, the engine, or 
 - Scope stale provider data to the exact ticker settings that produced it.
 - Alerts and news are durable overlays. A targeted event stays with its target ticker.
 - If the engine changes, `tests/server/core/test_engine_equivalence.py` must pass. Do not add fields to its volatile list
-  unless the Six ignores them too, as in `ticker/six/protocol/model.py:_display_payload_hash`.
+  unless the Six ignores them too, as in `six/ticker/six/protocol/model.py:_display_payload_hash`.
 - If recorded provider results change, record them again from the live providers. Do not edit them by hand.
 - Run `python -m pytest -q tests/server` for every server change. After a display data change, run `python -m pytest -q`.
 
-## Server operations: `ticker/ops/`
+## Server operations: `server/ticker/ops/`
 
 - Keep deployment selection, release activation, evidence, and GitHub reporting separate.
-- `ticker/server/core/supervisor.py` owns worker restarts, worker deploys, and worker rollback.
-  `ticker/ops/` owns the release files, the core service, and the deployment record.
+- `server/ticker/server/core/supervisor.py` owns worker restarts, worker deploys, and worker rollback.
+  `server/ticker/ops/` owns the release files, the core service, and the deployment record.
 - The guard runs on the system Python. Import only the standard library, `ticker.ops`, and `ticker.server.contract`.
 - Keep the runtime paths and names on the server, such as `/home/ubuntu/ticker3` and the `TICKER3_` settings.
 - Use explicit component identity and release revision in recovery records.
@@ -100,7 +102,7 @@ Read `docs/architecture/server.md` before you change the routes, the engine, or 
 - Keep public status free of credentials, customer data, and private logs. Encrypt private evidence before upload.
 - Use temporary directories for recovery tests. Do not change production release state during tests.
 
-## Ticker Six: `ticker/six/`
+## Ticker Six: `six/ticker/six/`
 
 - `ui/` owns the drawing. `ui/sports/` owns the sports cards. `ui/cards/` holds one card for each other content family.
 - Keep rendering free of file access, network access, and scheduling policy.
@@ -111,7 +113,7 @@ Read `docs/architecture/server.md` before you change the routes, the engine, or 
 - If pixels change, run `python tools/rendering/six_golden.py check`. Render with `tools/rendering/render_frame.py` and inspect the PNG.
   Accept a change on purpose with `accept` only after you inspect the frames.
 - Pi releases are immutable. Runtime data stays outside the release. Never pull, reset, or clean a running release.
-- An installed Six reads `deploy/six/ticker-controller.service` and `requirements/base.txt` from each new release. Keep these paths.
+- An installed Six reads `six/deploy/ticker-controller.service` and `requirements/base.txt` from each new release. Keep these paths.
 
 ## Ticker Mini: `mini/`
 

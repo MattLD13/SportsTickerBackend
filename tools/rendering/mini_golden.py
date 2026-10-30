@@ -21,13 +21,13 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import os
 import sys
 import tempfile
 from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 CORPUS = ROOT / "tests/fixtures/mini_golden/corpus.json.gz"
 DIGESTS = ROOT / "tests/fixtures/mini_golden/digests.json"
 LIBRARY = ROOT / "docs/contracts/demo-layouts.json"

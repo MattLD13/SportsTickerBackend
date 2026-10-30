@@ -5,11 +5,12 @@ import argparse
 import hashlib
 import io
 from pathlib import Path
+import os
 import sys
 
 from PIL import Image, ImageDraw
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
 from ticker.shared.images import prepare_contained
 from ticker.server.mini_assets.mini_sprite import encode_sprite
 

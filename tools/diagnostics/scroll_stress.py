@@ -20,9 +20,7 @@ import statistics
 import sys
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-
+sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
 def summarize(values):
     values = sorted(values)
     if not values:

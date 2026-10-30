@@ -7,12 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import struct
+import os
 import sys
 import time
 
 import requests
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
 from ticker.server.mini_assets.mini_sprite import validate_sprite
 from tools.deployment.device_auth import device_headers
 

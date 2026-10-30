@@ -4,11 +4,12 @@ name: Build and deploy
     branches:
     - main
     paths:
-    - ticker/**
+    - shared/**
+    - server/**
+    - six/**
     - mini/**
     - tools/**
     - tests/**
-    - deploy/**
     - docs/contracts/**
     - requirements/**
     - pyproject.toml
@@ -16,11 +17,12 @@ name: Build and deploy
     - .github/deployment-paths.json
   pull_request:
     paths:
-    - ticker/**
+    - shared/**
+    - server/**
+    - six/**
     - mini/**
     - tools/**
     - tests/**
-    - deploy/**
     - docs/contracts/**
     - requirements/**
     - pyproject.toml
@@ -41,6 +43,9 @@ permissions:
   contents: read
   pull-requests: read
   actions: read
+# The Python products merge one `ticker` package from these source roots.
+env:
+  PYTHONPATH: shared:server:six
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('checks-{0}', github.event.pull_request.number) || 'deploy-main' }}
   cancel-in-progress: false
@@ -106,9 +111,9 @@ jobs:
     - name: Install test dependencies
       run: python -m pip install -r requirements/server.txt pytest 'ruff>=0.14,<0.15' 'mypy>=1.18,<2'
     - name: Compile Python sources
-      run: python -m compileall -q ticker agents tools tests
+      run: python -m compileall -q shared server six agents tools tests
     - name: Check Python correctness
-      run: python -m ruff check ticker agents tools
+      run: python -m ruff check shared server six agents tools
     - name: Check scoped Python types
       run: python -m mypy
     - name: Build public layouts from current Mini firmware
@@ -137,7 +142,7 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: public-demo-${{ github.sha }}
-        path: ticker/server/web/static/layout-gallery.json
+        path: server/ticker/server/web/static/layout-gallery.json
         if-no-files-found: error
         retention-days: 1
     - uses: actions/upload-artifact@v4
@@ -292,7 +297,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: public-demo-${{ github.sha }}
-        path: ticker/server/web/static/
+        path: server/ticker/server/web/static/
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Generate VERSION file
       run: |
@@ -333,12 +338,11 @@ jobs:
         BASE_REVISION: ${{ steps.base.outputs.revision }}
       run: |
         python -m ticker.ops.components --base "$BASE_REVISION" --output deployment-staging
-        cp deploy/server/* deployment-staging/
+        cp server/deploy/* deployment-staging/
         mkdir -p deployment-staging/bootstrap/ticker/server
-        cp -R ticker/ops deployment-staging/bootstrap/ticker/ops
-        cp -R ticker/server/contract deployment-staging/bootstrap/ticker/server/contract
-        cp ticker/__init__.py deployment-staging/bootstrap/ticker/__init__.py
-        cp ticker/server/__init__.py deployment-staging/bootstrap/ticker/server/__init__.py
+        cp -R server/ticker/ops deployment-staging/bootstrap/ticker/ops
+        cp -R server/ticker/server/contract deployment-staging/bootstrap/ticker/server/contract
+        cp server/ticker/server/__init__.py deployment-staging/bootstrap/ticker/server/__init__.py
         find deployment-staging/bootstrap -type d -name __pycache__ -prune -exec rm -rf '{}' +
       if: needs.validate.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     - name: Ticker Server / Copy selected component releases

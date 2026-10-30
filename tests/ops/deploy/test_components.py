@@ -20,10 +20,11 @@ def _git(root, *args: str) -> str:
 
 def test_changed_components_skips_binary_file_reads(tmp_path) -> None:
     source = Path(__file__).resolve().parents[3]
-    shutil.copytree(source / "ticker", tmp_path / "ticker", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    for package in ("shared", "server", "six"):
+        shutil.copytree(source / package, tmp_path / package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (tmp_path / "docs/research").mkdir(parents=True)
     image = tmp_path / "docs/research/diagram.png"
-    weather = tmp_path / "ticker/server/providers/weather.py"
+    weather = tmp_path / "server/ticker/server/providers/weather.py"
     image.write_bytes(b"\x89PNG\r\n\x1a\n")
 
     _git(tmp_path, "init")

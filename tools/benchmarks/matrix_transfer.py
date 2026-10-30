@@ -54,7 +54,7 @@ def main():
         if not hasattr(os, "sched_setaffinity"):
             parser.error("--cpu requires CPU affinity support")
         os.sched_setaffinity(0, {args.cpu})
-    sys.path.insert(0, str(args.repository.resolve()))
+    sys.path[:0] = [os.path.join(str(args.repository.resolve()), name) for name in ("shared", "server", "six", "")]
     from ticker.six.drivers.memory import _prepare_frame
     from ticker.six.drivers.rgbmatrix import RgbMatrixFrameSink, _set_image
 

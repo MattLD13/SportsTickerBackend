@@ -19,6 +19,7 @@ import hashlib
 import io
 import json
 import pickle
+import os
 import sys
 from collections.abc import Iterator, Mapping
 from dataclasses import fields, is_dataclass
@@ -29,8 +30,7 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 CORPUS = ROOT / "tests/fixtures/six_golden/corpus.json.gz"
 DIGESTS = ROOT / "tests/fixtures/six_golden/digests.json"
 BASE_TIME = datetime(2026, 10, 18, 20, 15, 0)

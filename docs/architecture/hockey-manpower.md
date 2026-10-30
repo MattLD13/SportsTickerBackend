@@ -1,13 +1,13 @@
 # NHL manpower
 
-`ticker/server/providers/nhl_live.py` reads current NHL game state every eight seconds.
+`server/ticker/server/providers/nhl_live.py` reads current NHL game state every eight seconds.
 It refreshes completed games every 60 seconds to retain goal and shootout records.
 It reads the top-level `situation`, `periodDescriptor`, and `clock` from the NHL play-by-play response.
 The NHL omits `situation` during standard strength.
 Regulation and playoff overtime use five skaters. Regular-season overtime uses three skaters.
 Intermission, shootout, and finished games have no active player-count display.
 
-`ticker/shared/sports_display.py` owns the V2 `situation.manpower` contract and PP and empty-net ownership.
+`shared/ticker/shared/sports_display.py` owns the V2 `situation.manpower` contract and PP and empty-net ownership.
 Each manpower object contains `phase`, `state`, `awaySkaters`, `homeSkaters`, `label`, `scrollLabel`, `powerPlayTimeRemaining`, and `penaltyNumbers`.
 Counts use away-team order followed by home-team order.
 An empty `label` hides the count. Unknown counts use JSON null.

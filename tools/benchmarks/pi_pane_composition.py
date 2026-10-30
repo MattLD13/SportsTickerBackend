@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import statistics
+import os
 import sys
 import time
 
@@ -16,8 +17,7 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
+    sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.six.app.viewport import CardViewport
 from ticker.six.bootstrap import create_default_frame_builder
 from ticker.six.ui.frame import RenderContext

@@ -5,10 +5,11 @@ import argparse
 from copy import deepcopy
 import json
 from pathlib import Path
+import os
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.shared.sports_display import RACING_FLAGS
 from ticker.server.projections.racing_display import racing_cards
 from ticker.server.projections.device_data import project_device_data

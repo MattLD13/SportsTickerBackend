@@ -26,7 +26,7 @@ def test_recovery_compares_backend_changes_only(tmp_path):
     git("config", "user.email", "deployment@example.invalid")
     scope = Path(__file__).resolve().parents[3] / ".github/deployment-paths.json"
     commit(".github/deployment-paths.json", scope.read_text(encoding="utf-8"))
-    deployed = commit("ticker/server/main.py", "version = 1")
+    deployed = commit("server/ticker/server/main.py", "version = 1")
     commit("docs/report.md", "Report")
     commit("mini/src/main.cpp", "Mini")
     commit("ios/View.swift", "App")
@@ -35,10 +35,10 @@ def test_recovery_compares_backend_changes_only(tmp_path):
     documentation_deploy = git("rev-parse", "HEAD")
     commit("docs/report.md", "Updated report")
     assert not recovery_needed(tmp_path, documentation_deploy)
-    commit("deploy/server/ticker.service", "Updated service")
+    commit("server/deploy/ticker.service", "Updated service")
     assert recovery_needed(tmp_path, deployed)
     deployed = git("rev-parse", "HEAD")
-    commit("ticker/server/main.py", "version = 2")
+    commit("server/ticker/server/main.py", "version = 2")
     assert recovery_needed(tmp_path, deployed)
     assert not recovery_needed(tmp_path, git("rev-parse", "HEAD"))
     assert recovery_needed(tmp_path, "unknown")
@@ -53,4 +53,4 @@ def test_shared_runtime_dependencies_trigger_a_six_update():
     scope = Path(__file__).resolve().parents[3] / ".github/deployment-paths.json"
     controller = json.loads(scope.read_text(encoding="utf-8"))["controller"]
     assert "requirements/base.txt" in controller
-    assert "ticker/shared/**" in controller
+    assert "shared/ticker/shared/**" in controller

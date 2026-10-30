@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import os
 import sys
 import tempfile
 import time
@@ -79,7 +80,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.warmup < 0 or args.seconds < 20 or args.interval <= 0:
         parser.error("Use nonnegative warmup, at least 20 measurement seconds, and a positive message interval.")
-    sys.path.insert(0, str(args.repository.resolve()))
+    sys.path[:0] = [os.path.join(str(args.repository.resolve()), name) for name in ("shared", "server", "six", "")]
     sys.dont_write_bytecode = True
 
     from ticker.six.app.application import TickerApplication

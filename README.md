@@ -13,14 +13,19 @@ Provider workers -> core engine -> ticker snapshot -> /data, /poll, /stream -> S
       +-- supervisor ---+-> SQLite ticker settings, pairing, events, and integrations
 ```
 
-All Python code is in one package, `ticker`. Run each product as a module.
+The repository has one folder for each product:
 
-- `ticker/server/` is Ticker Server: the routes, the device stream, the engine, the worker supervisor, the provider workers, and the records. Run it with `python -m ticker.server`.
-- `ticker/six/` is Ticker Six: transport, content caching, runtime scheduling, rendering, and matrix drivers. Run it with `python -m ticker.six`.
-- `ticker/shared/` holds the facts that the server and the Six both use: the content model, the leagues, and the sports display facts.
-- `ticker/ops/` deploys and checks the server.
+- `server/` is Ticker Server: the routes, the device stream, the engine, the worker supervisor, the provider workers, the records, and the server operations.
+- `six/` is Ticker Six: transport, content caching, runtime scheduling, rendering, and matrix drivers.
+- `shared/` holds the facts that the server and the Six both use: the content model, the leagues, and the sports display facts.
+- `mini/` is the Ticker Mini firmware. `ios/` is the iOS controller app. The app uses controller tokens and never receives Spotify tokens.
 
-`mini/` is the Ticker Mini firmware. `ios/` is the iOS controller app. The app uses controller tokens and never receives Spotify tokens.
+The Python code of `shared/`, `server/`, and `six/` forms one package, `ticker`. Run a product from the repository root:
+
+```sh
+PYTHONPATH=shared:server:six python -m ticker.server
+PYTHONPATH=shared:six python -m ticker.six
+```
 
 ## Modes
 
@@ -99,17 +104,14 @@ Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace th
 
 | Folder | Owner |
 |---|---|
-| `ticker/shared/` | The content model, the leagues, and the sports display facts. Used by the server and the Six. |
-| `ticker/server/` | Ticker Server: API, web pages, engine, workers, providers, projections, and records. |
-| `ticker/six/` | Ticker Six runtime, rendering, platform services, and the release updater. |
-| `ticker/ops/` | Release packaging, core activation, rollback, and diagnostics. |
-| `agents/` | Agent workspace tools, their manifest, and their docs. The root `AGENTS.md` holds every agent rule. |
+| `shared/` | The content model, the leagues, and the sports display facts (`ticker.shared`). Used by the server and the Six. |
+| `server/` | Ticker Server (`ticker.server`), server operations (`ticker.ops`), and the server units in `deploy/`. |
+| `six/` | Ticker Six (`ticker.six`), and its install script and unit in `deploy/`. |
 | `mini/` | Ticker Mini firmware (PlatformIO). |
 | `ios/` | iOS controller app (Xcode). |
-| `deploy/server/` | Server service and guard timer units. |
-| `deploy/six/` | Six install script and service unit. |
+| `agents/` | Agent workspace tools, their manifest, and their docs. The root `AGENTS.md` holds every agent rule. |
 | `requirements/` | `base.txt` for the Six and the server, `server.txt` for the server. |
-| `tests/` | Tests in folders that mirror the code: `shared/`, `server/`, `six/`, `ops/`, `agents/`, `mini/`, `tools/`, and `fixtures/`. |
+| `tests/` | Tests in folders that mirror the products: `shared/`, `server/`, `six/`, `ops/`, `agents/`, `mini/`, `tools/`, and `fixtures/`. |
 | `tools/` | Utilities grouped by purpose. |
 | `docs/` | Architecture, contracts, development, operations, plans, and research. |
 

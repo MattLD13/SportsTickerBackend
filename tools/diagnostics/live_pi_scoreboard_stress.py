@@ -153,7 +153,7 @@ def _orchestrate(args: argparse.Namespace) -> dict[str, object]:
 restore_ticker() {{ sudo systemctl start ticker-controller.service >/dev/null 2>&1 || true; }}
 trap restore_ticker EXIT
 sudo systemctl stop ticker-controller.service
-sudo env PYTHONPATH=/opt/sports-ticker/current TICKER_GPIO_SLOWDOWN=1 TICKER_CARD_CPU=3 /usr/bin/python3 {remote_runner} --device-runner --games-file {remote_games} --report-file {remote_report} --frame-file {remote_frame} --duration-seconds {args.duration_seconds}
+sudo env PYTHONPATH=/opt/sports-ticker/current/shared:/opt/sports-ticker/current/six TICKER_GPIO_SLOWDOWN=1 TICKER_CARD_CPU=3 /usr/bin/python3 {remote_runner} --device-runner --games-file {remote_games} --report-file {remote_report} --frame-file {remote_frame} --duration-seconds {args.duration_seconds}
 sudo cat {remote_report}
 """
     run_result: subprocess.CompletedProcess[str] | None = None

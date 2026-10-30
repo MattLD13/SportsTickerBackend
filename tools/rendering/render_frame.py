@@ -21,8 +21,7 @@ from urllib.parse import urljoin
 import requests
 from PIL import Image
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
+sys.path[:0] = [os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), name) for name in ("shared", "server", "six", "")]
 from tools.deployment.device_auth import device_headers
 from ticker.six.ui.frame import RenderContext
 from ticker.six.assets import AssetPlanner

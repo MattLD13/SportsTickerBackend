@@ -8,20 +8,20 @@ Read the [project map](project-map.md) for the folder layout, the import directi
 
 | Path | Responsibility |
 |---|---|
-| `ticker/server/providers/` | Read upstream sources and normalize provider content. |
-| `ticker/shared/sports_display.py` | Project shared sports display facts. |
-| `ticker/shared/domain/` | Define immutable content, settings, schedules, and events. |
-| `ticker/server/services/` | Compose content, apply schedules, and retain snapshots. |
-| `ticker/server/store/repository.py` | Persist fleet settings, pairing, schedules, and integration state in SQLite. |
-| `ticker/server/projections/` | Produce JSON representations for API consumers. |
-| `ticker/server/api/` | Define the routes, request checks, authorization, and the device stream. |
-| `ticker/server/core/` | Turn tickers into worker subscriptions, publish snapshots, and supervise worker processes. |
-| `ticker/server/worker/` | Run one provider in one process and send its results to the core. |
-| `ticker/six/protocol/` | Read the backend and validate display responses on the Pi. |
-| `ticker/six/app/` | Build frames and manage the card viewport. |
-| `ticker/six/ui/` | Draw content cards, screens, and overlays. |
-| `ticker/six/platform/assets.py` | Store durable image cache files. |
-| `ticker/six/assets/` | Plan assets and provide memory reads. |
+| `server/ticker/server/providers/` | Read upstream sources and normalize provider content. |
+| `shared/ticker/shared/sports_display.py` | Project shared sports display facts. |
+| `shared/ticker/shared/domain/` | Define immutable content, settings, schedules, and events. |
+| `server/ticker/server/services/` | Compose content, apply schedules, and retain snapshots. |
+| `server/ticker/server/store/repository.py` | Persist fleet settings, pairing, schedules, and integration state in SQLite. |
+| `server/ticker/server/projections/` | Produce JSON representations for API consumers. |
+| `server/ticker/server/api/` | Define the routes, request checks, authorization, and the device stream. |
+| `server/ticker/server/core/` | Turn tickers into worker subscriptions, publish snapshots, and supervise worker processes. |
+| `server/ticker/server/worker/` | Run one provider in one process and send its results to the core. |
+| `six/ticker/six/protocol/` | Read the backend and validate display responses on the Pi. |
+| `six/ticker/six/app/` | Build frames and manage the card viewport. |
+| `six/ticker/six/ui/` | Draw content cards, screens, and overlays. |
+| `six/ticker/six/platform/assets.py` | Store durable image cache files. |
+| `six/ticker/six/assets/` | Plan assets and provide memory reads. |
 | `mini/` | Build the ESP32 display firmware with PlatformIO. |
 | `ios/` | Build the iOS controller with Xcode. |
 
@@ -38,11 +38,11 @@ Snapshot revisions identify backend replacements. They do not define a replayabl
 
 ## Deployment
 
-`ticker/server/main.py` starts Hypercorn with one ASGI process.
-`ticker/server/api/asgi.py` starts the engine through the ASGI lifespan and adapts the Flask routes with `WsgiToAsgi`.
-`deploy/server/ticker.service` starts that entry point. The engine supervisor starts the provider workers.
-`deploy/six/ticker-controller.service` starts `python3 -m ticker.six` on the Pi.
-`deploy/six/setup.sh` installs Pi releases as immutable Git worktrees under `/opt/sports-ticker`.
+`server/ticker/server/main.py` starts Hypercorn with one ASGI process.
+`server/ticker/server/api/asgi.py` starts the engine through the ASGI lifespan and adapts the Flask routes with `WsgiToAsgi`.
+`server/deploy/ticker.service` starts that entry point. The engine supervisor starts the provider workers.
+`six/deploy/ticker-controller.service` starts `python3 -m ticker.six` on the Pi with `PYTHONPATH=shared:six`.
+`six/deploy/setup.sh` installs Pi releases as immutable Git worktrees under `/opt/sports-ticker`.
 The Pi service stores runtime data under `/home/mld/ticker` outside each release.
 `python3 -m ticker.six.updater` installs later releases. The deployment workflows are in `.github/workflows/`.
 
@@ -66,12 +66,12 @@ Read [the agent guide](../../AGENTS.md) for domain ownership and change rules.
 
 ## Deployment ownership
 
-`ticker/ops/` owns process selection, immutable backend releases, core recovery, and encrypted evidence collection.
+`server/ticker/ops/` owns process selection, immutable backend releases, core recovery, and encrypted evidence collection.
 The core and nine provider workers are separate processes. Each process has its own release identity.
-The core supervisor restarts, deploys, and rolls back the workers. `deploy/server/` stores the core unit and the guard timer.
+The core supervisor restarts, deploys, and rolls back the workers. `server/deploy/` stores the core unit and the guard timer.
 Read [backend recovery](../operations/backend-recovery.md) for activation, quarantine, and rollback rules.
 
-`deploy/six/setup.sh` installs a new Pi. `ticker.six.updater` installs each later release and copies `deploy/six/ticker-controller.service` from that release.
+`six/deploy/setup.sh` installs a new Pi. `ticker.six.updater` installs each later release and copies `six/deploy/ticker-controller.service` from that release.
 Keep these paths stable, because an installed Six reads them from each new release.
 
 ## Repository layout

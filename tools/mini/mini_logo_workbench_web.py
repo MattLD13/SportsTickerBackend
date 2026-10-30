@@ -18,8 +18,7 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
+    sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from PIL import Image
 from ticker.six.ui.sports.logos import Outline, mean_edge_brightness, paste_team_logo, prepare_team_logo, team_logo_layout
 
@@ -300,7 +299,7 @@ def rendering_manifest():
         manifest = build_manifest(teams, picks)
     except (TypeError, ValueError) as error:
         return jsonify({"error": str(error)}), 400
-    target = ROOT / "ticker/server/projections/logo_rendering_decisions.json"
+    target = ROOT / "server/ticker/server/projections/logo_rendering_decisions.json"
     target.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     decisions = manifest["decisions"]
     return jsonify({

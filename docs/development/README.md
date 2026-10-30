@@ -25,6 +25,14 @@ Install development tools:
 python -m pip install "pytest>=8,<9" "ruff>=0.14,<0.15" "mypy>=1.18,<2"
 ```
 
+Set the Python source roots before you run a `ticker` module from the repository root:
+
+```powershell
+$env:PYTHONPATH = "shared;server;six"
+```
+
+On Linux and macOS, use `export PYTHONPATH=shared:server:six`. pytest and the tools in `tools/` set the roots themselves.
+
 Copy `docs/development/env.example` to `.env` for local backend settings.
 Keep credentials in `.env` and exclude them from Git.
 
@@ -33,11 +41,11 @@ Keep credentials in `.env` and exclude them from Git.
 Run static checks from the repository root:
 
 ```powershell
-python -m ruff check ticker agents tools
+python -m ruff check shared server six agents tools
 python -m mypy
 ```
 
-Ruff starts with syntax and selected correctness rules. Mypy starts with `ticker/server/markets.py`.
+Ruff starts with syntax and selected correctness rules. Mypy starts with `server/ticker/server/markets.py`.
 Expand coverage after resolving findings in the affected modules.
 
 `.github/workflows/deploy.yml` owns Python checks, shared layout checks, Mini firmware validation, and publishing.

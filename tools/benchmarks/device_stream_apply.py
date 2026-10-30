@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import statistics
+import os
 import sys
 import time
 
@@ -31,7 +32,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error("--repeats must be positive")
-    sys.path.insert(0, str(args.repository.resolve()))
+    sys.path[:0] = [os.path.join(str(args.repository.resolve()), name) for name in ("shared", "server", "six", "")]
     from ticker.six.protocol import DeviceStreamState, StreamMessage
 
     raw_messages = json.loads(args.messages.read_text(encoding="utf-8-sig"))

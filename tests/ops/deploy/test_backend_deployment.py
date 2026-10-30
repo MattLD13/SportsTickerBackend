@@ -87,45 +87,45 @@ def running(tmp_path):
 
 def test_deployment_selects_the_processes_that_load_a_file():
     workers = set(WORKERS)
-    assert owners("ticker/server/providers/music.py") == {"music"}
-    assert owners("ticker/server/api/control.py") == {"core"}
-    assert owners("ticker/server/core/engine.py") == {"core"}
-    assert owners("ticker/server/worker/runner.py") == workers
-    assert owners("ticker/server/spotify.py") == {"core", "music"}
-    assert owners("ticker/server/providers/clock.py") == {"core"}
-    assert owners("ticker/shared/domain/models.py") == set(COMPONENTS)
-    assert owners("ticker/shared/__init__.py") == set(COMPONENTS)
-    assert owners("ticker/server/contract/wire.py") == set(COMPONENTS)
-    assert owners("ticker/ops/incidents.py") == set(COMPONENTS)
+    assert owners("server/ticker/server/providers/music.py") == {"music"}
+    assert owners("server/ticker/server/api/control.py") == {"core"}
+    assert owners("server/ticker/server/core/engine.py") == {"core"}
+    assert owners("server/ticker/server/worker/runner.py") == workers
+    assert owners("server/ticker/server/spotify.py") == {"core", "music"}
+    assert owners("server/ticker/server/providers/clock.py") == {"core"}
+    assert owners("shared/ticker/shared/domain/models.py") == set(COMPONENTS)
+    assert owners("shared/ticker/shared/__init__.py") == set(COMPONENTS)
+    assert owners("server/ticker/server/contract/wire.py") == set(COMPONENTS)
+    assert owners("server/ticker/ops/incidents.py") == set(COMPONENTS)
     assert owners("requirements/server.txt") == set(COMPONENTS)
     assert owners("tests/shared/domain/test_modes.py") == set()
-    assert owners("ticker/server/providers/score_alerts.py") == {"espn", "fotmob"}
-    assert owners("ticker/shared/racing_session.py") == {"core", "racing"}
-    assert owners("ticker/shared/sports_display.py") == {"core"} | SPORTS
-    assert owners("ticker/server/providers/stock_catalog.py") == {"core"}
-    assert owners("ticker/server/providers/weather.py") == {"weather"}
-    assert owners("ticker/server/providers/weather_location.py") == {"core"}
-    assert owners("ticker/server/projections/data_api.py") == {"core"}
+    assert owners("server/ticker/server/providers/score_alerts.py") == {"espn", "fotmob"}
+    assert owners("shared/ticker/shared/racing_session.py") == {"core", "racing"}
+    assert owners("shared/ticker/shared/sports_display.py") == {"core"} | SPORTS
+    assert owners("server/ticker/server/providers/stock_catalog.py") == {"core"}
+    assert owners("server/ticker/server/providers/weather.py") == {"weather"}
+    assert owners("server/ticker/server/providers/weather_location.py") == {"core"}
+    assert owners("server/ticker/server/projections/data_api.py") == {"core"}
 
 
 def test_deployment_selects_every_process_for_files_without_import_edges():
-    assert owners("ticker/server/providers/removed_source.py") == set(COMPONENTS)
-    assert owners("ticker/server/providers/team_overrides.json") == set(COMPONENTS)
-    assert owners("ticker/server/removed_view.py") == {"core"}
-    assert owners("ticker/server/web/static/style.css") == {"core"}
+    assert owners("server/ticker/server/providers/removed_source.py") == set(COMPONENTS)
+    assert owners("server/ticker/server/providers/team_overrides.json") == set(COMPONENTS)
+    assert owners("server/ticker/server/removed_view.py") == {"core"}
+    assert owners("server/ticker/server/web/static/style.css") == {"core"}
 
 
 @pytest.mark.parametrize("module,component", [
     ("golf_source", "golf"), ("stock_source", "stock"), ("flight_source", "flights"), ("news_source", "news"),
 ])
 def test_source_file_changes_select_only_their_worker(module, component):
-    assert owners(f"ticker/server/providers/{module}.py") == {component}
+    assert owners(f"server/ticker/server/providers/{module}.py") == {component}
 
 
 def repository(tmp_path):
     root = tmp_path / "repository"
-    for name in ("ticker/__init__.py", "ticker/shared/__init__.py", "ticker/six/__init__.py", "ticker/server/__init__.py", "ticker/server/contract/__init__.py",
-                 "ticker/ops/__init__.py", "ticker/ops/manager.py"):
+    for name in ("shared/ticker/shared/__init__.py", "six/ticker/six/__init__.py", "server/ticker/server/__init__.py", "server/ticker/server/contract/__init__.py",
+                 "server/ticker/ops/__init__.py", "server/ticker/ops/manager.py"):
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_text(f"# {name}\n", encoding="utf-8")
     for name in ("requirements/base.txt", "requirements/server.txt", "VERSION"):
@@ -146,7 +146,7 @@ def test_one_release_package_carries_every_file_with_its_checksum(tmp_path):
     with tarfile.open(tmp_path / "out/release.tar.gz", "r:gz") as archive:
         names = set(archive.getnames())
         manifest = json.load(archive.extractfile("release-manifest.json"))
-    assert {"ticker/server/contract/__init__.py", "ticker/ops/manager.py", "RELEASE_SHA", "release-manifest.json"} <= names
+    assert {"server/ticker/server/contract/__init__.py", "server/ticker/ops/manager.py", "RELEASE_SHA", "release-manifest.json"} <= names
     assert manifest["release"] == revision and set(manifest["files"]) == names - {"release-manifest.json"}
     assert manifest["files"]["VERSION"] == hashlib.sha256(b"test\n").hexdigest()
 

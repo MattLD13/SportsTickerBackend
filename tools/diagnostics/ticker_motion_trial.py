@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 import json
 from pathlib import Path
+import os
 import sys
 from time import monotonic, sleep
 from typing import Any
@@ -77,7 +78,7 @@ def _repo_root() -> Path:
     release_root = Path("/opt/sports-ticker/current")
     root = release_root if release_root.exists() else script_root
     if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
+        sys.path[:0] = [os.path.join(str(root), name) for name in ("shared", "server", "six", "")]
     return root
 
 

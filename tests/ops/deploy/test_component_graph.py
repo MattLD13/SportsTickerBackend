@@ -9,6 +9,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from ticker.ops.components import WORKERS, import_closures
+from ticker.server.contract import SOURCE_ROOTS
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGES = ("ticker",)
@@ -36,9 +37,12 @@ CORE_PROVIDER_MODULES = {
 
 def _module_file(name):
     """Return the source file of a module, or None for a namespace package."""
-    base = ROOT.joinpath(*name.split("."))
-    path = base / "__init__.py" if (base / "__init__.py").exists() else base.with_suffix(".py")
-    return path.relative_to(ROOT).as_posix() if path.exists() else None
+    for source in SOURCE_ROOTS:
+        base = (ROOT / source).joinpath(*name.split("."))
+        path = base / "__init__.py" if (base / "__init__.py").exists() else base.with_suffix(".py")
+        if path.exists():
+            return path.relative_to(ROOT).as_posix()
+    return None
 
 
 def _loaded(tmp_path, probe, argument):
@@ -59,28 +63,28 @@ def _loaded(tmp_path, probe, argument):
 @pytest.mark.critical
 def test_core_closure_excludes_the_worker_factory_branches():
     core = import_closures(ROOT)["core"]
-    assert {"ticker/server/main.py", "ticker/server/api/asgi.py", "ticker/server/providers/weather_location.py"} <= core
-    assert not {"ticker/server/providers/espn.py", "ticker/server/providers/racing_live.py", "ticker/server/providers/weather.py",
-                "ticker/server/providers/news_source.py", "ticker/server/providers/factory.py"} & core
+    assert {"server/ticker/server/main.py", "server/ticker/server/api/asgi.py", "server/ticker/server/providers/weather_location.py"} <= core
+    assert not {"server/ticker/server/providers/espn.py", "server/ticker/server/providers/racing_live.py", "server/ticker/server/providers/weather.py",
+                "server/ticker/server/providers/news_source.py", "server/ticker/server/providers/factory.py"} & core
 
 
 @pytest.mark.critical
 @pytest.mark.parametrize("component", WORKERS)
 def test_workers_load_no_server_application_code(component):
     closure = import_closures(ROOT)[component]
-    assert "ticker/server/worker/runner.py" in closure
-    assert not [path for path in closure if path.startswith(("ticker/server/api/", "ticker/server/web/", "ticker/server/core/",
-                                                             "ticker/server/services/", "ticker/server/projections/",
-                                                             "ticker/six/"))]
+    assert "server/ticker/server/worker/runner.py" in closure
+    assert not [path for path in closure if path.startswith(("server/ticker/server/api/", "server/ticker/server/web/", "server/ticker/server/core/",
+                                                             "server/ticker/server/services/", "server/ticker/server/projections/",
+                                                             "six/ticker/six/"))]
 
 
 @pytest.mark.critical
 def test_the_core_process_loads_only_core_provider_modules(tmp_path):
     loaded = _loaded(tmp_path, CORE_PROBE, str(tmp_path / "ticker.sqlite3"))
-    providers = {Path(path).stem for path in loaded if path.startswith("ticker/server/providers/")}
+    providers = {Path(path).stem for path in loaded if path.startswith("server/ticker/server/providers/")}
     assert providers <= CORE_PROVIDER_MODULES, sorted(providers - CORE_PROVIDER_MODULES)
     assert {"contracts", "normalization", "clock"} <= providers
-    assert "ticker/shared/sports_display.py" in loaded
+    assert "shared/ticker/shared/sports_display.py" in loaded
     assert loaded <= import_closures(ROOT)["core"], sorted(loaded - import_closures(ROOT)["core"])
 
 

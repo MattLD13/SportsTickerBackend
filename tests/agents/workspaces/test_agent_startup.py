@@ -36,7 +36,7 @@ def planner_calls(monkeypatch):
 
 def test_shared_edit_guards_include_consumers():
     manifest = manifest_read(MANIFEST)
-    required = edit_owners(manifest, ["ticker/shared/domain/models.py"], False)
+    required = edit_owners(manifest, ["shared/ticker/shared/domain/models.py"], False)
     assert set(manifest["shared_consumers"]) <= required
     assert set(manifest["shared_consumers"]) <= edit_owners(manifest, ["unknown/helper.py"], False)
     with pytest.raises(WorkspaceError):
@@ -285,7 +285,7 @@ def test_packet_lists_no_unrelated_initial_mini_context(planner_calls):
     planner_calls[0].append(decision(["mini-sports"], ["mini/src/mini/ui/sports.h"]))
     result = prepare(ROOT, "Fix Mini hockey shootout rendering", "startup-minimal-check", new_task=True, use_planner=True)
     state = json.loads(Path(result["packet"]).with_name("state.json").read_text())
-    assert not any(path.startswith(("ios/", "ticker/six/ui/", "ticker/server/web/"))
+    assert not any(path.startswith(("ios/", "six/ticker/six/ui/", "server/ticker/server/web/"))
                    for path in state["context_files"])
     assert not any(any(word in path for word in ("music", "weather", "stocks", "flights"))
                    for path in state["context_files"])

@@ -8,7 +8,7 @@ Base revision: `c3cebe6cfc3b2897b83adc27a97e0f997224909d`.
 |---|---|---|
 | `providers/score_alerts.py` | Unused `services/score_alerts.py` | One active score-alert tracker implementation remains. |
 | Mode-specific provider sources | `providers/live_sources.py` | Golf, stocks, flights, news, and clock have separate modules. |
-| `ticker/ops/components.py` | Source-symbol dependency analysis | Explicit files select provider workers. Shared numeric helpers select their consumers. |
+| `server/ticker/ops/components.py` | Source-symbol dependency analysis | Explicit files select provider workers. Shared numeric helpers select their consumers. |
 | `domain/settings.py` | Repeated API, repository, and provider conversion | One codec uses domain defaults and validation. |
 | `providers/racing_session.py` | Duplicate source and Six classifiers | Both callers use the same unchanged classification rule. |
 | `providers/sports_display.py` | Duplicate ESPN player-name parser | ESPN uses the existing canonical player-name reader. |

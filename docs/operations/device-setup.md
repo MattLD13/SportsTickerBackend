@@ -40,6 +40,6 @@ flowchart TD
 - BLE setup returns the backend pairing code in the same local session. The app exchanges it automatically, so Wi-Fi setup and controller pairing complete together.
 - Production backend traffic uses TLS and deployment-authorized fleet health access.
 
-The Pi runtime uses BLE by default. Set `TICKER_SETUP_TRANSPORT=hotspot` only for controlled bench testing when a phone cannot use Bluetooth. Run `python -m ticker.six.diagnostics --sink hardware --report C:\ticker\diagnostic.json` before shipment.
+The Pi runtime uses BLE by default. Set `TICKER_SETUP_TRANSPORT=hotspot` only for controlled bench testing when a phone cannot use Bluetooth. Run `PYTHONPATH=shared:six python -m ticker.six.diagnostics --sink hardware --report C:\ticker\diagnostic.json` before shipment.
 
 The forced test command writes a one-shot marker. The running service consumes it on its first Wi-Fi check, so a reboot returns to normal Wi-Fi detection instead of restarting the test state.

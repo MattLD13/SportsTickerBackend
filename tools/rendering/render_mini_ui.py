@@ -7,12 +7,13 @@ from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
+import os
 import sys
 
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.server.mini_assets.mini_service import MiniSpriteService
 from ticker.server.providers.logo_overrides import mini_logo_sources
 from ticker.shared.sports_display import baseball_inning_display, nhl_manpower_situation, sport_family

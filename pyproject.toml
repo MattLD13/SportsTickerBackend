@@ -3,6 +3,8 @@ dev = ["pytest>=8,<9", "ruff>=0.14,<0.15", "mypy>=1.18,<2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The Python products merge one `ticker` package from these source roots.
+pythonpath = ["shared", "server", "six", "."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -20,11 +22,13 @@ select = ["E9", "F63", "F7", "F82"]
 
 [tool.ruff.lint.per-file-ignores]
 # dbus-next uses D-Bus signature strings as annotations in this module.
-"ticker/six/platform/ble.py" = ["F722", "F821"]
+"six/ticker/six/platform/ble.py" = ["F722", "F821"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["ticker/server/markets.py"]
+mypy_path = "shared:server:six"
+explicit_package_bases = true
+files = ["server/ticker/server/markets.py"]
 follow_imports = "skip"
 check_untyped_defs = true
 warn_unused_ignores = true

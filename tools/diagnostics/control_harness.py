@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -16,8 +17,7 @@ import requests
 
 _REPOSITORY = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY) not in sys.path:
-    sys.path.insert(0, str(_REPOSITORY))
-
+    sys.path[:0] = [os.path.join(str(_REPOSITORY), name) for name in ("shared", "server", "six", "")]
 from ticker.server.projections import select_display_content
 from ticker.server.services import BackendApplication, SnapshotStore
 from ticker.shared.domain import ContentItem, DisplaySettings, TickerSnapshot

@@ -14,6 +14,7 @@ from pathlib import Path
 import socket
 import ssl
 import statistics
+import os
 import sys
 import tempfile
 from threading import Thread
@@ -184,7 +185,7 @@ def main():
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error("--repeats must be positive")
-    sys.path.insert(0, str(args.repository.resolve()))
+    sys.path[:0] = [os.path.join(str(args.repository.resolve()), name) for name in ("shared", "server", "six", "")]
     report = {"demand": demand(args), "fastcast": fastcast(args), "https": https(args)}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")

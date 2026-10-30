@@ -2,10 +2,11 @@
 import argparse
 import json
 from pathlib import Path
+import os
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.server.projections.mini_fields import payload_filter
 
 TARGET = ROOT / "mini/src/mini/protocol/fields_generated.h"

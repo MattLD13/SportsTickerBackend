@@ -2,8 +2,8 @@
 
 ## Owners
 
-`ticker/shared/sports_display.py` owns signal identity, meaning, scope, and flag patterns.
-`ticker/server/projections/racing_display.py` owns class cards and compact Mini data.
+`shared/ticker/shared/sports_display.py` owns signal identity, meaning, scope, and flag patterns.
+`server/ticker/server/projections/racing_display.py` owns class cards and compact Mini data.
 Provider adapters own current source reads. Renderers read explicit display facts without I/O.
 
 The supported series are F1, IndyCar, NASCAR Cup, WEC, and IMSA WeatherTech.

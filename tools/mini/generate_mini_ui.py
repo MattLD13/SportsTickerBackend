@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import os
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path[:0] = [os.path.join(str(Path(__file__).resolve().parents[2]), name) for name in ("shared", "server", "six", "")]
 from ticker.six.ui.text import PANE, HYBRID
 from ticker.six.ui import palette
 from ticker.shared.leagues import LEAGUES

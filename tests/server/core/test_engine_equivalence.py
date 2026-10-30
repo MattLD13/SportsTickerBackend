@@ -102,7 +102,7 @@ def test_engine_gives_the_recorded_data_of_the_old_scheduler(environment, monkey
 
     release = environment / "releases" / "replay"
     release.mkdir(parents=True)
-    for package in ("ticker",):
+    for package in ("shared", "server", "six"):
         (release / package).symlink_to(REPOSITORY / package, target_is_directory=True)
     shutil.copy(HERE / "replay_provider.py", release / "replay_provider.py")
     monkeypatch.setenv("TICKER3_RELEASES", str(environment / "releases"))

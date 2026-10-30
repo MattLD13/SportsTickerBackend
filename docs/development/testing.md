@@ -38,6 +38,8 @@ Run it on the backend host. Use `--http`, `--fastcast SECONDS`, or `--workers es
 
 Run the Pi manufacturing diagnostic with a persistent report:
 
+On the Pi, run these commands in `/opt/sports-ticker/current` with `PYTHONPATH=shared:six`.
+
 ```powershell
 python -m ticker.six.diagnostics --sink hardware --report C:\ticker\diagnostic.json
 ```

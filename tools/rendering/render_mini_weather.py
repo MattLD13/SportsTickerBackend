@@ -5,12 +5,13 @@ import argparse
 from copy import deepcopy
 import json
 from pathlib import Path
+import os
 import sys
 
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [os.path.join(str(ROOT), name) for name in ("shared", "server", "six", "")]
 from ticker.shared.domain import DisplaySettings
 from ticker.server.providers.weather import HybridWeatherProvider
 from ticker.server.projections.data_api import _content_item

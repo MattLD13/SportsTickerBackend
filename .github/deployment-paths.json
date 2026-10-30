@@ -1,9 +1,8 @@
 {
   "backend": [
-    "ticker/__init__.py",
-    "ticker/shared/**",
-    "ticker/server/**",
-    "ticker/six/**",
+    "shared/ticker/shared/**",
+    "server/ticker/server/**",
+    "six/ticker/six/**",
     "mini/src/mini/**",
     "mini/platformio.ini",
     "docs/contracts/demo-layouts.json",
@@ -16,8 +15,8 @@
     "tools/deployment/deployment_scope.py",
     "requirements/base.txt",
     "requirements/server.txt",
-    "ticker/ops/**",
-    "deploy/server/**"
+    "server/ticker/ops/**",
+    "server/deploy/**"
   ],
   "mini": [
     "mini/**",
@@ -26,10 +25,9 @@
     "tests/fixtures/mini_golden/**"
   ],
   "controller": [
-    "ticker/__init__.py",
-    "ticker/shared/**",
-    "ticker/six/**",
+    "shared/ticker/shared/**",
+    "six/ticker/six/**",
     "requirements/base.txt",
-    "deploy/six/**"
+    "six/deploy/**"
   ]
 }

@@ -1,20 +1,20 @@
 # Ticker 3 server
 
-Ticker 3 is the server. It lives in `ticker/server/`. `docs/api.md` lists every route.
-The providers, the projections, and the records are in `ticker/server/providers/`, `ticker/server/projections/`, and `ticker/server/store/`.
+Ticker 3 is the server. It lives in `server/ticker/server/`. `docs/api.md` lists every route.
+The providers, the projections, and the records are in `server/ticker/server/providers/`, `server/ticker/server/projections/`, and `server/ticker/server/store/`.
 
 ## Parts
 
 | Part | Folder | Job |
 |---|---|---|
-| API | `ticker/server/api/` | The routes, request checks, authorization, and the device stream. |
-| Web | `ticker/server/web/` | The landing page, the dashboard, the panel demos, and the alert gallery. |
-| Engine | `ticker/server/core/engine.py` | Turns tickers and settings into subscriptions, and publishes snapshots through `RefreshService`. |
-| Supervisor | `ticker/server/core/supervisor.py` | Starts, watches, replaces, rolls back, and adopts worker processes. |
-| Worker | `ticker/server/worker/` | Hosts one provider. Owns its interval, batch reads, live passes, and failure pauses. |
-| Contract | `ticker/server/contract/` | The worker list, line framing, worker messages, and the result encoding. |
-| Server | `ticker/server/main.py` | Builds the application and serves it with Hypercorn. |
-| Offline application | `ticker/server/offline.py` | Builds the same routes without an engine, for tests and tools. |
+| API | `server/ticker/server/api/` | The routes, request checks, authorization, and the device stream. |
+| Web | `server/ticker/server/web/` | The landing page, the dashboard, the panel demos, and the alert gallery. |
+| Engine | `server/ticker/server/core/engine.py` | Turns tickers and settings into subscriptions, and publishes snapshots through `RefreshService`. |
+| Supervisor | `server/ticker/server/core/supervisor.py` | Starts, watches, replaces, rolls back, and adopts worker processes. |
+| Worker | `server/ticker/server/worker/` | Hosts one provider. Owns its interval, batch reads, live passes, and failure pauses. |
+| Contract | `server/ticker/server/contract/` | The worker list, line framing, worker messages, and the result encoding. |
+| Server | `server/ticker/server/main.py` | Builds the application and serves it with Hypercorn. |
+| Offline application | `server/ticker/server/offline.py` | Builds the same routes without an engine, for tests and tools. |
 
 ## Processes
 
@@ -26,7 +26,7 @@ It loads no route, engine, projection, or Six code. `tests/ops/deploy/test_compo
 ## Subscriptions
 
 A subscription is one ticker, one provider, and the provider settings key of that ticker.
-`ticker/server/services/provider_keys.py` names the settings that can change each provider result.
+`server/ticker/server/services/provider_keys.py` names the settings that can change each provider result.
 A result goes only to the ticker and the settings key that asked for it.
 
 Each pass, the engine:
@@ -42,11 +42,11 @@ A result for an old key does not publish. If demand stops, the ticker keeps its 
 
 ## Worker rules
 
-- An interval pass reads every subscription. The intervals are in `ticker/server/worker/runner.py`.
+- An interval pass reads every subscription. The intervals are in `server/ticker/server/worker/runner.py`.
 - A provider with `fetch_batch_for_tickers` reads all its tickers in one call.
 - A Fastcast version change starts a live pass for the tickers that follow the changed league.
 - An unhealthy result is not sent, so the core keeps the last good data.
-- After 3 failures, a ticker setting pauses for 30 seconds. The pause doubles up to 300 seconds. `ticker/server/worker/recovery.py` owns this rule.
+- After 3 failures, a ticker setting pauses for 30 seconds. The pause doubles up to 300 seconds. `server/ticker/server/worker/recovery.py` owns this rule.
 - The worker sends its job health, so `/health` shows each provider.
 
 ## Worker protocol
@@ -58,7 +58,7 @@ The core listens on one Unix socket. Each message is one JSON object on one line
 | worker to core | `hello` | Protocol version, provider, release, and process ID |
 | core to worker | `welcome` | Acceptance, or the reason for refusal |
 | core to worker | `subscribe` | The full set of subscriptions, as key to ticker and settings |
-| worker to core | `result` | One healthy `ProviderResult` in the `ticker/server/contract/results.py` encoding |
+| worker to core | `result` | One healthy `ProviderResult` in the `server/ticker/server/contract/results.py` encoding |
 | worker to core | `health` | Errors, job health, paused circuits, memory, and busy time, every 5 seconds |
 | core to worker | `drain` | A request to stop |
 
@@ -73,7 +73,7 @@ The core listens on one Unix socket. Each message is one JSON object on one line
 
 ## Deployment
 
-`ticker/ops/` packages one release, moves the core to it, and asks the supervisor to move the selected workers.
+`server/ticker/ops/` packages one release, moves the core to it, and asks the supervisor to move the selected workers.
 Read [backend recovery](../operations/backend-recovery.md) for the release layout, the guard, and the first Ticker 3 deployment.
 
 ## Proof of the same output
@@ -90,7 +90,7 @@ It registers, streams, loses the connection, resumes from its cursor, and draws 
 ## Run
 
 ```bash
-python -m ticker.server
+PYTHONPATH=shared:server:six python -m ticker.server
 ```
 
-`ticker/server/main.py` lists the settings.
+`server/ticker/server/main.py` lists the settings.

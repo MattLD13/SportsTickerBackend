@@ -10,6 +10,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import socket
+import os
 import sys
 import tempfile
 import threading
@@ -24,8 +25,7 @@ from hypercorn.config import Config
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 if str(REPOSITORY) not in sys.path:
-    sys.path.insert(0, str(REPOSITORY))
-
+    sys.path[:0] = [os.path.join(str(REPOSITORY), name) for name in ("shared", "server", "six", "")]
 from ticker.six.app.application import TickerApplication
 from ticker.six.app.poller import BackendPoller
 from ticker.six.assets import MemoryAssetView, ShortTermContentCache

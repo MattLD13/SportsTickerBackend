@@ -13,7 +13,7 @@ import requests
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST_PATH = ROOT / "ticker/server/projections/logo_rendering_decisions.json"
+MANIFEST_PATH = ROOT / "server/ticker/server/projections/logo_rendering_decisions.json"
 DEFAULT_TARGET_TICKER_ID = "722c59f4-fce3-4735-b072-faaa2f579a0a"
 CSV_COLUMNS = (
     "target_ticker_id",

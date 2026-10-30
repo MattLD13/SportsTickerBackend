@@ -1,6 +1,6 @@
 import Foundation
 
-/// The display settings of one ticker. The fields follow `DisplaySettings` in `ticker/shared/domain/models.py`.
+/// The display settings of one ticker. The fields follow `DisplaySettings` in `shared/ticker/shared/domain/models.py`.
 nonisolated struct DisplaySettings: Codable, Equatable {
     var activeSports: [String: Bool] = [:]
     var myTeams: [String] = []

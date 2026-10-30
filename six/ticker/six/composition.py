@@ -1,0 +1,208 @@
+"""Compose the executable ticker application from environment settings."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from functools import partial
+from pathlib import Path
+from time import monotonic
+import json
+import os
+
+from ticker.six.app.application import TickerApplication
+from ticker.six.app.poller import BackendPoller
+from ticker.six.assets import ShortTermContentCache
+from ticker.six.bootstrap import create_default_frame_builder
+from ticker.six.drivers import MemoryFrameSink, RgbMatrixFrameSink, TkFrameSink
+from ticker.six.platform import (
+    AssetCoordinator,
+    BleProvisioningService,
+    DeviceIdentityStore,
+    HealthCollector,
+    LocalProvisioningService,
+    OtaUpdaterService,
+    SubprocessPlatformCommands,
+    TickerPiLogger,
+)
+from ticker.six.platform.frame_health import PresentedFrameHealth
+from ticker.six.platform.device_credentials import load_device_token
+from ticker.six.platform.update_journal import UpdateJournal
+from ticker.six.protocol import BackendClient
+from ticker.six.ui import FrameGeometry
+from ticker.six.runtime import FramePacer, TickerRuntime
+
+
+def create_application() -> TickerApplication:
+    """Create one fully composed ticker application from environment values."""
+    repository = Path(__file__).resolve().parents[3]
+    data_directory = Path(os.environ.get("TICKER_DATA_DIR", "~/ticker")).expanduser()
+    device_id = load_device_id(data_directory)
+    health = HealthCollector(repository)
+    logger = TickerPiLogger(data_directory / "logs", system_snapshot=health.snapshot)
+    client = BackendClient(
+        os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org"),
+        timeout_seconds=float(os.environ.get("TICKER_BACKEND_TIMEOUT", "5")),
+        verify_tls=_enabled("TICKER_VERIFY_TLS", default=True),
+        device_token=load_device_token(Path(os.environ.get("TICKER_DEVICE_TOKEN_FILE", data_directory / "device_token"))),
+    )
+    assets = AssetCoordinator(data_directory / "assets")
+    frames, viewport = create_default_frame_builder(
+        assets,
+        card_cpu=_cpu_setting("TICKER_CARD_CPU"),
+        geometry=_frame_geometry(),
+    )
+    runtime = TickerRuntime(monotonic=monotonic, wall_clock=datetime.now)
+    commands = SubprocessPlatformCommands()
+    setup_transport = os.environ.get("TICKER_SETUP_TRANSPORT", "ble").strip().lower() or "ble"
+    if setup_transport not in {"ble", "hotspot"}:
+        raise ValueError("TICKER_SETUP_TRANSPORT must be ble or hotspot")
+    ble_service = BleProvisioningService(
+        adapter=os.environ.get("TICKER_BLE_ADAPTER", "hci0").strip() or "hci0",
+        pairing_code_provider=lambda: _load_pairing_code(data_directory / "pairing_code.json"),
+    ) if setup_transport == "ble" else None
+    wifi_recovery = LocalProvisioningService(
+        commands,
+        hotspot_starter=lambda details: commands.start_hotspot(
+            details.ssid,
+            details.password,
+            interface=details.interface,
+        ),
+        state_path=data_directory / "wifi_setup.json",
+        force_setup_path=data_directory / "force_wifi_setup.json",
+        portal_cert_path=data_directory / "wifi_setup.crt",
+        portal_key_path=data_directory / "wifi_setup.key",
+        ble_starter=ble_service.start if ble_service is not None else None,
+        ble_stopper=ble_service.stop if ble_service is not None else None,
+    )
+    health.set_wifi_status_provider(wifi_recovery.telemetry)
+    device_profile = _device_profile()
+    update_journal = UpdateJournal(data_directory)
+    return TickerApplication(
+        client=client,
+        poller=BackendPoller(
+            client,
+            device_id,
+            telemetry=health.snapshot,
+            profile=device_profile,
+            registration_callback=partial(_persist_pairing_code, data_directory / "pairing_code.json"),
+            update_journal=update_journal,
+        ),
+        cache=ShortTermContentCache(data_directory / "content" / "last-good.json"),
+        assets=assets,
+        runtime=runtime,
+        viewport=viewport,
+        frames=frames,
+        pacer=FramePacer(monotonic),
+        sink=_create_sink(),
+        commands=commands,
+        device_id=device_id,
+        repository=repository,
+        wall_clock=datetime.now,
+        update_service=OtaUpdaterService(commands, release=repository, journal=update_journal),
+        wifi_recovery=wifi_recovery,
+        poll_in_process=_enabled("TICKER_POLL_PROCESS"),
+        render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
+        poll_cpu=_cpu_setting("TICKER_POLL_CPU"),
+        logger=logger,
+        frame_health=PresentedFrameHealth(Path(os.environ["TICKER_FRAME_HEALTH_PATH"]), repository)
+        if os.environ.get("TICKER_FRAME_HEALTH_PATH") else None,
+    )
+
+
+def _device_profile() -> dict[str, object]:
+    """Return the explicit Pi hardware profile sent during registration."""
+
+    family = os.environ.get("TICKER_PRODUCT_FAMILY", "full").strip().lower() or "full"
+    profile: dict[str, object] = {"product_family": family, "hardware": os.environ.get("TICKER_HARDWARE", "pi-zero-2w")}
+    if family == "custom":
+        profile["display"] = {
+            "width": int(os.environ.get("TICKER_DISPLAY_WIDTH", "384")),
+            "height": int(os.environ.get("TICKER_DISPLAY_HEIGHT", "32")),
+            "panel_count": int(os.environ.get("TICKER_PANEL_COUNT", "6")),
+        }
+    return profile
+
+
+def _frame_geometry() -> FrameGeometry:
+    """Return the configured logical frame geometry for a Pi deployment."""
+
+    family = os.environ.get("TICKER_PRODUCT_FAMILY", "full").strip().lower() or "full"
+    configured = os.environ.get("TICKER_DISPLAY_FIT_MODE", "").strip().lower()
+    fit_mode = configured or ("crop" if family == "mini" else "letterbox" if family == "custom" else "scale")
+    return FrameGeometry(
+        width=int(os.environ.get("TICKER_DISPLAY_WIDTH", "384")),
+        height=int(os.environ.get("TICKER_DISPLAY_HEIGHT", "32")),
+        fit_mode=fit_mode,
+    )
+
+
+def _create_sink():
+    """Create the requested hardware, emulator, or memory frame sink."""
+    selected = os.environ.get("TICKER_SINK", "hardware").strip().lower()
+    if selected in {"memory", "debug"}:
+        return MemoryFrameSink()
+    if selected in {"emulator", "desktop"}:
+        return TkFrameSink(scale=int(os.environ.get("TICKER_EMULATOR_SCALE", "3")))
+    if selected in {"hardware", "matrix", "rgbmatrix"}:
+        return RgbMatrixFrameSink.create()
+    raise ValueError("TICKER_SINK must be hardware, emulator, or memory.")
+
+
+def _enabled(name: str, *, default: bool = False) -> bool:
+    """Read one common true environment value."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes"}
+
+
+def _cpu_setting(name: str) -> int | None:
+    """Read one optional non-negative Linux CPU number."""
+
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative.")
+    return value
+
+
+def load_device_id(data_directory: Path, *, windows: bool | None = None) -> str:
+    """Load an explicit identifier or select a platform-safe identity store."""
+    explicit = os.environ.get("TICKER_DEVICE_ID", "").strip()
+    if explicit:
+        return explicit
+    fallback = data_directory / "ticker_id.txt"
+    selected_path = os.environ.get("TICKER_DEVICE_ID_PATH", "").strip()
+    if selected_path:
+        return DeviceIdentityStore(selected_path, fallback).load()
+    is_windows = os.name == "nt" if windows is None else windows
+    if is_windows:
+        return DeviceIdentityStore(fallback, fallback).load()
+    return DeviceIdentityStore.default().load()
+
+
+def _persist_pairing_code(path: Path, registration: object) -> None:
+    """Persist the current unpaired backend code for the local BLE handoff."""
+
+    code = str(getattr(registration, "pairing_code", "") or "").strip()
+    try:
+        if not code:
+            path.unlink(missing_ok=True)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"pairing_code": code}, separators=(",", ":")), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _load_pairing_code(path: Path) -> str | None:
+    """Read the latest backend code without exposing it in display telemetry."""
+
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        code = str(value.get("pairing_code") or "").strip()
+        return code if code.isdigit() and len(code) == 6 else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None

@@ -36,7 +36,7 @@ def test_firmware_comments_do_not_request_a_replacement_release(tmp_path):
 
 
 def test_current_layout_has_one_owner_for_tests_tools_and_backend_units():
-    for path in ("tests/server", "tests/six", "tests/mini", "tests/fixtures/display", "tools/rendering", "tools/mini", "tools/deployment", "deploy/server"):
+    for path in ("tests/server", "tests/six", "tests/mini", "tests/fixtures/display", "tools/rendering", "tools/mini", "tools/deployment", "server/deploy"):
         assert Path(path).is_dir()
     workflow = Path(".github/workflows/deploy.yml").read_text()
     for family in ("Ticker Server /", "Ticker Mini /", "Ticker Six /"):
@@ -44,7 +44,7 @@ def test_current_layout_has_one_owner_for_tests_tools_and_backend_units():
     assert "  validate:" in workflow and "  publish:" in workflow
     assert "  build-mini-firmware:" not in workflow
     assert "  deploy-backend:" not in workflow
-    assert "cp deploy/server/* deployment-staging/" in workflow
+    assert "cp server/deploy/* deployment-staging/" in workflow
     assert "status=success&event=push" in workflow
     assert "base: ${{ steps.scope_base.outputs.revision }}" in workflow
 

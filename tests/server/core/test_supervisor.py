@@ -47,7 +47,7 @@ class Lab:
     def release(self, name: str, behavior: str = "good") -> str:
         root = self.directory / "releases" / name
         root.mkdir(parents=True)
-        for package in ("ticker",):
+        for package in ("shared", "server", "six"):
             (root / package).symlink_to(REPOSITORY / package, target_is_directory=True)
         (root / "demo_provider.py").write_text(PROVIDER.format(behavior=behavior, release=name), encoding="utf-8")
         return name
