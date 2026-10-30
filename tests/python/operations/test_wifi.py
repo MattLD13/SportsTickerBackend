@@ -5,7 +5,7 @@ import time
 import json
 
 from ticker_core.ui.frame import RenderContext
-from ticker_core.features.utility import UtilityRenderer
+from ticker_core.ui.screens import Screens
 from ticker_core.platform import HotspotDetails, WiFiNetwork, WiFiRecoveryService, WiFiSetupState
 from ticker_core.ui import load_default_font_set
 
@@ -76,10 +76,7 @@ def test_wifi_setup_renderer_returns_the_real_panel_size() -> None:
         hotspot=HotspotDetails("SportsTicker_Setup", "setup1234"),
         setup_code="123456",
     )
-    frame = UtilityRenderer(load_default_font_set()).wifi_setup(
-        RenderContext(datetime(2026, 8, 15, tzinfo=timezone.utc)),
-        state,
-    )
+    frame = Screens(load_default_font_set()).wifi_setup(state)
     assert frame.size == (384, 32)
 
 

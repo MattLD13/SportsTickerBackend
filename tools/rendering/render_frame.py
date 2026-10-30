@@ -155,9 +155,9 @@ def render_snapshot(
         item = choose_item(content_items(snapshot, str(selected_mode)), item_id, index)
         if item is None:
             from ticker_core.ui.text import load_default_font_set
-            from ticker_core.features.utility import UtilityRenderer
+            from ticker_core.ui.screens import Screens
 
-            return panel_image(UtilityRenderer(load_default_font_set()).empty(context))
+            return panel_image(Screens(load_default_font_set()).empty(context.now))
         item = dict(item)
         if pinned and selected_mode is DisplayMode.SPORTS:
             item["sports_presentation"] = "pinned"

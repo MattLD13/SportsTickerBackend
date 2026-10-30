@@ -125,10 +125,10 @@ def prepare(snapshot: Path, output: Path, native_root: str) -> list[dict]:
                 row[side + "_sprite"] = f'{native_root}/assets/{ref["asset_id"]}.mts' if ref["state"] == "ready" else ""
             mode = row.get("mode", "sports")
             if mode == "pairing":
-                from ticker_core.features.utility import UtilityRenderer
+                from ticker_core.ui.screens import Screens
                 from ticker_core.ui import load_default_font_set
                 from ticker_core.ui.frame import RenderContext
-                image = UtilityRenderer(load_default_font_set()).pairing(RenderContext(datetime.fromisoformat("2026-10-15T12:34:27+00:00")), row["game"]["app_code"])
+                image = Screens(load_default_font_set()).pairing(datetime.fromisoformat("2026-10-15T12:34:27+00:00"), row["game"]["app_code"])
             else:
                 envelope = {"content":{mode:[{"id":row["name"], "family":mode, "kind":"scoreboard", "data":row["game"]}]}}
                 image = render_snapshot(normalize_snapshot(envelope,mode), mode, item_id=row["name"],

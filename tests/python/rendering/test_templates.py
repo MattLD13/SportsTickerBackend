@@ -12,7 +12,7 @@ from ticker_core.ui.cards.music import MusicCard
 from ticker_core.features.racing.renderer import RacingRenderer
 from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
 from ticker_core.features.sports.pinned import PreparedSportsFullRenderer
-from ticker_core.features.utility.renderer import UtilityRenderer
+from ticker_core.ui.cards.stock import StockCard
 from ticker_core.ui.cards.weather import WeatherCard
 from ticker_core.ui import load_default_font_set
 from ticker_core.ui.cards.clock import ClockCard
@@ -133,8 +133,8 @@ def test_pinned_sports_field_templates_preserve_dynamic_fields(sport):
 
 def test_mode_templates_match_fresh_layers_when_values_change():
     fonts, logos = load_default_font_set(), Logos()
-    utility, utility_ref = UtilityRenderer(fonts,logos), UtilityRenderer(fonts,logos)
-    utility_ref._stock_templates = NoTemplates()
+    utility, utility_ref = StockCard(fonts,logos), StockCard(fonts,logos)
+    utility_ref._layers = NoTemplates()
     golf, golf_ref = GolfCard(fonts), GolfCard(fonts)
     golf_ref._panes = NoTemplates()
     racing, racing_ref = RacingRenderer(fonts,logos), RacingRenderer(fonts,logos)
@@ -164,7 +164,7 @@ def test_mode_templates_match_fresh_layers_when_values_change():
         weather_item = {'home_abbr':str(70+index),'away_abbr':'Boston','situation':{'icon':'rain' if index%2 else 'sun','is_day':1}}
         airport = {'iata':'EWR','city':'Newark','away_abbr':f'{70+index}F','status':'CLEAR'}
         artwork = logos.get('logo',(42,42))
-        pairs = [(utility.stock(stock),utility_ref.stock(stock)), (golf.pane(golf_game),golf_ref.pane(golf_game)),
+        pairs = [(utility.pane(stock),utility_ref.pane(stock)), (golf.pane(golf_game),golf_ref.pane(golf_game)),
                  (racing._render_scroll(race),racing_ref._render_scroll(race)),
                  (flight.visitor(visitor),flight_ref.visitor(visitor)),
                  (flight.board(airport,[{'flight_number':str(index)}],[]),flight_ref.board(airport,[{'flight_number':str(index)}],[])),

@@ -9,11 +9,10 @@ from PIL import Image
 
 from ticker_core.ui.frame import RenderContext
 from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
-from ticker_core.features.utility import UtilityRenderer
 from ticker_core.ui import ContentRendererCatalog, ContentScene
 from ticker_core.ui import FrameGeometry
 from ticker_core.ui.frame import plain_mapping as _plain_mapping
-from ticker_core.ui.screens import connection_lost
+from ticker_core.ui.screens import Screens, connection_lost, update_overlay
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
@@ -34,14 +33,14 @@ class FrameBuilder:
     def __init__(
         self,
         catalog: ContentRendererCatalog,
-        utility: UtilityRenderer,
+        screens: Screens,
         score_alerts: ScoreAlertRenderer,
         news_banners: NewsBannerRenderer,
         viewport: ViewportSource,
         geometry: FrameGeometry | None = None,
     ) -> None:
         self._catalog = catalog
-        self._utility = utility
+        self._screens = screens
         self._score_alerts = score_alerts
         self._news_banners = news_banners
         self._viewport = viewport
@@ -93,17 +92,17 @@ class FrameBuilder:
             frame = Image.new("RGB", (self._geometry.width, self._geometry.height), "black")
         elif decision.kind == FrameKind.UPDATE:
             base = False
-            frame = self._utility.update_overlay(
-                self._last_base or self._utility.empty(context),
+            frame = update_overlay(
+                self._last_base or self._screens.empty(decision.wall_time),
                 decision.update_progress or 0.0,
                 decision.update_version or "",
             )
         elif decision.kind == FrameKind.PAIRING:
-            frame = self._utility.pairing(context, decision.pairing_code)
+            frame = self._screens.pairing(decision.wall_time, decision.pairing_code)
         elif decision.kind == FrameKind.WIFI_SETUP:
-            frame = self._utility.wifi_setup(context, decision.wifi_state)
+            frame = self._screens.wifi_setup(decision.wifi_state)
         elif decision.kind == FrameKind.OFFLINE:
-            frame = self._utility.offline(context, decision.offline_for or 0.0)
+            frame = self._screens.offline(decision.wall_time, decision.offline_for or 0.0)
         elif decision.kind == FrameKind.SCORE_ALERT:
             base = False
             frame = self._score_alerts.render(
@@ -121,7 +120,7 @@ class FrameBuilder:
         elif decision.kind == FrameKind.SCROLL:
             frame = self._scroll_frame(decision)
         else:
-            frame = self._utility.empty(context)
+            frame = self._screens.empty(decision.wall_time)
         frame = self._panel_frame(frame)
         if base and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP}:
             self._last_base = frame.copy()
@@ -136,7 +135,7 @@ class FrameBuilder:
         if decision.connection_lost and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.OFFLINE}:
             frame = connection_lost(frame)
         if decision.update_failure is not None:
-            frame = self._utility.update_overlay(frame, 0.0, failure_status=decision.update_failure["status"])
+            frame = update_overlay(frame, 0.0, failure_status=decision.update_failure["status"])
         return frame
 
     def _panel_frame(self, frame: Image.Image) -> Image.Image:

@@ -12,7 +12,8 @@ from .ui.cards.golf import GolfCard
 from .ui.cards.music import MusicCard
 from .features.racing import RacingRenderer
 from .features.sports import SportsRenderer
-from .features.utility import UtilityRenderer
+from .ui.cards.stock import StockCard
+from .ui.screens import Screens
 from .ui.cards.weather import WeatherCard
 from .ui import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
 from .ui.text import load_display_font, load_monospace_font
@@ -38,7 +39,6 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     sports_logos = LogoAssetView(assets)
     catalog = ContentRendererCatalog()
     sports = SportsRenderer(fonts, sports_logos)
-    utility = UtilityRenderer(fonts, logos)
     catalog.register("clock", ClockCard(fonts))
     catalog.register("scoreboard", sports)
     catalog.register("sports", sports)
@@ -47,9 +47,8 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     catalog.register("weather", WeatherCard(fonts))
     catalog.register("music", MusicCard(fonts, logos))
     catalog.register("flight", FlightCard(fonts, logos))
-    catalog.register("stock", utility)
-    catalog.register("leaderboard", utility)
-    catalog.register("empty", utility)
+    catalog.register("stock", StockCard(fonts, logos))
+    catalog.register("empty", Screens(fonts))
     return catalog
 
 
@@ -74,7 +73,7 @@ def create_default_frame_builder(
     )
     return FrameBuilder(
         catalog,
-        UtilityRenderer(fonts, logos),
+        Screens(fonts),
         ScoreAlertRenderer(fonts, logos),
         NewsBannerRenderer(fonts),
         viewport,

@@ -1,4 +1,4 @@
-"""Smoke test independent utility renderer families."""
+"""Smoke test the stock, weather, media, flight, and system screens."""
 
 from datetime import datetime
 
@@ -7,7 +7,8 @@ from ticker_core.ui.frame import RenderContext
 from ticker_core.ui.cards.flight import FlightCard
 from ticker_core.ui.cards.golf import GolfCard
 from ticker_core.ui.cards.music import MusicCard, MusicState
-from ticker_core.features.utility import UtilityRenderer
+from ticker_core.ui.cards.stock import StockCard
+from ticker_core.ui.screens import Screens
 from ticker_core.ui.cards.weather import WeatherCard
 from ticker_core.ui import ContentScene, load_default_font_set
 
@@ -16,7 +17,7 @@ def test_utility_and_weather_render_deterministically() -> None:
     """Render deterministic status and weather frames."""
     context = RenderContext(datetime(2026, 8, 11, 14, 30, 15))
     fonts = load_default_font_set()
-    utility = UtilityRenderer(fonts)
+    utility = StockCard(fonts)
     weather = WeatherCard(fonts)
     stock = utility.render(context, ContentScene({"type": "stock_ticker", "home_abbr": "ACME", "home_score": "12.34", "away_score": "1.2%"}, "sports"))
     forecast = weather.frame(context.now, {"type": "weather", "home_abbr": "72", "away_abbr": "Boston", "situation": {"icon": "rain", "stats": {"aqi": "41"}}})
@@ -59,12 +60,12 @@ def test_media_and_flight_keep_explicit_animation_state() -> None:
 def test_system_status_panels_render_at_matrix_size() -> None:
     """Render current pairing, offline, and empty states at panel size."""
     context = RenderContext(datetime(2026, 8, 11, 14, 30, 15))
-    utility = UtilityRenderer(load_default_font_set())
+    screens = Screens(load_default_font_set())
 
     for image in (
-        utility.pairing(context, "123456"),
-        utility.offline(context, 125),
-        utility.empty(context),
+        screens.pairing(context.now, "123456"),
+        screens.offline(context.now, 125),
+        screens.empty(context.now),
     ):
         assert image.size == (384, 32)
         assert len(set(image.getdata())) > 1

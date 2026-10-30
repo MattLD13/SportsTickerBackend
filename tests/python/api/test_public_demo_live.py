@@ -113,7 +113,7 @@ def demo_app(tmp_path, monkeypatch):
 
 
 def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch, tmp_path):
-    from ticker_core.features.utility import UtilityRenderer
+    from ticker_core.ui.cards.stock import StockCard
     from ticker_core.platform import assets as asset_module
     from ticker_core.ui import load_default_font_set
 
@@ -132,7 +132,7 @@ def test_stock_web_frame_uses_real_card_and_prepared_logos(demo_app, monkeypatch
     assert response.headers["X-Ticker-Data"] == "live"
     actual = Image.open(BytesIO(response.data)).convert("RGBA")
     assert actual.size == (258, 32)
-    expected = UtilityRenderer(load_default_font_set(), SimpleNamespace(get=lambda url, size: logo)).stock(records[0]["data"])
+    expected = StockCard(load_default_font_set(), SimpleNamespace(get=lambda url, size: logo)).pane(records[0]["data"])
     assert actual.crop((1, 0, 129, 32)).tobytes() == expected.tobytes()
     assert actual.getpixel((3, 4))[:3] == (255, 0, 255)
     assert set(fetched) == {row["data"]["home_logo"] for row in records}

@@ -115,7 +115,8 @@ def renderers(present: bool) -> dict[str, Any]:
     from ticker_core.ui.cards.music import MusicCard
     from ticker_core.features.racing import RacingRenderer
     from ticker_core.features.sports import SportsRenderer
-    from ticker_core.features.utility import UtilityRenderer
+    from ticker_core.ui.cards.stock import StockCard
+    from ticker_core.ui.screens import Screens, update_overlay
     from ticker_core.ui.cards.weather import WeatherCard
     from ticker_core.ui import load_default_font_set
     from ticker_core.ui.cards.clock import ClockCard
@@ -127,7 +128,7 @@ def renderers(present: bool) -> dict[str, Any]:
     return {
         "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingRenderer(fonts, assets),
         "golf": GolfCard(fonts), "weather": WeatherCard(fonts), "music": MusicCard(fonts, logos),
-        "flight": FlightCard(fonts, logos), "utility": UtilityRenderer(fonts, logos),
+        "flight": FlightCard(fonts, logos), "stock": StockCard(fonts, logos), "screens": Screens(fonts), "update_overlay": update_overlay,
         "clock": ClockCard(fonts), "alert": ScoreAlertRenderer(fonts, logos),
         "news": NewsBannerRenderer(fonts), "connection": connection_lost,
     }
@@ -138,6 +139,8 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
     from ticker_core.ui.frame import RenderContext
     from ticker_core.ui import ContentScene
 
+    if kind == "utility":
+        return _screen(renderer_set, method, args)
     renderer = renderer_set[kind]
     if kind == "weather" and method == "detailed":
         return renderer.frame(args["now"], args["item"])
@@ -152,19 +155,29 @@ def call(renderer_set: dict[str, Any], kind: str, method: str, args: dict[str, A
         return renderer.render(args["item"]) if method == "render" else renderer.apply(args["frame"], args["item"], args["elapsed"])
     if kind == "connection":
         return renderer(args["frame"])
-    context = RenderContext(args["now"]) if "now" in args else None
+    raise ValueError(f"unknown call {kind}.{method}")
+
+
+def _screen(renderer_set: dict[str, Any], method: str, args: dict[str, Any]) -> Image.Image:
+    """Run a call of the old utility renderer: a stock pane, an empty item, or a system screen."""
+    from ticker_core.ui.frame import RenderContext, ContentScene
+
+    screens = renderer_set["screens"]
+    if method == "render":
+        card = screens if args["item"].get("no_games") else renderer_set["stock"]
+        return card.render(RenderContext(args["now"]), ContentScene(args["item"], args["mode"], args["elapsed"])).image
     if method == "update_overlay":
         extra = {key: value for key, value in args.items() if key not in {"frame", "progress", "version"}}
-        return renderer.update_overlay(args["frame"], args["progress"], args["version"], **extra)
+        return renderer_set["update_overlay"](args["frame"], args["progress"], args["version"], **extra)
     if method == "pairing":
-        return renderer.pairing(context, args["code"])
+        return screens.pairing(args["now"], args["code"])
     if method == "wifi_setup":
-        return renderer.wifi_setup(context, args["state"])
+        return screens.wifi_setup(args["state"])
     if method == "offline":
-        return renderer.offline(context, args["offline_for"])
+        return screens.offline(args["now"], args["offline_for"])
     if method == "empty":
-        return renderer.empty(context)
-    raise ValueError(f"unknown call {kind}.{method}")
+        return screens.empty(args["now"])
+    raise ValueError(f"unknown screen {method}")
 
 
 def digest(image: Image.Image) -> str:

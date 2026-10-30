@@ -1,5 +1,1 @@
-"""Render utility panels for the ticker."""
-
-from .renderer import UtilityRenderer
-
-__all__ = ["UtilityRenderer"]
+"""Drawing helpers that the remaining old renderers share."""
