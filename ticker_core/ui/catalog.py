@@ -1,112 +1,77 @@
-"""Route content families without controller inheritance."""
+"""Route each content item to the card that draws its family."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-import json
 from typing import Any, Protocol
 
-from ticker_core.ui.frame import RenderContext
+from .frame import ContentScene, RenderContext, RenderedContent
 
-from .frame import ContentScene, RenderedContent
+RACING_SPORTS = {"indycar", "f1", "nascar", "wec", "imsa"}
 
 
-class ContentRenderer(Protocol):
-    """Render one normalized content family."""
+class Card(Protocol):
+    """Draw one content family. The visual key changes exactly when the drawn image can change."""
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
-        """Render one content item."""
+        """Draw one content item."""
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        """Return a key that is equal for two scenes only when they draw the same image."""
 
 
-class DuplicateContentRendererError(ValueError):
-    """Report duplicate ownership for one content family."""
+class DuplicateCardError(ValueError):
+    """Report a second card for one family."""
 
 
-class UnknownContentRendererError(KeyError):
-    """Report content without an installed renderer."""
+class UnknownCardError(KeyError):
+    """Report an item that no card draws."""
 
 
-def content_family(item: Mapping[str, Any]) -> str:
-    """Return the stable renderer family for one backend item."""
-    item_type = str(item.get("type", "")).lower()
-    sport = str(item.get("sport", "")).lower()
+def card_family(item: Mapping[str, Any]) -> str:
+    """Return the card family of one item."""
+    kind, sport = str(item.get("type", "")).lower(), str(item.get("sport", "")).lower()
     if item.get("no_games"):
         return "empty"
-    if sport == "clock" or sport.startswith("clock"):
+    if sport.startswith("clock"):
         return "clock"
-    if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa"}:
+    if kind == "racing" or sport in RACING_SPORTS:
         return "racing"
-    if item_type in {"golf", "masters"} or sport in {"golf", "masters"}:
+    if kind in {"golf", "masters"} or sport in {"golf", "masters"}:
         return "golf"
-    if item_type == "music" or sport == "music":
+    if kind == "music" or sport == "music":
         return "music"
-    if item_type == "weather":
+    if kind == "weather":
         return "weather"
-    if item_type == "stock_ticker" or sport.startswith("stock"):
+    if kind == "stock_ticker" or sport.startswith("stock"):
         return "stock"
-    if item_type == "leaderboard":
-        return "leaderboard"
-    if item_type in {"flight_visitor", "flight_airport_hud"}:
+    if kind in {"flight_visitor", "flight_airport_hud"}:
         return "flight"
     return "scoreboard"
 
 
-class ContentRendererCatalog:
-    """Own explicit content-family renderer registrations."""
+class CardCatalog:
+    """Hold one card for each family."""
 
     def __init__(self) -> None:
-        self._renderers: dict[str, ContentRenderer] = {}
-        self._visual_item: Mapping[str, Any] | None = None
-        self._visual_item_json: str | None = None
+        self._cards: dict[str, Card] = {}
 
-    def register(self, family: str, renderer: ContentRenderer) -> None:
-        """Register one renderer family."""
+    def register(self, family: str, card: Card) -> None:
         if not family:
-            raise ValueError("A content family cannot be empty.")
-        if family in self._renderers:
-            raise DuplicateContentRendererError(f"Renderer family {family!r} already exists.")
-        self._renderers[family] = renderer
+            raise ValueError("A card family cannot be empty.")
+        if family in self._cards:
+            raise DuplicateCardError(f"Card family {family!r} already exists.")
+        self._cards[family] = card
+
+    def card(self, item: Mapping[str, Any]) -> Card:
+        family = card_family(item)
+        try:
+            return self._cards[family]
+        except KeyError as error:
+            raise UnknownCardError(f"No card draws family {family!r}.") from error
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
-        """Resolve and render one content scene."""
-        family = content_family(scene.item)
-        try:
-            renderer = self._renderers[family]
-        except KeyError as error:
-            raise UnknownContentRendererError(f"No renderer owns content family {family!r}.") from error
-        return renderer.render(context, scene)
+        return self.card(scene.item).render(context, scene)
 
     def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
-        """Return one renderer-owned key without rasterizing the scene."""
-        family = content_family(scene.item)
-        try:
-            renderer = self._renderers[family]
-        except KeyError as error:
-            raise UnknownContentRendererError(f"No renderer owns content family {family!r}.") from error
-        method = getattr(renderer, "visual_key", None)
-        if callable(method):
-            return method(context, scene, asset_revision)
-        phase = _family_phase(family, scene.item, context, scene.elapsed)
-        if scene.item is not self._visual_item:
-            self._visual_item = scene.item
-            self._visual_item_json = _stable_item(scene.item)
-        return (family, self._visual_item_json, scene.mode, asset_revision, phase)
-
-
-def _stable_item(item: Mapping[str, Any]) -> str:
-    """Serialize one small content mapping for invalidation."""
-    return json.dumps(item, sort_keys=True, default=str, separators=(",", ":"))
-
-
-def _family_phase(family: str, item: Mapping[str, Any], context: RenderContext, elapsed: float = 0.0) -> int | None:
-    """Own cadence facts for renderers without local animation state."""
-    timestamp = context.now.timestamp()
-    if family == "empty":
-        return int(timestamp * 384 / 60.0)
-    if family in {"music", "weather", "racing"}:
-        return int(timestamp * 30)
-    if family == "golf" and str(item.get("sports_presentation", "")).lower() == "pinned":
-        return int(max(0.0, elapsed) // 4.0)
-    if family == "clock":
-        return int(timestamp)
-    return None
+        return self.card(scene.item).visual_key(context, scene, asset_revision)

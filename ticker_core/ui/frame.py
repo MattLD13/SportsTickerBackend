@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -53,6 +54,21 @@ class RenderedContent:
     def __post_init__(self) -> None:
         if self.image.height != 32:
             raise ValueError("Rendered content must be 32 pixels high.")
+
+
+class ItemKey:
+    """Build the visual key of one card. The JSON text of the item is made once for each item object."""
+
+    def __init__(self, family: str) -> None:
+        self._family = family
+        self._item: Mapping[str, Any] | None = None
+        self._json = ""
+
+    def __call__(self, scene: ContentScene, assets: object, phase: object = None) -> tuple:
+        if scene.item is not self._item:
+            self._item = scene.item
+            self._json = json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":"))
+        return (self._family, self._json, scene.mode, assets, phase)
 
 
 def plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

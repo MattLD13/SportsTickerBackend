@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops
 
 ANIMATION_PERIOD = 12.6
 

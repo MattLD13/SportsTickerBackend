@@ -6,7 +6,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-from ..frame import ContentScene, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, RenderContext, RenderedContent
 from ..layers import ImageTemplates
 from ..text import GOLF_FONT, FontSet, clean_text, draw_hybrid, draw_tiny
 
@@ -35,7 +35,13 @@ PALETTES = {
 
 class GolfCard:
     def __init__(self, fonts: FontSet) -> None:
+        self._key = ItemKey("golf")
         self._panes = ImageTemplates()
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        # The pinned board turns a page every four seconds.
+        pinned = str(scene.item.get("sports_presentation", "")).lower() == "pinned"
+        return self._key(scene, asset_revision, int(max(0.0, scene.elapsed) // 4.0) if pinned else None)
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         item = scene.item if isinstance(scene.item, dict) else {}

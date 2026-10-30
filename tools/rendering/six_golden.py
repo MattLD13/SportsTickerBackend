@@ -1,11 +1,14 @@
 """Record and check the pixels of every Six renderer for a fixed input corpus.
 
 A case is one fresh set of renderers and a sequence of calls. Each call gives one image.
-The corpus stores only inputs. The digests file stores one SHA-256 for each image.
-Stand-in logos come from the URL text, so no case reads a file or the network.
+The corpus stores only inputs. The digests file stores one SHA-256 for each case, over the
+digests of its images. Stand-in logos come from the URL text, so no case reads a file or the network.
 
   python tools/rendering/six_golden.py build --recorded calls.pkl   # write the corpus and the digests
   python tools/rendering/six_golden.py check                         # render the corpus and compare
+  python tools/rendering/six_golden.py accept                        # keep the corpus and write new digests
+
+Use "accept" only after a pixel change on purpose, and inspect real 384x32 frames of the changed cases first.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import pickle
 import sys
 from collections.abc import Iterator, Mapping
 from dataclasses import fields, is_dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -115,7 +118,7 @@ def renderers(present: bool) -> dict[str, Any]:
     from ticker_core.ui.cards.golf import GolfCard
     from ticker_core.ui.cards.music import MusicCard
     from ticker_core.ui.cards.racing import RacingCard
-    from ticker_core.features.sports import SportsRenderer
+    from ticker_core.ui.sports import SportsCard
     from ticker_core.ui.cards.stock import StockCard
     from ticker_core.ui.screens import Screens, update_overlay
     from ticker_core.ui.cards.weather import WeatherCard
@@ -127,7 +130,7 @@ def renderers(present: bool) -> dict[str, Any]:
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     return {
-        "sports": SportsRenderer(fonts, LogoAssetView(assets)), "racing": RacingCard(fonts, assets),
+        "sports": SportsCard(fonts, LogoAssetView(assets)), "racing": RacingCard(fonts, assets),
         "golf": GolfCard(fonts), "weather": WeatherCard(fonts), "music": MusicCard(fonts, logos),
         "flight": FlightCard(fonts, logos), "stock": StockCard(fonts, logos), "screens": Screens(fonts), "update_overlay": update_overlay,
         "clock": ClockCard(fonts), "alert": ScoreAlert(fonts, logos),
@@ -185,6 +188,10 @@ def digest(image: Image.Image) -> str:
     return hashlib.sha256(f"{image.mode}:{image.width}x{image.height}:".encode() + image.tobytes()).hexdigest()
 
 
+def case_digest(results: list[str]) -> str:
+    return hashlib.sha256("\n".join(results).encode()).hexdigest()
+
+
 def run_case(case: Mapping[str, Any]) -> list[str]:
     """Render one case. A failed call gives its error type, so a changed failure is visible too."""
     renderer_set = renderers(case["logos"])
@@ -226,9 +233,9 @@ def _images(value: Any) -> Any:
 
 
 def _kind(item: Mapping[str, Any]) -> str:
-    from ticker_core.ui.catalog import content_family
-    family = content_family(item)
-    return {"scoreboard": "sports", "stock": "utility", "leaderboard": "utility", "empty": "utility"}.get(family, family)
+    from ticker_core.ui.catalog import card_family
+    family = card_family(item)
+    return {"scoreboard": "sports", "stock": "utility", "empty": "utility"}.get(family, family)
 
 
 def fixture_items() -> Iterator[tuple[str, dict[str, Any], str]]:
@@ -353,9 +360,27 @@ def corpus(recorded: Path | None) -> list[dict[str, Any]]:
     return unique
 
 
+def _write(cases: list[dict[str, Any]]) -> list[str]:
+    """Render every case, write the digests, and return them."""
+    results = [run_case(case) for case in cases]
+    digests = [case_digest(values) for values in results]
+    DIGESTS.write_text(json.dumps(digests, indent=0) + "\n", encoding="utf-8")
+    errors = sum(value.startswith("error:") for values in results for value in values)
+    print(f"{len(cases)} cases, {sum(map(len, results))} images, {errors} errors")
+    return digests
+
+
+def _changed(cases: list[dict[str, Any]], before: list[str], after: list[str]) -> list[int]:
+    changed = [index for index, case in enumerate(cases) if index >= len(before) or before[index] != after[index]]
+    print(f"{len(cases)} cases, {len(changed)} changed")
+    for index in changed[:20]:
+        print("changed:", index, cases[index]["source"], [call[0] + "." + call[1] for call in cases[index]["calls"]])
+    return changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("action", choices=("build", "check"))
+    parser.add_argument("action", choices=("build", "check", "accept"))
     parser.add_argument("--recorded", type=Path, help="A pickle of renderer calls from the test suite recorder.")
     args = parser.parse_args()
     if args.action == "build":
@@ -365,20 +390,16 @@ def main() -> int:
             old = json.loads(gzip.decompress(CORPUS.read_bytes()))
             cases.extend(case for case in old if case["source"] == "tests")
             cases = list({json.dumps([c["logos"], c["calls"]], sort_keys=True): c for c in cases}.values())
-        digests = [run_case(case) for case in cases]
         CORPUS.parent.mkdir(parents=True, exist_ok=True)
         CORPUS.write_bytes(gzip.compress(json.dumps(cases, separators=(",", ":")).encode(), mtime=0))
-        DIGESTS.write_text(json.dumps(digests, indent=0) + "\n", encoding="utf-8")
-        errors = sum(value.startswith("error:") for values in digests for value in values)
-        print(f"{len(cases)} cases, {sum(map(len, digests))} images, {errors} errors")
+        _write(cases)
         return 0
     cases = json.loads(gzip.decompress(CORPUS.read_bytes()))
     expected = json.loads(DIGESTS.read_text(encoding="utf-8"))
-    changed = [index for index, case in enumerate(cases) if run_case(case) != expected[index]]
-    print(f"{len(cases)} cases, {len(changed)} changed")
-    for index in changed[:20]:
-        print("changed:", index, cases[index]["source"], [call[0] + "." + call[1] for call in cases[index]["calls"]])
-    return 1 if changed else 0
+    if args.action == "accept":
+        _changed(cases, expected, _write(cases))
+        return 0
+    return 1 if _changed(cases, expected, [case_digest(run_case(case)) for case in cases]) else 0
 
 
 if __name__ == "__main__":

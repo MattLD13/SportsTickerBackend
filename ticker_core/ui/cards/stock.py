@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..frame import ContentScene, Logos, NoLogos, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, Logos, NoLogos, RenderContext, RenderedContent
 from ..layers import ImageTemplates, image_key
 from ..palette import STOCK_GAIN, STOCK_LOSS
 from ..text import FontSet
@@ -13,9 +13,13 @@ WIDTH, HEIGHT, RIGHT = 128, 32, 126
 
 class StockCard:
     def __init__(self, fonts: FontSet, logos: Logos | None = None) -> None:
+        self._key = ItemKey("stock")
         self._fonts = fonts
         self._logos = logos or NoLogos()
         self._layers = ImageTemplates()
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        return self._key(scene, asset_revision, None)
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         kind = str(scene.item.get("type", "")).lower()

@@ -10,8 +10,8 @@ from ticker_core.ui.cards.flight import FlightCard
 from ticker_core.ui.cards.golf import GolfCard
 from ticker_core.ui.cards.music import MusicCard
 from ticker_core.ui.cards.racing import RacingCard
-from ticker_core.features.sports.stadium_port import PreparedStadiumRenderer
-from ticker_core.features.sports.pinned import PreparedSportsFullRenderer
+from ticker_core.ui.sports.pane import PaneCard
+from ticker_core.ui.sports.pinned import PinnedCard
 from ticker_core.ui.cards.stock import StockCard
 from ticker_core.ui.cards.weather import WeatherCard
 from ticker_core.ui import load_default_font_set
@@ -48,9 +48,9 @@ def test_templates_are_bounded_and_return_independent_copies():
 @pytest.mark.parametrize('sport', ['nfl','ncf_fbs','mlb','nhl','nba','march_madness','soccer_mls'])
 def test_sports_template_matches_uncached_dynamic_and_logo_changes(sport):
     logos = Logos()
-    cached = PreparedStadiumRenderer(logos)
-    reference = PreparedStadiumRenderer(logos)
-    reference._card_templates = NoTemplates()
+    cached = PaneCard(logos)
+    reference = PaneCard(logos)
+    reference._bases = NoTemplates()
     game = {'sport':sport,'state':'in','status':'Q2 08:12','away_score':7,'home_score':14,
             'away_abbr':'AWY','home_abbr':'HOM','away_logo':'away','home_logo':'home',
             'away_color':'#005599','home_color':'#cc2200','away_rank':'2','home_rank':'5',
@@ -64,27 +64,27 @@ def test_sports_template_matches_uncached_dynamic_and_logo_changes(sport):
         game['situation']['isRedZone'] = bool(index%2)
         if index == 4:
             logos.color = (0,0,255,255)
-        first, width = cached.render(game)
-        second, ref_width = reference.render(game)
-        assert width == ref_width and first.tobytes() == second.tobytes()
-    assert cached._card_templates.hits > 0
+        first = cached.card(game)
+        second = reference.card(game)
+        assert first.size == second.size and first.tobytes() == second.tobytes()
+    assert cached._bases.hits > 0
 
 
 def test_150_wide_distinct_sports_cards_fit_in_the_bounded_template_cache():
-    renderer = PreparedStadiumRenderer(Logos())
+    renderer = PaneCard(Logos())
     games = [{'sport':'nfl','state':'in','status':'Q4 08:59','away_score':14,'home_score':21,
               'away_abbr':f'A{index}','home_abbr':f'H{index}','away_logo':f'away-{index}',
               'home_logo':f'home-{index}', 'situation':{'downDist':'FIRST AND GOAL AT THE LONG 10 YARD LINE'}} for index in range(150)]
     for game in games:
-        image, _ = renderer.render(game)
+        image = renderer.card(game)
         assert image.width == 160
-    assert len(renderer._card_templates._items) == 150
-    misses = renderer._card_templates.misses
+    assert len(renderer._bases._items) == 150
+    misses = renderer._bases.misses
     for game in games:
-        renderer.render({**game,'away_score':15,'status':'Q4 08:58'})
-    assert renderer._card_templates.hits == 150
-    assert renderer._card_templates.misses == misses
-    assert renderer._card_templates._bytes <= 4 * 1024 * 1024
+        renderer.card({**game,'away_score':15,'status':'Q4 08:58'})
+    assert renderer._bases.hits == 150
+    assert renderer._bases.misses == misses
+    assert renderer._bases._bytes <= 4 * 1024 * 1024
 
 
 def test_sports_logo_outline_changes_invalidate_the_template():
@@ -93,24 +93,24 @@ def test_sports_logo_outline_changes_invalidate_the_template():
     assets = MemoryAssetView()
     url = 'https://example.test/mark.png'
     assets.put_image(url, 'logo_native_grid', (22,22), Image.new('RGBA',(22,22),(15,15,15,255)))
-    renderer = PreparedStadiumRenderer(LogoAssetView(assets))
-    reference = PreparedStadiumRenderer(LogoAssetView(assets))
-    reference._card_templates = NoTemplates()
+    renderer = PaneCard(LogoAssetView(assets))
+    reference = PaneCard(LogoAssetView(assets))
+    reference._bases = NoTemplates()
     game = {'sport':'nfl','state':'in','status':'Q2 08:00','away_score':7,'home_score':3,
             'home_abbr':'HOM','away_abbr':'AWY','home_logo':url,'situation':{}}
     for outline in ('off','inner','auto'):
         game['home_logo_rendering'] = {'method':'new','outline':outline,'cutoff':35}
-        actual,_ = renderer.render(game)
-        expected,_ = reference.render(game)
+        actual = renderer.card(game)
+        expected = reference.card(game)
         assert actual.tobytes() == expected.tobytes()
 
 
 @pytest.mark.parametrize('sport',['nfl','ncf_fbs','nhl','nba','mlb','soccer_mls'])
-def test_pinned_sports_field_templates_preserve_dynamic_fields(sport):
+def test_pinned_sports_surfaces_preserve_dynamic_fields(sport):
     logos, fonts = Logos(), load_default_font_set()
-    renderer = PreparedSportsFullRenderer(fonts,logos)
-    reference = PreparedSportsFullRenderer(fonts,logos)
-    reference._field_templates = NoTemplates()
+    renderer = PinnedCard(fonts,logos)
+    reference = PinnedCard(fonts,logos)
+    reference._surfaces = NoTemplates()
     game = {'sport':sport,'state':'in','status':'Q2 08:00','away_score':7,'home_score':3,
             'home_abbr':'HOM','away_abbr':'AWY','home_logo':'home','away_logo':'away',
             'home_color':'#005599','away_color':'#bb2200','situation':{'activeTeam':'AWY','yardLine':50,'yardsToGo':10}}
@@ -124,11 +124,11 @@ def test_pinned_sports_field_templates_preserve_dynamic_fields(sport):
                                  onFirst=bool(index&1), onSecond=bool(index&2), onThird=bool(index&4))
         if index == 4:
             logos.color = (0,0,255,255)
-        actual = renderer.draw_sport_full_bleed(game)
-        expected = reference.draw_sport_full_bleed(game)
+        actual = renderer.frame(game)
+        expected = reference.frame(game)
         assert actual.size == expected.size and actual.tobytes() == expected.tobytes()
     if sport in {'nfl','ncf_fbs','soccer_mls'}:
-        assert renderer._field_templates.hits > 0
+        assert renderer._surfaces.hits > 0
 
 
 def test_mode_templates_match_fresh_layers_when_values_change():

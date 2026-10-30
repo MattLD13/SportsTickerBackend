@@ -13,12 +13,10 @@ from sports_ticker.providers.sports_display import nhl_goal_display, nhl_shootou
 from ticker_core.ui.frame import RenderContext
 from ticker_core.ui.news_banner import NewsBanner
 from ticker_core.ui.score_alert import ScoreAlert
-from ticker_core.features.sports import SportsRenderer
-from ticker_core.features.sports import pinned as sports_full_port
-from ticker_core.features.sports import stadium_port as sports_stadium_port
-from ticker_core.features.sports.logo_badge import draw_missing_team_badge
-from ticker_core.features.sports.logo_rendering import team_logo_layout
-from ticker_core.features.sports.logo_visibility import LogoOutlineMode, paste_team_logo
+from ticker_core.ui.sports import SportsCard
+from ticker_core.ui.sports import pane, pinned
+from ticker_core.ui.sports.logos import Outline, draw_missing_team_badge, paste_team_logo, team_logo_layout
+from ticker_core.ui.text import pane_width
 from ticker_core.ui import ContentScene, load_default_font_set
 
 
@@ -33,32 +31,32 @@ class EmptyLogos:
 @pytest.mark.parametrize("sport", ("nfl", "ncf_fbs", "ncf_fcs", "mlb", "wbc", "nba", "nhl", "march_madness", "soccer_mls"))
 @pytest.mark.parametrize("stage,color", ((1, (192, 192, 192)), (2, (255, 215, 0))))
 def test_tournament_rules_color_compact_sports_and_preserve_pinned_layouts(sport, stage, color):
-    renderer = SportsRenderer(load_default_font_set(), EmptyLogos())
+    renderer = SportsCard(load_default_font_set(), EmptyLogos())
     game = {"sport": sport, "competition_stage": stage, "state": "in", "status": "Q2 10:00",
             "away_score": 2, "home_score": 1, "away_abbr": "AWY", "home_abbr": "HOM", "situation": {}}
     if sport in {"mlb", "wbc"}:
         game.update(status="TOP 5TH", baseball_inning={"number": 5, "half": "top", "phase": "playing"})
-    compact = renderer.render_card(game)
+    compact = renderer.card(game)
     assert all(compact.getpixel((x, 7)) == color for x in range(compact.width))
-    full = renderer.render_full(game)
+    full = renderer.pinned(game)
     assert full.size == (384, 32)
-    regular = renderer.render_full({**game, "competition_stage": 0})
+    regular = renderer.pinned({**game, "competition_stage": 0})
     assert full.tobytes() == regular.tobytes()
 
 
 def test_regular_season_final_keeps_the_normal_status_rule(sports):
-    card = sports.render_card({"sport": "nba", "state": "post", "status": "FINAL",
+    card = sports.card({"sport": "nba", "state": "post", "status": "FINAL",
                                "competition_stage": 0, "home_score": 100, "away_score": 90})
     assert card.getpixel((card.width // 2, 7)) == (55, 76, 130)
 
 
 @pytest.fixture
-def sports() -> SportsRenderer:
+def sports() -> SportsCard:
     """Create a renderer with deterministic resources."""
-    return SportsRenderer(load_default_font_set(), EmptyLogos())
+    return SportsCard(load_default_font_set(), EmptyLogos())
 
 
-def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) -> None:
+def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsCard) -> None:
     """Keep representative scoreboard rendering deterministic."""
     game = {"sport": "baseball", "state": "in", "status": "Top 5th", "away_score": 2, "home_score": 1, "situation": {"onFirst": True, "outs": 1}}
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
@@ -68,7 +66,7 @@ def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) 
     assert first.tobytes() == second.tobytes()
 
 
-def test_campaign_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:
+def test_campaign_ad_renders_as_a_compact_scroll_card(sports: SportsCard) -> None:
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     item = {
         "type": "fan_duel_joke_ad",
@@ -99,7 +97,7 @@ def test_campaign_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) ->
     ],
 )
 def test_baseball_compact_and_full_paths_match_legacy_oracle(
-    sports: SportsRenderer,
+    sports: SportsCard,
     status: str,
     situation: dict[str, object],
 ) -> None:
@@ -120,22 +118,22 @@ def test_baseball_compact_and_full_paths_match_legacy_oracle(
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     compact = sports.render(context, ContentScene(item=game, mode="sports")).image
     compact_repeat = sports.render(context, ContentScene(item=game, mode="sports")).image
-    full = sports.render_full(game)
-    full_repeat = sports.render_full(game)
+    full = sports.pinned(game)
+    full_repeat = sports.pinned(game)
     assert compact.tobytes() == compact_repeat.tobytes()
     assert full.size == (384, 32)
     assert full.tobytes() == full_repeat.tobytes()
 
 
-def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
+def test_full_card_keeps_panel_geometry(sports: SportsCard) -> None:
     """Keep representative full-screen rendering at the panel size."""
     game = {"sport": "football", "state": "in", "status": "Q2 10:00", "away_score": 7, "home_score": 3, "away_color": "#00338D", "home_color": "#D50A0A", "situation": {}}
-    image = sports.render_full(game)
+    image = sports.pinned(game)
     assert image.size == (384, 32)
-    assert image.tobytes() == sports.render_full(game).tobytes()
+    assert image.tobytes() == sports.pinned(game).tobytes()
 
 
-def test_full_football_uses_alternate_for_gray_iowa_primary(sports: SportsRenderer) -> None:
+def test_full_football_uses_alternate_for_gray_iowa_primary(sports: SportsCard) -> None:
     """Use Iowa gold for the endzone instead of the old hardcoded red fallback."""
     game = {
         "sport": "ncf_fbs",
@@ -150,7 +148,7 @@ def test_full_football_uses_alternate_for_gray_iowa_primary(sports: SportsRender
         "situation": {},
     }
 
-    image = sports.render_full(game)
+    image = sports.pinned(game)
 
     assert image.getpixel((2, 16))[:3] == (252, 209, 22)
     assert image.getpixel((382, 16))[:3] == (51, 0, 111)
@@ -166,14 +164,14 @@ def test_full_football_uses_alternate_for_gray_iowa_primary(sports: SportsRender
 )
 @pytest.mark.critical
 def test_full_screen_clock_uses_dash_and_plain_zero(
-    sports: SportsRenderer, status: str, sport: str, expected: str
+    sports: SportsCard, status: str, sport: str, expected: str
 ) -> None:
-    assert sports._full.shorten_status(status, sport) == expected
+    assert pinned.short_status(status) == expected
 
 
 @pytest.mark.parametrize(("active_team", "arrow_x", "other_x"), [("AWY", 16, 368), ("HOM", 368, 16)])
 def test_full_football_marks_possession_above_the_team(
-    sports: SportsRenderer, active_team: str, arrow_x: int, other_x: int
+    sports: SportsCard, active_team: str, arrow_x: int, other_x: int
 ) -> None:
     game = {
         "sport": "ncf_fbs",
@@ -186,7 +184,7 @@ def test_full_football_marks_possession_above_the_team(
         "situation": {"activeTeam": active_team},
     }
 
-    image = sports.render_full(game)
+    image = sports.pinned(game)
 
     assert image.size == (384, 32)
     assert image.getpixel((arrow_x, 2)) == (255, 235, 80)
@@ -287,7 +285,7 @@ def test_team_logo_with_visible_color_details_does_not_get_an_unneeded_keyline()
     draw.line((0, 0, 6, 0), fill=(255, 255, 255, 255), width=1)
     draw.rectangle((2, 3, 4, 5), fill=(255, 255, 255, 255))
 
-    assert paste_team_logo(canvas, logo, (5, 5), outline_mode=LogoOutlineMode.FULL) is False
+    assert paste_team_logo(canvas, logo, (5, 5), outline=Outline.FULL) is False
     assert canvas.getpixel((4, 8))[:3] == background_color[:3]
 
 
@@ -302,8 +300,8 @@ def test_full_logo_policy_outlines_a_mark_that_scroll_leaves_clean() -> None:
     for point in ((2, 2), (3, 2), (4, 2), (3, 3)):
         logo.putpixel(point, (255, 255, 255, 255))
 
-    assert paste_team_logo(full_canvas, logo, (5, 5), outline_mode=LogoOutlineMode.FULL) is True
-    assert paste_team_logo(scroll_canvas, logo, (5, 5), outline_mode=LogoOutlineMode.SCROLL) is False
+    assert paste_team_logo(full_canvas, logo, (5, 5), outline=Outline.FULL) is True
+    assert paste_team_logo(scroll_canvas, logo, (5, 5), outline=Outline.SCROLL) is False
     assert full_canvas.getpixel((6, 9))[:3] != (0, 0, 0)
     assert scroll_canvas.getpixel((6, 9))[:3] == (0, 0, 0)
 
@@ -315,12 +313,12 @@ def test_full_logo_policy_outlines_the_near_matching_jets_green_mark() -> None:
     draw = ImageDraw.Draw(logo)
     draw.rectangle((1, 1, 6, 6), fill=(0, 87, 61, 255))
 
-    assert paste_team_logo(canvas, logo, (5, 5), outline_mode=LogoOutlineMode.FULL) is True
+    assert paste_team_logo(canvas, logo, (5, 5), outline=Outline.FULL) is True
     assert paste_team_logo(
         Image.new("RGBA", (18, 18), background_color),
         logo,
         (5, 5),
-        outline_mode=LogoOutlineMode.SCROLL,
+        outline=Outline.SCROLL,
     ) is False
     assert canvas.getpixel((5, 8))[:3] == (244, 247, 250)
 
@@ -364,18 +362,18 @@ def test_missing_logo_badge_has_smooth_symmetric_rounded_edges() -> None:
 
 
 def test_scroll_sports_uses_colored_acronym_badges_when_logos_are_missing(
-    sports: SportsRenderer,
+    sports: SportsCard,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     badges: list[tuple[str, tuple[int, int, int]]] = []
-    original = sports_stadium_port.draw_missing_team_badge
+    original = pane.draw_missing_team_badge
 
     def capture(image, xy, size, team_color, abbreviation):
         badges.append((str(abbreviation), tuple(team_color)))
         return original(image, xy, size, team_color, abbreviation)
 
-    monkeypatch.setattr(sports_stadium_port, "draw_missing_team_badge", capture)
-    image = sports.render_card(
+    monkeypatch.setattr(pane, "draw_missing_team_badge", capture)
+    image = sports.card(
         {
             "sport": "mlb",
             "state": "in",
@@ -395,18 +393,18 @@ def test_scroll_sports_uses_colored_acronym_badges_when_logos_are_missing(
 
 
 def test_full_sports_uses_colored_acronym_badges_when_logos_are_missing(
-    sports: SportsRenderer,
+    sports: SportsCard,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     badges: list[tuple[str, tuple[int, int, int]]] = []
-    original = sports_full_port.draw_missing_team_badge
+    original = pinned.draw_missing_team_badge
 
     def capture(image, xy, size, team_color, abbreviation):
         badges.append((str(abbreviation), tuple(team_color)))
         return original(image, xy, size, team_color, abbreviation)
 
-    monkeypatch.setattr(sports_full_port, "draw_missing_team_badge", capture)
-    image = sports.render_full(
+    monkeypatch.setattr(pinned, "draw_missing_team_badge", capture)
+    image = sports.pinned(
         {
             "sport": "ncf_fcs",
             "state": "in",
@@ -425,17 +423,17 @@ def test_full_sports_uses_colored_acronym_badges_when_logos_are_missing(
     assert ("NOVA", (132, 22, 23)) in badges
 
 
-def test_full_baseball_renders_live_details_and_scales_long_names(sports: SportsRenderer) -> None:
+def test_full_baseball_renders_live_details_and_scales_long_names(sports: SportsCard) -> None:
     """Keep MLB live detail fields visible and shrink oversized player names."""
     calls: list[tuple[str, int | None]] = []
-    original = sports._full.draw_outlined_text
+    original = pinned.outlined
 
     def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
         calls.append((str(text), getattr(font, "size", None)))
         return original(draw, x, y, text, font, fill, outline, anchor)
 
-    sports._full.draw_outlined_text = capture
-    image = sports.render_full(
+    pinned.outlined = capture
+    image = sports.pinned(
         {
             "sport": "mlb",
             "state": "in",
@@ -467,16 +465,16 @@ def test_full_baseball_renders_live_details_and_scales_long_names(sports: Sports
     assert any(text.startswith("LONG") for text, _ in calls)
 
 
-def test_full_baseball_preserves_zero_stats_and_pitcher_era(sports: SportsRenderer) -> None:
+def test_full_baseball_preserves_zero_stats_and_pitcher_era(sports: SportsCard) -> None:
     calls: list[str] = []
-    original = sports._full.draw_outlined_text
+    original = pinned.outlined
 
     def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
         calls.append(str(text))
         return original(draw, x, y, text, font, fill, outline, anchor)
 
-    sports._full.draw_outlined_text = capture
-    image = sports.render_full(
+    pinned.outlined = capture
+    image = sports.pinned(
         {
             "sport": "mlb",
             "state": "in",
@@ -512,16 +510,16 @@ def test_full_baseball_preserves_zero_stats_and_pitcher_era(sports: SportsRender
     ("post", "FINAL", 3, None),
 ])
 def test_full_baseball_uses_projected_phase_and_batting_owner(
-    sports: SportsRenderer, state, status, outs, batting_left,
+    sports: SportsCard, state, status, outs, batting_left,
 ) -> None:
     calls = []
-    original = sports._full.draw_outlined_text
+    original = pinned.outlined
 
     def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
         calls.append((str(text), x))
         return original(draw, x, y, text, font, fill, outline, anchor)
 
-    sports._full.draw_outlined_text = capture
+    pinned.outlined = capture
     game = project_baseball_display({
         "sport": "mlb", "state": state, "status": status,
         "away_abbr": "NYY", "home_abbr": "BOS", "away_score": "3", "home_score": "4",
@@ -531,7 +529,7 @@ def test_full_baseball_uses_projected_phase_and_batting_owner(
             "batter_name": "Coby Mayo", "pitcher_name": "Grant Wolfram",
         },
     })
-    frame = sports.render_full(game)
+    frame = sports.pinned(game)
     assert frame.size == (384, 32)
     texts = {text for text, _x in calls}
     assert "P:0" not in texts
@@ -544,8 +542,8 @@ def test_full_baseball_uses_projected_phase_and_batting_owner(
         assert ("WOLFRAM", 284 if batting_left else 100) in calls
 
 
-def test_full_baseball_draws_abs_challenge_markers_from_situation(sports: SportsRenderer) -> None:
-    image = sports.render_full(
+def test_full_baseball_draws_abs_challenge_markers_from_situation(sports: SportsCard) -> None:
+    image = sports.pinned(
         {
             "sport": "mlb",
             "state": "in",
@@ -570,8 +568,8 @@ def test_full_baseball_draws_abs_challenge_markers_from_situation(sports: Sports
     assert image.getpixel((382, 5)) == (18, 52, 86)
 
 
-def test_full_baseball_draws_second_abs_challenge_marker(sports: SportsRenderer) -> None:
-    image = sports.render_full(
+def test_full_baseball_draws_second_abs_challenge_marker(sports: SportsCard) -> None:
+    image = sports.pinned(
         {
             "sport": "mlb",
             "state": "in",
@@ -622,7 +620,7 @@ def test_news_banner_keeps_live_frame_geometry() -> None:
 @pytest.mark.parametrize("advantage,opponent", [(5, 4), (5, 3), (4, 3)])
 @pytest.mark.parametrize("power_play_team", ["NYR", "NYI"])
 def test_hockey_power_play_renders_for_its_team_in_both_layouts(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch, power_play_team: str, advantage: int, opponent: int
+    sports: SportsCard, monkeypatch: pytest.MonkeyPatch, power_play_team: str, advantage: int, opponent: int
 ) -> None:
     away_pp = power_play_team == "NYR"
     away, home = (advantage, opponent) if away_pp else (opponent, advantage)
@@ -645,33 +643,33 @@ def test_hockey_power_play_renders_for_its_team_in_both_layouts(
     }
     scroll_labels: list[str] = []
     scroll_positions: list[tuple[str, int, int]] = []
-    original_pixel_text = sports_stadium_port.pf_text
+    original_pixel_text = pane.draw_pane
 
-    def capture_pixel_text(draw, text, x, y, red, green, blue, sc=1):
+    def capture_pixel_text(draw, x, y, text, color, scale=1):
         scroll_labels.append(str(text))
         scroll_positions.append((str(text), x, y))
-        return original_pixel_text(draw, text, x, y, red, green, blue, sc)
+        return original_pixel_text(draw, x, y, text, color, scale)
 
-    monkeypatch.setattr(sports_stadium_port, "pf_text", capture_pixel_text)
-    card = sports.render_card(game)
+    monkeypatch.setattr(pane, "draw_pane", capture_pixel_text)
+    card = sports.card(game)
     assert "1:47 #55" in scroll_labels
-    logo_x = card.width - sports_stadium_port.LOGO_SZ - 1 if power_play_team == "NYI" else team_logo_layout("scrolling", "nhl").x
-    badge_x = logo_x + sports_stadium_port.LOGO_SZ // 2 - sports_stadium_port.pf_w(badge) // 2
+    logo_x = card.width - pane.LOGO - 1 if power_play_team == "NYI" else team_logo_layout("scrolling", "nhl").x
+    badge_x = logo_x + pane.LOGO // 2 - pane_width(badge) // 2
     assert (badge, badge_x, 2) in scroll_positions
     assert len([entry for entry in scroll_positions if entry[0] == badge]) == 1
     assert any(text == "1:47 #55" and y == 23 for text, x, y in scroll_positions)
 
     full_labels: list[str] = []
     full_positions = []
-    original_full_text = sports._full.draw_outlined_text
+    original_full_text = pinned.outlined
 
     def capture_full_text(draw, x, y, text, *args, **kwargs):
         full_labels.append(str(text))
         full_positions.append((str(text), y, kwargs.get("anchor")))
         return original_full_text(draw, x, y, text, *args, **kwargs)
 
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
-    image = sports.render_full(game)
+    monkeypatch.setattr(pinned, "outlined", capture_full_text)
+    image = sports.pinned(game)
 
     assert image.size == (384, 32)
     assert badge in full_labels
@@ -680,7 +678,7 @@ def test_hockey_power_play_renders_for_its_team_in_both_layouts(
 
 
 def test_hockey_full_screen_pages_every_real_goal(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
+    sports: SportsCard, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = Path(__file__).parents[3] / "fixtures/display"
     goals = nhl_goal_display(_game_events(json.loads((fixture / "nhl_goal_ledger.json").read_text())))
@@ -690,13 +688,13 @@ def test_hockey_full_screen_pages_every_real_goal(
         "sports_presentation": "pinned", "situation": {"hockeyGoals": goals},
     }
     labels: list[str] = []
-    original = sports._full.draw_outlined_text
+    original = pinned.outlined
 
     def capture(draw, x, y, text, *args, **kwargs):
         labels.append(str(text))
         return original(draw, x, y, text, *args, **kwargs)
 
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture)
+    monkeypatch.setattr(pinned, "outlined", capture)
     scene = ContentScene(game, "sports")
     keys = []
     for tick in (0, 5):
@@ -710,7 +708,7 @@ def test_hockey_full_screen_pages_every_real_goal(
 
 
 def test_hockey_shootout_columns_use_three_shared_rounds_without_covering_scores(
-    sports: SportsRenderer, monkeypatch: pytest.MonkeyPatch
+    sports: SportsCard, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = Path(__file__).parents[3] / "fixtures/display" / "nhl_shootout_ledger.json"
     display = nhl_shootout_display(_game_events(json.loads(fixture.read_text())))
@@ -720,16 +718,16 @@ def test_hockey_shootout_columns_use_three_shared_rounds_without_covering_scores
         "away_abbr": "SEA", "home_abbr": "PHI", "away_score": 3, "home_score": 2,
         "situation": {"shootout": display},
     }
-    baseline = sports.render_full({**game, "situation": {}})
+    baseline = sports.pinned({**game, "situation": {}})
     calls: list[tuple[int, int, str, object]] = []
-    original = sports_full_port.draw_hockey_so_column
+    original = pinned.draw_hockey_shootout
 
     def capture(draw, x, y, shootout, side):
         calls.append((x, y, side, shootout["displayRounds"]))
         return original(draw, x, y, shootout, side)
 
-    monkeypatch.setattr(sports_full_port, "draw_hockey_so_column", capture)
-    full = sports.render_full(game)
+    monkeypatch.setattr(pinned, "draw_hockey_shootout", capture)
+    full = sports.pinned(game)
     assert full.size == (384, 32)
     assert [call[2] for call in calls] == ["away", "home"]
     assert all(len(call[3]) == 3 for call in calls)
@@ -741,8 +739,8 @@ def test_hockey_shootout_columns_use_three_shared_rounds_without_covering_scores
     assert full.getpixel((left_x, 6)) == (220, 55, 55)
     assert full.getpixel((right_x, 20)) == (220, 55, 55)
     calls.clear()
-    monkeypatch.setattr(sports_stadium_port, "draw_hockey_so_column", capture)
-    card = sports.render_card(game)
+    monkeypatch.setattr(pane, "draw_hockey_shootout", capture)
+    card = sports.card(game)
     assert card.height == 32
     assert [call[2] for call in calls] == ["away", "home"]
     assert all(call[3] == display["displayRounds"] for call in calls)
@@ -753,7 +751,7 @@ def test_hockey_shootout_columns_use_three_shared_rounds_without_covering_scores
     [("NYI", "home"), ("NYR", "away")],
 )
 def test_full_hockey_card_uses_empty_net_side(
-    sports: SportsRenderer,
+    sports: SportsCard,
     monkeypatch: pytest.MonkeyPatch,
     empty_net_side: str,
     expected_badge_side: str,
@@ -769,16 +767,16 @@ def test_full_hockey_card_uses_empty_net_side(
         "situation": {"emptyNet": True, "emptyNetSide": empty_net_side},
     }
     labels: list[int] = []
-    original_draw_text = sports._full.draw_outlined_text
+    original_draw_text = pinned.outlined
 
     def capture_full_text(draw, x, y, text, *args, **kwargs):
         if text == "EN":
             labels.append(x)
         return original_draw_text(draw, x, y, text, *args, **kwargs)
 
-    monkeypatch.setattr(sports._full, "draw_outlined_text", capture_full_text)
+    monkeypatch.setattr(pinned, "outlined", capture_full_text)
 
-    image = sports.render_full(game)
+    image = sports.pinned(game)
 
     assert image.size == (384, 32)
     assert len(labels) == 1
@@ -790,9 +788,9 @@ def test_full_hockey_card_uses_empty_net_side(
 
 @pytest.mark.parametrize("sport", ["soccer_epl", "soccer_mls", "soccer_champions_league"])
 def test_soccer_shootout_card_widens_for_the_penalty_columns(sport) -> None:
-    game = {"sport": sport, "away_score": 1, "home_score": 2, "as": 1, "hs": 2, "status": "PENS", "state": "in"}
+    game = {"sport": sport, "away_score": 1, "home_score": 2, "status": "PENS", "state": "in"}
     shootout = {"situation": {"shootout": {"away": ["goal", "miss"], "home": ["goal", "goal"]}}}
-    plain = sports_stadium_port.calc_card_width(game)
-    widened = sports_stadium_port.calc_card_width({**game, **shootout})
+    plain = pane.card_width(pane.PaneGame.read(game))
+    widened = pane.card_width(pane.PaneGame.read({**game, **shootout}))
     assert widened > plain
-    assert widened == sports_stadium_port.calc_card_width({**game, **shootout, "sport": "nhl"})
+    assert widened == pane.card_width(pane.PaneGame.read({**game, **shootout, "sport": "nhl"}))

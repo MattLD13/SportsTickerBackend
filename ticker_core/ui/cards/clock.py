@@ -5,7 +5,7 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw
 
-from ..frame import ContentScene, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, RenderContext, RenderedContent
 from ..layers import ImageTemplates
 from ..palette import CLOCK_DATE, CLOCK_PROGRESS, CLOCK_RAIL, SCORE_TEXT
 from ..text import FontSet
@@ -15,9 +15,14 @@ WIDTH, HEIGHT = 384, 32
 
 class ClockCard:
     def __init__(self, fonts: FontSet) -> None:
+        self._key = ItemKey("clock")
         self._date_font, self._time_font = fonts.tiny, fonts.clock
         # The date changes once a day, so its layer comes from a small template cache.
         self._dates = ImageTemplates(capacity=2, max_bytes=128 * 1024)
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        # The time shows whole seconds.
+        return self._key(scene, asset_revision, int(context.now.timestamp()))
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         return RenderedContent(self.frame(context.now))

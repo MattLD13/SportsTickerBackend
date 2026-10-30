@@ -177,12 +177,12 @@ def test_manifest_slice_paths_checks_and_initial_context_are_real():
         assert all((ROOT / path).is_file() for path in plan["build_files"])
     plan = resolve(manifest, select(manifest, "mini-sports", False), tracked)
     assert "tests/native/mini_hockey_panes.cpp" in plan["context_files"]
-    assert not any(path.startswith(("TickerControlApp/", "ticker_core/features/", "ticker3/web/"))
+    assert not any(path.startswith(("TickerControlApp/", "ticker_core/ui/", "ticker3/web/"))
                    for path in plan["context_files"])
     assert not any(any(word in path for word in ("music", "weather", "stocks", "flights"))
                    for path in plan["context_files"])
     assert "esp32_hub75/src/mini/platform/config.h" not in plan["build_files"]
-    assert not any(path.startswith("ticker_core/features/sports/") for path in plan["build_files"])
+    assert not any(path.startswith("ticker_core/ui/sports/") for path in plan["build_files"])
 
 
 def test_manifest_cycles_and_empty_patterns_fail(source):

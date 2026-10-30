@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core.platform.wifi import WiFiSetupState
 
-from .frame import ContentScene, RenderContext, RenderedContent
+from .frame import ContentScene, ItemKey, RenderContext, RenderedContent
 from .text import FontSet, draw_tiny
 
 WIDTH, HEIGHT = 384, 32
@@ -17,7 +17,12 @@ FAILURES = {"rolled_back": "RESTORED", "download_failed": "OLD KEPT"}
 
 class Screens:
     def __init__(self, fonts: FontSet) -> None:
+        self._key = ItemKey("empty")
         self._fonts = fonts
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        # The minute rail moves one pixel for each 384th of a minute.
+        return self._key(scene, asset_revision, int(context.now.timestamp() * 384 / 60.0))
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Draw the no-games screen for an item that marks empty content."""

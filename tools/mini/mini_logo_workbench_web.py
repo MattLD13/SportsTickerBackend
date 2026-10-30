@@ -21,8 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from PIL import Image
-from ticker_core.features.sports.logo_rendering import prepare_team_logo, team_logo_layout
-from ticker_core.features.sports.logo_visibility import mean_edge_brightness, paste_team_logo
+from ticker_core.ui.sports.logos import Outline, mean_edge_brightness, paste_team_logo, prepare_team_logo, team_logo_layout
 
 
 BACKEND_URL = os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org").rstrip("/")
@@ -105,7 +104,11 @@ def _prepare_frames(raw: bytes, *, league: str, view: str, sensitivity: int, out
     layout = team_logo_layout(view, league)
     mark = prepare_team_logo(raw, layout, method=method)
     native = Image.new("RGBA", mark.size, (0, 0, 0, 255))
-    added = paste_team_logo(native, mark, (0, 0), outline=outline, darkness_cutoff=sensitivity * 255 / 100)
+    if outline != "ticker":
+        # A selected outline replaces the keyline policy, as an outline saved in the logo rendering does.
+        mark.logo_rendering_outline = outline
+        mark.logo_rendering_cutoff = sensitivity * 255 / 100
+    added = paste_team_logo(native, mark, (0, 0), outline=Outline.FULL if view == "full_screen" else Outline.SCROLL)
     native = native.convert("RGB")
     big = Image.new("RGB", (384, 32), "black")
     big_position = ((384 - layout.size) // 2, (32 - layout.size) // 2)

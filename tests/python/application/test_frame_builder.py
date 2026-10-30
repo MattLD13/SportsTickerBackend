@@ -5,7 +5,9 @@ from PIL import Image
 
 from ticker_core.app.frame_builder import FrameBuilder
 from ticker_core.ui import FrameGeometry, RenderedContent
-from ticker_core.ui import ContentRendererCatalog
+from ticker_core.assets import MemoryAssetView
+from ticker_core.bootstrap import create_default_content_catalog
+from ticker_core.ui import CardCatalog
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 pytestmark = pytest.mark.critical
@@ -31,7 +33,7 @@ class Alerts:
     def __init__(self):
         self.under = None
 
-    def render(self, alert, elapsed, under):
+    def frame(self, alert, elapsed, under):
         del alert, elapsed
         self.under = under
         return Image.new("RGB", (384, 32), (4, 5, 6))
@@ -54,12 +56,9 @@ class Viewport:
         return Image.new("RGB", (width, height))
 
 
-def keyed_catalog() -> ContentRendererCatalog:
-    catalog = ContentRendererCatalog()
-    renderer = Catalog()
-    for family in ("scoreboard", "music", "weather", "racing", "golf", "clock", "empty"):
-        catalog.register(family, renderer)
-    return catalog
+def keyed_catalog() -> CardCatalog:
+    """Return the production cards, so each visual key comes from the card that owns its cadence."""
+    return create_default_content_catalog(MemoryAssetView())
 
 
 def decision(kind, **values):

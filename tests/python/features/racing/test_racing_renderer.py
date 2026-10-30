@@ -9,7 +9,7 @@ from ticker_core.ui.frame import RenderContext
 from ticker_core.assets import MemoryAssetView as MemoryRacingAssets
 from ticker_core.ui.cards.racing import RacingCard
 from ticker_core.ui import ContentScene, load_default_font_set
-from ticker_core.ui.catalog import content_family
+from ticker_core.ui.catalog import card_family
 from sports_ticker.projections.racing_display import racing_cards
 
 
@@ -33,7 +33,7 @@ def test_each_racing_series_renders_a_panel_frame() -> None:
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
 
     for series in ("indycar", "f1", "nascar", "wec", "imsa"):
-        assert content_family({"sport": series, "type": series}) == "racing"
+        assert card_family({"sport": series, "type": series}) == "racing"
         scroll = renderer.render(context, ContentScene(_item(series), "sports")).image
         full = renderer.render(
             context,

@@ -13,7 +13,7 @@ from ticker_core.ui.news_banner import NewsBanner
 from ticker_core.ui.score_alert import ScoreAlert
 from ticker_core.ui.screens import Screens
 from ticker_core.protocol import DeviceState, TickerResponse
-from ticker_core.ui import ContentRendererCatalog, load_default_font_set
+from ticker_core.ui import CardCatalog, load_default_font_set
 from ticker_core.runtime import FrameDecision, FrameKind
 
 pytestmark = pytest.mark.critical
@@ -65,7 +65,7 @@ def test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap(tmp_path) 
 
         fonts = load_default_font_set()
         builder = FrameBuilder(
-            ContentRendererCatalog(),
+            CardCatalog(),
             Screens(fonts),
             ScoreAlert(fonts, Logos()),
             NewsBanner(),

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from PIL import Image, ImageDraw
 
 from .. import weather_art as art
-from ..frame import ContentScene, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, RenderContext, RenderedContent
 from ..text import FontSet, draw_tiny, plain_text
 
 WIDTH, HEIGHT = 384, 32
@@ -25,7 +25,12 @@ CONDITION_ABBREVIATIONS = {
 
 class WeatherCard:
     def __init__(self, fonts: FontSet) -> None:
+        self._key = ItemKey("weather")
         self._temperature_font = fonts.big
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        # The sky moves at 30 frames each second.
+        return self._key(scene, asset_revision, int(context.now.timestamp() * 30))
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         return RenderedContent(self.frame(context.now, scene.item))

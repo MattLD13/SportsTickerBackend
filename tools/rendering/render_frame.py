@@ -173,7 +173,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path, help="Read a backend JSON snapshot from this file.")
     parser.add_argument("--url", default=DEFAULT_BACKEND_URL, help="Backend base URL when --snapshot is absent.")
-    parser.add_argument("--endpoint", default="", help="Override the V2 data endpoint.")
+    parser.add_argument("--endpoint", default="", help="Override the data endpoint.")
     parser.add_argument("--device-token-file", type=Path, help="Read this device credential for a live render.")
     parser.add_argument("--mode", choices=[str(value) for value in DisplayMode], default="sports")
     parser.add_argument("--item-id", default="", help="Render this content item id.")

@@ -12,12 +12,11 @@ from .ui.cards.flight import FlightCard
 from .ui.cards.golf import GolfCard
 from .ui.cards.music import MusicCard
 from .ui.cards.racing import RacingCard
-from .features.sports import SportsRenderer
+from .ui.sports import SportsCard
 from .ui.cards.stock import StockCard
 from .ui.screens import Screens
 from .ui.cards.weather import WeatherCard
-from .ui import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
-from .ui.text import load_display_font, load_monospace_font
+from .ui import CardCatalog, FrameGeometry, load_default_font_set
 
 
 class CachedLogoView:
@@ -33,13 +32,13 @@ class CachedLogoView:
         return image(url, "logo", size) if url and callable(image) else None
 
 
-def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
+def create_default_content_catalog(assets: object) -> CardCatalog:
     """Create the renderer catalog for every enabled ticker content family."""
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     sports_logos = LogoAssetView(assets)
-    catalog = ContentRendererCatalog()
-    sports = SportsRenderer(fonts, sports_logos)
+    catalog = CardCatalog()
+    sports = SportsCard(fonts, sports_logos)
     catalog.register("clock", ClockCard(fonts))
     catalog.register("scoreboard", sports)
     catalog.register("sports", sports)

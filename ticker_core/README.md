@@ -2,7 +2,7 @@
 
 `ticker_core` is the new Raspberry Pi application. It owns every operation between a backend response and the LED panels.
 
-Legacy modules remain output oracles during parity work. The new entry point will not import them.
+The golden corpus in `tests/fixtures/six_golden/` records the panel pixels of every card for fixed inputs. `tools/rendering/six_golden.py` checks them.
 
 ## Ownership
 
@@ -10,8 +10,8 @@ Legacy modules remain output oracles during parity work. The new entry point wil
 | --- | --- |
 | `protocol` | Parse backend responses and perform backend requests. |
 | `runtime` | Choose visible content and control display timing. |
-| `rendering` | Route typed scenes and compose exact `384x32` frames. |
-| `features` | Render one display family without controller state. |
+| `app` | Build frames, run the card viewport, and run the frame loop. |
+| `ui` | Draw cards, screens, and overlays without controller state. Route each item to its card. |
 | `assets` | Plan and warm shared assets before mode filtering. |
 | `platform` | Store device identity and run operating system commands. |
 | `drivers` | Present complete frames to hardware, memory, or the emulator. |

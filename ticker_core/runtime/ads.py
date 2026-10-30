@@ -1,4 +1,4 @@
-"""Compose hardware-only April Fools sports campaign cards."""
+"""Insert the April Fools sports campaign cards into the strip of a hardware ticker."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from datetime import datetime
 import random
 from typing import Any
 
-from ticker_core.runtime.model import Content, frozen_mapping
+from .model import Content, frozen_mapping
 
 
 APRIL_FOOLS_MONTH = 4

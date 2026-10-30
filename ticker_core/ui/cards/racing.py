@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 from sports_ticker.providers.racing_session import racing_timed_session
 from sports_ticker.providers.sports_display import racing_flag_code, racing_flag_pixel, racing_signal
 
-from ..frame import ContentScene, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, RenderContext, RenderedContent
 from ..layers import ImageTemplates
 from ..text import TINY, FontSet, draw_tiny, plain_text
 
@@ -47,20 +47,16 @@ class RacingCard:
         self._headers = ImageTemplates()
         self._cards: OrderedDict[tuple, Image.Image] = OrderedDict()
         self._strip: dict[tuple, tuple[tuple[Image.Image, ...], Image.Image, int]] = {}
-        self._key_item: Mapping[str, Any] | None = None
-        self._key_json: str | None = None
+        self._key = ItemKey("racing")
         self._asset_item: Mapping[str, Any] | None = None
         self._asset_revision: int | None = None
         self._asset_state: tuple = ()
 
     def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
         """Change the key only when this item, its own prepared assets, or the animation frame changes."""
-        if scene.item is not self._key_item:
-            self._key_item = scene.item
-            self._key_json = json.dumps(scene.item, sort_keys=True, default=str, separators=(",", ":"))
         pinned = scene.item.get("sports_presentation") == "pinned"
         assets = self._prepared(scene.item, asset_revision) if pinned else asset_revision
-        return ("racing", self._key_json, scene.mode, assets, int(context.now.timestamp() * 30))
+        return self._key(scene, assets, int(context.now.timestamp() * 30))
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         now = context.now.timestamp()

@@ -19,7 +19,7 @@ Read the [project map and cleanup plan](project-map.md) for component boundaries
 | `ticker3/worker/` | Run one provider in one process and send its results to the core. |
 | `ticker_core/protocol/` | Read the backend and validate display responses on the Pi. |
 | `ticker_core/app/` | Build frames and manage the card viewport. |
-| `ticker_core/features/` | Render content and overlays. |
+| `ticker_core/ui/` | Draw content cards, screens, and overlays. |
 | `ticker_core/platform/assets.py` | Store durable image cache files. |
 | `ticker_core/assets/` | Plan assets and provide memory reads. |
 | `esp32_hub75/` | Build the ESP32 display firmware with PlatformIO. |

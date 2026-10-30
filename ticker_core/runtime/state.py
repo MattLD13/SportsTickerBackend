@@ -11,7 +11,7 @@ import json
 from types import MappingProxyType
 from typing import Any, TypeVar
 
-from ticker_core.features.sports.ads import compose_april_fools_ads, is_hardware_ad
+from .ads import compose_april_fools_ads, is_hardware_ad
 
 from .model import (
     Content,

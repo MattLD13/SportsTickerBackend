@@ -330,7 +330,7 @@ def _sports(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
 
 def _ads(encode: Encode, base: datetime) -> Iterator[dict[str, Any]]:
     """Every April Fools campaign card in the strip, with and without its logo."""
-    from ticker_core.features.sports.ads import SPORTS_ADS
+    from ticker_core.runtime.ads import SPORTS_ADS
 
     for index, ad in enumerate(SPORTS_ADS):
         for spot in ad["spots"]:

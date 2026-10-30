@@ -170,6 +170,25 @@ def draw_hybrid(draw: ImageDraw.ImageDraw, x: int | float, y: int | float, text:
     return HYBRID_FONT.draw(draw, int(x), int(y), text, color)
 
 
+def draw_pane(draw: ImageDraw.ImageDraw, x: int, y: int, text: object, color, scale: int = 1) -> int:
+    """Draw pane glyphs at a scale and return the width. Each glyph advances its width plus one column."""
+    fill = (*(max(0, min(255, int(channel))) for channel in color[:3]), 255)
+    cursor = x
+    for char in str(text).upper():
+        rows = PANE.get(char.upper(), PANE[" "])
+        for row in range(5):
+            for column, bit in enumerate(rows[row]):
+                if bit:
+                    left, top = cursor + column * scale, y + row * scale
+                    draw.rectangle([left, top, left + scale - 1, top + scale - 1], fill=fill)
+        cursor += (len(rows[0]) + 1) * scale
+    return cursor - x
+
+
+def pane_width(text: object, scale: int = 1) -> int:
+    return sum(len(PANE.get(char.upper(), PANE[" "])[0]) + 1 for char in str(text)) * scale
+
+
 def clean_text(value: object) -> str:
     """Return drawable text without surrounding space."""
     return plain_text(value).strip()

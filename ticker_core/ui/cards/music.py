@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 from sports_ticker.assets.music_palette import artwork_colors
 
-from ..frame import ContentScene, Logos, NoLogos, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, Logos, NoLogos, RenderContext, RenderedContent
 from ..text import FontSet, clean_text
 
 WIDTH, HEIGHT = 384, 32
@@ -37,6 +37,7 @@ class MusicState:
 
 class MusicCard:
     def __init__(self, fonts: FontSet, logos: Logos | None = None) -> None:
+        self._key = ItemKey("music")
         self._fonts = fonts
         self._logos = logos or NoLogos()
         self._mask = Image.new("L", (COVER, COVER), 0)
@@ -44,6 +45,10 @@ class MusicCard:
         self._record = Image.new("RGBA", (RECORD, RECORD), (0, 0, 0, 0))
         ImageDraw.Draw(self._record).ellipse((0, 0, RECORD - 1, RECORD - 1), fill=(20, 20, 20), outline=(50, 50, 50))
         self._state = MusicState()
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        # The equalizer and the progress move at 30 frames each second.
+        return self._key(scene, asset_revision, int(context.now.timestamp() * 30))
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         image, self._state = self.frame(context.now, scene.item, self._state)

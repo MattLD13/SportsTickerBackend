@@ -119,7 +119,7 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
     from ticker3.web import routes
     from ticker3.web.preview import PreviewRenderer, layout_case, layout_library
     from ticker_core.bootstrap import create_default_frame_builder
-    from ticker_core.features.sports import SportsRenderer
+    from ticker_core.ui.sports import SportsCard
     from ticker_core.ui.text import load_default_font_set
     from ticker_core.runtime import Content, FrameDecision, FrameKind
 
@@ -147,12 +147,12 @@ def test_public_frames_match_hardware_and_follow_renderer_changes(tmp_path, monk
         finally:
             viewport.close()
 
-        original = SportsRenderer.render_full
+        original = SportsCard.pinned
         def changed_layout(self, *args, **kwargs):
             image = original(self, *args, **kwargs)
             image.putpixel((383, 31), (255, 0, 255))
             return image
-        monkeypatch.setattr(SportsRenderer, "render_full", changed_layout)
+        monkeypatch.setattr(SportsCard, "pinned", changed_layout)
         assets.renderer.close()
         assets.renderer = PreviewRenderer(assets)
         response = client.get("/demo/frame.png?case=HK07")

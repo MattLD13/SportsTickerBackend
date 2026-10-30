@@ -10,7 +10,7 @@ from PIL import Image
 from ticker_core.ui.frame import RenderContext
 from ticker_core.ui.news_banner import NewsBanner
 from ticker_core.ui.score_alert import ScoreAlert
-from ticker_core.ui import ContentRendererCatalog, ContentScene
+from ticker_core.ui import CardCatalog, ContentScene
 from ticker_core.ui import FrameGeometry
 from ticker_core.ui.frame import plain_mapping as _plain_mapping
 from ticker_core.ui.screens import Screens, connection_lost, update_overlay
@@ -33,7 +33,7 @@ class FrameBuilder:
 
     def __init__(
         self,
-        catalog: ContentRendererCatalog,
+        catalog: CardCatalog,
         screens: Screens,
         score_alerts: ScoreAlert,
         news_banners: NewsBanner,

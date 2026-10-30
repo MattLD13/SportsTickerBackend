@@ -5,7 +5,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-from ..frame import ContentScene, Logos, NoLogos, RenderContext, RenderedContent
+from ..frame import ContentScene, ItemKey, Logos, NoLogos, RenderContext, RenderedContent
 from ..layers import ImageTemplates
 from ..text import FontSet, draw_tiny
 
@@ -20,8 +20,12 @@ PLANE = ((2, 0), (1, 1), (2, 1), (3, 1), (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
 
 class FlightCard:
     def __init__(self, fonts: FontSet, logos: Logos | None = None) -> None:
+        self._key = ItemKey("flight")
         self._logos = logos or NoLogos()
         self._boards = ImageTemplates(capacity=16, max_bytes=1024 * 1024)
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        return self._key(scene, asset_revision, None)
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         kind = str(scene.item.get("type", "")).lower()

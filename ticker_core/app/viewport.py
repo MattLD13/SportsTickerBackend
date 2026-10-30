@@ -17,8 +17,8 @@ from typing import Any, Callable
 from PIL import Image, ImageChops
 
 from ticker_core.ui.frame import RenderContext
-from ticker_core.ui import ContentRendererCatalog, ContentScene
-from ticker_core.ui.catalog import content_family
+from ticker_core.ui import CardCatalog, ContentScene
+from ticker_core.ui.catalog import card_family
 from ticker_core.ui.strip import compose_pane_strip
 from ticker_core.ui.palette import pane_divider_colors
 from ticker_core.ui.frame import plain_mapping as _plain_mapping
@@ -86,7 +86,7 @@ class CardViewport:
 
     def __init__(
         self,
-        catalog: ContentRendererCatalog,
+        catalog: CardCatalog,
         *,
         use_process: bool = False,
         asset_directory: Path | str | None = None,
@@ -766,7 +766,7 @@ def _compose_tiled_strip(
     return tiled
 
 
-_PROCESS_CATALOG: ContentRendererCatalog | None = None
+_PROCESS_CATALOG: CardCatalog | None = None
 _PROCESS_ASSETS = None
 _PROCESS_ASSET_GENERATION = None
 
@@ -796,7 +796,7 @@ def _render_process_job(job: _CardJob) -> _CardPixels:
     return _render_catalog_job(_PROCESS_CATALOG, job, signatures, started=started)
 
 
-def _render_catalog_job(catalog: ContentRendererCatalog, job: _CardJob, signatures=(), *, started: float | None = None) -> _CardPixels:
+def _render_catalog_job(catalog: CardCatalog, job: _CardJob, signatures=(), *, started: float | None = None) -> _CardPixels:
     """Render one serializable scene and return only pixel data."""
     rendered = catalog.render(job.context, ContentScene(job.scene, job.mode))
     image = rendered.image.convert("RGBA")
@@ -807,7 +807,7 @@ def _render_catalog_job(catalog: ContentRendererCatalog, job: _CardJob, signatur
 def _cacheable(request: _CardRequest) -> bool:
     """Keep only time-independent scrolling sports cards in the durable pane cache."""
     return (request.mode == "sports" and request.item.type == "scoreboard"
-            and content_family(request.scene) == "scoreboard"
+            and card_family(request.scene) == "scoreboard"
             and request.scene.get("sports_presentation") != "pinned")
 
 

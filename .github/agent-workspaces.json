@@ -55,7 +55,13 @@
         "ticker3/__init__.py",
         "sports_ticker/providers/*.py",
         "ticker_core/protocol/*.py",
-        "ticker_core/ui/*",
+        "ticker_core/ui/__init__.py",
+        "ticker_core/ui/catalog.py",
+        "ticker_core/ui/frame.py",
+        "ticker_core/ui/layers.py",
+        "ticker_core/ui/palette.py",
+        "ticker_core/ui/strip.py",
+        "ticker_core/ui/text.py",
         "ticker_core/ui/font_assets/*",
         "ticker_core/__init__.py",
         "ticker_core/_enum.py"
@@ -289,7 +295,7 @@
       "owned": [
         "sports_ticker/providers/stocks.py",
         "sports_ticker/providers/market_sessions.py",
-        "ticker_core/features/utility/*"
+        "ticker_core/ui/cards/stock.py"
       ],
       "dependencies": [
         "server-core",
@@ -300,7 +306,7 @@
         "sports_ticker/providers/market_sessions.py"
       ],
       "build": [
-        "ticker_core/features/utility/*",
+        "ticker_core/ui/cards/stock.py",
         "tests/python/features/utility/*",
         "sports_ticker/assets/__init__.py",
         "sports_ticker/assets/images.py"
@@ -708,15 +714,15 @@
     "six-sports-renderer": {
       "owner": "Ticker Six sports presentation",
       "owned": [
-        "ticker_core/features/sports/*"
+        "ticker_core/ui/sports/*"
       ],
       "dependencies": [
         "sports-server",
         "six-build"
       ],
       "context": [
-        "ticker_core/features/sports/renderer.py",
-        "ticker_core/features/sports/pinned.py"
+        "ticker_core/ui/sports/__init__.py",
+        "ticker_core/ui/sports/pinned.py"
       ],
       "build": [
         "tests/python/features/sports/test_sports_renderers.py",
