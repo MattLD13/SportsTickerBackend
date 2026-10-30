@@ -2,14 +2,16 @@
 
 Open `TickerControl.xcodeproj` in Xcode.
 
-The app uses the V2 ticker API. It stores its controller token on this device after code pairing.
+The app uses the ticker API in `docs/api.md`. It keeps one controller token for each paired ticker in the Keychain.
 
-Use Pair New > Set Up Ticker Wi-Fi when a new ticker needs network setup. Choose the iPhone's current Wi-Fi to prefill its SSID, or choose a different network and enter its name. Enter the six-digit code and Wi-Fi password. iOS will ask permission to join the temporary ticker network before the app submits the settings over the ticker's local HTTPS portal.
+When no ticker is paired, the app shows the setup screen first.
 
-When no ticker is paired, the app gates the dashboard behind this setup screen. A second household user can choose Connect an existing ticker with a pair code, using a fresh code from the owner's device row.
+- Set Up Wi-Fi sends the home Wi-Fi settings to a new ticker over Bluetooth. Enter the six-digit WIFI PIN that the ticker shows. Choose the current Wi-Fi of the iPhone, or enter the name of a different network. The app then pairs with the code that the ticker returns.
+- Connect an existing ticker pairs with a code. A second household user gets a fresh code from Show Pair Code on the device card of the owner.
 
-The Home connection bar opens the ticker switcher. A small selector on each Settings device card changes the active ticker. Ticker names, hardware profiles, dimensions, and last-seen values identify each paired device. My Teams and Spotify remain shared across the app's controller group. Display mode, brightness, paging, and other hardware settings remain per ticker.
+The connection line on Home opens the ticker switcher. The selector on each Settings device card also changes the active ticker.
+My Teams and Spotify belong to the controller group of the app. Display mode, brightness, scroll speed, and the other hardware settings belong to each ticker.
 
 Set `SPOTIFY_APP_RETURN_URI` to `tickercontrol://spotify` on the backend. Spotify returns to the app after authorization.
 
-`TickerControl/` contains app source and assets. `design/` contains source icon art. `tools/` contains icon generators.
+`TickerControl/` contains the app source and assets. `design/` contains the source icon art.

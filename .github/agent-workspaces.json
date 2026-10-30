@@ -224,7 +224,7 @@
       "checks": []
     },
     "app-contracts": {
-      "owner": "iOS V2 contract consumers",
+      "owner": "iOS controller app and its server contract",
       "owned": [
         "TickerControlApp/*"
       ],
@@ -232,8 +232,9 @@
         "server-core"
       ],
       "context": [
-        "TickerControlApp/TickerControl/Models/TickerContentModels.swift",
-        "TickerControlApp/TickerControlTests/ContractModelsTests.swift"
+        "TickerControlApp/TickerControl/Core/Models/Feed.swift",
+        "TickerControlApp/TickerControl/Core/Store/TickerStore.swift",
+        "TickerControlApp/TickerControlTests/ContractTests.swift"
       ],
       "build": [
         "TickerControlApp/*"

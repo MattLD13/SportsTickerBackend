@@ -72,7 +72,7 @@ Generate narrow DTOs only after Python, Swift, and C++ contracts agree.
 |---|---|
 | Registration | `sports_ticker/api/routes.py`, `sports_ticker/fleet/`, Pi and Mini registration clients. |
 | Hardware profile | `sports_ticker/fleet/profiles.py`, `TickerHardwareProfile.swift`, Mini registration payload. |
-| Schedule | `sports_ticker/domain/schedule.py`, `sports_ticker/application/schedule.py`, `TickerScheduleModels.swift`. |
+| Schedule | `sports_ticker/domain/schedule.py`, `sports_ticker/application/schedule.py`, `TickerControlApp/TickerControl/Core/Models/Schedule.swift`. |
 | Firmware | `sports_ticker/firmware.py`, Pi updater, Mini update manifest reader. |
 | Display | `sports_ticker/projections/data_api.py`, Pi protocol model, Mini payload parser, dashboard client. |
 

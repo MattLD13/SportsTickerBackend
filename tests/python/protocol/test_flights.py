@@ -220,7 +220,7 @@ def test_flight_source_supplies_live_and_airport_contract_facts() -> None:
 
 
 
-# AirportFlight in TickerControlApp/TickerControl/Models/TickerContentModels.swift reads these keys.
+# AirportBoard.Flight in TickerControlApp/TickerControl/Core/Models/Feed.swift reads these keys.
 CONTROLLER_AIRPORT_ROW_KEYS = ("flight_number", "airport_code", "airport_city", "status")
 
 
