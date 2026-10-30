@@ -58,10 +58,7 @@
         "ticker_core/ui/*",
         "ticker_core/ui/font_assets/*",
         "ticker_core/__init__.py",
-        "ticker_core/_enum.py",
-        "ticker_core/context.py",
-        "ticker_core/registry.py",
-        "ticker_core/scene.py"
+        "ticker_core/_enum.py"
       ],
       "checks": []
     },
