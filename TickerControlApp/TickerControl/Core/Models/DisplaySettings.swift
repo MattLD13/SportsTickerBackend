@@ -1,7 +1,7 @@
 import Foundation
 
 /// The display settings of one ticker. The fields follow `DisplaySettings` in `sports_ticker/domain/models.py`.
-struct DisplaySettings: Codable, Equatable {
+nonisolated struct DisplaySettings: Codable, Equatable {
     var activeSports: [String: Bool] = [:]
     var myTeams: [String] = []
     var mode = "sports"
@@ -73,7 +73,7 @@ struct DisplaySettings: Codable, Equatable {
 }
 
 /// A partial settings change. Only the fields that are set go to the server.
-struct DisplaySettingsPatch: Encodable, Equatable {
+nonisolated struct DisplaySettingsPatch: Encodable, Equatable {
     var activeSports: [String: Bool]?
     var myTeams: [String]?
     var mode: String?
@@ -117,7 +117,7 @@ struct DisplaySettingsPatch: Encodable, Equatable {
 }
 
 /// A `PATCH /tickers/<id>` body.
-struct TickerChange: Encodable, Equatable {
+nonisolated struct TickerChange: Encodable, Equatable {
     var name: String?
     var displaySettings: DisplaySettingsPatch?
     var scheduleOverride: Bool?

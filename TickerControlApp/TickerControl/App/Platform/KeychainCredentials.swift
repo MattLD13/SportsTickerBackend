@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Stores the controller tokens and the group secret as generic passwords in the Keychain.
-final class KeychainCredentials: CredentialStore {
+nonisolated final class KeychainCredentials: CredentialStore {
     private func query(service: String, account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }

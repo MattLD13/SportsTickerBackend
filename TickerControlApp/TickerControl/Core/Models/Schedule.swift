@@ -2,7 +2,7 @@ import Foundation
 
 /// A weekly block: the ticker shows `mode` on the selected days from `startMinute` to `endMinute`.
 /// Days count from 0 (Monday) to 6 (Sunday). Minute 1440 ends a block at midnight.
-struct ScheduleBlock: Decodable, Identifiable, Hashable {
+nonisolated struct ScheduleBlock: Decodable, Identifiable, Hashable {
     let id: String
     let daysOfWeek: [Int]
     let startMinute: Int
@@ -26,7 +26,7 @@ struct ScheduleBlock: Decodable, Identifiable, Hashable {
 }
 
 /// A live-game rule: while Sports mode shows, the feed switches to live games when enough games are live.
-struct ScheduleCondition: Decodable, Identifiable, Hashable {
+nonisolated struct ScheduleCondition: Decodable, Identifiable, Hashable {
     let id: String
     let threshold: Int
     let comparison: String
@@ -38,7 +38,7 @@ struct ScheduleCondition: Decodable, Identifiable, Hashable {
 }
 
 /// The effective state of the schedule now.
-struct ScheduleStatus: Decodable, Hashable {
+nonisolated struct ScheduleStatus: Decodable, Hashable {
     var hasEnabledRules = false
     var active = false
     var override = false
@@ -71,7 +71,7 @@ struct ScheduleStatus: Decodable, Hashable {
 }
 
 /// The schedule of one ticker, as `GET /tickers/<id>/schedule` returns it.
-struct Schedule: Decodable {
+nonisolated struct Schedule: Decodable {
     let timezone: String
     let blocks: [ScheduleBlock]
     let conditions: [ScheduleCondition]
@@ -84,7 +84,7 @@ struct Schedule: Decodable {
 }
 
 /// The body that adds or changes a block. A block for another mode clears its sports filter.
-struct ScheduleBlockDraft: Encodable, Equatable {
+nonisolated struct ScheduleBlockDraft: Encodable, Equatable {
     var daysOfWeek: [Int]
     var startMinute: Int
     var endMinute: Int
@@ -110,7 +110,7 @@ struct ScheduleBlockDraft: Encodable, Equatable {
 
 /// The body that adds or changes the live-game rule. The rule always runs in Sports mode, shows live games,
 /// and keeps a pinned game first. Only a new rule sends its kind.
-struct ScheduleConditionDraft: Encodable, Equatable {
+nonisolated struct ScheduleConditionDraft: Encodable, Equatable {
     var isNew: Bool
     var threshold: Int
     var comparison: String

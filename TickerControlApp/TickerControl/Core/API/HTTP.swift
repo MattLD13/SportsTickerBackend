@@ -4,11 +4,11 @@ import FoundationNetworking
 #endif
 
 /// Sends one request and returns the body and the HTTP response.
-protocol HTTPTransport {
+nonisolated protocol HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
-struct URLSessionTransport: HTTPTransport {
+nonisolated struct URLSessionTransport: HTTPTransport {
     var session: URLSession = .shared
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -19,7 +19,7 @@ struct URLSessionTransport: HTTPTransport {
 }
 
 /// A failed request. The server sends `{"error": {"code": "...", "message": "..."}}` with its status.
-enum APIError: LocalizedError, Equatable {
+nonisolated enum APIError: LocalizedError, Equatable {
     case invalidServerURL
     case notPaired
     case transport(String)
@@ -47,10 +47,10 @@ enum APIError: LocalizedError, Equatable {
 }
 
 /// A response that the app does not read.
-struct Empty: Decodable {}
+nonisolated struct Empty: Decodable {}
 
 /// Sends the endpoints of the ticker server.
-final class APIClient {
+nonisolated final class APIClient {
     private let transport: any HTTPTransport
     private(set) var baseURL: String
 

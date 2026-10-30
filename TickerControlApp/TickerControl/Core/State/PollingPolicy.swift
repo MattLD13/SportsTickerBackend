@@ -2,7 +2,7 @@ import Foundation
 
 /// Choose when the app reads the display data again. A user edit stops polling, so a read cannot undo the edit.
 /// After a mode change, a burst of fast reads shows the result quickly.
-struct PollingPolicy {
+nonisolated struct PollingPolicy {
     private var lastPoll: Date = .distantPast
     private var burstUntil: Date = .distantPast
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The data of one ticker, as `GET /tickers/<id>/data` returns it.
-struct DisplayData: Decodable {
+nonisolated struct DisplayData: Decodable {
     let settings: DisplaySettings
     let content: [String: [FeedItem]]
     let meta: DisplayMeta
@@ -14,15 +14,15 @@ struct DisplayData: Decodable {
     }
 }
 
-struct DisplayMeta: Decodable {
+nonisolated struct DisplayMeta: Decodable {
     let pairing: PairingState?
     let schedule: ScheduleStatus?
 }
 
-struct PairingState: Decodable { let paired: Bool; let code: String? }
+nonisolated struct PairingState: Decodable { let paired: Bool; let code: String? }
 
 /// One content item. The payload is typed by the kind of the item.
-struct FeedItem: Decodable, Identifiable {
+nonisolated struct FeedItem: Decodable, Identifiable {
     let id: String
     let family: String
     let kind: String
@@ -72,7 +72,7 @@ struct FeedItem: Decodable, Identifiable {
     var pinID: String { id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 }
 
-struct TeamSide {
+nonisolated struct TeamSide {
     let abbr: String
     let id: String?
     let score: String
@@ -91,7 +91,7 @@ struct TeamSide {
 }
 
 /// A game, a tournament, or a race: the content of the sports families.
-struct Game {
+nonisolated struct Game {
     let sport: String
     let status: String
     let state: String?
@@ -115,7 +115,7 @@ struct Game {
     func side(isHome: Bool) -> TeamSide { isHome ? home : away }
 }
 
-struct Situation {
+nonisolated struct Situation {
     let activeTeam: String?
     let downDistance: String?
     let isRedZone: Bool
@@ -142,7 +142,7 @@ struct Situation {
 }
 
 /// A stock quote. The server sends the price in `home_score` and the change in percent in `away_score`.
-struct StockQuote {
+nonisolated struct StockQuote {
     let symbol: String
     let price: String
     let changePercent: String
@@ -162,7 +162,7 @@ struct StockQuote {
     var isUp: Bool { !changePercent.contains("-") }
 }
 
-struct WeatherReport {
+nonisolated struct WeatherReport {
     let city: String
     let temperature: String
     let condition: String
@@ -194,7 +194,7 @@ struct WeatherReport {
     }
 }
 
-struct NowPlaying {
+nonisolated struct NowPlaying {
     let title: String?
     let artist: String?
     let cover: String?
@@ -218,7 +218,7 @@ struct NowPlaying {
     }
 }
 
-struct TrackedFlight {
+nonisolated struct TrackedFlight {
     let id: String
     let guestName: String?
     let route: String?
@@ -249,7 +249,7 @@ struct TrackedFlight {
     var delayed: Bool { isDelayed || (delayMinutes ?? 0) >= 15 }
 }
 
-struct AirportBoard {
+nonisolated struct AirportBoard {
     let code: String?
     let city: String?
     let temperature: String?

@@ -1,7 +1,7 @@
 import Foundation
 
 /// A geocoded weather location.
-struct Place: Equatable {
+nonisolated struct Place: Equatable {
     let name: String
     let latitude: Double
     let longitude: Double
@@ -21,7 +21,7 @@ protocol TickerPlatform {
 }
 
 /// A failure that the platform reports with a message for the user.
-struct PlatformError: LocalizedError, Equatable {
+nonisolated struct PlatformError: LocalizedError, Equatable {
     let message: String
     init(_ message: String) { self.message = message }
     var errorDescription: String? { message }

@@ -1,25 +1,25 @@
 import Foundation
 
 /// Stores secrets, such as the Keychain on iOS.
-protocol CredentialStore {
+nonisolated protocol CredentialStore {
     func read(service: String, account: String) -> String?
     func write(_ value: String, service: String, account: String) -> Bool
     func remove(service: String, account: String)
 }
 
 /// Stores small values, such as `UserDefaults`.
-protocol ValueStore {
+nonisolated protocol ValueStore {
     func string(forKey key: String) -> String?
     func stringArray(forKey key: String) -> [String]?
     func set(_ value: Any?, forKey key: String)
 }
 
-extension UserDefaults: ValueStore {}
+nonisolated extension UserDefaults: ValueStore {}
 
 /// The pairing state of this app: the server, the active ticker, the controller tokens, and the controller group.
 /// A controller group shares My Teams and Spotify across the tickers that this app paired with group sharing.
 /// The keys are the keys of earlier app releases, so an update keeps every pairing.
-final class Session {
+nonisolated final class Session {
     static let defaultServer = "https://ticker.mattdicks.org"
     private static let tokenService = "matt.TickerControl.controller-token"
     private static let groupSecretService = "matt.TickerControl.controller-group-secret"

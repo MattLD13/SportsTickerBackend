@@ -1,7 +1,7 @@
 import Foundation
 
 /// One ticker of the controller group, as `GET /tickers` returns it.
-struct TickerRecord: Decodable, Identifiable {
+nonisolated struct TickerRecord: Decodable, Identifiable {
     let id: String
     let name: String
     let settings: DisplaySettings
@@ -46,9 +46,9 @@ struct TickerRecord: Decodable, Identifiable {
     }
 }
 
-struct TickerList: Decodable { let tickers: [TickerRecord] }
+nonisolated struct TickerList: Decodable { let tickers: [TickerRecord] }
 
-struct TickerProfile: Decodable {
+nonisolated struct TickerProfile: Decodable {
     let productFamily: String
     let hardware: String
     let firmware: String
@@ -72,11 +72,11 @@ struct TickerProfile: Decodable {
     }
 }
 
-enum DisplayMode {
+nonisolated enum DisplayMode {
     static let all = ["sports", "stock", "weather", "music", "flights", "airports", "clock"]
 }
 
-struct PairRequest: Encodable {
+nonisolated struct PairRequest: Encodable {
     let pairingCode: String
     let controllerGroupID: String?
     let controllerGroupSecret: String?
@@ -85,7 +85,7 @@ struct PairRequest: Encodable {
     }
 }
 
-struct PairResult: Decodable {
+nonisolated struct PairResult: Decodable {
     let tickerID: String
     let controllerToken: String
     let controllerGroupID: String?
@@ -96,7 +96,7 @@ struct PairResult: Decodable {
     }
 }
 
-struct PairingCode: Decodable {
+nonisolated struct PairingCode: Decodable {
     let pairingCode: String
     enum CodingKeys: String, CodingKey { case pairingCode = "pairing_code" }
 }

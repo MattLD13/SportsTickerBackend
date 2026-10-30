@@ -1,6 +1,6 @@
 import Foundation
 
-enum ScheduleCalendarScope: String, CaseIterable {
+nonisolated enum ScheduleCalendarScope: String, CaseIterable {
     case weekdays = "Weekdays"
     case weekends = "Weekends"
     case days = "By day"
@@ -18,7 +18,7 @@ enum ScheduleCalendarScope: String, CaseIterable {
     }
 }
 
-struct ScheduleCalendarColumn: Identifiable {
+nonisolated struct ScheduleCalendarColumn: Identifiable {
     let id: String
     let title: String
     let days: [Int]
@@ -34,7 +34,7 @@ struct ScheduleCalendarColumn: Identifiable {
     }
 }
 
-enum SchedulePresentation {
+nonisolated enum SchedulePresentation {
     static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
     static func repeatLabel(_ days: [Int]) -> String {
@@ -126,7 +126,7 @@ enum SchedulePresentation {
     }
 }
 
-struct ScheduleCalendarPlacement: Identifiable {
+nonisolated struct ScheduleCalendarPlacement: Identifiable {
     let block: ScheduleBlock
     let column: Int
     var columns: Int
@@ -134,7 +134,7 @@ struct ScheduleCalendarPlacement: Identifiable {
     var id: String { block.id }
 }
 
-extension SchedulePresentation {
+nonisolated extension SchedulePresentation {
     /// The SF Symbol of a mode, when the server catalog has none.
     static func modeSymbol(_ mode: String) -> String {
         switch mode {

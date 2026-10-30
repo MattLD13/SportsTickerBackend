@@ -1,7 +1,7 @@
 import Foundation
 
 /// A league, a college conference, or a stock list of the catalog.
-struct League: Decodable, Identifiable, Hashable {
+nonisolated struct League: Decodable, Identifiable, Hashable {
     let id: String
     let label: String
     let type: String
@@ -13,9 +13,9 @@ struct League: Decodable, Identifiable, Hashable {
     var isStockList: Bool { type == "stock" }
 }
 
-struct LeagueCatalog: Decodable { let leagues: [League] }
+nonisolated struct LeagueCatalog: Decodable { let leagues: [League] }
 
-struct Team: Decodable, Identifiable, Hashable {
+nonisolated struct Team: Decodable, Identifiable, Hashable {
     let id: String
     let abbr: String
     let logo: String?
@@ -27,15 +27,15 @@ struct Team: Decodable, Identifiable, Hashable {
     }
 }
 
-struct TeamCatalog: Decodable { let teams: [Team] }
+nonisolated struct TeamCatalog: Decodable { let teams: [Team] }
 
-struct ModeOption: Decodable { let id: String; let symbol: String }
-struct ModeCatalog: Decodable { let modes: [ModeOption] }
+nonisolated struct ModeOption: Decodable { let id: String; let symbol: String }
+nonisolated struct ModeCatalog: Decodable { let modes: [ModeOption] }
 
-struct StockSymbol: Codable, Identifiable, Equatable {
+nonisolated struct StockSymbol: Codable, Identifiable, Equatable {
     let symbol: String
     let name: String
     var id: String { symbol }
 }
 
-struct StockSearch: Decodable { let stocks: [StockSymbol] }
+nonisolated struct StockSearch: Decodable { let stocks: [StockSymbol] }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// A coding key from a string, for reading content fields by name.
-struct FieldKey: CodingKey {
+nonisolated struct FieldKey: CodingKey {
     let stringValue: String
     var intValue: Int? { nil }
     init(_ value: String) { stringValue = value }
@@ -10,7 +10,7 @@ struct FieldKey: CodingKey {
 }
 
 /// Content data comes from many providers, so a field can be text or a number. These readers accept both.
-extension KeyedDecodingContainer where Key == FieldKey {
+nonisolated extension KeyedDecodingContainer where Key == FieldKey {
     func text(_ name: String) -> String? {
         let key = FieldKey(name)
         if let value = try? decode(String.self, forKey: key) { return value }
@@ -53,4 +53,4 @@ extension KeyedDecodingContainer where Key == FieldKey {
     }
 }
 
-private struct Discard: Decodable {}
+nonisolated private struct Discard: Decodable {}

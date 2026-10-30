@@ -1,7 +1,7 @@
 import Foundation
 
 /// The items of the Home feed, in display order and grouped by card type.
-struct FeedSections {
+nonisolated struct FeedSections {
     var games: [FeedItem] = []
     var music: [FeedItem] = []
     var stocks: [FeedItem] = []
@@ -25,7 +25,7 @@ struct FeedSections {
     }
 }
 
-enum FeedOrder {
+nonisolated enum FeedOrder {
     /// Order the feed: the pinned game, then shown items, then stocks, then live games, then server order.
     /// In Sports mode the feed also lists hidden games, so a user can pin any game.
     static func items(_ data: DisplayData, pinnedID: String?) -> [FeedItem] {
@@ -45,6 +45,6 @@ enum FeedOrder {
     }
 }
 
-private extension FeedItem {
+nonisolated private extension FeedItem {
     var isStock: Bool { if case .stock = payload { return true } else { return false } }
 }

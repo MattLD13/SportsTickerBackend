@@ -17,7 +17,6 @@ func repositoryFile(_ path: String) throws -> String {
 }
 
 /// A server in memory. Each route answers from `routes`, and every request is recorded.
-@MainActor
 final class FakeServer: HTTPTransport {
     struct Answer { var status = 200; var body: Any = [String: Any]() }
     var routes: [String: Answer] = [:]
@@ -55,7 +54,6 @@ final class FakeServer: HTTPTransport {
     }
 }
 
-@MainActor
 final class MemoryValues: ValueStore {
     var values: [String: Any] = [:]
     func string(forKey key: String) -> String? { values[key] as? String }
@@ -63,7 +61,6 @@ final class MemoryValues: ValueStore {
     func set(_ value: Any?, forKey key: String) { values[key] = value }
 }
 
-@MainActor
 final class MemoryCredentials: CredentialStore {
     var secrets: [String: String] = [:]
     var failsWrites = false

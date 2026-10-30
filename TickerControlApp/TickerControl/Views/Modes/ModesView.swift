@@ -306,6 +306,9 @@ private struct LeaguesSection: View {
     private func leagueButton(_ league: League, conference: Bool = false, embedded: Bool = false) -> some View {
         let enabled = store.isEnabled(league)
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let fill: Color = embedded ? .clear : (enabled ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+        let edge: Color = embedded ? .clear : (enabled ? Color.green : Color.white.opacity(0.1))
+        let kind = conference ? "conference" : "league"
         return Button { store.toggleLeague(league) } label: {
             Text(league.label)
                 .font(.subheadline).bold()
@@ -313,14 +316,14 @@ private struct LeaguesSection: View {
                 .padding(.horizontal, embedded ? 8 : 12)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.vertical, 4)
-                .background(embedded ? Color.clear : (enabled ? Color.green.opacity(0.8) : Color.white.opacity(0.05)))
+                .background(fill)
                 .clipShape(shape)
-                .overlay(shape.stroke(embedded ? Color.clear : (enabled ? Color.green : Color.white.opacity(0.1)), lineWidth: 1))
+                .overlay(shape.stroke(edge, lineWidth: 1))
                 .foregroundColor(.white)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("\(conference ? "conference" : "league")-\(league.id)")
+        .accessibilityIdentifier("\(kind)-\(league.id)")
         .accessibilityLabel(league.label)
         .accessibilityValue(enabled ? "Enabled" : "Disabled")
         .accessibilityHint("Double-tap to change whether this league is enabled.")

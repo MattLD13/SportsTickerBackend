@@ -1,7 +1,7 @@
 import Foundation
 
 /// A league with its college conferences, for the Enabled Leagues grid.
-struct LeagueGroup: Identifiable {
+nonisolated struct LeagueGroup: Identifiable {
     let league: League
     let conferences: [League]
 

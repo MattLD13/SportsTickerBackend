@@ -38,14 +38,14 @@ struct SchedulePreview: View {
     }
 }
 
-private final class PreviewValues: ValueStore {
+nonisolated private final class PreviewValues: ValueStore {
     private var values: [String: Any] = [:]
     func string(forKey key: String) -> String? { values[key] as? String }
     func stringArray(forKey key: String) -> [String]? { values[key] as? [String] }
     func set(_ value: Any?, forKey key: String) { values[key] = value }
 }
 
-private final class PreviewCredentials: CredentialStore {
+nonisolated private final class PreviewCredentials: CredentialStore {
     func read(service: String, account: String) -> String? { "preview-only" }
     func write(_ value: String, service: String, account: String) -> Bool { true }
     func remove(service: String, account: String) {}
@@ -61,7 +61,7 @@ private final class PreviewPlatform: TickerPlatform {
 }
 
 /// Serves the schedule routes of `docs/api.md` from memory. Enabled blocks cannot overlap, as on the server.
-private final class PreviewServer: HTTPTransport {
+nonisolated private final class PreviewServer: HTTPTransport {
     private var blocks: [[String: Any]]
     private var conditions: [[String: Any]] = []
     private var paused = false

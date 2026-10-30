@@ -1,7 +1,7 @@
 import Foundation
 
 /// One route of `docs/api.md`, with its method, path, body, and response type.
-struct Endpoint<Response> {
+nonisolated struct Endpoint<Response> {
     var method: String
     var path: String
     var query: [(String, String)] = []
@@ -11,7 +11,7 @@ struct Endpoint<Response> {
     var decode: (Data) throws -> Response
 }
 
-extension Endpoint where Response: Decodable {
+nonisolated extension Endpoint where Response: Decodable {
     init(_ method: String, _ path: String, query: [(String, String)] = [], body: Data? = nil, authorized: Bool = true,
          timeout: TimeInterval = 15) {
         self.init(method: method, path: path, query: query, body: body, authorized: authorized, timeout: timeout) {
@@ -21,7 +21,7 @@ extension Endpoint where Response: Decodable {
 }
 
 /// The app routes of the ticker server.
-enum API {
+nonisolated enum API {
     private static func json(_ value: some Encodable) -> Data? { try? JSONEncoder().encode(value) }
     private static func segment(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? value
