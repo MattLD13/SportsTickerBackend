@@ -126,6 +126,7 @@ class OpenMeteoWeatherProvider:
                     "temperature_2m,weather_code,apparent_temperature,"
                     "wind_speed_10m,relative_humidity_2m,is_day,cloud_cover"
                 ),
+                hourly="temperature_2m",
                 daily=(
                     "weather_code,temperature_2m_max,temperature_2m_min,"
                     "uv_index_max,sunrise,sunset,precipitation_probability_max,"
@@ -226,6 +227,8 @@ def _content_item(
     sunset = _first(daily.get("sunset"))
     aqi_value = _optional_int(aqi)
     forecast = _forecast(daily, today=_source_date(payload))
+    hourly_data = _mapping(payload.get("hourly"))
+    hourly = [{"time": t, "temperature": v} for t, v in zip(hourly_data.get("time", []), hourly_data.get("temperature_2m", [])) if isinstance(t, str) and t[:10] == str(_source_date(payload)) and isinstance(v, (int, float)) and isfinite(v)]
     day_night = None if is_day is None else ("day" if is_day else "night")
     stats = {
         "aqi": _display(aqi_value),
@@ -244,6 +247,7 @@ def _content_item(
         "sunset": sunset,
         "stats": stats,
         "forecast": forecast,
+        "hourly": hourly,
     }
     data = {
         "type": "weather",
@@ -337,12 +341,16 @@ class HybridWeatherProvider:
         forecast_payload = self.client.get_json(forecast_url, timeout=self.timeout)
         observation = self._nws_observation(stations_url)
         hourly_payload = None
+        if hourly_url:
+            try:
+                hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
+            except Exception:
+                pass
         current_fallback = None
         try:
             current_fallback = self._open_meteo.fetch_current(settings)
         except Exception:
-            if not _nws_observation_is_fresh(observation) and hourly_url:
-                hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
+            pass
         aqi = self._open_meteo.fetch_aqi(settings)
         supplemental_error = None
         try:
@@ -547,6 +555,15 @@ def _nws_content_item(
     aqi_value = _optional_int(aqi)
     source_time = _parse_datetime(obs_time)
     forecast = _nws_forecast(periods, today=source_time.date() if source_time is not None else None)
+    hourly = []
+    for period in hourly_periods or []:
+        period = _mapping(period)
+        stamp = period.get("startTime")
+        value = period.get("temperature")
+        if isinstance(stamp, str) and isinstance(value, (int, float)) and isfinite(value):
+            hourly.append({"time": stamp, "temperature": _temperature_f(value, value, period.get("temperatureUnit"))})
+        if len(hourly) == 24:
+            break
     day_night = None if is_day is None else ("day" if is_day else "night")
     stats = {
         "aqi": _display(aqi_value),
@@ -565,6 +582,7 @@ def _nws_content_item(
         "sunset": supplemental.get("sunset"),
         "stats": stats,
         "forecast": forecast,
+        "hourly": hourly,
     }
     data = {
         "type": "weather",

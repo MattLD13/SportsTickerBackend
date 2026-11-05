@@ -267,3 +267,19 @@ def test_weather_location_resolver_canonicalizes_a_zip() -> None:
         "weather_lat": 40.74399,
         "weather_lon": -74.03236,
     }
+
+
+def test_open_meteo_hourly_is_limited_to_local_forecast_day():
+    from sports_ticker.providers.weather import _content_item
+
+    payload = {
+        'current': {'time': '2026-08-24T12:00', 'temperature_2m': 70},
+        'daily': {'time': ['2026-08-24']},
+        'hourly': {'time': ['2026-08-24T00:00', '2026-08-24T01:00', '2026-08-25T00:00'],
+                   'temperature_2m': [58, 60, 62]},
+    }
+    item = _content_item(DisplaySettings(), payload, None)
+    assert list(item.data['situation']['hourly']) == [
+        {'time': '2026-08-24T00:00', 'temperature': 58},
+        {'time': '2026-08-24T01:00', 'temperature': 60},
+    ]

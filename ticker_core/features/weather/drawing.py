@@ -603,4 +603,51 @@ class PreparedWeatherRenderer:
             draw_tiny_text(d, tx + hi_w,    temp_y, "/", (70, 88, 120))
             draw_tiny_text(d, tx + hi_w + 5, temp_y, lo, (90, 165, 255))
 
+        hourly = sit.get('hourly') or []
+        points = []
+        for entry in hourly[:24]:
+            try:
+                value = float(entry['temperature'])
+                stamp = str(entry['time'])
+                if math.isfinite(value) and len(stamp) >= 13 and stamp[11:13].isdigit() and int(stamp[11:13]) < 24:
+                    points.append((stamp, value))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if len(points) >= 2:
+            # The forecast stays fixed below a sliding graph pane.
+            phase = self._now.timestamp() % 61.6
+            if 30 <= phase < 61.6:
+                progress = min(1.0, (phase - 30) / 0.8, (61.6 - phase) / 0.8)
+                pane = Image.new('RGBA', (259, 32), (4, 12, 30, 255))
+                graph = ImageDraw.Draw(pane)
+                draw_tiny_text(graph, 5, 2, 'HOURLY', (120, 170, 225))
+                lo = min(v for _, v in points)
+                hi = max(v for _, v in points)
+                span = max(1.0, hi - lo)
+                palette = [(80,164,255), (105,218,226), (144,225,167), (210,219,114), (255,194,85), (255,126,76)]
+                coords = []
+                for i, (_, value) in enumerate(points):
+                    x = 18 + round(i * 220 / (len(points) - 1))
+                    y = 22 - round((value - lo) * 13 / span)
+                    n = (value - lo) / span * (len(palette) - 1)
+                    j = min(int(n), len(palette) - 2)
+                    color = tuple(round(a + (b-a)*(n-j)) for a,b in zip(palette[j], palette[j+1]))
+                    graph.line((x, y, x, 24), fill=tuple(int(c * .48) for c in color), width=max(1, min(9, 210 // len(points))))
+                    coords.append((x, y, color))
+                for a, b in zip(coords, coords[1:]):
+                    graph.line((a[0], a[1], b[0], b[1]), fill=a[2])
+                for index, color in ((min(range(len(points)), key=lambda i: points[i][1]), (75,165,255)), (max(range(len(points)), key=lambda i: points[i][1]), (255,82,70))):
+                    x, y, _ = coords[index]
+                    graph.ellipse((x-2,y-2,x+2,y+2), fill=color)
+                    label = str(round(points[index][1]))
+                    draw_tiny_text(graph, min(259-len(label)*5, x+4), max(1, y-6), label, color)
+                for i in sorted(set(round(j*(len(points)-1)/4) for j in range(5))):
+                    x = coords[i][0]
+                    hour = int(points[i][0][11:13])
+                    label = f'{hour % 12 or 12}{"A" if hour < 12 else "P"}'
+                    draw_tiny_text(graph, min(259-len(label)*5, x), 26, label, (115,150,190))
+                offset = round(259 * (1-progress))
+                if offset < 259:
+                    img.paste(pane.crop((0, 0, 259-offset, 32)), (125+offset, 0))
+
         return img
