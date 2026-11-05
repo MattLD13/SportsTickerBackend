@@ -610,7 +610,7 @@ class PreparedWeatherRenderer:
                 value = float(entry['temperature'])
                 stamp = str(entry['time'])
                 if math.isfinite(value) and len(stamp) >= 13 and stamp[11:13].isdigit() and int(stamp[11:13]) < 24:
-                    points.append((stamp, value, entry.get("icon")))
+                    points.append((stamp, value))
             except (KeyError, TypeError, ValueError):
                 continue
         if len(points) >= 2:
@@ -625,46 +625,35 @@ class PreparedWeatherRenderer:
                 span = max(1.0, hi - lo)
                 palette = [(80,164,255), (105,218,226), (144,225,167), (210,219,114), (255,194,85), (255,126,76)]
                 coords = []
-                segment_colors = {'sun': (210, 170, 55), 'cloud': (105, 140, 180),
-                                  'rain': (65, 155, 240), 'snow': (160, 220, 255),
-                                  'storm': (195, 125, 245), 'fog': (135, 160, 175)}
-                names = {'sun': 'SUN', 'cloud': 'CLOUD', 'rain': 'RAIN',
-                         'snow': 'SNOW', 'storm': 'STORM', 'fog': 'FOG'}
-                boundaries = []
-                start = 0
-                while start < len(points):
-                    icon = points[start][2]
-                    end = start + 1
-                    while end < len(points) and points[end][2] == icon:
-                        end += 1
-                    left = round(start * 259 / len(points))
-                    right = round(end * 259 / len(points)) - 1
-                    color = segment_colors.get(icon)
-                    if color:
-                        graph.line((left, 7, right, 7), fill=color)
-                        label = names[icon]
-                        if right - left + 1 >= len(label) * 5 + 2:
-                            draw_tiny_text(graph, left + 1, 1, label, color)
-                    if start and icon in segment_colors and points[start - 1][2] in segment_colors:
-                        # Mark the condition transition through the graph without
-                        # hiding the temperature bars or the time labels.
-                        boundaries.append(round(4 + (start - 0.5) * 250 / (len(points) - 1)))
-                    start = end
-                if not any(p[2] in segment_colors for p in points):
-                    draw_tiny_text(graph, 2, 1, 'HOURLY', (120, 170, 225))
-                for i, (_, value, _) in enumerate(points):
-                    x = 4 + round(i * 250 / (len(points) - 1))
+                draw_tiny_text(graph, 2, 1, 'HOURLY', (120, 170, 225))
+                bar_count = 32
+                bar_width = 7
+                bar_pitch = 8
+                bar_start = 2
+                left_edge = bar_start + bar_width // 2
+                right_edge = left_edge + (bar_count - 1) * bar_pitch
+
+                def graph_value(value):
                     y = 23 - round((value - lo) * 11 / span)
                     n = (value - lo) / span * (len(palette) - 1)
                     j = min(int(n), len(palette) - 2)
-                    color = tuple(round(a + (b-a)*(n-j)) for a,b in zip(palette[j], palette[j+1]))
-                    graph.line((x, y, x, 24), fill=tuple(int(c * .48) for c in color), width=max(1, min(12, 246 // len(points))))
+                    color = tuple(round(a + (b-a)*(n-j)) for a, b in zip(palette[j], palette[j+1]))
+                    return y, color
+
+                for i in range(bar_count):
+                    position = i * (len(points) - 1) / (bar_count - 1)
+                    index = min(int(position), len(points) - 2)
+                    fraction = position - index
+                    value = points[index][1] + fraction * (points[index + 1][1] - points[index][1])
+                    x = left_edge + i * bar_pitch
+                    y, color = graph_value(value)
+                    graph.rectangle((x - bar_width // 2, y, x - bar_width // 2 + bar_width - 1, 24), fill=tuple(int(c * .48) for c in color))
+                for i, (_, value) in enumerate(points):
+                    x = left_edge + round(i * (right_edge - left_edge) / (len(points) - 1))
+                    y, color = graph_value(value)
                     coords.append((x, y, color))
                 for a, b in zip(coords, coords[1:]):
                     graph.line((a[0], a[1], b[0], b[1]), fill=a[2])
-                for x in boundaries:
-                    for y in range(9, 25, 3):
-                        graph.line((x, y, x, min(y + 1, 24)), fill=(125, 155, 180))
                 for index, color in ((min(range(len(points)), key=lambda i: points[i][1]), (75,165,255)), (max(range(len(points)), key=lambda i: points[i][1]), (255,82,70))):
                     x, y, _ = coords[index]
                     graph.ellipse((x-2,y-2,x+2,y+2), fill=color)

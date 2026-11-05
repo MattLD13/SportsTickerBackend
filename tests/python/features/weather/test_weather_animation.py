@@ -112,3 +112,27 @@ def test_production_catalog_keeps_the_loop_at_panel_size(tmp_path):
     ]
     assert images[0].size == (384, 32)
     assert images[0].tobytes() == images[1].tobytes()
+
+
+def test_hourly_graph_columns_have_equal_width_at_the_edges(fonts):
+    item = weather_item()
+    item['situation']['hourly'] = [
+        {'time': f'2026-08-24T{hour:02d}:00', 'temperature': 60 + hour}
+        for hour in range(12)
+    ]
+    now = datetime.fromtimestamp(61.6 * 30 + 40, timezone.utc)
+    image = PreparedWeatherRenderer(fonts, now).draw_weather_detailed(item)
+    row = [image.getpixel((x, 24))[:3] != (4, 12, 30) for x in range(125, 384)]
+    widths = []
+    start = None
+    for x, filled in enumerate(row + [False]):
+        if filled and start is None:
+            start = x
+        elif not filled and start is not None:
+            widths.append(x - start)
+            start = None
+    # The low marker overlaps the first column at this row.
+    assert widths[1:] == [7] * 31
+    for i in range(1, 31):
+        x = 2 + i * 8
+        assert row[x:x + 8] == [True] * 7 + [False]

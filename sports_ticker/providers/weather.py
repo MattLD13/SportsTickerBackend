@@ -126,7 +126,7 @@ class OpenMeteoWeatherProvider:
                     "temperature_2m,weather_code,apparent_temperature,"
                     "wind_speed_10m,relative_humidity_2m,is_day,cloud_cover"
                 ),
-                hourly="temperature_2m,weather_code",
+                hourly="temperature_2m",
                 daily=(
                     "weather_code,temperature_2m_max,temperature_2m_min,"
                     "uv_index_max,sunrise,sunset,precipitation_probability_max,"
@@ -229,13 +229,9 @@ def _content_item(
     forecast = _forecast(daily, today=_source_date(payload))
     hourly_data = _mapping(payload.get("hourly"))
     hourly = []
-    codes = hourly_data.get("weather_code") or []
-    for index, (stamp, value) in enumerate(zip(hourly_data.get("time", []), hourly_data.get("temperature_2m", []))):
+    for stamp, value in zip(hourly_data.get("time", []), hourly_data.get("temperature_2m", [])):
         if isinstance(stamp, str) and stamp[:10] == str(_source_date(payload)) and isinstance(value, (int, float)) and isfinite(value):
-            sample = {"time": stamp, "temperature": value}
-            if index < len(codes) and codes[index] is not None:
-                sample["icon"] = _weather_icon(codes[index])
-            hourly.append(sample)
+            hourly.append({"time": stamp, "temperature": value})
     day_night = None if is_day is None else ("day" if is_day else "night")
     stats = {
         "aqi": _display(aqi_value),
@@ -568,10 +564,7 @@ def _nws_content_item(
         stamp = period.get("startTime")
         value = period.get("temperature")
         if isinstance(stamp, str) and isinstance(value, (int, float)) and isfinite(value):
-            sample = {"time": stamp, "temperature": _temperature_f(value, value, period.get("temperatureUnit"))}
-            if period.get("shortForecast"):
-                sample["icon"] = _condition_icon(period["shortForecast"])
-            hourly.append(sample)
+            hourly.append({"time": stamp, "temperature": _temperature_f(value, value, period.get("temperatureUnit"))})
         if len(hourly) == 24:
             break
     day_night = None if is_day is None else ("day" if is_day else "night")
