@@ -339,3 +339,28 @@ def test_racing_standardized_flags() -> None:
         token = _normalize_racing_flag(input_flag)
         assert token == expected_token, f"Failed for {input_flag}: expected {expected_token}, got {token}"
         assert (token in _CAUTION_FLAGS) == is_caution, f"Caution mismatch for {token}"
+
+
+def test_racing_uses_sports_display_window_at_3am():
+    from sports_ticker.providers.racing_live import _session_lifecycle_state
+
+    def dt(day, hour, minute=0):
+        return datetime(2026, 8, day, hour, minute, tzinfo=timezone.utc)
+
+    # The next day's 2am session joins today's list at 3am, not before it.
+    assert _session_lifecycle_state(dt(17, 2), dt(17, 3), dt(16, 2, 59), "UTC") is None
+    assert _session_lifecycle_state(dt(17, 2), dt(17, 3), dt(16, 3), "UTC") == "pre"
+    assert _session_lifecycle_state(dt(16, 1), dt(16, 2), dt(16, 2, 59), "UTC") == "post"
+    assert _session_lifecycle_state(dt(15, 12), dt(15, 14), dt(16, 3), "UTC") is None
+
+
+def test_racing_lists_sessions_from_all_visible_weekends():
+    from sports_ticker.providers.racing_live import _f1_relevant_sessions, _indycar_relevant_sessions
+
+    now = datetime(2026, 8, 16, 12, tzinfo=timezone.utc)
+    first = datetime(2026, 8, 16, 13, tzinfo=timezone.utc)
+    second = datetime(2026, 8, 16, 15, tzinfo=timezone.utc)
+    races = [{"sessions": {"race": (second, 60, "Race", False)}},
+             {"sessions": {"race": (first, 60, "Race", False)}}]
+    for select in (_f1_relevant_sessions, _indycar_relevant_sessions):
+        assert [item[4] for item in select(races, now, "UTC")] == [first, second]

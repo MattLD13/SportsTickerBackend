@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import DisplaySettings
 
+from .espn import _is_current_event
 from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, PooledJsonHttpClient, PooledTextHttpClient
 from .racing_session import racing_timed_session
 from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS
@@ -788,6 +789,7 @@ def _f1_relevant_sessions(
     now: datetime,
     timezone_name: str,
 ) -> list[tuple[Mapping[str, Any], str, str, bool, datetime, datetime, str]]:
+    all_relevant = []
     for race in sorted(
         races,
         key=lambda item: min(
@@ -807,9 +809,8 @@ def _f1_relevant_sessions(
             state = _session_lifecycle_state(start, end, now, timezone_name)
             if state:
                 relevant.append((race, key, label, practice, start, end, state))
-        if relevant:
-            return sorted(relevant, key=lambda value: value[4])
-    return []
+        all_relevant.extend(relevant)
+    return sorted(all_relevant, key=lambda value: value[4])
 
 
 def _f1_short_event(value: str) -> str:
@@ -900,6 +901,7 @@ def _indycar_relevant_sessions(
     now: datetime,
     timezone_name: str,
 ) -> list[tuple[Mapping[str, Any], str, str, bool, datetime, datetime, str]]:
+    all_relevant = []
     for race in sorted(
         races,
         key=lambda item: min(
@@ -919,9 +921,8 @@ def _indycar_relevant_sessions(
             state = _session_lifecycle_state(start, end, now, timezone_name)
             if state:
                 relevant.append((race, key, label, practice, start, end, state))
-        if relevant:
-            return sorted(relevant, key=lambda value: value[4])
-    return []
+        all_relevant.extend(relevant)
+    return sorted(all_relevant, key=lambda value: value[4])
 
 
 def _indycar_short_event(event_name: str, track_name: str) -> str:
@@ -1119,30 +1120,16 @@ def _session_lifecycle_state(
     now: datetime,
     timezone_name: str,
 ) -> str | None:
-    """Match the sports display lifecycle: appears on event day, disappears at 3 AM next day."""
+    """Use the same local display window as other sports."""
     if start <= now <= end:
         return "in"
-    if end < now:
-        return "post" if _in_reset_window(start, now, timezone_name) else None
-    zone = _display_timezone(timezone_name)
-    local_now = now.astimezone(zone)
-    local_start = start.astimezone(zone)
-    if local_now.hour < 3:
-        if local_start.date() == (local_now - timedelta(days=1)).date() or local_start.date() == local_now.date():
-            return "pre"
-    else:
-        if local_start.date() == local_now.date():
-            return "pre"
-    return None
+    if not _in_reset_window(start, now, timezone_name):
+        return None
+    return "post" if end < now else "pre"
 
 
 def _in_reset_window(start: datetime, now: datetime, timezone_name: str) -> bool:
-    zone = _display_timezone(timezone_name)
-    local_now = now.astimezone(zone)
-    boundary = local_now.replace(hour=3, minute=0, second=0, microsecond=0)
-    if local_now < boundary:
-        boundary -= timedelta(days=1)
-    return start.astimezone(zone) >= boundary
+    return _is_current_event({"date": start.isoformat()}, timezone_name=timezone_name, now=now)
 
 
 def _display_timezone(value: str) -> ZoneInfo:

@@ -68,7 +68,7 @@ def test_recorded_pga_events_reach_the_device_contract(case):
 def test_recorded_cup_schedule_metadata_reaches_the_device_contract(case):
     race = deepcopy(case["race"])
     start = datetime.fromisoformat(race["date_scheduled"]).replace(tzinfo=timezone.utc)
-    now = start.replace(hour=0, minute=0, second=0)
+    now = start.replace(hour=3, minute=0, second=0)
     race["schedule"] = [{"run_type": 3, "start_time_utc": start.isoformat()}]
     client = RecordedClient(case["source"], {"series_1": [race]})
 
