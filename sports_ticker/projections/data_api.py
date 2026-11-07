@@ -59,9 +59,12 @@ def project_data_v2(
         bool(_LOGO_RENDERING_TARGET_TICKER_ID)
         and str(snapshot.ticker_id).strip() == _LOGO_RENDERING_TARGET_TICKER_ID
     )
-    for item in snapshot.content:
+    for order, item in enumerate(snapshot.content):
         family = item.family if item.family in content else item.family
-        content.setdefault(family, []).append(_content_item(item, apply_logo_rendering=apply_logo_rendering))
+        projected = _content_item(item, apply_logo_rendering=apply_logo_rendering)
+        if family in {"sports", "racing"}:
+            projected["rotation_order"] = order
+        content.setdefault(family, []).append(projected)
 
     snapshot_value = {
         "ticker_id": str(snapshot.ticker_id), "revision": snapshot.revision,

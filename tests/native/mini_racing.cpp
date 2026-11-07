@@ -148,6 +148,28 @@ int main(int argc, char** argv) {
                                [&](JsonObjectConst item) { ids.push_back(item["id"] | ""); });
   assert(ids.size() == 5 && ids[0] == "hockey");
   assert(ids[1] == "vector:GTP" && ids[2] == "vector:LMP2" && ids[3] == "vector:GTDPRO" && ids[4] == "vector:GTD");
+  JsonDocument mixed;
+  auto games = mixed["sports"].to<JsonArray>();
+  games.add<JsonObject>()["id"] = "early"; games[0]["rotation_order"] = 0;
+  games.add<JsonObject>()["id"] = "late"; games[1]["rotation_order"] = 2;
+  auto races = mixed["racing"].to<JsonArray>();
+  races.add<JsonObject>()["id"] = "race:A"; races[0]["rotation_order"] = 1;
+  races.add<JsonObject>()["id"] = "race:B"; races[1]["rotation_order"] = 1;
+  ids.clear();
+  ticker_ui::forEachRotationItem(mixed.as<JsonObjectConst>(), true,
+                               [&](JsonObjectConst item) { ids.push_back(item["id"] | ""); });
+  assert((ids == std::vector<std::string>{"early", "race:A", "race:B", "late"}));
+  JsonDocument wirePayload;
+  wirePayload["api_version"] = "v2"; wirePayload["settings"]["mode"] = "sports";
+  wirePayload["meta"]["pairing"]["paired"] = true; wirePayload["content"] = mixed;
+  std::string mixedWire; serializeJson(wirePayload, mixedWire);
+  ResponseBody mixedBody;
+  assert(mixedBody.append(reinterpret_cast<const unsigned char*>(mixedWire.data()), mixedWire.size()) == mixedWire.size());
+  DevicePayload mixedRetained; assert(mixedRetained.accept(mixedBody));
+  ids.clear();
+  ticker_ui::forEachRotationItem(mixedRetained.document()["content"].as<JsonObjectConst>(), true,
+                               [&](JsonObjectConst item) { ids.push_back(item["id"] | ""); });
+  assert((ids == std::vector<std::string>{"early", "race:A", "race:B", "late"}));
   ids.clear();
   ticker_ui::forEachRotationItem(fixture["rotation"]["content"].as<JsonObjectConst>(), false,
                                [&](JsonObjectConst item) { ids.push_back(item["id"] | ""); });

@@ -45,10 +45,11 @@ SPORTS_FIELDS["home_logo_asset"] = ASSET_FIELDS
 
 
 def payload_filter():
-    sports_item = {"is_shown": True, "id": True, "identifier": True, "key": True, "data": SPORTS_FIELDS}
+    sports_item = {"is_shown": True, "id": True, "identifier": True, "key": True, "rotation_order": True, "data": SPORTS_FIELDS}
     content = {"sports": [sports_item]}
     for family in ("weather", "music", "flights", "airports", "stock", "clock", "racing"):
         content[family] = [{"is_shown": True, "id": True, "data": True}]
+    content["racing"][0]["rotation_order"] = True
     return {"api_version": True, "meta": {"pairing": {"paired": True, "code": True},
             "update": {"version": True, "id": True, "expires_at": True}},
             "settings": {key: True for key in ("mode", "timezone", "scroll_speed", "brightness")}, "content": content}

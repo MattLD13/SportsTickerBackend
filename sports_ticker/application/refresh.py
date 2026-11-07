@@ -105,12 +105,12 @@ class RefreshService:
         content = tuple(item for result in normalized for item in result.content)
         scoreboard = iter(
             sorted(
-                (item for item in content if item.family == "sports"),
+                (item for item in content if item.family in {"sports", "racing"}),
                 key=sports_content_sort_key,
             )
         )
         ordered_content = tuple(
-            next(scoreboard) if item.family == "sports" else item for item in content
+            next(scoreboard) if item.family in {"sports", "racing"} else item for item in content
         )
         snapshot = TickerSnapshot(
             ticker_id=str(ticker_id),

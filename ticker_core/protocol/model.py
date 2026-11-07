@@ -393,6 +393,7 @@ class TickerResponse:
         settings = TickerSettings._from_frozen(_object(data.get("settings", MappingProxyType({})), "settings"))
         content_root = _object(data.get("content", {}), "response.content")
         content: list[ContentItem] = []
+        sports_order: list[tuple[int, int, ContentItem]] = []
         for family in sorted(content_root, key=lambda value: (_CONTENT_FAMILY_ORDER.get(value, 99), value)):
             records = content_root[family]
             if not isinstance(records, tuple):
@@ -401,7 +402,15 @@ class TickerResponse:
                 parsed = ContentItem._from_frozen(item, f"response.content.{family}[{index}]")
                 if parsed.family != family:
                     raise PayloadValidationError(f"response.content.{family}[{index}].family does not match its group")
+                if family in {"sports", "racing"}:
+                    order = item.get("rotation_order")
+                    if order is not None and (type(order) is not int or order < 0):
+                        raise PayloadValidationError(f"response.content.{family}[{index}].rotation_order must be a non-negative integer")
+                    sports_order.append((order if order is not None else 2**63, len(sports_order), parsed))
                 content.append(parsed)
+
+        ordered_sports = iter(item for _, _, item in sorted(sports_order, key=lambda entry: entry[:2]))
+        content = [next(ordered_sports) if item.family in {"sports", "racing"} else item for item in content]
 
         events = _object(data.get("events", {}), "response.events")
         alerts = tuple(
