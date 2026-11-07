@@ -16,6 +16,15 @@ from .racing_display import racing_cards
 
 
 _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
+_EVENT_CARD_COLORS = {
+    "f1": ("#E10600", "#3459A6"),
+    "indycar": ("#006CB7", "#E54150"),
+    "nascar": ("#2455A4", "#EAB83B"),
+    "wec": ("#007EA8", "#7652B9"),
+    "imsa": ("#D72638", "#1464A5"),
+    "golf": ("#16875D", "#3F80A4"),
+    "masters": ("#087345", "#D1A735"),
+}
 _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
 }
@@ -227,6 +236,16 @@ def _content_item(item: ContentItem, *, apply_logo_rendering: bool = False) -> d
     data.pop("_source_timing", None)
     if item.family in {"sports", "golf", "racing"}:
         data = project_sports_display(data)
+    if item.family in {"golf", "racing"}:
+        sport = str(data.get("sport") or item.kind).lower()
+        golf = data.get("golf") if isinstance(data.get("golf"), Mapping) else {}
+        if item.family == "golf" and str(golf.get("brand") or "").lower() == "masters":
+            sport = "masters"
+        colors = _EVENT_CARD_COLORS.get(sport)
+        if colors:
+            for side, color in zip(("away", "home"), colors):
+                if not data.get(f"{side}_color"):
+                    data[f"{side}_color"] = color
     if item.family == "racing":
         data["racing_display"] = {"cards": racing_cards(data)}
     if apply_logo_rendering and item.family == "sports":

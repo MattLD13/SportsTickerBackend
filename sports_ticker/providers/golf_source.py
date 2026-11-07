@@ -79,6 +79,7 @@ class EspnGolfSource:
                             "competition_stage": golf_competition_stage(event),
                             "state": status["state"],
                             "status": display_status,
+                            "startTimeUTC": starts_at.isoformat() if (starts_at := _event_time(event.get("date") or competition.get("date"))) else "",
                             "away_abbr": str(event.get("shortName") or event_name),
                             "golf": golf,
                         }

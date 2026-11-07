@@ -72,6 +72,7 @@ def test_golf_source_includes_pre_tournament_on_start_day() -> None:
 
     assert len(result["content"]) == 1
     assert result["content"][0]["id"] == "golf:401811963"
+    assert result["content"][0]["startTimeUTC"] == "2026-08-20T04:00:00+00:00"
 
 
 def test_golf_source_includes_live_tournament() -> None:

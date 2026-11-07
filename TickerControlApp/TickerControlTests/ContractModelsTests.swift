@@ -52,6 +52,14 @@ final class ContractModelsTests: XCTestCase {
         }
     }
 
+    func testRacingCardKeepsEventColors() throws {
+        let data = Data(#"{"id":"f1-q","family":"racing","kind":"f1","is_shown":true,"data":{"sport":"f1","away_color":"#E10600","home_color":"#3459A6"}}"#.utf8)
+        let item = try JSONDecoder().decode(V2ContentItem.self, from: data)
+        let game = try XCTUnwrap(Game(content: item))
+        XCTAssertEqual(game.away_color, "#E10600")
+        XCTAssertEqual(game.home_color, "#3459A6")
+    }
+
     func testCompetitionStageUsesTheIntegerWireContract() throws {
         let decoder = JSONDecoder()
         for stage in [0, 1, 2] {
