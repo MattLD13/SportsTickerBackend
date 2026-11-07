@@ -133,7 +133,7 @@ def test_pinned_carousel_reuses_unchanged_driver_cards(monkeypatch) -> None:
     assert first.tobytes() != second.tobytes()
 
 
-def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
+def test_indycar_race_uses_speed_instead_of_gap(monkeypatch):
     import ticker_core.features.racing.renderer as rendering
 
     drawn = []
@@ -150,8 +150,8 @@ def test_indycar_race_uses_gap_instead_of_qualifying_speed(monkeypatch):
     item["racing_display"] = {"cards": racing_cards(item)}
     RacingRenderer(load_default_font_set(), MemoryRacingAssets()).render(
         RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
-    assert "+1.234" in drawn
-    assert "220.123" not in drawn
+    assert "+1.234" not in drawn
+    assert "220.123 MPH" in drawn
 
 
 def test_scroll_has_separate_class_cards_in_class_order():
@@ -160,11 +160,12 @@ def test_scroll_has_separate_class_cards_in_class_order():
     item["racing_display"] = {"cards": racing_cards(item)}
     renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
     result = renderer.render(RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports"))
-    assert result.image.size == (128 * 4 + 6 * 3, 32)
+    assert result.image.height == 32
+    assert result.image.width < 128 * 4
     assert [card["class_label"] for card in item["racing_display"]["cards"]] == ["GTP", "LMP2", "GTD PRO", "GTD"]
 
 
-def test_safety_car_labels_stay_distinct_in_both_six_layouts(monkeypatch):
+def test_flag_labels_stay_out_of_scroll_header_and_remain_in_pinned_view(monkeypatch):
     import ticker_core.features.racing.renderer as rendering
     from tools.mini.racing_vectors import game
     drawn = []
@@ -185,5 +186,64 @@ def test_safety_car_labels_stay_distinct_in_both_six_layouts(monkeypatch):
             if pinned:
                 item["sports_presentation"] = "pinned"
             renderer.render(RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports"))
-            assert any(label in text for text in drawn)
+            assert any(label in text for text in drawn) == pinned
             assert all("None" not in text for text in drawn)
+
+
+def test_multiclass_scroll_uses_class_colors_and_one_flag(monkeypatch):
+    import ticker_core.features.racing.renderer as rendering
+    from tools.mini.racing_vectors import game
+    item = game("wec")
+    item["racing_display"] = {"cards": racing_cards(item)}
+    item["racing_display"]["cards"][0]["class_color"] = "#e21e19"
+    item["racing_display"]["cards"][1]["class_color"] = "#0b9314"
+    drawn, flags = [], []
+    original_text, original_flag = rendering.draw_tiny_text, rendering._draw_mini_flag
+    def record(draw, x, y, text, color):
+        drawn.append((text, color))
+        return original_text(draw, x, y, text, color)
+    def flag(draw, x, y, signal):
+        flags.append(x)
+        return original_flag(draw, x, y, signal)
+    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    monkeypatch.setattr(rendering, "_draw_mini_flag", flag)
+    renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
+    image = renderer.render(RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports")).image
+    assert image.width < 262 and image.height == 32
+    assert ("HY", (226, 30, 25)) in drawn
+    assert ("LMGT3", (11, 147, 20)) in drawn
+    assert flags == [image.width - 12]
+
+
+def test_pinned_race_does_not_substitute_interval_for_missing_gap(monkeypatch):
+    import ticker_core.features.racing.renderer as rendering
+    drawn = []
+    original = rendering.draw_tiny_text
+    def record(draw, x, y, text, color):
+        drawn.append(str(text))
+        return original(draw, x, y, text, color)
+    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    item = _item("f1")
+    item["sports_presentation"] = "pinned"
+    item["f1"]["drivers"] = [{"pos": 2, "car": "1", "name": "Driver", "interval": "+0.723"}]
+    item["racing_display"] = {"cards": racing_cards(item)}
+    RacingRenderer(load_default_font_set(), MemoryRacingAssets()).render(
+        RenderContext(datetime(2026, 10, 23, tzinfo=timezone.utc)), ContentScene(item, "sports"))
+    assert "+0.723" not in drawn
+
+
+@pytest.mark.parametrize("sport", ["f1", "indycar", "nascar", "wec", "imsa"])
+def test_scroll_header_includes_lap_count_for_live_races(sport, monkeypatch):
+    import ticker_core.features.racing.renderer as rendering
+    from tools.mini.racing_vectors import game
+    drawn = []
+    original = rendering.draw_tiny_text
+    def record(draw, x, y, text, color):
+        drawn.append(str(text))
+        return original(draw, x, y, text, color)
+    monkeypatch.setattr(rendering, "draw_tiny_text", record)
+    item = game(sport)
+    item["racing_display"] = {"cards": racing_cards(item)}
+    RacingRenderer(load_default_font_set(), MemoryRacingAssets()).render(
+        RenderContext(datetime(2026, 10, 24, tzinfo=timezone.utc)), ContentScene(item, "sports"))
+    assert any("65/200" in text for text in drawn)

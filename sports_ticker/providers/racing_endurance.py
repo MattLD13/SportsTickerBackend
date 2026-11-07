@@ -227,6 +227,8 @@ class EnduranceRacingSource:
 
 
 def wec_drivers(data: Mapping[str, Any], *, timed: bool, official: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    colors = {str(item.get("classId") or ""): str(item.get("classColor") or "")
+              for item in _sequence(_mapping(data.get("sessionInfo")).get("sessionClasses"))}
     ranks, gaps = _indexed(data.get("ranks")), _indexed(data.get("gaps"))
     best, running = _indexed(data.get("bestLaps")), _indexed(data.get("runningStatuses"))
     final = _indexed((official or {}).get("results"), "sessionParticipantId")
@@ -248,6 +250,7 @@ def wec_drivers(data: Mapping[str, Any], *, timed: bool, official: Mapping[str, 
         result.append({
             "pos": _integer(rank.get("overallPosition"), 999), "class_pos": class_pos,
             "car": car, "class": str(participant.get("classId") or ""),
+            "class_color": colors.get(str(participant.get("classId") or ""), ""),
             "name": str(driver.get("displayName") or participant.get("displayName") or ""),
             "abbr": str(driver.get("threeLettersName") or participant.get("threeLettersName") or ""),
             "team": str(participant.get("teamName") or ""), "manufacturer": str(participant.get("manufacturer") or ""),
@@ -260,6 +263,7 @@ def wec_drivers(data: Mapping[str, Any], *, timed: bool, official: Mapping[str, 
 def imsa_drivers(data: Mapping[str, Any], *, timed: bool) -> list[dict[str, Any]]:
     entry = _mapping(_mapping(data.get("session_entry")).get("entry"))
     standings = _mapping(_mapping(_mapping(data.get("standings")).get("standings")).get("standings"))
+    classes = _mapping(_mapping(_mapping(data.get("session_classes")).get("classes")).get("classes"))
     drivers = []
     for value in standings.values():
         fields = str(value.get("data") or "").split(";")
@@ -271,6 +275,7 @@ def imsa_drivers(data: Mapping[str, Any], *, timed: bool) -> list[dict[str, Any]
         drivers.append({
             "pos": _integer(pos, 999), "car": car,
             "class": str(person.get("class") or value.get("class") or ""), "class_pos": _integer(class_pos),
+            "class_color": str(_mapping(classes.get(str(person.get("class") or value.get("class") or ""))).get("background") or ""),
             "name": f"{person.get('firstname', '')} {person.get('lastname', '')}".strip(),
             "team": str(person.get("team") or ""),
             "manufacturer": str(person.get("vehicle") or ""),

@@ -114,6 +114,8 @@ def test_cup_uses_the_race_specific_feed_and_retains_all_37_cars():
     drivers = game["nascar"]["drivers"]
     assert len(drivers) == 37
     assert (drivers[0]["car"], drivers[0]["name"]) == ("45", "Tyler Reddick")
+    assert game["racing_display"]["cards"][0]["metric_type"] == "mph"
+    assert [row["metric"] for row in game["racing_display"]["cards"][0]["rows"]][:2] == ["124.77", "125.191"]
     assert drivers[1]["gap"] == "+0.801s"
     assert len({d["car"] for d in drivers}) == 37
     assert all("/live-feed.json" not in url for url in client.urls)
@@ -149,6 +151,7 @@ def test_wec_retains_all_35_cars_with_class_positions_and_official_finish_gaps()
     assert len(drivers) == 35
     assert [(d["car"], d["gap"]) for d in drivers[:3]] == [("8", "Leader"), ("7", "+0.583"), ("50", "+39.725")]
     assert {d["class"] for d in drivers} == {"HYPERCAR", "LMGT3"}
+    assert {card["class_id"]: card["class_color"] for card in game["racing_display"]["cards"]} == {"HYPERCAR": "#e21e19", "LMGT3": "#0b9314"}
     assert sum(d["class_pos"] == 1 for d in drivers) == 2
     assert drivers[0]["car_illustration"]
 
@@ -183,6 +186,7 @@ def test_imsa_reads_ready_documents_and_retains_all_54_cars():
     official = json.loads((ROOT / "imsa-official-finish-2026.json").read_text(encoding="utf-8"))
     assert [d["car"] for d in drivers] == [str(d["number"]) for d in official["classification"]]
     assert {d["class"] for d in drivers} == {"GTP", "LMP2", "GTDPRO", "GTD"}
+    assert {card["class_id"]: card["class_color"] for card in game["racing_display"]["cards"]} == {"GTP": "#808080", "LMP2": "#0000ff", "GTDPRO": "#ff0000", "GTD": "#008040"}
     assert sum(d["class_pos"] == 1 for d in drivers) == 4
     assert socket.closed
     assert {"msg": "pong", "id": "heartbeat"} in socket.sent
@@ -275,7 +279,7 @@ def test_one_series_failure_does_not_freeze_a_healthy_series():
 
 
 @pytest.mark.parametrize("sport,filename,timestamp,expected", [
-    ("nascar", "cup-phoenix-2026.json", "2026-10-19T01:00:00+00:00", ["CUP"]),
+    ("nascar", "cup-phoenix-2026.json", "2026-10-19T01:00:00+00:00", ["Race"]),
     ("wec", "wec-barcelona-2026.json", "2026-10-18T16:30:00+00:00", ["HY", "LMGT3"]),
     ("imsa", "cup-phoenix-2026.json", "2026-10-04T03:00:00+00:00", ["GTP", "LMP2", "GTD PRO", "GTD"]),
 ])
@@ -292,5 +296,14 @@ def test_official_classifications_reach_the_mini_filter_contract(sport, filename
     assert [card["class_label"] for card in cards] == expected
     assert all(len(card["rows"]) == 3 for card in cards)
     assert all(card["state"] == "post" for card in cards)
-    assert all(len(card["signals"][0]["pixels"]) == 25 for card in cards)
+    assert all(len(card["signals"][0]["pixels"]) == 66 for card in cards)
     assert [row["car"] for row in cards[0]["rows"]] == {"nascar": ["45", "12", "9"], "wec": ["8", "7", "50"], "imsa": ["6", "24", "40"]}[sport]
+
+
+def test_recorded_nascar_qualifying_displays_published_speed():
+    now = datetime(2026, 10, 17, 22, 0, tzinfo=timezone.utc)
+    items = projected(RacingProvider(source(JsonResponses("cup-phoenix-2026.json"), now)), "nascar", now)
+    game = next(item["data"] for item in items if item["data"]["nascar"]["session_type"] == "Qualifying")
+    card = game["racing_display"]["cards"][0]
+    assert card["metric_type"] == "mph"
+    assert card["rows"][0]["metric"] == "137.143"

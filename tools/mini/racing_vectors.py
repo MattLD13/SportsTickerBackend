@@ -28,6 +28,7 @@ def game(sport="imsa", flag="GREEN"):
     return {"id": "vector", "type": "racing", "sport": sport, "state": "in", "status": "LIVE",
             "startTimeUTC": "2026-10-23T20:00:00Z", sport: {
                 "short_name": "Petit Le Mans" if sport == "imsa" else "Barcelona 6h" if sport == "wec" else "Phoenix",
+                "track_type": "OVAL" if sport in {"indycar", "nascar"} else "",
                 "session_name": "Race", "flag": flag, "lap": 65, "total_laps": 200, "drivers": members}}
 
 

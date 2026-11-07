@@ -20,7 +20,10 @@ inline RacingPane racingPane(JsonObjectConst data, uint32_t elapsedMs, uint32_t 
   JsonObjectConst source = data["racing_display"].as<JsonObjectConst>();
   view.race = racingText(source["race_name"], 120);
   view.group = racingText(source["class_label"], 16);
+  view.session = racingText(source["session_label"], 16);
+  view.groupColor = racingRgb(source["class_color_rgb"], {115, 180, 255});
   view.status = racingText(source["status"], 16);
+  view.metricType = racingText(source["metric_type"], 8);
   view.upcoming = source["state"] == "pre";
   view.elapsedMs = elapsedMs;
   view.signalPhaseMs = signalPhaseMs;
@@ -29,14 +32,18 @@ inline RacingPane racingPane(JsonObjectConst data, uint32_t elapsedMs, uint32_t 
     JsonObjectConst signal = signals[(signalPhaseMs / 2000) % signals.size()].as<JsonObjectConst>();
     auto& output = view.signal;
     view.signalPresent = true;
-    output.label = racingText(signal["label"], 12);
-    output.showLabel = signal["show_label"] | false;
-    output.flashing = signal["flashing"] | false;
     JsonArrayConst pixels = signal["pixels"].as<JsonArrayConst>();
-    for (int index = 0; index < 25; ++index) output.pixels[index] = pixels[index] | uint16_t(0);
+    for (int index = 0; index < output.width * 6; ++index) output.pixels[index] = pixels[index] | uint16_t(0);
+    JsonArrayConst alternate = signal["alternate_pixels"].as<JsonArrayConst>();
+    if (alternate.size() == static_cast<size_t>(output.width * 6)) {
+      output.alternateMs = signal["alternate_ms"] | 0U;
+      for (int index = 0; index < output.width * 6; ++index) output.alternatePixels[index] = alternate[index] | uint16_t(0);
+    }
+    JsonArrayConst boardOff = signal["alternate_board_off_pixels"].as<JsonArrayConst>();
+    output.alternateBoardFlashes = output.alternateMs && boardOff.size() == static_cast<size_t>(output.width * 6);
+    if (output.alternateBoardFlashes)
+      for (int index = 0; index < output.width * 6; ++index) output.alternateBoardOffPixels[index] = boardOff[index] | uint16_t(0);
   } else {
-    view.signal.label = "?";
-    view.signal.showLabel = true;
     view.signal.pixels.fill(uint16_t(0x73B0));
   }
   for (JsonObjectConst row : source["rows"].as<JsonArrayConst>()) {

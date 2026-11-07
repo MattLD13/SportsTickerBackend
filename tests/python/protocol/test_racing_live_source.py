@@ -364,3 +364,17 @@ def test_racing_lists_sessions_from_all_visible_weekends():
              {"sessions": {"race": (first, 60, "Race", False)}}]
     for select in (_f1_relevant_sessions, _indycar_relevant_sessions):
         assert [item[4] for item in select(races, now, "UTC")] == [first, second]
+
+
+def test_indycar_race_speed_uses_last_lap_and_never_qualifying_speed():
+    source = {"rank": 2, "no": "2", "firstName": "Test", "lastName": "Driver", "qualSpeed": "220.123", "LastSpeed": "195.678", "diff": "+1.234"}
+    driver = _indycar_driver(source, {}, "Race", "O")
+    assert driver["speed"] == "195.678"
+    del source["LastSpeed"]
+    driver = _indycar_driver(source, {}, "Race", "O")
+    assert driver["speed"] == ""
+
+
+def test_short_qualifying_round_names_are_timed():
+    from sports_ticker.providers.racing_session import racing_timed_session
+    assert all(racing_timed_session(label) for label in ("Q", "Q1", "Q2", "Q3", "SQ", "SQ1", "SQ2", "SQ3"))

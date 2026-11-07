@@ -592,8 +592,8 @@ class LiveRacingSource:
         total_laps = 0
         current_lap = 0
         time_to_go = ""
-        track_type = str(heartbeat.get("trackType") or heartbeat.get("TrackType") or "").strip().upper()
-        qualifying_metric = ("mph" if track_type == "O" else "time") if racing_timed_session(session_name) else ""
+        track_type = str(heartbeat.get("trackType") or heartbeat.get("TrackType") or "").strip().upper() if is_live_on_feed else ""
+        qualifying_metric = ("mph" if track_type == "O" else "time" if track_type in {"RC", "R", "S", "ST"} else "") if racing_timed_session(session_name) else ""
         if is_live_on_feed:
             flag_raw = heartbeat.get("currentFlag") or heartbeat.get("SessionStatus")
             flag = _normalize_racing_flag(flag_raw)
@@ -976,12 +976,12 @@ def _indycar_driver(
     team = str(item.get("team") or "").strip()
     feed = index.get(car, {})
     flag = _normalize_racing_flag(item.get("flag"))
-    speed = str(item.get("qualSpeed") or item.get("BestSpeed") or item.get("LastSpeed") or "").strip()
+    is_timed = racing_timed_session(session_type)
+    speed = str(((item.get("qualSpeed") or item.get("BestSpeed") or item.get("LastSpeed")) if is_timed else item.get("LastSpeed")) or "").strip()
     best_time = str(item.get("qualTime") or item.get("bestLapTime") or "").strip()
     raw_gap = str(item.get("diff") or item.get("gap") or "").strip()
     qualifying_metric = "mph" if track_type == "O" else "time"
     qualifying_value = f"{float(speed):.3f}" if qualifying_metric == "mph" and _number(speed) is not None else speed if qualifying_metric == "mph" else best_time
-    is_timed = racing_timed_session(session_type)
     if is_timed:
         gap = qualifying_value or (best_time if qualifying_metric == "time" else speed) or ("Leader" if pos == 1 else raw_gap)
     else:
@@ -1001,6 +1001,7 @@ def _indycar_driver(
         "laps": str(item.get("laps") or "").strip(),
         "speed": speed or (qualifying_value if qualifying_metric == "mph" else ""),
         "best_time": best_time,
+        "last_time": str(item.get("lastLapTime") or item.get("LastLapTime") or item.get("LastTime") or "").strip(),
         "status": str(item.get("status") or "Active"),
         "on_track": str(item.get("onTrack") or "").lower() == "true",
         "flag": flag,
@@ -1108,6 +1109,7 @@ def _nascar_driver(vehicle: Mapping[str, Any]) -> dict[str, Any] | None:
         "livery_secondary": "#111111",
         "gap": gap,
         "speed": str(vehicle.get("last_lap_speed") or ""),
+        "last_time": _format_qualifying_time(float(vehicle["last_lap_time"])) if _number(vehicle.get("last_lap_time")) and float(vehicle["last_lap_time"]) > 0 else "",
         "status": "Active" if vehicle.get("is_on_track") else "Out",
         "on_track": bool(vehicle.get("is_on_track")),
         "flag": _normalize_racing_flag(vehicle.get("flag")) if vehicle.get("flag") else "",

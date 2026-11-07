@@ -19,7 +19,7 @@ from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, norma
 
 from .assets import RacingAssetService
 from sports_ticker.providers.racing_session import racing_timed_session
-from sports_ticker.providers.sports_display import racing_signal, racing_flag_pixel, racing_flag_code
+from sports_ticker.providers.sports_display import racing_signal, racing_flag_pixel, racing_flag_code, racing_speed_mph, RACING_COMBINED_SIGNALS
 
 
 PANEL_WIDTH = 384
@@ -28,7 +28,8 @@ PANEL_HEIGHT = 32
 
 def racing_flag_color(value: object) -> tuple[int, int, int]:
     """Return the panel color for one race control state."""
-    return tuple(racing_signal(value, "")["color_rgb"])
+    signal = racing_signal(value, "")
+    return tuple(signal["accent_rgb"] if signal["code"] in {"SAFETY CAR", "VSC", "FCY", "SLOW ZONE"} else signal["color_rgb"])
 
 
 @dataclass(slots=True)
@@ -80,38 +81,51 @@ class RacingRenderer:
             empty = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
             draw_tiny_text(ImageDraw.Draw(empty), 5, 12, "NO TIMING", (180, 210, 255))
             return empty
+        multiclass = str(item.get("sport", "")).lower() in {"wec", "imsa"} and any(card.get("class_id") for card in cards)
+        if multiclass:
+            return self._render_multiclass(cards, elapsed)
         strip = Image.new("RGBA", (128 * len(cards) + 6 * (len(cards) - 1), PANEL_HEIGHT), (0, 0, 0, 255))
         for index, card in enumerate(cards):
             signals = card.get("signals") or [racing_signal("UNKNOWN", "")]
             signal = signals[int(max(0, elapsed) // 2) % len(signals)]
+            class_label = str(card.get("class_label") or "") if multiclass and card.get("class_id") else ""
             suffix = str(card.get("class_label") or "")
-            if signal["code"] not in {"GREEN", "NONE", "CHECKERED"}:
-                suffix += " " + str(signal["label"]) + str(signal.get("car") or signal.get("sector") or "")
+            status = str(card.get("status") or "").strip()
+            if status and status.upper() not in {"LIVE", "WAIT", suffix.upper()}:
+                suffix = (suffix + " " + status).strip()
             name = str(card.get("race_name") or "RACING").upper()
-            while name and _tiny_width(name + " " + suffix) > 112:
+            class_width = 0
+            while name and _tiny_width(name + " " + suffix) > 112 - class_width:
                 name = name[:-1]
             header = (name + " " + suffix).strip()
             visible_signal = _pulse_flag(signal, elapsed)
-            key = (header, json.dumps(visible_signal, sort_keys=True, default=str))
+            key = (header, multiclass, json.dumps(visible_signal, sort_keys=True, default=str))
 
             def build_header():
                 image = Image.new("RGBA", (128, PANEL_HEIGHT), (0, 0, 0, 255))
                 draw = ImageDraw.Draw(image)
-                draw_tiny_text(draw, 1, 1, header, (255, 240, 150))
-                _draw_mini_flag(draw, 116, 0, visible_signal)
-                draw.line([(0, 7), (127, 7)], fill=(55, 76, 130))
+                if not multiclass:
+                    draw_tiny_text(draw, 1, 1, header, (255, 240, 150))
+                    _draw_mini_flag(draw, 114, 0, visible_signal)
+                    draw.line([(0, 7), (127, 7)], fill=(55, 76, 130))
                 return image
 
             image = self._scroll_templates.render(key, build_header)
             draw = ImageDraw.Draw(image)
             rows = card.get("rows") or []
             if not rows:
+                if class_label:
+                    draw_tiny_text(draw, 1, 8, class_label, (180, 210, 255))
                 draw_tiny_text(draw, 3, 14, str(card.get("session") or "WAITING")[:28], (180, 210, 255))
                 draw_tiny_text(draw, 3, 24, str(card.get("status") or "WAIT")[:28], (200, 200, 200))
             else:
-                draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
-                draw_tiny_text(draw, 10, 8, "CAR", (70, 90, 140))
-                draw_tiny_text(draw, 90, 8, "MPH" if card.get("metric_type") == "mph" else "GAP", (70, 90, 140))
+                if class_label:
+                    draw_tiny_text(draw, 1, 8, class_label, (180, 210, 255))
+                else:
+                    draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
+                    draw_tiny_text(draw, 10, 8, "CAR", (70, 90, 140))
+                metric_label = {"mph": "MPH", "lap_time": "TIME", "unknown": "--"}.get(card.get("metric_type"), "GAP")
+                draw_tiny_text(draw, 90, 8, metric_label, (70, 90, 140))
                 for position, row in enumerate(rows[:3]):
                     y = 13 + position * 7
                     draw_tiny_text(draw, 1, y, str(row["position"]), tuple(row["position_rgb"]))
@@ -122,6 +136,52 @@ class RacingRenderer:
                     metric = str(row.get("metric") or "")[:12]
                     draw_tiny_text(draw, max(60, 126 - _tiny_width(metric)), y, metric, tuple(row["metric_rgb"]))
             strip.paste(image, (index * 134, 0))
+        return strip
+
+    def _render_multiclass(self, cards: list[Mapping[str, Any]], elapsed: float) -> Image.Image:
+        """Lay out all class results under one header."""
+        widths = []
+        for card in cards:
+            rows = card.get("rows") or []
+            car_width = max((_tiny_width(str(row.get("car") or "")) for row in rows), default=0)
+            name_width = max((_tiny_width(str(row.get("name") or "")) for row in rows), default=0)
+            gap_width = max((_tiny_width(str(row.get("compact_metric") or row.get("metric") or "--")) for row in rows), default=0)
+            widths.append((max(_tiny_width(str(card.get("class_label") or "")), 6 + car_width + 3 + name_width + 4 + gap_width), car_width, name_width))
+        signals, seen = [], set()
+        for card in cards:
+            for signal in card.get("signals") or []:
+                key = json.dumps(signal, sort_keys=True, default=str)
+                if key not in seen:
+                    seen.add(key)
+                    signals.append(signal)
+        signal = signals[int(max(0, elapsed) // 2) % len(signals)] if signals else racing_signal("UNKNOWN", "")
+        session = str(cards[0].get("session") or "RACE").upper()
+        header = (str(cards[0].get("race_name") or "RACING").upper() + " " + session).strip()
+        status = str(cards[0].get("status") or "").strip()
+        if status and status.upper() not in {"LIVE", "WAIT", session}:
+            header += " " + status
+        content_width = sum(width + 5 for width, _, _ in widths)
+        width = max(content_width + 14, _tiny_width(header) + 16)
+        strip = Image.new("RGBA", (width, PANEL_HEIGHT), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(strip)
+        draw_tiny_text(draw, 1, 1, header, (255, 240, 150))
+        draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
+        x = 1
+        for card, (card_width, car_width, name_width) in zip(cards, widths):
+            raw = str(card.get("class_color") or "").lstrip("#")
+            try:
+                color = tuple(bytes.fromhex(raw)) if len(raw) == 6 else (180, 210, 255)
+            except ValueError:
+                color = (180, 210, 255)
+            draw_tiny_text(draw, x, 8, str(card.get("class_label") or ""), color)
+            for index, row in enumerate((card.get("rows") or [])[:3]):
+                y = 13 + index * 7
+                draw_tiny_text(draw, x, y, str(row["position"]), tuple(row["position_rgb"]))
+                draw_tiny_text(draw, x + 6, y, str(row.get("car") or ""), tuple(_mapping(row.get("number_style")).get("color_rgb") or (235, 235, 235)))
+                draw_tiny_text(draw, x + 9 + car_width, y, str(row.get("name") or ""), (255, 255, 255))
+                draw_tiny_text(draw, x + 13 + car_width + name_width, y, str(row.get("compact_metric") or row.get("metric") or "--"), tuple(row["metric_rgb"]))
+            x += card_width + 5
+        _draw_mini_flag(draw, width - 12, 0, _pulse_flag(signal, elapsed))
         return strip
 
     def _render_full(self, item: Mapping[str, Any], elapsed: float, signal_time: float) -> Image.Image:
@@ -148,7 +208,10 @@ class RacingRenderer:
                 if identity not in identities:
                     identities.add(identity)
                     signals.append(signal)
-        selected = signals[int(max(0, signal_time) // 2) % len(signals)] if signals else racing_signal(flag, str(item.get("sport") or ""))
+        fallback = racing_signal(flag, str(item.get("sport") or ""))
+        if fallback["scope"] not in {"track", "sector"} or fallback["car"]:
+            fallback = racing_signal("NONE", str(item.get("sport") or ""))
+        selected = signals[int(max(0, signal_time) // 2) % len(signals)] if signals else fallback
         flag = selected["code"]
         draw.rectangle([0, 0, 2, PANEL_HEIGHT], fill=racing_flag_color(flag))
         _draw_flag(draw, width - 17, 1, _pulse_flag(selected, signal_time))
@@ -194,7 +257,7 @@ class RacingRenderer:
             image.paste(panel, (x_offset, 0), panel)
             return
         session = str(payload.get("session_name") or payload.get("session_type") or "").lower()
-        metric = str(payload.get("qualifying_metric") or "").lower()
+        metric = "mph" if str(item.get("sport") or "").lower() in {"nascar", "indycar"} else str(payload.get("qualifying_metric") or "").lower()
         timed = racing_timed_session(session) or metric in {"mph", "time"}
         f1 = str(item.get("sport") or "").lower() == "f1"
         asset_state = self._pinned_asset_key(item, self.assets.revision)
@@ -289,7 +352,7 @@ class RacingRenderer:
         width = card.width
         is_mph = metric == "mph"
         if is_mph:
-            right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+            right = racing_speed_mph(driver) + " MPH"
         elif qualifying and not f1 and metric == "time":
             right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
         elif qualifying and f1:
@@ -297,7 +360,7 @@ class RacingRenderer:
         elif qualifying:
             right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:8]
         else:
-            right = str(driver.get("gap") or driver.get("interval") or "")[:10]
+            right = str(driver.get("gap") or "")[:10]
         if right:
             draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
         return card
@@ -430,17 +493,19 @@ def _flag_style(flag):
 
 
 def _pulse_flag(signal, elapsed):
-    if signal.get("motion") == "waved" and int(max(0, elapsed) / .35) % 2:
-        return {**signal, "color_rgb": [v // 3 for v in signal["color_rgb"]],
-                "accent_rgb": [v // 3 for v in signal["accent_rgb"]]}
+    pair = RACING_COMBINED_SIGNALS.get(signal.get("code"))
+    if pair:
+        signal = racing_signal(pair[int(max(0, elapsed)) % 2], "")
+    if signal.get("code") == "SAFETY CAR":
+        return {**signal, "board_text_visible": int(max(0, elapsed) / .5) % 2 == 0}
     return signal
 
 
 def _draw_mini_flag(draw: ImageDraw.ImageDraw, x: int, y: int, flag) -> None:
     signal = _flag_style(flag)
     for row in range(6):
-        for column in range(9):
-            draw.point((x + column, y + row + 1), fill=racing_flag_pixel(signal, column, row, 9, 6))
+        for column in range(11):
+            draw.point((x + column, y + row + 1), fill=racing_flag_pixel(signal, column, row, 11, 6))
 
 
 def _draw_flag(draw: ImageDraw.ImageDraw, x: int, y: int, flag) -> None:

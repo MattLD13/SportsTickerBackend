@@ -11,6 +11,24 @@ from .racing_live import (
     _format_qualifying_time, _nascar_driver, _nascar_short_event, _NASCAR_FLAGS, _CAUTION_FLAGS,
 )
 
+# NASCAR's schedule identifies circuits by track ID but does not provide shape.
+# Charlotte uses the same ID for its oval and road course, so leave it unknown
+# unless the event name identifies the road layout.
+_ROAD_TRACKS = {99, 157, 214, 221}
+_OVAL_TRACKS = {4, 14, 22, 26, 39, 40, 41, 42, 43, 45, 52, 82, 84, 103, 105, 111, 123, 133, 138, 159, 177, 198, 206}
+
+def _track_type(race: dict) -> str:
+    track_id = race.get("track_id")
+    name = str(race.get("track_name") or "").lower()
+    event = str(race.get("race_name") or "").lower()
+    if track_id == 162:
+        return "ROAD" if "roval" in event or "road course" in event else "OVAL" if race.get("race_season") == 2026 and ("coca-cola 600" in event or "bank of america 400" in event) else ""
+    if track_id in _ROAD_TRACKS:
+        return "ROAD"
+    if track_id in _OVAL_TRACKS or name == "phoenix raceway":
+        return "OVAL"
+    return ""
+
 
 class CupRacingSource:
     """Keep Cup timing separate from the rotating NASCAR series feed."""
@@ -55,6 +73,7 @@ class CupRacingSource:
                 year = int(race["race_season"])
                 timed = run_type != 3
                 label = {1: "Practice", 2: "Qualifying", 3: "Race"}[run_type]
+                track_type = _track_type(race)
                 timing: dict = {}
                 drivers = []
                 if start <= now:
@@ -81,6 +100,7 @@ class CupRacingSource:
                             if driver is not None:
                                 best = float(row.get("best_lap_time") or 0)
                                 driver["best_time"] = _format_qualifying_time(best) if best else ""
+                                driver["speed"] = str(row.get("best_lap_speed") or "")
                                 driver["gap"] = driver["best_time"] if driver["pos"] == 1 else driver["gap"]
                                 drivers.append(driver)
                 total = int(timing.get("laps_in_race") or race.get("scheduled_laps") or 0) if not timed else 0
@@ -103,7 +123,8 @@ class CupRacingSource:
                     "nascar": {
                         "event_name": event, "short_name": event, "raw_event_name": str(race["race_name"]),
                         "track_name": str(race["track_name"]),
-                        "session_type": label, "session_name": label, "qualifying_metric": "time" if timed else "",
+                        "track_type": track_type,
+                        "session_type": label, "session_name": label, "qualifying_metric": ("mph" if track_type == "OVAL" else "time" if track_type == "ROAD" else "") if timed else "",
                         "lap": lap, "total_laps": total, "laps_remaining": max(0, total - lap),
                         "flag": flag, "caution": flag in _CAUTION_FLAGS,
                         "flag_raw": timing.get("flag_state") if timing else flag,

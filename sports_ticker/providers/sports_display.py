@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import re
+from math import isfinite
 from hashlib import sha1
 import unicodedata
 import json
@@ -52,14 +53,14 @@ RACING_FLAGS = {
     "GREEN YELLOW": ("PACE", "Laps count under caution", "split", (55, 190, 90), (255, 215, 0)),
     "GREEN WHITE": ("LAST", "Restart on the last lap", "split", (55, 190, 90), (235, 235, 235)),
     "GWC": ("OT", "Overtime finish procedure", "green_checkered", (235, 235, 235), (55, 190, 90)),
-    "SAFETY CAR": ("SC", "Safety car deployed", "board", (255, 180, 0), (20, 20, 20)),
+    "SAFETY CAR": ("SC", "Safety car deployed", "fia_SC", (10, 10, 10), (255, 215, 0)),
     "SC ENDING": ("SCEND", "Safety car ending", "split", (255, 180, 0), (55, 190, 90)),
-    "VSC": ("VSC", "Virtual safety car", "board", (255, 180, 0), (20, 20, 20)),
+    "VSC": ("VSC", "Virtual safety car", "fia_VSC", (10, 10, 10), (255, 215, 0)),
     "VSC ENDING": ("VSCEN", "Virtual safety car ending", "split", (255, 180, 0), (55, 190, 90)),
-    "FCY": ("FCY", "Full course yellow", "double", (255, 215, 0), (25, 25, 20)),
-    "SLOW ZONE": ("SLOW", "Local speed-controlled zone", "stripes", (255, 215, 0), (20, 20, 20)),
-    "NEXT SLOW": ("NEXT", "Slow zone ahead", "diagonal", (255, 215, 0), (20, 20, 20)),
-    "CODE60": ("C60", "Code 60 speed limit", "disc", (145, 65, 195), (235, 235, 235)),
+    "FCY": ("FCY", "Full course yellow", "fia_FCY", (10, 10, 10), (255, 215, 0)),
+    "SLOW ZONE": ("SLOW", "Local speed-controlled zone", "fia_SZ", (10, 10, 10), (255, 215, 0)),
+    "NEXT SLOW": ("NEXT", "Slow zone ahead", "fia_NS", (10, 10, 10), (235, 235, 235)),
+    "CODE60": ("C60", "Code 60 speed limit", "fia_60", (145, 65, 195), (235, 235, 235)),
     "NATIONAL START": ("START", "Start by national flag", "board", (235, 235, 235), (35, 80, 145)),
     "LAST LAP": ("LAST", "Last lap", "solid", (235, 235, 235), (235, 235, 235)),
     "WHITE YELLOW": ("W/Y", "White and yellow flags", "split", (235, 235, 235), (255, 215, 0)),
@@ -71,6 +72,21 @@ RACING_FLAGS = {
     "CHECKERED SC": ("FINSC", "Finished behind safety car", "finish_split", (235, 235, 235), (255, 180, 0)),
     "CHECKERED VSC": ("FINVS", "Finished under virtual safety car", "finish_split", (235, 235, 235), (255, 180, 0)),
 }
+# Paired states alternate between their two complete indicators.
+RACING_COMBINED_SIGNALS = {
+    "GREEN YELLOW": ("GREEN", "YELLOW"),
+    "GREEN WHITE": ("GREEN", "WHITE"),
+    "GREEN CHECKERED YELLOW": ("GREEN CHECKERED", "YELLOW"),
+    "WHITE YELLOW": ("WHITE", "YELLOW"),
+    "WHITE SC": ("WHITE", "SAFETY CAR"),
+    "LAST LAP YELLOW": ("WHITE", "YELLOW"),
+    "LAST LAP SC": ("WHITE", "SAFETY CAR"),
+    "LAST LAP VSC": ("WHITE", "VSC"),
+    "CHECKERED YELLOW": ("CHECKERED", "YELLOW"),
+    "CHECKERED SC": ("CHECKERED", "SAFETY CAR"),
+    "CHECKERED VSC": ("CHECKERED", "VSC"),
+}
+RACING_ANIMATED_FLAGS = frozenset(RACING_COMBINED_SIGNALS) | {"SAFETY CAR"}
 RACING_CAUTION_FLAGS = frozenset((
     "YELLOW", "DOUBLE YELLOW", "RED FLAG", "SAFETY CAR", "SC ENDING", "VSC", "VSC ENDING",
     "FCY", "SLOW ZONE", "NEXT SLOW", "CODE60", "GREEN YELLOW", "SURFACE", "WHITE RED CROSS",
@@ -164,6 +180,7 @@ def racing_signal(raw: object, series: str, *, scope: str = "track", car: object
         "car": str(car or ""), "sector": str(sector or ""), "raw": str(raw or ""),
         "known": code != "UNKNOWN", "pattern": pattern, "color_rgb": list(ink), "accent_rgb": list(accent),
         "caution": code in RACING_CAUTION_FLAGS,
+        "animate": code in RACING_ANIMATED_FLAGS,
         "motion": "waved" if "WAVED" in str(raw).upper() else "standing" if any(word in str(raw).upper() for word in ("STANDING", "MOTIONLESS")) else "unspecified",
     }
 
@@ -173,13 +190,39 @@ def racing_flag_pixel(signal: Mapping[str, Any], x: int, y: int, width: int, hei
     ink = tuple(signal.get("color_rgb") or (110, 115, 130))
     accent = tuple(signal.get("accent_rgb") or (235, 235, 235))
     pattern = signal.get("pattern")
+    if str(pattern).startswith("fia_"):
+        glyphs = {"S": ("011", "110", "001", "110"), "C": ("111", "100", "100", "111"),
+                  "V": ("101", "101", "101", "010"), "F": ("111", "100", "110", "100"),
+                  "Y": ("101", "101", "010", "010"), "N": ("101", "111", "111", "101"),
+                  "Z": ("111", "001", "100", "111"), "6": ("011", "110", "101", "111"),
+                  "0": ("111", "101", "101", "111")}
+        label = str(pattern)[4:]
+        if y in (0, height - 1):
+            return accent
+        text_width = len(label) * 4 - 1
+        left, top = max(0, (width - text_width) // 2), max(1, (height - 4) // 2)
+        column, row = x - left, y - top
+        if 0 <= row < 4 and 0 <= column < text_width and column % 4 < 3:
+            glyph = glyphs.get(label[column // 4])
+            if glyph and signal.get("board_text_visible", True) and glyph[row][column % 4] == "1":
+                return (235, 235, 235)
+        if x in (0, width - 1) and text_width < width:
+            return accent
+        return ink
     if pattern in {"checkered", "green_checkered", "crossed_checkers"}:
         if pattern == "crossed_checkers" and abs(x * (height - 1) - y * (width - 1)) > width and abs(x * (height - 1) + y * (width - 1) - (width - 1) * (height - 1)) > width:
             return (95, 105, 120)
         cell = 1 if width < 12 else 2
         return accent if (x // cell + y // cell) % 2 else ink
     if pattern == "double":
-        return accent if y == height // 2 else ink
+        half = width // 2
+        if x == half:
+            return accent
+        if x < half:
+            return ink if x * max(1, height - 1) + y * max(1, half) < half * max(1, height - 1) else accent
+        right_x = x - half - 1
+        right_width = max(1, width - half - 1)
+        return accent if right_x * max(1, height - 1) + y * right_width < right_width * max(1, height - 1) else ink
     if pattern == "stripes":
         return accent if (x // max(1, width // 4)) % 2 else ink
     if pattern == "split":
@@ -201,6 +244,16 @@ def racing_flag_pixel(signal: Mapping[str, Any], x: int, y: int, width: int, hei
     if pattern == "unknown":
         return accent if (x == width // 2 and y < height - 2) or (x == width // 2 and y == height - 1) else ink
     return ink
+
+
+def racing_speed_mph(driver: Mapping[str, Any]) -> str:
+    """Return a reported positive speed without substituting a gap."""
+    value = str(driver.get("speed") or "").strip()
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "--"
+    return value if isfinite(number) and number > 0 else "--"
 
 
 @lru_cache(maxsize=1)
