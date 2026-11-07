@@ -75,6 +75,17 @@ def test_upcoming_session_has_no_white_or_green_flag():
     assert card["status"] == "14:00"
 
 
+def test_nascar_qualifying_uses_quali_on_both_displays():
+    source = game("nascar")
+    source["nascar"].update(session_name="Qualifying", session_type="Qualifying", lap=0, total_laps=0)
+    assert racing_cards(source)[0]["class_label"] == "Quali"
+    mini = mini_payload(source)["content"]["racing"][0]["data"]["racing_display"]
+    assert mini["class_label"] == "Quali"
+    f1 = game("f1")
+    f1["f1"]["session_name"] = "Q2"
+    assert racing_cards(f1)[0]["class_label"] == "Q2"
+
+
 def test_le_mans_lmp2_card_sits_between_hypercar_and_lmgt3():
     source = game("wec")
     extra = deepcopy(source["wec"]["drivers"][:3])

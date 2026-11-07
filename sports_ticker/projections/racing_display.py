@@ -94,7 +94,7 @@ def racing_cards(data: Mapping[str, Any]) -> list[dict[str, Any]]:
         status = "LIVE"
     session_short = re.sub(r"Practice\s*(\d+)", r"FP\1", session, flags=re.IGNORECASE)
     session_short = re.sub(r"Sprint Qualifying", "SQ", session_short, flags=re.IGNORECASE)
-    session_short = re.sub(r"Qualifying", "Q", session_short, flags=re.IGNORECASE)
+    session_short = re.sub(r"Qualifying", "Quali" if sport == "nascar" else "Q", session_short, flags=re.IGNORECASE)
     session_short = re.sub(r"Warm.?up", "WU", session_short, flags=re.IGNORECASE)
     result = []
     for group, members in sorted(groups.items(), key=lambda pair: (_CLASS_ORDER.get(pair[0], 99), pair[0])):
