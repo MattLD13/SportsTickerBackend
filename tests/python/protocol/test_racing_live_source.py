@@ -378,3 +378,47 @@ def test_indycar_race_speed_uses_last_lap_and_never_qualifying_speed():
 def test_short_qualifying_round_names_are_timed():
     from sports_ticker.providers.racing_session import racing_timed_session
     assert all(racing_timed_session(label) for label in ("Q", "Q1", "Q2", "Q3", "SQ", "SQ1", "SQ2", "SQ3"))
+
+
+def test_f1_live_qualifying_segment_reaches_both_displays():
+    from datetime import timedelta
+    from sports_ticker.projections.racing_display import racing_cards, mini_racing_cards
+
+    now = datetime(2026, 11, 7, 19, 58, tzinfo=timezone.utc)
+    live = {'session_name': 'São Paulo Grand Prix', 'session_location': 'São Paulo',
+            'session_year': 2026, 'session_type': 'Qualifying', 'session_status': 'Started',
+            'session_quali_part': 2}
+    client = JsonFixture({'https://f1livedata.com/api/session/current': live})
+    source = _source(client, now=lambda: now, clock=lambda: now.timestamp())
+    source._fetch_f1_timing = lambda *args: {'drivers': [], 'state': 'in', 'flag': 'GREEN',
+                                             'lap': 0, 'total_laps': 0, 'updated_at': ''}
+    source._fetch_f1_weather = lambda *args: {}
+    race = {'round': '600057448', 'race_name': 'MSC Cruises São Paulo Grand Prix', 'location': 'Sao Paulo'}
+    item = source._build_f1_game(race, 'Qualifying', 'Qualifying', False,
+                                  now - timedelta(hours=1), now + timedelta(minutes=15), 'in', now, 'UTC')
+    assert item['f1']['session_name'] == 'Q2'
+    assert item['f1']['qualifying_metric'] == 'time'
+    item['racing_display'] = {'cards': racing_cards(item)}
+    assert item['racing_display']['cards'][0]['class_label'] == 'Q2'
+    mini = mini_racing_cards({'id': item['id'], 'is_shown': True, 'data': item})
+    assert mini[0]['data']['racing_display']['class_label'] == 'Q2'
+
+
+def test_f1_live_segment_validates_event_session_and_failure():
+    now = datetime(2026, 11, 7, 19, 58, tzinfo=timezone.utc)
+    base = {'session_name': 'São Paulo Grand Prix', 'session_location': 'São Paulo',
+            'session_year': 2026, 'session_type': 'Qualifying', 'session_status': 'Started',
+            'session_quali_part': 2}
+    race = {'round': '600057448', 'race_name': 'MSC Cruises São Paulo Grand Prix', 'location': 'Sao Paulo'}
+    url = 'https://f1livedata.com/api/session/current'
+    for field, value in [('session_year', 2025), ('session_type', 'Sprint Qualifying'),
+                         ('session_status', 'Finished'), ('session_quali_part', 4)]:
+        candidate = {**base, field: value}
+        assert _source(JsonFixture({url: candidate}), clock=lambda: now.timestamp())._fetch_f1_qualifying_part(race, 'Qualifying', now) == ''
+    other = {**base, 'session_name': 'Mexico City Grand Prix', 'session_location': 'Mexico City'}
+    assert _source(JsonFixture({url: other}), clock=lambda: now.timestamp())._fetch_f1_qualifying_part(race, 'Qualifying', now) == ''
+    assert _source(JsonFixture({}), clock=lambda: now.timestamp())._fetch_f1_qualifying_part(race, 'Qualifying', now) == ''
+    for part in (1, 2, 3):
+        assert _source(JsonFixture({url: {**base, 'session_quali_part': part}}), clock=lambda: now.timestamp())._fetch_f1_qualifying_part(race, 'Qualifying', now) == f'Q{part}'
+        live = {**base, 'session_type': 'Sprint Qualifying', 'session_quali_part': part}
+        assert _source(JsonFixture({url: live}), clock=lambda: now.timestamp())._fetch_f1_qualifying_part(race, 'SprintQualifying', now) == f'SQ{part}'

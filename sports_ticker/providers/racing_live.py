@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+import unicodedata
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,7 @@ from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_
 _F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
 _INDYCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
 _F1_CORE_BASE = "https://sports.core.api.espn.com/v2/sports/racing"
+_F1_LIVE_SESSION_URL = "https://f1livedata.com/api/session/current"
 _INDYCAR_BLOB_BASE = "https://indycar.blob.core.windows.net/racecontrol"
 
 _F1_SESSION_ORDER = (
@@ -152,6 +154,7 @@ class LiveRacingSource:
         self._f1_schedule: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self._f1_games: dict[str, dict[str, Any]] = {}
         self._f1_timing: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._f1_part: dict[str, tuple[float, str]] = {}
         self._f1_athletes: dict[str, tuple[float, Mapping[str, Any]]] = {}
         self._f1_circuits: dict[int, tuple[float, tuple[Mapping[str, Any], ...]]] = {}
         self._f1_weather: dict[tuple[float, float], tuple[float, Mapping[str, Any]]] = {}
@@ -225,6 +228,7 @@ class LiveRacingSource:
             if identifier not in active_ids:
                 del self._f1_games[identifier]
                 self._f1_timing.pop(identifier, None)
+                self._f1_part.pop(identifier, None)
         return games
 
     def _fetch_f1_schedule(self) -> list[dict[str, Any]]:
@@ -266,6 +270,9 @@ class LiveRacingSource:
         else:
             lap, total_laps = 0, 0
 
+        if state == "in" and session_key in {"Qualifying", "SprintQualifying"}:
+            session_name = self._fetch_f1_qualifying_part(race, session_key, start) or session_name
+
         if state == "post":
             status = "FINAL"
         elif state == "in":
@@ -292,7 +299,7 @@ class LiveRacingSource:
                 "track_name": track,
                 "session_type": session_name,
                 "session_name": session_name,
-                "qualifying_metric": "time" if practice or "qual" in session_name.lower() else "",
+                "qualifying_metric": "time" if practice or session_key in {"Qualifying", "SprintQualifying"} else "",
                 "lap": lap,
                 "total_laps": total_laps,
                 "laps_remaining": max(0, total_laps - lap),
@@ -356,6 +363,32 @@ class LiveRacingSource:
         }
         self._f1_timing[identifier] = (self._clock(), timing)
         return timing
+
+    def _fetch_f1_qualifying_part(self, race: Mapping[str, Any], session_key: str, start: datetime) -> str:
+        """Read the current qualifying segment only for the matching live event."""
+        identifier = f"f1_{race['round']}_{session_key.lower()}"
+        cached_at, cached = self._f1_part.get(identifier, (0.0, ""))
+        if cached_at and self._clock() - cached_at < 15:
+            return cached
+        part = ""
+        try:
+            live = _mapping(self._client.get_json(_F1_LIVE_SESSION_URL, timeout=self._timeout))
+            expected_type = "sprint qualifying" if session_key == "SprintQualifying" else "qualifying"
+            event = _f1_event_identity(race.get("race_name"))
+            reported_event = _f1_event_identity(live.get("session_name"))
+            location = _f1_event_identity(race.get("location"))
+            reported_location = _f1_event_identity(live.get("session_location"))
+            same_event = bool(event and reported_event and (event.endswith(reported_event) or reported_event.endswith(event)))
+            same_location = bool(location and reported_location and location == reported_location)
+            number = live.get("session_quali_part")
+            if (live.get("session_year") == start.year and str(live.get("session_type") or "").casefold() == expected_type
+                    and str(live.get("session_status") or "").casefold() not in {"", "finished", "ended", "final"}
+                    and (same_event or same_location) and type(number) is int and number in {1, 2, 3}):
+                part = ("SQ" if session_key == "SprintQualifying" else "Q") + str(number)
+        except Exception:
+            pass
+        self._f1_part[identifier] = (self._clock(), part)
+        return part
 
     def _fetch_f1_driver(
         self, base: str, entry: Mapping[str, Any], timed: bool,
@@ -731,6 +764,11 @@ def _f1_statistics(value: object) -> dict[str, Mapping[str, Any]]:
         for category in _sequence(splits.get("categories"))
         for stat in _sequence(category.get("stats"))
     }
+
+
+def _f1_event_identity(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower()
+    return " ".join(re.sub(r"\b(grand prix|gp)\b", " ", text).split())
 
 
 def _f1_event_to_race(event: Mapping[str, Any]) -> dict[str, Any]:
