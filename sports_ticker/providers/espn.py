@@ -109,12 +109,16 @@ _MLB_TEAM_ABBREVIATION_ALIASES = MappingProxyType(
         "CWS": "CHW",
     }
 )
-_NCAA_COLLEGE_FOOTBALL_RANKING_URLS = MappingProxyType(
-    {
-        "ncf_fbs": "https://ncaa-api.henrygd.me/rankings/football/fbs/associated-press",
-        "ncf_fcs": "https://ncaa-api.henrygd.me/rankings/football/fcs/stats-perform-fcs-top-25",
-    }
+_NCAA_FBS_PLAYOFF_RANKING_URL = "https://ncaa-api.henrygd.me/rankings/football/fbs/college-football-playoff"
+_NCAA_FBS_AP_RANKING_URL = "https://ncaa-api.henrygd.me/rankings/football/fbs/associated-press"
+_NCAA_FCS_COACHES_RANKING_URL = "https://ncaa-api.henrygd.me/rankings/football/fcs/afca-fcs-coaches-poll"
+_NCAA_RANKING_MONTHS = MappingProxyType(
+    {name: number for number, name in enumerate(
+        ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1
+    )}
 )
+_NCAA_RANKING_THROUGH_DATE = re.compile(r"([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{1,2}),\s*(\d{4})")
+_NCAA_SEASON_START_MONTH = 6
 _RANKINGS_CACHE_SECONDS = 300.0
 _NCAA_SCHOOLS_INDEX_URL = "https://ncaa-api.henrygd.me/schools-index"
 _NCAA_LOGO_CACHE_SECONDS = 86400.0
@@ -862,26 +866,37 @@ class EspnScoreboardProvider:
         return self._fastcast is not None and self._fastcast.active(league)
 
     def _read_college_football_rankings(self) -> dict[str, dict[str, str]]:
-        """Read cached NCAA AP and Stats Perform polls without affecting scoreboard health."""
+        """Read cached NCAA polls without affecting scoreboard health.
+
+        FBS uses the College Football Playoff ranking once the NCAA publishes it
+        for the current season. Until then, FBS uses the AP poll.
+        FCS always uses the AFCA coaches poll.
+        """
 
         now = self._monotonic()
         with self._raw_cache_lock:
             cached = self._rankings_cache
             if cached is not None and 0 <= now - cached[0] < _RANKINGS_CACHE_SECONDS:
                 return cached[1]
+        playoff = self._read_ncaa_poll(_NCAA_FBS_PLAYOFF_RANKING_URL, current_season_only=True)
         rankings = {
-            league: {}
-            for league in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
+            "ncf_fbs": playoff or self._read_ncaa_poll(_NCAA_FBS_AP_RANKING_URL),
+            "ncf_fcs": self._read_ncaa_poll(_NCAA_FCS_COACHES_RANKING_URL),
         }
-        for league, url in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS.items():
-            try:
-                payload = self.client.get_json(url, timeout=self.timeout)
-                rankings[league] = _parse_ncaa_college_football_rankings(payload)
-            except Exception:
-                continue
         with self._raw_cache_lock:
             self._rankings_cache = (self._monotonic(), rankings)
         return rankings
+
+    def _read_ncaa_poll(self, url: str, *, current_season_only: bool = False) -> dict[str, str]:
+        """Read one NCAA poll. Return no ranks when it is missing or from an earlier season."""
+
+        try:
+            payload = self.client.get_json(url, timeout=self.timeout)
+        except Exception:
+            return {}
+        if current_season_only and not _ncaa_poll_in_current_season(payload, self._now()):
+            return {}
+        return _parse_ncaa_college_football_rankings(payload)
 
     def _read_ncaa_school_index(self) -> dict[str, str]:
         """Read the cached NCAA school index for teams missing ESPN logos."""
@@ -2160,6 +2175,21 @@ _COLLEGE_RANKING_NAME_ALIASES = MappingProxyType(
 )
 
 
+def _ncaa_poll_in_current_season(payload: Any, now: datetime) -> bool:
+    """Return whether an NCAA poll's "Through Games" date falls in the current season."""
+
+    match = _NCAA_RANKING_THROUGH_DATE.search(str(_mapping(payload).get("updated") or ""))
+    month = _NCAA_RANKING_MONTHS.get(match.group(1).casefold()) if match else None
+    if match is None or month is None:
+        return False
+    season_year = now.year if now.month >= _NCAA_SEASON_START_MONTH else now.year - 1
+    try:
+        through = date(int(match.group(3)), month, int(match.group(2)))
+    except ValueError:
+        return False
+    return through >= date(season_year, _NCAA_SEASON_START_MONTH, 1)
+
+
 def _parse_ncaa_college_football_rankings(payload: Any) -> dict[str, str]:
     """Map NCAA ranking rows to normalized school names."""
 
@@ -2198,11 +2228,11 @@ def _resolve_college_football_rankings(
     resolved: dict[str, str] = {}
     college_events = tuple(
         event
-        for league in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
+        for league in COLLEGE_FOOTBALL_LEAGUES
         for event in events_by_league.get(league, ())
     )
     for league, name_rankings in rankings.items():
-        if league not in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS:
+        if league not in COLLEGE_FOOTBALL_LEAGUES:
             continue
         for event in college_events:
             competition = _first_mapping(event.get("competitions"))

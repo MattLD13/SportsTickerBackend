@@ -1,6 +1,6 @@
 """Verify ESPN calendar reads and canonical scoreboard filtering."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from copy import deepcopy
 from threading import Barrier
 from urllib.parse import parse_qs, urlsplit
@@ -61,6 +61,13 @@ def _event(
     }
 
 
+_RANKING_POLL_KEYS = {
+    "college-football-playoff": "ncf_fbs_playoff",
+    "associated-press": "ncf_fbs",
+    "afca-fcs-coaches-poll": "ncf_fcs",
+}
+
+
 class RecordingClient:
     def __init__(
         self,
@@ -85,8 +92,8 @@ class RecordingClient:
         del timeout
         if "/rankings" in url:
             self.ranking_urls.append(url)
-            league = "ncf_fbs" if "/football/fbs/" in url else "ncf_fcs"
-            return self.ranking_responses.get(league, {"data": []})
+            poll = url.rsplit("/", 1)[-1]
+            return self.ranking_responses.get(_RANKING_POLL_KEYS[poll], {"data": []})
         if "/schools-index" in url:
             self.ncaa_school_urls.append(url)
             return self.ncaa_schools
@@ -146,9 +153,11 @@ def test_ncaa_college_football_rankings_fill_scoreboard_sentinel(
     result = provider.fetch(_settings())
 
     assert result.content[0].data["home_rank"] == str(rank)
-    assert len(client.ranking_urls) == 2
-    assert any("/football/fbs/associated-press" in url for url in client.ranking_urls)
-    assert any("/football/fcs/stats-perform-fcs-top-25" in url for url in client.ranking_urls)
+    assert sorted(url.rsplit("/", 2)[-2:] for url in client.ranking_urls) == [
+        ["fbs", "associated-press"],
+        ["fbs", "college-football-playoff"],
+        ["fcs", "afca-fcs-coaches-poll"],
+    ]
 
 
 def test_mixed_division_game_uses_each_team_ncaa_poll() -> None:
@@ -206,6 +215,84 @@ def test_fbs_rankings_use_ncaa_ap_instead_of_espn_curated_rank() -> None:
     result = provider.fetch(_settings())
 
     assert result.content[0].data["home_rank"] == "12"
+
+
+def _fbs_ranked_home_rank(
+    day: datetime,
+    ranking_responses: dict[str, dict],
+) -> tuple[str, RecordingClient]:
+    dates = f"{day:%Y%m%d}-{day + timedelta(days=1):%Y%m%d}"
+    event = _event("fbs-poll-switch", f"{day:%Y-%m-%d}T23:00:00Z")
+    event["competitions"][0]["competitors"][0]["team"].update(
+        {"id": "97", "location": "Louisville", "displayName": "Louisville Cardinals"}
+    )
+    client = RecordingClient({dates: {"events": [event]}}, ranking_responses=ranking_responses)
+    provider = EspnScoreboardProvider(
+        {"ncf_fbs": "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: day.replace(hour=15),
+    )
+
+    return provider.fetch(_settings()).content[0].data["home_rank"], client
+
+
+def _poll(rank: str, updated: str | None) -> dict:
+    payload: dict = {"data": [{"RANK": rank, "SCHOOL": "Louisville"}]}
+    if updated is not None:
+        payload["updated"] = updated
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("day", "playoff", "expected", "ap_requested"),
+    (
+        # The playoff ranking is out for this season: it replaces the AP poll.
+        (datetime(2026, 11, 7, tzinfo=timezone.utc), _poll("5", "Through Games OCT. 31, 2026"), "5", False),
+        # Bowl games in January still use the final playoff ranking.
+        (datetime(2027, 1, 2, tzinfo=timezone.utc), _poll("5", "Through Games DEC. 6, 2026"), "5", False),
+        # Before the first playoff ranking, the AP poll stays.
+        (datetime(2026, 9, 11, tzinfo=timezone.utc), {"data": []}, "12", True),
+        # The NCAA keeps last season's playoff ranking until it publishes a new one.
+        (datetime(2026, 9, 11, tzinfo=timezone.utc), _poll("3", "Through Games DEC. 7, 2025"), "12", True),
+        # An undated playoff ranking cannot prove it is current.
+        (datetime(2026, 11, 7, tzinfo=timezone.utc), _poll("5", None), "12", True),
+    ),
+)
+def test_fbs_rankings_switch_from_ap_to_playoff_when_published(
+    day: datetime,
+    playoff: dict,
+    expected: str,
+    ap_requested: bool,
+) -> None:
+    rank, client = _fbs_ranked_home_rank(
+        day,
+        {"ncf_fbs_playoff": playoff, "ncf_fbs": _poll("12", "Through Games OCT. 31, 2026")},
+    )
+
+    assert rank == expected
+    assert any(url.endswith("/associated-press") for url in client.ranking_urls) is ap_requested
+
+
+def test_fcs_rankings_use_afca_coaches_poll() -> None:
+    event = _event("fcs-coaches-rank", "2026-09-11T23:00:00Z")
+    event["competitions"][0]["competitors"][0]["team"].update(
+        {"id": "2329", "location": "Lehigh", "displayName": "Lehigh Mountain Hawks"}
+    )
+    client = RecordingClient(
+        {"20260911-20260912": {"events": [event]}},
+        ranking_responses={"ncf_fcs": {"data": [{"RANK": "7", "SCHOOL": "Lehigh"}]}},
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fcs": "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 9, 11, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    assert result.content[0].data["home_rank"] == "7"
+    assert any(url.endswith("/fcs/afca-fcs-coaches-poll") for url in client.ranking_urls)
+    assert not any("stats-perform" in url for url in client.ranking_urls)
 
 
 def test_ncaa_ranking_name_aliases_match_espn_team_names() -> None:
