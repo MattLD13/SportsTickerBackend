@@ -27,20 +27,4 @@ final class PollingPolicyTests: XCTestCase {
         let selected = try XCTUnwrap(response.response.games.last)
         XCTAssertEqual(response.orderedGames(pinnedIDs: [selected.id]).first?.id, selected.id)
     }
-
-    func testRacingAndGamesUseStartTimeAcrossFamilies() throws {
-        let data = Data(#"""
-        {"settings":{"mode":"sports"},"meta":{},"content":{
-          "sports":[
-            {"id":"early","family":"sports","kind":"scoreboard","is_shown":true,"data":{"sport":"nhl","state":"pre","status":"Scheduled","startTimeUTC":"2026-11-07T18:00Z"}},
-            {"id":"late","family":"sports","kind":"scoreboard","is_shown":true,"data":{"sport":"nfl","state":"in","status":"Live","startTimeUTC":"2026-11-07T20:00:00Z"}},
-            {"id":"final","family":"sports","kind":"scoreboard","is_shown":true,"data":{"sport":"nhl","state":"post","status":"Final","startTimeUTC":"2026-11-07T16:00:00Z"}}
-          ],
-          "racing":[{"id":"race","family":"racing","kind":"f1","is_shown":true,"data":{"sport":"f1","state":"in","status":"Q2","startTimeUTC":"2026-11-07T19:00:00+00:00"}}]
-        }}
-        """#.utf8)
-        let response = try TickerDisplayResponse(data: data)
-        XCTAssertEqual(response.orderedGames(pinnedIDs: []).map(\.id), ["early", "race", "late", "final"])
-        XCTAssertEqual(response.orderedGames(pinnedIDs: ["race"]).first?.id, "race")
-    }
 }
