@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import statistics
 import time
 from pathlib import Path
@@ -10,8 +11,8 @@ from threading import Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-RESULT_PATH = Path('/tmp/ticker-motion-60hz-full-pwm6-uncapped-20261108.json')
-EXPERIMENT = 'motion-60hz-full-pwm6-uncapped-20261108'
+RESULT_PATH = Path('/tmp/ticker-motion-60hz-full-pwm6-priority-20261108.json')
+EXPERIMENT = 'motion-60hz-full-pwm6-priority-20261108'
 _started = False
 
 
