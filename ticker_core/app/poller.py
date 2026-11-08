@@ -328,11 +328,6 @@ class BackendPoller:
 
         snapshot = self._telemetry()
         metadata: dict[str, Any] = {}
-        from .temporary_profile import RESULT_PATH
-        try:
-            metadata["temporary_benchmark"] = json.loads(RESULT_PATH.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            pass
         for name in ("uptime_seconds", "build", "python", "temperature_c", "wifi_available", "wifi_setup_active"):
             value = getattr(snapshot, name, None)
             if value is not None:
