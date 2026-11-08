@@ -328,10 +328,6 @@ class BackendPoller:
 
         snapshot = self._telemetry()
         metadata: dict[str, Any] = {}
-        from ticker_core.platform.temporary_benchmark import result
-        benchmark = result()
-        if benchmark is not None:
-            metadata["temporary_benchmark"] = benchmark
         for name in ("uptime_seconds", "build", "python", "temperature_c", "wifi_available", "wifi_setup_active"):
             value = getattr(snapshot, name, None)
             if value is not None:
