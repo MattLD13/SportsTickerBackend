@@ -13,14 +13,12 @@ from PIL import Image
 from .memory import _brightness, _prepare_frame
 
 
-_TRANSFER_ROWS = 4
+_TRANSFER_ROWS = 2
 
 
 def _set_image(canvas: Any, frame: Image.Image) -> None:
     """Transfer four-row bands selected by the physical Pi framebuffer benchmark."""
-    for top in range(0, frame.height, _TRANSFER_ROWS):
-        band = frame.crop((0, top, frame.width, min(top + _TRANSFER_ROWS, frame.height)))
-        canvas.SetImage(band, 0, top)
+    canvas.SetImage(frame)
 
 
 class RgbMatrixUnavailableError(RuntimeError):
@@ -115,10 +113,15 @@ class RgbMatrixFrameSink:
             options.limit_refresh_rate_hz = active_settings.refresh_rate_limit_hz
         if active_settings.show_refresh_rate:
             options.show_refresh_rate = 1
+        dither_supported = hasattr(options, "pwm_dither_bits")
+        if dither_supported:
+            options.pwm_dither_bits = 2
         matrix = module.RGBMatrix(options=options)
         if hasattr(matrix, "luminanceCorrect"):
             matrix.luminanceCorrect = active_settings.luminance_correction
-        return cls(matrix, width=active_settings.width, height=active_settings.height)
+        sink = cls(matrix, width=active_settings.width, height=active_settings.height)
+        sink._temporary_dither_supported = dither_supported
+        return sink
 
     def present(
         self,
