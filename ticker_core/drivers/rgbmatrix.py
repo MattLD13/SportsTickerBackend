@@ -13,12 +13,14 @@ from PIL import Image
 from .memory import _brightness, _prepare_frame
 
 
-_TRANSFER_ROWS = 4
+_TRANSFER_ROWS = 2
 
 
 def _set_image(canvas: Any, frame: Image.Image) -> None:
-    """Transfer four-row bands selected by the physical Pi framebuffer benchmark."""
-    canvas.SetImage(frame)
+    """Transfer two-row bands through the native matrix API."""
+    for top in range(0, frame.height, _TRANSFER_ROWS):
+        band = frame.crop((0, top, frame.width, min(top + _TRANSFER_ROWS, frame.height)))
+        canvas.SetImage(band, 0, top)
 
 
 class RgbMatrixUnavailableError(RuntimeError):
