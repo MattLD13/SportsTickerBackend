@@ -9,7 +9,7 @@ from .composition import create_application
 
 def main() -> None:
     """Start the selected ticker sink until a process interrupt arrives."""
-    os.environ.setdefault("TICKER_MATRIX_REFRESH_HZ", "120")
+    os.environ.setdefault("TICKER_MATRIX_REFRESH_HZ", "0")
     os.environ.setdefault("TICKER_PWM_BITS", "8")
     application = create_application()
     try:
