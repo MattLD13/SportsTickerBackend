@@ -220,11 +220,12 @@ def test_fbs_rankings_use_ncaa_ap_instead_of_espn_curated_rank() -> None:
 def _fbs_ranked_home_rank(
     day: datetime,
     ranking_responses: dict[str, dict],
+    team: dict | None = None,
 ) -> tuple[str, RecordingClient]:
     dates = f"{day:%Y%m%d}-{day + timedelta(days=1):%Y%m%d}"
     event = _event("fbs-poll-switch", f"{day:%Y-%m-%d}T23:00:00Z")
     event["competitions"][0]["competitors"][0]["team"].update(
-        {"id": "97", "location": "Louisville", "displayName": "Louisville Cardinals"}
+        team or {"id": "97", "location": "Louisville", "displayName": "Louisville Cardinals"}
     )
     client = RecordingClient({dates: {"events": [event]}}, ranking_responses=ranking_responses)
     provider = EspnScoreboardProvider(
@@ -316,6 +317,35 @@ def test_ncaa_ranking_name_aliases_match_espn_team_names() -> None:
     result = provider.fetch(_settings())
 
     assert result.content[0].data["home_rank"] == "14"
+
+
+@pytest.mark.parametrize(
+    ("team_id", "location", "display_name", "poll_school"),
+    (
+        # The playoff ranking writes "Miami (Fla.)". ESPN writes "Miami".
+        ("2390", "Miami", "Miami Hurricanes", "Miami (Fla.)"),
+        # ESPN writes "Miami (OH)". The NCAA writes "Miami (Ohio)".
+        ("193", "Miami (OH)", "Miami (OH) RedHawks", "Miami (Ohio)"),
+    ),
+)
+def test_playoff_ranking_matches_miami_team_names(
+    team_id: str,
+    location: str,
+    display_name: str,
+    poll_school: str,
+) -> None:
+    rank, _client = _fbs_ranked_home_rank(
+        datetime(2026, 11, 7, tzinfo=timezone.utc),
+        {
+            "ncf_fbs_playoff": {
+                "updated": "Through Games OCT. 31, 2026",
+                "data": [{"RANK": "1", "SCHOOL": poll_school}],
+            },
+        },
+        team={"id": team_id, "location": location, "displayName": display_name},
+    )
+
+    assert rank == "1"
 
 
 def test_missing_college_logos_use_cached_ncaa_school_index() -> None:

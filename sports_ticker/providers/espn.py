@@ -2168,7 +2168,9 @@ _COLLEGE_RANKING_NAME_ALIASES = MappingProxyType(
         "southern cal": "usc",
         "southern california": "usc",
         "miami fl": "miami",
+        "miami fla": "miami",
         "miami florida": "miami",
+        "miami ohio": "miami oh",
         "pitt": "pittsburgh",
         "uconn": "connecticut",
     }
