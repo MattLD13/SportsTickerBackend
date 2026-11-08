@@ -11,6 +11,7 @@ from typing import Any, Callable
 from PIL import Image
 
 from .memory import _brightness, _prepare_frame
+from ticker_core.app import temporary_profile as prof
 
 
 _TRANSFER_ROWS = 2
@@ -18,9 +19,17 @@ _TRANSFER_ROWS = 2
 
 def _set_image(canvas: Any, frame: Image.Image) -> None:
     """Transfer two-row bands through the native matrix API."""
+    crop_time = transfer_time = 0.0
     for top in range(0, frame.height, _TRANSFER_ROWS):
+        started = prof.clock()
         band = frame.crop((0, top, frame.width, min(top + _TRANSFER_ROWS, frame.height)))
+        cropped = prof.clock()
         canvas.SetImage(band, 0, top)
+        ended = prof.clock()
+        crop_time += (cropped - started) * 1000
+        transfer_time += (ended - cropped) * 1000
+    prof.matrix["band_crop"] = crop_time
+    prof.matrix["band_transfer"] = transfer_time
 
 
 class RgbMatrixUnavailableError(RuntimeError):
@@ -127,14 +136,21 @@ class RgbMatrixFrameSink:
         brightness: int = 100,
         inverted: bool = False,
     ) -> None:
+        started = prof.clock()
         frame = _prepare_frame(image, self.width, self.height, inverted, copy=False)
+        prepared = prof.clock()
         target_brightness = _brightness(brightness)
         self.brightness = target_brightness
         self.inverted = inverted
         if self._canvas is not None:
             self._canvas.brightness = target_brightness
+            configured = prof.clock()
             _set_image(self._canvas, frame)
+            transferred = prof.clock()
             self._canvas = self._matrix.SwapOnVSync(self._canvas)
+            ended = prof.clock()
+            prof.matrix.update({"image_prepare": (prepared-started)*1000, "brightness": (configured-prepared)*1000,
+                                "vsync_swap": (ended-transferred)*1000, "matrix_total": (ended-started)*1000})
             return
         self._matrix.brightness = target_brightness
         _set_image(self._matrix, frame)
