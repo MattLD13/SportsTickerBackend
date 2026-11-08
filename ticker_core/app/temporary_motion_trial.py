@@ -10,8 +10,8 @@ from threading import Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-RESULT_PATH = Path('/tmp/ticker-motion-60hz-timed-pwm11-lsb60-20261108.json')
-EXPERIMENT = 'motion-60hz-timed-pwm11-lsb60-20261108'
+RESULT_PATH = Path('/tmp/ticker-motion-60hz-timed-pwm11-lsb50-20261108.json')
+EXPERIMENT = 'motion-60hz-timed-pwm11-lsb50-20261108'
 _started = False
 
 
@@ -69,7 +69,7 @@ def trial(sink):
         index += 1
     duration = time.perf_counter() - start
     return {'experiment': EXPERIMENT, 'frames': len(samples['frame_work']), 'skipped_slots': skipped, 'target_fps': 60,
-            'requested_matrix_refresh_hz': 0, 'requested_pwm_bits': 11, 'requested_pwm_lsb_ns': 60, 'scroll_pixels_per_second': round(1 / .03, 4),
+            'requested_matrix_refresh_hz': 0, 'requested_pwm_bits': 11, 'requested_pwm_lsb_ns': 50, 'scroll_pixels_per_second': round(1 / .03, 4),
             'elapsed_seconds': round(duration, 4), 'presentations_per_second': round(len(samples['frame_work']) / duration, 4),
             'late_frames': sum(x > 0 for x in samples['lateness']),
             'late_over_1ms': sum(x > 1 for x in samples['lateness']),
