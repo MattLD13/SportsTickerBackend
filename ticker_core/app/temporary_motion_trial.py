@@ -10,8 +10,8 @@ from threading import Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-RESULT_PATH = Path('/tmp/ticker-motion-60hz-20261108.json')
-EXPERIMENT = 'motion-60hz-20261108'
+RESULT_PATH = Path('/tmp/ticker-motion-60hz-cached-20261108.json')
+EXPERIMENT = 'motion-60hz-cached-20261108'
 _started = False
 
 
@@ -31,6 +31,8 @@ def trial(sink):
     for offset in range(0, width * 3, 96):
         draw.text((offset + 4, 6), 'SCORE 24 - 17', font=font, fill=(255, 255, 255))
         draw.line((offset, 27, offset + 86, 27), fill=(0, 120, 255))
+    shifted = strip.crop((1, 0, strip.width + 1, height))
+    prepared = [Image.blend(strip, shifted, phase / 9) for phase in range(9)]
     samples = {'frame_work': [], 'composition': [], 'presentation': [], 'interval': [], 'lateness': []}
     target = 1 / 60
     start = time.perf_counter()
@@ -39,12 +41,10 @@ def trial(sink):
         deadline = start + index * target
         time.sleep(max(0.0, deadline - time.perf_counter()))
         begun = time.perf_counter()
-        position = (index * target / 0.03) % width
-        whole = int(position)
-        fraction = position - whole
-        a = strip.crop((whole, 0, whole + width, height))
-        b = strip.crop((whole + 1, 0, whole + width + 1, height))
-        frame = Image.blend(a, b, fraction)
+        displacement = index * 5
+        whole = (displacement // 9) % width
+        phase = displacement % 9
+        frame = prepared[phase].crop((whole, 0, whole + width, height))
         built = time.perf_counter()
         sink.present(frame, brightness=30, inverted=False)
         done = time.perf_counter()
