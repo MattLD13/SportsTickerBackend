@@ -11,8 +11,8 @@ from threading import Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-RESULT_PATH = Path('/tmp/ticker-motion-60hz-full-pwm6-priority-20261108.json')
-EXPERIMENT = 'motion-60hz-full-pwm6-priority-20261108'
+RESULT_PATH = Path('/tmp/ticker-motion-60hz-full-pwm6-priority-v2-20261108.json')
+EXPERIMENT = 'motion-60hz-full-pwm6-priority-v2-20261108'
 _started = False
 
 
@@ -75,10 +75,21 @@ def run_once(sink):
     if not isinstance(sink, RgbMatrixFrameSink) or _started or RESULT_PATH.exists():
         return False
     _started = True
+    initial_nice = os.getpriority(os.PRIO_PROCESS, 0)
+    priority_error = None
+    try:
+        os.nice(-5)
+    except OSError as exc:
+        priority_error = type(exc).__name__
+    active_nice = os.getpriority(os.PRIO_PROCESS, 0)
     try:
         report = trial(sink)
     except Exception as exc:
         report = {'experiment': EXPERIMENT, 'error': type(exc).__name__, 'message': str(exc)[:160]}
+    finally:
+        if active_nice < initial_nice:
+            os.nice(initial_nice - active_nice)
+    report.update(initial_nice=initial_nice, trial_nice=active_nice, priority_error=priority_error)
     def save():
         temp = RESULT_PATH.with_suffix('.tmp')
         temp.write_text(json.dumps(report), encoding='utf-8')
