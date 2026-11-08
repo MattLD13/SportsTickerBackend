@@ -55,6 +55,11 @@ class DisplayLatencyTracker:
     def pending_ids(self) -> tuple[str, ...]:
         return tuple(self._pending)
 
+    @property
+    def pending_readiness_ids(self) -> tuple[str, ...]:
+        """Return updates that do not yet have an installed-pane timestamp."""
+        return tuple(identifier for identifier, value in self._pending.items() if "pane_installed_mono" not in value)
+
     def accept(self, timing: Mapping[str, Any] | None, *, event_mono: float, accepted_mono: float, delay_seconds: float,
                visible_ids: frozenset[str] | None = None) -> None:
         if not timing:

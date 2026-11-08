@@ -219,8 +219,9 @@ class TickerApplication:
         self._refresh_cards_after_asset_change()
         self._install_completed_cards()
         installed_times = getattr(self._viewport, "installed_times", None)
-        if self._latency.pending_ids and callable(installed_times):
-            self._latency.ready(installed_times(self._latency.pending_ids))
+        pending_readiness = self._latency.pending_readiness_ids
+        if pending_readiness and callable(installed_times):
+            self._latency.ready(installed_times(pending_readiness))
         self._push_requested_modes()
         decision = self._runtime.next_frame()
         wifi_state = self._wifi_state

@@ -281,3 +281,20 @@ def test_report_counts_first_presentation_per_device_and_omits_small_sample_tail
     metric = result["sources"]["espn_fastcast"]["metrics"]["source_to_present_ms"]
     assert metric["p50_ms"] == 20
     assert metric["p95_ms"] is None
+
+
+def test_readiness_lookup_only_includes_updates_without_installed_panes():
+    tracker = DisplayLatencyTracker(lambda row: None)
+    tracker.accept(timing(), event_mono=2.02, accepted_mono=2.03, delay_seconds=0)
+    assert tracker.pending_readiness_ids == ("game",)
+    tracker.ready({"game": {"installed_mono": 2.04}})
+    assert tracker.pending_readiness_ids == ()
+    assert tracker.pending_ids == ("game",)
+    tracker.accept(timing(), event_mono=3.02, accepted_mono=3.03, delay_seconds=0)
+    assert tracker.pending_readiness_ids == ("game",)
+    tracker.ready({"game": {"installed_mono": None}})
+    assert tracker.pending_readiness_ids == ("game",)
+    tracker.presented({"game": {"changed_visible": True, "installed_mono": 3.04}},
+                      at_ms=1400, at_mono=3.08, present_started=3.07)
+    assert tracker.pending_readiness_ids == ()
+    assert tracker.pending_ids == ()
