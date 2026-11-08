@@ -10,8 +10,8 @@ from threading import Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-RESULT_PATH = Path('/tmp/ticker-motion-60hz-cached-pwm8-20261108.json')
-EXPERIMENT = 'motion-60hz-cached-pwm8-20261108'
+RESULT_PATH = Path('/tmp/ticker-motion-60hz-full-pwm8-20261108.json')
+EXPERIMENT = 'motion-60hz-full-pwm8-20261108'
 _started = False
 
 
@@ -33,7 +33,7 @@ def trial(sink):
         draw.line((offset, 27, offset + 86, 27), fill=(0, 120, 255))
     shifted = strip.crop((1, 0, strip.width + 1, height))
     prepared = [Image.blend(strip, shifted, phase / 9) for phase in range(9)]
-    samples = {'frame_work': [], 'composition': [], 'presentation': [], 'interval': [], 'lateness': []}
+    samples = {'frame_work': [], 'composition': [], 'presentation': [], 'presentation_cpu': [], 'interval': [], 'lateness': []}
     target = 1 / 60
     start = time.perf_counter()
     previous = None
@@ -46,11 +46,14 @@ def trial(sink):
         phase = displacement % 9
         frame = prepared[phase].crop((whole, 0, whole + width, height))
         built = time.perf_counter()
+        cpu_started = time.thread_time()
         sink.present(frame, brightness=30, inverted=False)
+        cpu_ended = time.thread_time()
         done = time.perf_counter()
         samples['frame_work'].append((done - begun) * 1000)
         samples['composition'].append((built - begun) * 1000)
         samples['presentation'].append((done - built) * 1000)
+        samples['presentation_cpu'].append((cpu_ended - cpu_started) * 1000)
         samples['lateness'].append(max(0, done - (deadline + target)) * 1000)
         if previous is not None:
             samples['interval'].append((done - previous) * 1000)
