@@ -201,6 +201,9 @@ class TickerApplication:
         try:
             while self._runtime.running and not self._stop.is_set():
                 self.step()
+                from .temporary_motion_trial import run_once
+                if run_once(self._sink):
+                    self._last_visual_key = None
                 decision = self._last_decision
                 if self._stop.wait(self._pacer.next_delay(decision.interval)):
                     break
