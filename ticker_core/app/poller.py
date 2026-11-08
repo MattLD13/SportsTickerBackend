@@ -328,7 +328,7 @@ class BackendPoller:
 
         snapshot = self._telemetry()
         metadata: dict[str, Any] = {}
-        from .temporary_profile import RESULT_PATH
+        from .temporary_motion_trial import RESULT_PATH
         try:
             metadata["temporary_benchmark"] = json.loads(RESULT_PATH.read_text(encoding="utf-8"))
         except (OSError, ValueError):
