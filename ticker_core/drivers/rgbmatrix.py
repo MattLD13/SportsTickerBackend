@@ -18,7 +18,9 @@ _TRANSFER_ROWS = 4
 
 def _set_image(canvas: Any, frame: Image.Image) -> None:
     """Transfer four-row bands selected by the physical Pi framebuffer benchmark."""
-    canvas.SetImage(frame)
+    for top in range(0, frame.height, _TRANSFER_ROWS):
+        band = frame.crop((0, top, frame.width, min(top + _TRANSFER_ROWS, frame.height)))
+        canvas.SetImage(band, 0, top)
 
 
 class RgbMatrixUnavailableError(RuntimeError):
