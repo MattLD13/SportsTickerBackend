@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 from threading import Thread
 
-RESULT_PATH = Path('/tmp/ticker-gpio-slowdown2-20261109.json')
-EXPERIMENT = 'gpio-slowdown2-20261109'
+RESULT_PATH = Path('/tmp/ticker-gpio-slowdown2-forced-20261109.json')
+EXPERIMENT = 'gpio-slowdown2-forced-20261109'
 _started = False
 
 
