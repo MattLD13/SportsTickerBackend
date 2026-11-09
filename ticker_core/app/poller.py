@@ -328,10 +328,6 @@ class BackendPoller:
 
         snapshot = self._telemetry()
         metadata: dict[str, Any] = {}
-        from .temporary_system_diag import result
-        diagnostic = result()
-        if diagnostic is not None:
-            metadata["temporary_system_diagnostic"] = diagnostic
         for name in ("uptime_seconds", "build", "python", "temperature_c", "wifi_available", "wifi_setup_active"):
             value = getattr(snapshot, name, None)
             if value is not None:

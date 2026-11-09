@@ -29,6 +29,6 @@ jobs:
               value = json.load(response)
           device = next(item for item in value["tickers"] if item["ticker_id"] == os.environ["TICKER_ID"])
           print(json.dumps({key: device.get(key) for key in (
-              "ticker_id", "online", "heartbeat_age_seconds", "build", "pairing", "temporary_system_diagnostic",
+              "ticker_id", "online", "heartbeat_age_seconds", "build", "pairing",
           )}, indent=2))
           PY

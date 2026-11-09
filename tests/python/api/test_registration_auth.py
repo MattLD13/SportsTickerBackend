@@ -330,9 +330,6 @@ def test_deployment_fleet_health_reports_bounded_heartbeat_facts(tmp_path, monke
     try:
         client = app.test_client()
         _register(client, "pi-1")
-        app.extensions["sports_ticker.backend_application"].heartbeat(
-            "pi-1", {"metadata": {"temporary_system_diagnostic": {"per_core_busy_pct": {"cpu0": 75.0}}}}
-        )
         response = client.get("/api/v2/fleet/health")
         assert response.status_code == 401
         response = client.get(
@@ -344,7 +341,6 @@ def test_deployment_fleet_health_reports_bounded_heartbeat_facts(tmp_path, monke
         assert payload["api_version"] == "v2"
         assert payload["tickers"][0]["ticker_id"] == "pi-1"
         assert "metadata" not in payload["tickers"][0]
-        assert payload["tickers"][0]["temporary_system_diagnostic"] == {"per_core_busy_pct": {"cpu0": 75.0}}
     finally:
         app.extensions["sports_ticker.backend_application"].close()
 
