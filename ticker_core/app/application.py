@@ -27,7 +27,6 @@ from ticker_core.platform import (
 )
 from ticker_core.protocol import BackendClient, TickerResponse
 from ticker_core.platform.frame_health import PresentedFrameHealth
-from . import temporary_profile as prof
 from ticker_core.platform.affinity import pin_to_cpu
 from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
@@ -216,20 +215,14 @@ class TickerApplication:
         self.process_events()
         updates_finished_at = monotonic()
         self._refresh_local_hardware_content()
-        profile_local_done = monotonic()
         self._install_completed_cards()
-        profile_install1_done = monotonic()
         self._refresh_cards_after_asset_change()
-        profile_assets_done = monotonic()
         self._install_completed_cards()
-        profile_install2_done = monotonic()
         installed_times = getattr(self._viewport, "installed_times", None)
         pending_readiness = self._latency.pending_readiness_ids
         if pending_readiness and callable(installed_times):
             self._latency.ready(installed_times(pending_readiness))
-        profile_latency_done = monotonic()
         self._push_requested_modes()
-        profile_modes_done = monotonic()
         decision = self._runtime.next_frame()
         wifi_state = self._wifi_state
         if wifi_state is not None and not wifi_state.internet_available and wifi_state.local_setup_active:
@@ -244,7 +237,6 @@ class TickerApplication:
         try:
             base_visual_key = self._frame_visual_key(decision)
             visual_key = (base_visual_key, decision.brightness, decision.inverted)
-            profile_key_done = monotonic()
         except Exception as error:
             self._logger.record_issue("frame_key", error, kind=str(decision.kind), mode=decision.mode)
             self._record_tick(decision, presented=False)
@@ -260,7 +252,6 @@ class TickerApplication:
             return decision
         try:
             frame = self._last_frame if self._last_frame is not None and base_visual_key == self._last_base_visual_key else self._frames.build(decision)
-            profile_build_done = monotonic()
             if _unintended_black(frame, decision):
                 self._logger.record_issue("black_frame", "A non-sleep frame is fully black", kind=str(decision.kind), mode=decision.mode)
                 self._present_retry = True
@@ -327,22 +318,6 @@ class TickerApplication:
             ),
         )
         self._complete_step(decision)
-        profile_end = monotonic()
-        if decision.kind is FrameKind.SCROLL and self._sink.__class__.__name__ == 'RgbMatrixFrameSink':
-            prof.add({'events': (updates_finished_at-started_at)*1000,
-                      'local_content': (profile_local_done-updates_finished_at)*1000,
-                      'install_first': (profile_install1_done-profile_local_done)*1000,
-                      'asset_refresh': (profile_assets_done-profile_install1_done)*1000,
-                      'install_second': (profile_install2_done-profile_assets_done)*1000,
-                      'latency_ready': (profile_latency_done-profile_install2_done)*1000,
-                      'push_modes': (profile_modes_done-profile_latency_done)*1000,
-                      'frame_decision': (preparation_finished_at-profile_modes_done)*1000,
-                      'visual_key': (profile_key_done-preparation_finished_at)*1000,
-                      'frame_build': (profile_build_done-profile_key_done)*1000,
-                      'black_frame_check': (present_started_at-profile_build_done)*1000,
-                      'present': (finished_at-present_started_at)*1000,
-                      'post_present': (profile_end-finished_at)*1000,
-                      'frame_total': (profile_end-started_at)*1000}, finished_at)
         return decision
 
     def _frame_visual_key(self, decision: FrameDecision) -> object:
