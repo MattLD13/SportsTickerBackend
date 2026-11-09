@@ -212,6 +212,7 @@ def register_routes(
                     "online": age is not None and age <= 90,
                     "heartbeat_age_seconds": None if age is None else round(age, 1),
                     "build": metadata.get("build"),
+                    "temporary_system_diagnostic": _json_value(metadata.get("temporary_system_diagnostic")),
                     "temperature_c": metadata.get("temperature_c"),
                     "wifi_available": metadata.get("wifi_available"),
                     "wifi_setup_active": metadata.get("wifi_setup_active"),
