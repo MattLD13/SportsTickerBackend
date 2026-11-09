@@ -36,7 +36,7 @@ class RgbMatrixSettings:
     panel_columns: int = 64
     parallel: int = 1
     hardware_mapping: str = "regular"
-    gpio_slowdown: int = 1
+    gpio_slowdown: int = 2
     pwm_bits: int = 11
     pwm_lsb_nanoseconds: int = 130
     hardware_pulsing: bool = True
@@ -71,7 +71,7 @@ class RgbMatrixSettings:
             probe = _sound_module_loaded if module_probe is None else module_probe
             hardware_pulsing = not probe()
         return cls(
-            gpio_slowdown=int(values.get("TICKER_GPIO_SLOWDOWN") or 1),
+            gpio_slowdown=int(values.get("TICKER_GPIO_SLOWDOWN") or 2),
             pwm_bits=int(values.get("TICKER_PWM_BITS") or 11),
             pwm_lsb_nanoseconds=int(values.get("TICKER_PWM_LSB_NS") or 130),
             hardware_pulsing=hardware_pulsing,

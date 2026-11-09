@@ -31,3 +31,19 @@ def test_environment_uses_stable_refresh_default() -> None:
     settings = RgbMatrixSettings.from_environment(module_probe=lambda: False, environment={})
 
     assert settings.refresh_rate_limit_hz == 100
+
+
+def test_gpio_slowdown_keeps_both_panel_halves_aligned() -> None:
+    settings = RgbMatrixSettings.from_environment(module_probe=lambda: False, environment={})
+
+    assert RgbMatrixSettings().gpio_slowdown == 2
+    assert settings.gpio_slowdown == 2
+
+
+def test_environment_can_override_gpio_slowdown() -> None:
+    settings = RgbMatrixSettings.from_environment(
+        module_probe=lambda: False,
+        environment={"TICKER_GPIO_SLOWDOWN": "3"},
+    )
+
+    assert settings.gpio_slowdown == 3
