@@ -1010,9 +1010,12 @@ def _event_text_player_full(text: str, *, sport: str = "") -> str:
             r"\bpass(?:es)? to\s+(.+?)\s+for\s+(?:two|2)[- ]point conversion\b",
             r"^(.+?)\s+(?:run|runs|rush|rushed)(?:\s+for)?\s+-?\d+\s+yds?\b",
             r"^(.+?)\s+(?:run|rush)(?:\s+for)?\s+(?:two|2)[- ]point conversion\b",
+            # "Trey White Safety" and "Zakaa Brown Defensive PAT Conversion".
+            r"^(.+?)\s+safety\b",
+            r"^(.+?)\s+defensive\s+(?:pat|two[- ]point|2[- ]point)\b",
         ):
             match = re.search(pattern, prefix, re.IGNORECASE)
-            if match:
+            if match and match[1].strip().casefold() != "team":
                 return match[1].strip()
     match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
     if match:

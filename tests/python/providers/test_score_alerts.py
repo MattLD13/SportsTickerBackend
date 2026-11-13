@@ -603,3 +603,27 @@ def test_soccer_scorer_cut_does_not_end_in_a_joining_mark() -> None:
     assert event["player"] == "KEILLOR"
     assert event["alert_player"] == "Davis Keillor-Dunn"
     assert event["assist"] == "SAINT-MAXIMI"
+
+
+def test_college_safety_and_defensive_conversion_name_the_player() -> None:
+    from sports_ticker.providers.espn_plays import _event_scoring_details
+
+    competition = {"competitors": [
+        {"homeAway": "home", "team": {"id": "1", "abbreviation": "TTU"}},
+        {"homeAway": "away", "team": {"id": "2", "abbreviation": "WVU"}},
+    ]}
+    # Real ESPN texts: WVU @ TTU and TOW @ SHU on 2026-11-07, and ODU @ CCU.
+    plays = [
+        {"id": "s1", "type": {"text": "Safety"}, "text": "Trey White Safety", "team": {"id": "1"},
+         "homeScore": 2, "awayScore": 0, "scoringPlay": True, "scoreValue": 2},
+        {"id": "s2", "type": {"text": "Defensive 2pt Conversion"}, "text": "Zakaa Brown Defensive PAT Conversion",
+         "team": {"id": "1"}, "homeScore": 4, "awayScore": 0, "scoringPlay": True, "scoreValue": 2},
+        {"id": "s3", "type": {"text": "Safety"}, "text": "Team Safety", "team": {"id": "2"},
+         "homeScore": 4, "awayScore": 2, "scoringPlay": True, "scoreValue": 2},
+    ]
+    details = _event_scoring_details(
+        {"header": {"competitions": [competition]}, "scoringPlays": plays},
+        {"sport": "ncf_fbs", "home_abbr": "TTU", "away_abbr": "WVU"},
+    )
+
+    assert [play["scorer_full"] for play in details["scoring_plays"]] == ["Trey White", "Zakaa Brown", ""]
