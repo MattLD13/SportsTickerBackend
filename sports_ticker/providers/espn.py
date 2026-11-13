@@ -313,6 +313,7 @@ class EspnScoreboardProvider:
             ttl=_SOURCE_CACHE_SECONDS, clock=self._monotonic
         )
         self._mlb_live_detail_cache: dict[str, _MlbLiveDetailCache] = {}
+        self._football_live_details: dict[tuple[str, str], dict[str, Any]] = {}
         self._mlb_event_keys: dict[str, _MlbEventKey] = {}
         self._mlb_schedule_cache: dict[
             str, tuple[float, tuple[_MlbScheduleGame, ...]]
@@ -326,6 +327,7 @@ class EspnScoreboardProvider:
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
         self._mlb_live_detail_cache_lock = RLock()
+        self._football_live_detail_lock = RLock()
         self._projected_events: OrderedDict[tuple[str, str], tuple[object, object, ContentItem]] = OrderedDict()
         self._projection_contexts: dict[str, object] = {}
 
@@ -844,7 +846,9 @@ class EspnScoreboardProvider:
         return _ScoreboardSource(
             content=tuple(
                 sorted(
-                    self._enrich_nhl_live_items(items) if live_only else self._enrich_live_items(
+                    self._enrich_nhl_live_items(self._with_retained_football_details(items))
+                    if live_only
+                    else self._enrich_live_items(
                         items,
                         update_payloads=live_update_payloads,
                         attempted_update_ids=attempted_live_update_ids,
@@ -1247,29 +1251,29 @@ class EspnScoreboardProvider:
 
         return self._event_scoreboard_cache.get(key, load)
 
-    def _enrich_live_item(
+    def _live_details(
         self,
         league: str,
         item: ContentItem,
         *,
         update: Any | None = None,
-    ) -> ContentItem:
-        """Add detailed live facts after scoreboard projection completes."""
+    ) -> dict[str, Any]:
+        """Read detailed live facts for one projected scoreboard item."""
 
         if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
             if league == "mlb":
                 self._clear_mlb_live_detail(item.id)
-            return item
+            return {}
         template = self._event_detail_urls.get(league)
         if not template:
-            return item
+            return {}
 
         if update is None:
             try:
                 update = self._read_event_scoreboard(league, item.id, cache_source=True)
             except Exception:
                 if league != "mlb":
-                    return item
+                    return {}
                 update = {}
         details = _event_scoring_details(update, item.data)
         details.update(
@@ -1290,6 +1294,16 @@ class EspnScoreboardProvider:
         )
         if league == "mlb":
             details = self._merge_mlb_live_details(item.id, update, details)
+        return details
+
+    @staticmethod
+    def _with_live_details(
+        league: str,
+        item: ContentItem,
+        details: Mapping[str, Any],
+    ) -> ContentItem:
+        """Add detailed live facts after scoreboard projection completes."""
+
         if not details:
             return item
         data = dict(item.data)
@@ -1380,51 +1394,115 @@ class EspnScoreboardProvider:
         """Fetch live game details concurrently without blocking other scoreboards."""
 
         self._prune_mlb_live_detail_cache(items)
+        self._prune_football_live_details(items)
         provided_updates = update_payloads or {}
         attempted_updates = attempted_update_ids or set()
-        indexed = list(enumerate(items))
-        targets = [
-            (index, item)
-            for index, item in indexed
-            if str(item.data.get("state") or "").lower() in {"in", "half", "crit"}
-            and str(item.data.get("sport") or "") in self._event_detail_urls
-            and not (
-                suppressed_update_ids
-                and (str(item.data.get("sport") or ""), item.id) in suppressed_update_ids
-            )
-            and not (
-                attempted_updates
-                and (str(item.data.get("sport") or ""), item.id) in attempted_updates
-                and (str(item.data.get("sport") or ""), item.id) not in provided_updates
-                and str(item.data.get("sport") or "") != "mlb"
-            )
-        ]
-        if not targets:
-            return self._enrich_nhl_live_items(items)
+        suppressed_updates = suppressed_update_ids or set()
         enriched = list(items)
-        workers = min(8, len(targets))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
-            futures = {
-                pool.submit(
-                    self._enrich_live_item,
-                    str(item.data.get("sport") or ""),
-                    item,
-                    update=(
-                        provided_updates[(str(item.data.get("sport") or ""), item.id)]
-                        if (str(item.data.get("sport") or ""), item.id) in provided_updates
-                        else {}
-                        if (str(item.data.get("sport") or ""), item.id) in attempted_updates
-                        else None
-                    ),
-                ): index
-                for index, item in targets
-            }
-            for future, index in futures.items():
-                try:
-                    enriched[index] = future.result()
-                except Exception:
+        targets: list[tuple[int, ContentItem, Any | None]] = []
+        football_reads: set[tuple[str, str]] = set()
+        for index, item in enumerate(items):
+            league = str(item.data.get("sport") or "")
+            key = (league, item.id)
+            if (
+                str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}
+                or league not in self._event_detail_urls
+            ):
+                continue
+            if key in suppressed_updates:
+                # Fastcast or a dense slate owns the score. Score alerts still need
+                # the scoring play, so read one summary when the score changes.
+                if league not in _FOOTBALL_LEAGUES:
                     continue
+                summary = provided_updates.get(key) if key in attempted_updates else None
+                retained = self._retained_football_details(key)
+                if summary is None and _football_details_match_score(retained, item.data):
+                    enriched[index] = self._with_live_details(league, item, retained)
+                    continue
+                football_reads.add(key)
+                targets.append((index, item, summary))
+                continue
+            if key in attempted_updates and key not in provided_updates and league != "mlb":
+                continue
+            update = (
+                provided_updates[key]
+                if key in provided_updates
+                else {}
+                if key in attempted_updates
+                else None
+            )
+            targets.append((index, item, update))
+        if targets:
+            workers = min(8, len(targets))
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
+                futures = {
+                    pool.submit(
+                        self._live_details,
+                        str(item.data.get("sport") or ""),
+                        item,
+                        update=update,
+                    ): (index, item)
+                    for index, item, update in targets
+                }
+                for future, (index, item) in futures.items():
+                    league = str(item.data.get("sport") or "")
+                    try:
+                        details = future.result()
+                    except Exception:
+                        continue
+                    if (league, item.id) in football_reads:
+                        details = self._retain_football_details((league, item.id), details)
+                    enriched[index] = self._with_live_details(league, item, details)
         return self._enrich_nhl_live_items(enriched)
+
+    def _retained_football_details(self, key: tuple[str, str]) -> dict[str, Any]:
+        """Return the last summary details read for one suppressed football event."""
+
+        with self._football_live_detail_lock:
+            return dict(self._football_live_details.get(key, {}))
+
+    def _retain_football_details(
+        self,
+        key: tuple[str, str],
+        details: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Keep one successful summary read until the score changes again."""
+
+        with self._football_live_detail_lock:
+            if details:
+                self._football_live_details[key] = dict(details)
+            return dict(self._football_live_details.get(key, {}))
+
+    def _with_retained_football_details(
+        self,
+        items: Sequence[ContentItem],
+    ) -> list[ContentItem]:
+        """Keep football scoring facts on live passes that make no HTTP reads."""
+
+        self._prune_football_live_details(items)
+        result = list(items)
+        for index, item in enumerate(result):
+            league = str(item.data.get("sport") or "")
+            if (
+                league not in _FOOTBALL_LEAGUES
+                or str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}
+            ):
+                continue
+            retained = self._retained_football_details((league, item.id))
+            result[index] = self._with_live_details(league, item, retained)
+        return result
+
+    def _prune_football_live_details(self, items: Sequence[ContentItem]) -> None:
+        """Remove retained football details for events observed outside live state."""
+
+        with self._football_live_detail_lock:
+            for item in items:
+                league = str(item.data.get("sport") or "")
+                if (
+                    league in _FOOTBALL_LEAGUES
+                    and str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}
+                ):
+                    self._football_live_details.pop((league, item.id), None)
 
     def _enrich_nhl_live_items(
         self,
@@ -2935,6 +3013,8 @@ def _event_assist_names(
         for value in match.group(1).split(","):
             name = re.sub(r"\s*\([^)]*\)", "", value).strip(" .;:")
             compact = name.strip()
+            if compact.casefold() == "none":
+                continue
             if compact and _compact_event_name(compact) != scorer_name and compact not in names:
                 names.append(compact)
         return tuple(names)
@@ -3693,6 +3773,34 @@ def _mlb_number(value: Any) -> int:
         return int(float(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _score_number(value: Any) -> int | None:
+    """Read one scoreboard score, or return None when the source has no number."""
+
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _football_details_match_score(
+    details: Mapping[str, Any],
+    data: Mapping[str, Any],
+) -> bool:
+    """Return whether retained football details contain the play for the current score."""
+
+    current = (_score_number(data.get("home_score")), _score_number(data.get("away_score")))
+    if None in current:
+        return True
+    plays = _sequence(details.get("scoring_plays"))
+    if not plays:
+        return current == (0, 0)
+    latest = _mapping(plays[-1])
+    return (
+        _score_number(latest.get("home_score")),
+        _score_number(latest.get("away_score")),
+    ) == current
 
 
 def _sequence(value: Any) -> tuple[Any, ...]:

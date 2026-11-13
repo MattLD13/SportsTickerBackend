@@ -980,6 +980,30 @@ def test_espn_nhl_goal_details_keep_assist_roles_and_goal_score_identity() -> No
     assert (scoring_play["home_score"], scoring_play["away_score"]) == (2, 0)
 
 
+def test_espn_nhl_unassisted_goal_text_has_no_assists() -> None:
+    event = _event("nhl-unassisted", "2026-08-16T18:00:00Z", state="in")
+    play = {
+        "id": "goal-1",
+        "type": {"text": "Goal"},
+        "text": "Parker Kelly Goal (4) Snap Shot, assists: none",
+        "scoringPlay": True,
+        "homeScore": 0,
+        "awayScore": 1,
+        "team": {"abbreviation": "DAL"},
+        "participants": [{"athlete": {"displayName": "Parker Kelly"}}],
+    }
+
+    details = _event_scoring_details(
+        {"header": {"competitions": event["competitions"]}, "plays": [play]},
+        {"sport": "nhl", "home_abbr": "NYG", "away_abbr": "DAL"},
+    )
+
+    scoring_play = details["scoring_plays"][0]
+    assert scoring_play["scorer_full"] == "Parker Kelly"
+    assert "assists" not in scoring_play
+    assert "assists_full" not in scoring_play
+
+
 def test_espn_nhl_live_refresh_uses_scoreboard_clock_before_summary_detail() -> None:
     scheduled = _event("nhl-1", "2026-08-16T18:00:00Z")
     live = deepcopy(scheduled)
@@ -1135,11 +1159,25 @@ def test_espn_mlb_dense_live_refresh_keeps_details_after_schedule_refresh() -> N
         assert situation["last_pitch_type"] == "4S Fastball"
 
 
-def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None:
+def test_espn_fastcast_score_change_reads_one_summary_for_the_score_alert() -> None:
     scheduled = _event("game-1", "2026-08-16T18:00:00Z")
     live = deepcopy(scheduled)
     live["status"] = {"type": {"state": "in", "shortDetail": "Q2 08:00"}}
     live["competitions"][0]["competitors"][0]["score"] = "7"
+    summary = {
+        "header": {"id": "game-1", "competitions": [live["competitions"][0]]},
+        "scoringPlays": [{
+            "id": "td-1",
+            "type": {"text": "Rushing Touchdown", "abbreviation": "TD"},
+            "text": "Actual Runner 4 Yd Rush (Actual Kicker Kick)",
+            "homeScore": 7,
+            "awayScore": 0,
+            "period": {"number": 2},
+            "clock": {"displayValue": "8:00"},
+            "team": {"abbreviation": "NYG"},
+            "scoringType": {"name": "touchdown"},
+        }],
+    }
 
     class FastcastStub:
         def __init__(self) -> None:
@@ -1198,7 +1236,10 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
             }
 
     fastcast = FastcastStub()
-    client = RecordingClient({"20260816-20260817": {"events": [scheduled]}})
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [scheduled]}},
+        event_updates={"game-1": summary},
+    )
     current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
     monotonic = [0.0]
     provider = EspnScoreboardProvider(
@@ -1208,19 +1249,35 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
         now=lambda: current[0],
         monotonic=lambda: monotonic[0],
     )
+    settings = DisplaySettings(timezone="America/New_York", my_teams=("nfl:NYG",))
 
-    provider.fetch_for_ticker("ticker-one", _settings())
+    provider.fetch_for_ticker("ticker-one", settings)
     fastcast.payload = {"events": [live]}
     fastcast.event_times["game-1"] = 6.0
     current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
     monotonic[0] = 6.0
-    result = provider.fetch_for_ticker("ticker-two", _settings())
+    result = provider.fetch_for_ticker("ticker-one", settings)
 
+    summary_urls = [url for url in client.urls if "/summary?event=" in url]
     live_item = next(item for item in result.content if item.id == "game-1")
     assert live_item.data["state"] == "in"
     assert live_item.data["home_score"] == "7"
-    assert len(client.urls) == 1
-    assert all("/summary?event=" not in url for url in client.urls)
+    assert summary_urls == ["https://example.test/football/nfl/summary?event=game-1"]
+    assert live_item.data["situation"]["scoring_plays"][-1]["scorer_full"] == "Actual Runner"
+    assert [(alert["headline"], alert["player"]) for alert in result.alerts] == [
+        ("RUSH TD", "Actual Runner")
+    ]
+
+    fastcast.event_times["game-1"] = 12.0
+    monotonic[0] = 12.0
+    for later in (
+        provider.fetch_for_ticker("ticker-one", settings),
+        provider.fetch_live_for_ticker("ticker-one", settings),
+    ):
+        later_item = next(item for item in later.content if item.id == "game-1")
+        assert later_item.data["situation"]["scoring_plays"][-1]["scorer_full"] == "Actual Runner"
+        assert [alert["player"] for alert in later.alerts] == ["Actual Runner"]
+    assert [url for url in client.urls if "/summary?event=" in url] == summary_urls
 
 
 def test_espn_stale_fastcast_game_uses_one_targeted_http_refresh() -> None:
@@ -2818,7 +2875,9 @@ def test_sparse_espn_hockey_details_clear_unverified_power_play() -> None:
         {"homeAway": "away", "team": {"id": "13", "abbreviation": "NYR"}},
     ]}]}}
 
-    enriched = provider._enrich_live_item("nhl", item, update=sparse_summary)
+    enriched = provider._with_live_details(
+        "nhl", item, provider._live_details("nhl", item, update=sparse_summary)
+    )
 
     assert enriched.data["situation"]["powerPlay"] is False
     assert enriched.data["situation"]["powerPlayTeam"] == ""
