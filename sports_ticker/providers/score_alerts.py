@@ -320,6 +320,8 @@ def _hockey_scoring_play_for_score(
 ) -> Mapping[str, Any] | None:
     """Match one hockey goal to its scoreboard state instead of taking the latest team goal."""
 
+    # A shootout goal has its own tally, such as 0-1, and is not a game goal.
+    plays = [play for play in plays if not _is_shootout_play(play)]
     if not plays:
         return None
     target_home = _number(game.get("home_score"))
@@ -756,6 +758,15 @@ class ScoreAlertTracker:
             side = str(alert.get("side") or "")
             if side not in {"home", "away"}:
                 continue
+            if alert.get("kind") == "shootout_winner":
+                # ESPN can publish the deciding shootout goal after the final score.
+                if not alert.get("player"):
+                    facts = _extract_alert_facts(
+                        str(game.get("sport") or "nhl"), game, side, alert_kind="shootout_winner"
+                    )
+                    if facts["player"]:
+                        alert.update(player=facts["player"], data=facts["data"])
+                continue
             goal_game = {
                 **game,
                 "home_score": alert.get("home_score"),
@@ -863,7 +874,7 @@ def _extract_alert_facts(
     if family == "football":
         facts["is_red_zone"] = None
     if alert_kind == "shootout_winner":
-        return facts
+        return _shootout_winner_facts(game, situation, side, facts)
 
     explicit = str(situation.get("detail") or game.get("detail") or "").strip()
 
@@ -1007,6 +1018,47 @@ def _football_scoring_status(play: Mapping[str, Any], current: str, league: str)
     if league in {"ncf_fbs", "ncf_fcs"} and number > 4:
         return label
     return f"{label} {clock}"
+
+
+def _is_shootout_play(play: Mapping[str, Any]) -> bool:
+    """Return whether one normalized hockey scoring play is a shootout attempt."""
+
+    return str(play.get("period") or "").strip().casefold() in {"so", "s/o", "shootout"}
+
+
+def _shootout_winner_facts(
+    game: Mapping[str, Any],
+    situation: Mapping[str, Any],
+    side: str,
+    facts: dict[str, Any],
+) -> dict[str, Any]:
+    """Name the deciding shootout scorer and the shootout tally for the winning side."""
+
+    values = situation.get("scoring_plays") or game.get("scoring_plays")
+    plays = [
+        play for play in (values if isinstance(values, (list, tuple)) else ())
+        if isinstance(play, Mapping) and _is_shootout_play(play)
+    ]
+    sides = {}
+    for name in ("home", "away"):
+        team = str(game.get(f"{name}_abbr") or name).lower()
+        sides[name] = [
+            play for play in plays
+            if str(play.get("team") or play.get("side") or "").lower() in {team, name}
+        ]
+    if sides.get(side):
+        # The winner's last shootout goal decides the shootout.
+        facts["player"] = _play_player(sides[side][-1])
+    other = "away" if side == "home" else "home"
+    shootout = situation.get("shootout")
+    tally = shootout if isinstance(shootout, Mapping) else {}
+    winner_goals = _number(tally.get(f"{side}Goals"))
+    loser_goals = _number(tally.get(f"{other}Goals"))
+    if winner_goals is None or loser_goals is None:
+        winner_goals, loser_goals = len(sides.get(side, ())), len(sides.get(other, ()))
+    if winner_goals:
+        facts["data"] = f"SHOOTOUT {winner_goals}-{loser_goals}"
+    return facts
 
 
 def _play_player(play: Mapping[str, Any]) -> str:

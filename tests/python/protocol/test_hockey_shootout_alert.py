@@ -85,3 +85,55 @@ def test_hockey_shootout_winner_reaches_the_v2_alert_contract_once() -> None:
         assert alert["big"] is True
         assert all(alert[key] == "" for key in ("player", "data", "primary_assist", "secondary_assist"))
         assert sorted((alert["home_score"], alert["away_score"])) == [3, 4]
+
+
+# ESPN event 401892695: Pittsburgh won 3-2 at San Jose. Ben Kindel scored the only shootout goal.
+_PIT_SJ = {"kind": "scoreboard", "id": "401892695", "sport": "nhl", "home_abbr": "SJ", "away_abbr": "PIT"}
+_FIRST_GOAL = {"play_id": "g1", "team": "PIT", "scorer_full": "Bryan Rust", "period": "1st",
+               "home_score": 0, "away_score": 1}
+_SHOOTOUT_GOAL = {"play_id": "401892695000006070", "team": "PIT", "scorer_full": "Ben Kindel",
+                  "period": "SO", "home_score": 0, "away_score": 1}
+
+
+def _pit_sj(state: str, plays: list, *, home: int = 2, away: int = 2) -> dict:
+    final = state == "post"
+    return {**_PIT_SJ, "state": state, "status": "FINAL S/O" if final else "S/O",
+            "home_score": home, "away_score": away,
+            "situation": {"shootout_state": "completed" if final else "active",
+                          "shootout_winner": "away" if final else "", "scoring_plays": plays}}
+
+
+def test_hockey_shootout_winner_names_the_deciding_scorer_and_tally() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([_pit_sj("in", [_FIRST_GOAL])])
+    tracker.ingest([_pit_sj("post", [_FIRST_GOAL, _SHOOTOUT_GOAL], away=3)])
+
+    [alert] = tracker.recent()
+    assert (alert["headline"], alert["team_abbr"], alert["player"], alert["data"]) == (
+        "SHOOTOUT WINNER", "PIT", "Ben Kindel", "SHOOTOUT 1-0",
+    )
+
+
+def test_hockey_shootout_winner_fills_the_scorer_when_espn_publishes_it_later() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([_pit_sj("in", [_FIRST_GOAL])])
+    tracker.ingest([_pit_sj("post", [_FIRST_GOAL], away=3)])
+    assert tracker.recent()[0]["player"] == ""
+
+    tracker.ingest([_pit_sj("post", [_FIRST_GOAL, _SHOOTOUT_GOAL], away=3)])
+
+    [alert] = tracker.recent()
+    assert (alert["player"], alert["data"]) == ("Ben Kindel", "SHOOTOUT 1-0")
+
+
+def test_hockey_goal_is_not_matched_to_a_shootout_tally() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {**_PIT_SJ, "state": "in", "status": "P1 15:00", "home_score": 0, "away_score": 0,
+                "situation": {"shootout_state": "none", "scoring_plays": []}}
+    tracker.ingest([baseline])
+    # The shootout goal is listed after the first-period goal and has the same 0-1 tally.
+    tracker.ingest([{**baseline, "away_score": 1,
+                     "situation": {"shootout_state": "none", "scoring_plays": [_FIRST_GOAL, _SHOOTOUT_GOAL]}}])
+
+    [alert] = tracker.recent()
+    assert alert["player"] == "Bryan Rust"
