@@ -48,10 +48,11 @@ class GolfRenderer:
         if payload.get("format") == "match_play":
             return self._match_play_scroll(payload)
         event = str(payload.get("event_name") or game.get("away_abbr") or "PGA TOUR").upper()
-        round_label = str(payload.get("round") or game.get("status") or "").upper()
-        match = re.search(r"\d+", round_label)
-        header = f"{event} R{match.group() if match else '-'}"
-        width = max(128, len(header) * 5 + 4)
+        header = f"{event} {self._round_label(payload, game)}"
+        players = self._players(payload, compact=True)[:3]
+        longest_name = max((len(self._compact_name(player["name"])) for player in players), default=0)
+        # Fit the header and the longest name; the name column starts at x=18 and the scores use 55 px.
+        width = max(128, len(header) * 5 + 4, 18 + longest_name * 5 + 2 + 55)
         total_x = width - 27
         total_center = width - 15
         today_x = width - 55
@@ -68,7 +69,6 @@ class GolfRenderer:
             return image
         image = self._scroll_templates.render((width, header), static_layer)
         draw = ImageDraw.Draw(image)
-        players = self._players(payload, compact=True)[:3]
         pars = payload.get("pars", []) if isinstance(payload.get("pars"), list) else []
         if not players:
             tiny_text(draw, 18, 18, "LOADING", (150, 150, 150), self._fonts.tiny)
@@ -77,9 +77,7 @@ class GolfRenderer:
         for index, player in enumerate(players):
             y = (14, 20, 26)[index]
             pos = str(player["pos"])[:3]
-            raw_name = str(player["name"])
-            parts = raw_name.split()
-            name = (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else raw_name).upper()[:max_name_len]
+            name = self._compact_name(player["name"])[:max_name_len]
             today = player["today"] if self._started(player) else None
             if today is None and self._started(player) and pars:
                 scores = [(score, pars[i]) for i, score in enumerate(player["holes"][:18]) if score is not None and i < len(pars)]
@@ -125,7 +123,8 @@ class GolfRenderer:
             page = int(max(0.0, elapsed) // 4.0) % page_count + 1
             changed = None
         next_state = GolfAnimationState(state.pair, page, changed)
-        header = "MASTERS R3" if str(payload.get("brand", "pga")).lower() == "masters" else "R3"
+        round_label = self._round_label(payload, game)
+        header = f"MASTERS {round_label}" if str(payload.get("brand", "pga")).lower() == "masters" else round_label
         self._text(draw, header, 2, 0, colors["accent"])
         self._page_indicator(draw, page, colors)
         hole_x = 58
@@ -143,6 +142,22 @@ class GolfRenderer:
         for index, player in enumerate(players):
             self._player(draw, player, 8 + index * 8, pars, colors, hole_x, hole_step, hole_width)
         return image, next_state
+
+    @staticmethod
+    def _round_label(payload: dict[str, Any], game: dict[str, Any]) -> str:
+        """Return the round label, such as R1, from the supplied round or status."""
+
+        round_text = str(payload.get("round") or game.get("status") or "").upper()
+        match = re.search(r"\d+", round_text)
+        return f"R{match.group() if match else '-'}"
+
+    @staticmethod
+    def _compact_name(raw: object) -> str:
+        """Return the first initial and last name for the compact card."""
+
+        text = str(raw)
+        parts = text.split()
+        return (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else text).upper()
 
     def _match_play_scroll(self, payload: dict[str, Any]) -> Image.Image:
         """Render team match play with the compact golf scorecard style."""

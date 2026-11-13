@@ -296,6 +296,33 @@ _RACING_VENUES = (
 )
 
 
+_GOLF_SPONSOR_CLAUSE = re.compile(r"\s+(?:pres\.|presented|powered|sponsored|hosted)\s+by\b.*$", re.IGNORECASE)
+_GOLF_PLACE_TAIL = re.compile(
+    r"\b(Open|Classic|Championship|Invitational|Challenge|Pro-Am)\s+(?:in|of)\s+.+$", re.IGNORECASE
+)
+
+
+def golf_short_name(name: object) -> str:
+    """Remove the words that do not identify one golf event.
+
+    The rule removes a sponsor clause ("pres. by Workday"), a place after the
+    event word ("Sony Open in Hawaii"), a leading "The" when two or more words
+    stay, and a last "Tournament". "The Open" and "The Sentry" do not change.
+    """
+
+    text = " ".join(str(name or "").split())
+    if not text:
+        return ""
+    short = _GOLF_SPONSOR_CLAUSE.sub("", text)
+    short = _GOLF_PLACE_TAIL.sub(lambda match: match.group(1), short)
+    words = short.split()
+    if len(words) > 2 and words[0].casefold() == "the":
+        words = words[1:]
+    if len(words) > 1 and words[-1].casefold() == "tournament":
+        words = words[:-1]
+    return " ".join(words) or text
+
+
 def racing_short_name(series: str, event_name: str, track_name: str = "") -> str:
     """Use familiar race names before sponsor titles or circuit legal names."""
     event = " ".join(str(event_name or "").split())

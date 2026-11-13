@@ -11,7 +11,7 @@ from sports_ticker.domain import DisplaySettings
 from .espn_values import _display_timezone, _event_time
 from .http import JsonHttpClient, OwnedClient, PooledJsonHttpClient
 from .payloads import as_mapping as _mapping, mapping_values as _mappings
-from .sports_display import golf_competition_stage
+from .sports_display import golf_competition_stage, golf_short_name
 from .source_values import _timeout
 
 
@@ -65,7 +65,7 @@ class EspnGolfSource:
                     display_status = status["text"]
                     golf = {
                         "brand": _golf_brand(event_name),
-                        "event_name": event_name,
+                        "event_name": golf_short_name(event_name),
                         "year": _mapping(event.get("season")).get("year", now.year),
                         "round": _golf_round(status["text"]),
                         "players": players,
@@ -80,7 +80,7 @@ class EspnGolfSource:
                             "state": status["state"],
                             "status": display_status,
                             "startTimeUTC": starts_at.isoformat() if (starts_at := _event_time(event.get("date") or competition.get("date"))) else "",
-                            "away_abbr": str(event.get("shortName") or event_name),
+                            "away_abbr": golf_short_name(event.get("shortName") or event_name),
                             "golf": golf,
                         }
                     ]
@@ -239,7 +239,7 @@ def _golf_match_play(event: Mapping[str, Any], competition: Mapping[str, Any]) -
     event_name = str(event.get("name") or "PGA TOUR")
     return {
         "brand": _golf_brand(event_name),
-        "event_name": event_name,
+        "event_name": golf_short_name(event_name),
         "year": _mapping(event.get("season")).get("year", ""),
         "format": "match_play",
         "teams": teams,

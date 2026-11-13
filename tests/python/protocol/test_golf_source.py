@@ -1,8 +1,12 @@
 """Verify golf brand and current-day tournament filtering."""
 
 from datetime import datetime, timezone
+
+import pytest
+
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.golf_source import EspnGolfSource, _golf_brand, _is_current_golf_event
+from sports_ticker.providers.sports_display import golf_short_name
 
 
 class MockHttpClient:
@@ -148,3 +152,38 @@ def test_golf_source_reads_once_for_many_tickers_in_one_refresh() -> None:
 
     assert client.calls == 1
 
+
+
+@pytest.mark.parametrize(("name", "short"), [
+    # Real PGA TOUR 2026 calendar labels from ESPN.
+    ("Austin Championship pres. by Compliance Solutions", "Austin Championship"),
+    ("the Memorial Tournament pres. by Workday", "Memorial"),
+    ("PGA TOUR Q-School presented by Korn Ferry", "PGA TOUR Q-School"),
+    ("Sony Open in Hawaii", "Sony Open"),
+    ("Cognizant Classic in The Palm Beaches", "Cognizant Classic"),
+    ("Zurich Classic of New Orleans", "Zurich Classic"),
+    ("THE PLAYERS Championship", "PLAYERS Championship"),
+    ("The RSM Classic", "RSM Classic"),
+    ("Masters Tournament", "Masters"),
+    ("The Open", "The Open"),
+    ("The Sentry", "The Sentry"),
+    ("Bank of Utah Championship", "Bank of Utah Championship"),
+    ("U.S. Open", "U.S. Open"),
+    ("", ""),
+])
+def test_golf_short_name_removes_words_that_do_not_identify_the_event(name, short) -> None:
+    assert golf_short_name(name) == short
+
+
+def test_golf_source_shows_the_short_event_name_and_keeps_the_brand() -> None:
+    now = datetime(2026, 8, 21, 18, 0, tzinfo=timezone.utc)
+    payload = _sample_golf_payload(state="in", date="2026-08-20T04:00Z")
+    payload["events"][0]["name"] = "the Memorial Tournament pres. by Workday"
+    payload["events"][0]["shortName"] = "the Memorial Tournament pres. by Workday"
+    source = EspnGolfSource(client=MockHttpClient(payload), now=lambda: now)
+
+    item = source.fetch(DisplaySettings(timezone="America/New_York"))["content"][0]
+
+    assert item["away_abbr"] == "Memorial"
+    assert item["golf"]["event_name"] == "Memorial"
+    assert item["golf"]["brand"] == "pga"

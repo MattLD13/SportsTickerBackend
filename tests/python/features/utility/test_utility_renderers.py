@@ -69,3 +69,29 @@ def test_system_status_panels_render_at_matrix_size() -> None:
     ):
         assert image.size == (384, 32)
         assert len(set(image.getdata())) > 1
+
+def _golf_item(round_text: str, name: str = "Austin Championship") -> dict:
+    players = [
+        {"pos": "1", "name": "Trace Crowe", "total": "-10", "today": "-10", "thru": 18, "holes": [4] * 18},
+        {"pos": "T2", "name": "Max Greyserman", "total": "-8", "today": "-8", "thru": 18, "holes": [4] * 18},
+    ]
+    return {"golf": {"brand": "pga", "event_name": name, "round": round_text, "players": players}}
+
+
+def test_golf_pinned_header_shows_the_supplied_round() -> None:
+    fonts = load_default_font_set()
+    context = RenderContext(datetime(2026, 11, 12, 22, 0))
+    renderer = GolfRenderer(fonts)
+    first, _ = renderer.full(context, _golf_item("Round 1"), GolfAnimationState())
+    third, _ = renderer.full(context, _golf_item("Round 3"), GolfAnimationState())
+
+    header = (0, 0, 40, 7)
+    assert first.crop(header).tobytes() != third.crop(header).tobytes()
+
+
+def test_golf_card_fits_the_longest_name_when_the_event_name_is_short() -> None:
+    card = GolfRenderer(load_default_font_set()).scroll(_golf_item("Round 1"))
+
+    # The compact name "M. GREYSERM" has 11 characters at 5 px. The name starts at x=18 and the
+    # scores use 55 px. The previous 128 px card cut it to "M. GREYSER".
+    assert card.width >= 18 + 11 * 5 + 2 + 55
