@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from sports_ticker.domain import ContentItem, DisplaySettings
+from sports_ticker.providers import espn as espn_module
 from sports_ticker.providers.espn import EspnScoreboardProvider
 from sports_ticker.providers.espn_mlb import (
     _mlb_has_boxscore,
@@ -1399,6 +1400,48 @@ def test_espn_live_fastcast_score_reads_summary_in_background_and_fills_the_aler
         assert [url for url in client.urls if "/summary?event=" in url] == [
             "https://example.test/football/nfl/summary?event=game-1"
         ]
+    finally:
+        provider.close()
+
+
+def test_espn_lagging_summary_is_read_again_without_a_fastcast_change(monkeypatch) -> None:
+    monkeypatch.setattr(espn_module, "_FOOTBALL_DETAIL_RETRY_SECONDS", 0.2)
+    scheduled = _football_event(0, "", state="pre")
+    live = _football_event(7, "")
+    lagging = _football_summary(live, drive_team="20")
+    lagging["scoringPlays"] = []
+    fastcast = _FootballFastcast()
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [scheduled]}},
+        event_updates={"game-1": lagging},
+    )
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        fastcast=fastcast,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+    settings = DisplaySettings(timezone="America/New_York", my_teams=("nfl:NYG",))
+    try:
+        provider.fetch_for_ticker("ticker-one", settings)
+        fastcast.payload = {"events": [live]}
+        fastcast.event_times["game-1"] = 6.0
+        current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+        monotonic[0] = 6.0
+        first = provider.fetch_live_for_ticker("ticker-one", settings)
+        assert [(alert["headline"], alert["player"]) for alert in first.alerts] == [("TOUCHDOWN", "")]
+        assert fastcast.changed.wait(5.0)
+        fastcast.changed.clear()
+
+        client.event_updates["game-1"] = _football_summary(live, drive_team="20")
+        monotonic[0] = 12.0
+
+        assert fastcast.changed.wait(5.0)
+        second = provider.fetch_live_for_ticker("ticker-one", settings)
+        assert [(alert["headline"], alert["player"]) for alert in second.alerts] == [("RUSH TD", "Actual Runner")]
     finally:
         provider.close()
 

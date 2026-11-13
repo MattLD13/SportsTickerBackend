@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from math import isfinite
 import time
-from threading import RLock
+from threading import RLock, Timer
 from types import MappingProxyType
 from typing import Any
 
@@ -97,6 +97,8 @@ from .espn_content import (
 
 
 _SOURCE_CACHE_SECONDS = 5.0
+_FOOTBALL_DETAIL_RETRIES = 12
+_FOOTBALL_DETAIL_RETRY_SECONDS = _SOURCE_CACHE_SECONDS
 
 
 _FASTCAST_EVENT_STALE_SECONDS = 5.0
@@ -216,6 +218,8 @@ class EspnScoreboardProvider:
         self._football_live_details: dict[tuple[str, str], _FootballLiveDetail] = {}
         self._football_detail_reads: set[tuple[str, str]] = set()
         self._football_detail_pool: ThreadPoolExecutor | None = None
+        self._football_detail_timers: dict[tuple[str, str], Timer] = {}
+        self._football_detail_items: dict[tuple[str, str], ContentItem] = {}
         self._closed = False
         self._mlb_event_keys: dict[str, _MlbEventKey] = {}
         self._mlb_schedule_cache: dict[
@@ -297,6 +301,9 @@ class EspnScoreboardProvider:
         with self._football_live_detail_lock:
             self._closed = True
             pool, self._football_detail_pool = self._football_detail_pool, None
+            timers, self._football_detail_timers = self._football_detail_timers, {}
+        for timer in timers.values():
+            timer.cancel()
         if pool is not None:
             pool.shutdown(wait=True, cancel_futures=True)
         if self._fastcast is not None:
@@ -1422,32 +1429,64 @@ class EspnScoreboardProvider:
 
         key = (league, item.id)
         with self._football_live_detail_lock:
+            self._football_detail_items[key] = item
             if self._closed or key in self._football_detail_reads:
                 return
             self._football_detail_reads.add(key)
+        self._submit_football_detail_read(league, item.id, _FOOTBALL_DETAIL_RETRIES)
+
+    def _submit_football_detail_read(self, league: str, event_id: str, attempts: int) -> None:
+        """Queue one summary read for the latest observed item of one event."""
+
+        key = (league, event_id)
+        with self._football_live_detail_lock:
+            self._football_detail_timers.pop(key, None)
+            item = self._football_detail_items.get(key)
+            if self._closed or item is None:
+                self._football_detail_reads.discard(key)
+                return
             if self._football_detail_pool is None:
                 self._football_detail_pool = ThreadPoolExecutor(
                     max_workers=4, thread_name_prefix="football-details"
                 )
             pool = self._football_detail_pool
         try:
-            pool.submit(self._finish_football_detail_read, league, item)
+            pool.submit(self._finish_football_detail_read, league, item, attempts)
         except RuntimeError:
             with self._football_live_detail_lock:
                 self._football_detail_reads.discard(key)
 
-    def _finish_football_detail_read(self, league: str, item: ContentItem) -> None:
-        """Keep one background summary read and wake the live pass when it changed."""
+    def _finish_football_detail_read(self, league: str, item: ContentItem, attempts: int) -> None:
+        """Keep one summary read, wake the live pass, and retry while ESPN lags.
+
+        ESPN can publish the summary play after the Fastcast score. Fastcast can
+        stay quiet after a score, so the provider retries on its own timer.
+        """
 
         key = (league, item.id)
-        changed = False
+        retry = False
         try:
             changed = self._retain_football_detail(key, self._read_football_detail(league, item))
+            if changed and self._fastcast is not None:
+                self._fastcast.mark_changed(league)
+            with self._football_live_detail_lock:
+                latest = self._football_detail_items.get(key, item)
+            retry = attempts > 1 and not _football_detail_is_current(
+                self._retained_football_detail(key), latest.data
+            )
         finally:
             with self._football_live_detail_lock:
-                self._football_detail_reads.discard(key)
-        if changed and self._fastcast is not None:
-            self._fastcast.mark_changed(league)
+                if retry and not self._closed:
+                    timer = Timer(
+                        _FOOTBALL_DETAIL_RETRY_SECONDS,
+                        self._submit_football_detail_read,
+                        args=(league, item.id, attempts - 1),
+                    )
+                    timer.daemon = True
+                    self._football_detail_timers[key] = timer
+                    timer.start()
+                else:
+                    self._football_detail_reads.discard(key)
 
     def _prune_football_live_details(self, items: Sequence[ContentItem]) -> None:
         """Remove retained football details for events observed outside live state."""
@@ -1460,6 +1499,7 @@ class EspnScoreboardProvider:
                     and str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}
                 ):
                     self._football_live_details.pop((league, item.id), None)
+                    self._football_detail_items.pop((league, item.id), None)
 
     def _enrich_nhl_live_items(
         self,
