@@ -3193,3 +3193,57 @@ def test_sparse_espn_hockey_details_clear_unverified_power_play() -> None:
     assert enriched.data["situation"]["powerPlay"] is False
     assert enriched.data["situation"]["powerPlayTeam"] == ""
 
+
+
+_COLLEGE_COMPETITION = {"competitors": [
+    {"homeAway": "home", "team": {"id": "2433", "abbreviation": "ULM"}},
+    {"homeAway": "away", "team": {"id": "309", "abbreviation": "UL"}},
+]}
+_COLLEGE_BOXSCORE = {"players": [{
+    "team": {"id": "309", "abbreviation": "UL"},
+    "statistics": [{"athletes": [{"athlete": {"id": "1", "displayName": "Micah Johnson"}}]}],
+}, {
+    "team": {"id": "2433", "abbreviation": "ULM"},
+    "statistics": [{"athletes": [{"athlete": {"id": "2", "displayName": "Aidan Carlisle"}}]}],
+}]}
+
+
+@pytest.mark.parametrize("text", [
+    # ESPN college summary wording, 401869969 play 401869969395.
+    "A. Carlisle run for 5 yds, A. Carlisle fumbled, forced by C. Jacob, recovered by M. Johnson, "
+    "M. Johnson return 18 yards for a TD (T. Sterner KICK)",
+    # ESPN college drive wording for the same play.
+    "(12:35) No Huddle-Shotgun #12 A.Carlisle rush middle for 5 yards gain to the ULM18 fumbled by "
+    "#12 A.Carlisle at ULM20 forced by #35 C.Jacob recovered by ULL #3 M.Johnson at ULM18 #3 M.Johnson "
+    "return 18 yards to the ULM00 TOUCHDOWN, clock 12:27 #95 T.Sterner kick attempt good",
+])
+def test_college_fumble_return_touchdown_belongs_to_the_scoring_team_and_returner(text) -> None:
+    details = _event_scoring_details(
+        {"header": {"competitions": [_COLLEGE_COMPETITION]}, "boxscore": _COLLEGE_BOXSCORE,
+         "scoringPlays": [{
+             "id": "401869969395",
+             "type": {"text": "Fumble Return Touchdown"},
+             "team": {"id": "309", "abbreviation": "UL"},
+             "text": text,
+             "homeScore": 14,
+             "awayScore": 21,
+             "start": {"team": {"id": "2433"}},
+             "end": {"team": {"id": "309"}},
+             "teamParticipants": [{"id": "309", "type": "defense"}, {"id": "2433", "type": "offense"}],
+             "isTurnover": True,
+         }]},
+        {"sport": "ncf_fbs", "home_abbr": "ULM", "away_abbr": "UL"},
+    )
+
+    play = details["scoring_plays"][0]
+    assert (play["team"], play["scorer_full"], play["away_score"]) == ("UL", "Micah Johnson", 21)
+
+
+def test_scoreboard_conversion_play_is_not_a_scoring_play() -> None:
+    conversion = {"id": "-89737432", "text": "P.Laforge extra point is GOOD.",
+                  "type": {"text": "Extra Point Good"}, "team": {"id": "20"}, "scoreValue": 1,
+                  "athletesInvolved": [{"displayName": "Jemyri Davis", "position": "WR"}]}
+    event = _with_last_play(_football_event(0, ""), conversion, away_score=7)
+
+    assert _scoreboard_scoring_play(event, {"sport": "nfl", "home_abbr": "NYG", "away_abbr": "DAL",
+                                            "home_score": 0, "away_score": 7}) is None

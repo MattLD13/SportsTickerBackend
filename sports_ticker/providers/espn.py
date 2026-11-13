@@ -1535,6 +1535,8 @@ class EspnScoreboardProvider:
             plays = list(_sequence(situation.get("scoring_plays")))
             if any(_mapping(value).get("play_id") == play.get("play_id") for value in plays):
                 continue
+            if _summary_reached_play_score(plays, play, item.data):
+                continue
             situation["scoring_plays"] = [*plays, play]
             result[index] = ContentItem(
                 id=item.id,
@@ -1623,6 +1625,40 @@ class EspnScoreboardProvider:
                 data=updated,
             )
         return result
+
+
+def _summary_reached_play_score(
+    plays: Sequence[Any],
+    play: Mapping[str, Any],
+    data: Mapping[str, Any],
+) -> bool:
+    """Return whether summary plays already reach the score of one scoreboard play.
+
+    ESPN normally uses one play id in both feeds. This check stops a kept
+    scoreboard play from staying beside the summary when the ids differ.
+    """
+
+    team = str(play.get("team") or "").upper()
+    side = next(
+        (name for name in ("home", "away") if team and team == str(data.get(f"{name}_abbr") or "").upper()),
+        "",
+    )
+    if not side:
+        return False
+    try:
+        target = int(play.get(f"{side}_score"))
+    except (TypeError, ValueError):
+        return False
+    for value in plays:
+        record = _mapping(value)
+        if str(record.get("team") or "").upper() != team:
+            continue
+        try:
+            if int(record.get(f"{side}_score")) >= target:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 __all__ = ["EspnScoreboardProvider"]

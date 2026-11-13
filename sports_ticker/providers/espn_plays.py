@@ -867,6 +867,7 @@ def _summary_drive_side(payload: Any) -> str:
 
 
 _KICKER_POSITIONS = frozenset(("PK", "K"))
+_CONVERSION_PLAY = re.compile(r"extra point|two[- ]point|2[- ]?pt|\bpat\b|conversion", re.IGNORECASE)
 
 
 def _scoreboard_scoring_play(event: Any, item: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -886,6 +887,10 @@ def _scoreboard_scoring_play(event: Any, item: Mapping[str, Any]) -> dict[str, A
     except (TypeError, ValueError):
         score_value = 0.0
     if last_play.get("scoringPlay") is not True and score_value <= 0:
+        return None
+    if _CONVERSION_PLAY.search(str(_mapping(last_play.get("type")).get("text") or "")):
+        # ESPN can show a conversion as its own play with a synthetic id. The
+        # touchdown alert already owns the conversion.
         return None
     home_score = _score_number(item.get("home_score"))
     away_score = _score_number(item.get("away_score"))

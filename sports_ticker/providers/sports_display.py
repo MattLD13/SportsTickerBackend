@@ -943,6 +943,14 @@ def normalize_rank(value: object) -> str:
 
 
 def _possession(value: object, competition: Mapping[str, Any], home_abbr: str, away_abbr: str) -> str:
+    """Resolve one ESPN team reference to a scoreboard abbreviation.
+
+    ESPN sends a team as an id, an abbreviation, a home or away word, or an
+    object with an id or abbreviation.
+    """
+
+    if isinstance(value, Mapping):
+        value = value.get("id") or value.get("abbreviation")
     text = str(value or "").strip()
     if not text:
         return ""
@@ -1585,7 +1593,8 @@ def normalize_football_turnover_play(
     play_type = _mapping(play.get("type"))
     text = str(play.get("text") or play.get("shortText") or play.get("description") or "").strip()
     folded = f"{play_type.get('text') or ''} {text}".casefold()
-    name_end = r"(?=(?<=[a-z])\.\s+|\s+(?:at|to|for|return(?:ed)?|ran|runs?)\b|[,;()]|$)"
+    # A sentence ends after a lowercase letter. The initial in "M. Johnson" is not an end.
+    name_end = r"(?=(?-i:(?<=[a-z]))\.\s+|\s+(?:at|to|for|return(?:ed)?|ran|runs?)\b|[,;()]|$)"
     if re.search(r"\bintercept(?:ion|ed)\b", folded):
         kind = "interception"
         role_words = ("interceptor", "interception", "defender", "returner")
@@ -1597,10 +1606,11 @@ def normalize_football_turnover_play(
     elif re.search(r"\bfumbl(?:e|es|ed|ing)\b", folded):
         kind = "fumble"
         role_words = ("recoverer", "recovery", "fumbler", "rusher", "runner")
+        # The alert names the recoverer, so the recovery clause wins over the fumble clause.
         name_match = re.search(
-            r"\b(?:recovered by|fumbled by|fumble by)\s+([^,;()]+?)" + name_end,
-            text,
-            re.IGNORECASE,
+            r"\brecovered by\s+([^,;()]+?)" + name_end, text, re.IGNORECASE,
+        ) or re.search(
+            r"\b(?:fumbled by|fumble by)\s+([^,;()]+?)" + name_end, text, re.IGNORECASE,
         )
     else:
         return {}
@@ -1670,7 +1680,8 @@ def normalize_football_turnover_play(
         player_match = re.match(r"(.+?)\s+\d+\s+(?:yd|yards?)\b", text_prefix, re.IGNORECASE)
         if player_match:
             named_player = player_match.group(1).strip()
-    named_player = re.sub(r"^#\d+\s*", "", named_player).strip(" ,.;")
+    # College text writes "ULL #3 M.Johnson": a team code and a jersey number.
+    named_player = re.sub(r"^(?:[A-Z]{2,5}\s+)?#\d+\s*", "", named_player).strip(" ,.;")
     named_team = ""
     for abbreviation in (home, away):
         for alias in _TEAM_ALIASES.get(abbreviation, (abbreviation,)):
@@ -1731,6 +1742,9 @@ def normalize_football_turnover_play(
             team = away if offense == home else home
     else:
         team = actor_team or named_team or end_team or (play_team if is_scoring else "") or offense or active_possession
+    if is_scoring and play_team:
+        # A scoring play names the team that scored.
+        team = play_team
 
     period = _mapping(play.get("period"))
     clock = _mapping(play.get("clock"))
