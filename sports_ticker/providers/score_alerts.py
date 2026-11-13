@@ -40,9 +40,6 @@ _BIG_KINDS = frozenset(
 )
 _MAX_ALERTS = 64
 _MAX_AGE = 45.0
-_FOOTBALL_PLAY_KINDS = frozenset(("interception", "fumble"))
-
-
 def _number(value: object) -> int | None:
     try:
         return int(str(value).strip())
@@ -812,7 +809,11 @@ class ScoreAlertTracker:
 def alerts_for_settings(
     alerts: Sequence[Mapping[str, Any]], settings: Any
 ) -> tuple[Mapping[str, Any], ...]:
-    """Keep score takeovers scoped to sports mode and followed teams."""
+    """Keep score takeovers scoped to sports mode and followed teams.
+
+    An alert belongs to the team that scored or gained the ball. A turnover
+    that a followed team loses is the opponent's alert, like an opponent score.
+    """
 
     if settings.mode != "sports" or not settings.score_alerts or not settings.my_teams:
         return ()
@@ -828,20 +829,10 @@ def alerts_for_settings(
             ),
             getattr(settings, "active_conferences", {}),
         )
-        and (
-            matches_followed_team(
-                str(alert.get("sport") or ""),
-                str(alert.get("team_abbr") or ""),
-                followed,
-            )
-            or (
-                str(alert.get("kind") or "").lower() in _FOOTBALL_PLAY_KINDS
-                and matches_followed_team(
-                    str(alert.get("sport") or ""),
-                    str(alert.get("opp_abbr") or ""),
-                    followed,
-                )
-            )
+        and matches_followed_team(
+            str(alert.get("sport") or ""),
+            str(alert.get("team_abbr") or ""),
+            followed,
         )
     )
 

@@ -537,3 +537,57 @@ def test_cfb_score_alerts_follow_conference_filters() -> None:
             active_conferences={"ncf_fbs:4": False, "ncf_fbs:1": False},
         ),
     ) == ()
+
+
+def test_turnover_alert_belongs_to_the_team_that_gains_the_ball() -> None:
+    from sports_ticker.providers.espn_plays import _event_football_details
+
+    competition = {"competitors": [
+        {"homeAway": "home", "team": {"id": "19", "abbreviation": "NYG"}},
+        {"homeAway": "away", "team": {"id": "28", "abbreviation": "WSH"}},
+    ]}
+    plays = [
+        {
+            "id": "4018730522749",
+            "type": {"text": "Fumble Recovery (Opponent)"},
+            "text": "(Shotgun) J.McCarthy pass short right to M.Nabers to WAS 16 for 3 yards (F.Luvu). "
+                    "FUMBLES (F.Luvu), RECOVERED by WAS-J.Reaves at WAS 20.",
+            "period": {"number": 3},
+            "clock": {"displayValue": "2:54"},
+            "start": {"team": {"id": "19"}},
+            "end": {"team": {"id": "28"}},
+            "teamParticipants": [{"id": "28", "type": "defense"}, {"id": "19", "type": "offense"}],
+            "isTurnover": True,
+            "scoringPlay": False,
+        },
+        {
+            "id": "4018730523744",
+            "type": {"text": "Pass Interception Return"},
+            "text": "(Shotgun) J.Daniels pass deep left intended for C.Okonkwo INTERCEPTED by J.Holland "
+                    "at NYG 0. Touchback.",
+            "period": {"number": 4},
+            "clock": {"displayValue": "5:25"},
+            "start": {"team": {"id": "28"}},
+            "end": {"team": {"id": "19"}},
+            "teamParticipants": [{"id": "19", "type": "defense"}, {"id": "28", "type": "offense"}],
+            "isTurnover": True,
+            "scoringPlay": False,
+        },
+    ]
+    game = {"kind": "scoreboard", "id": "401873052", "sport": "nfl", "state": "in", "status": "Q4 5:25",
+            "home_abbr": "NYG", "away_abbr": "WSH", "home_score": 21, "away_score": 17}
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([{**game, "situation": {"football_plays": []}}])
+    details = _event_football_details(
+        {"header": {"competitions": [competition]}, "drives": {"previous": [{"plays": plays}]}}, game
+    )
+    tracker.ingest([{**game, "situation": details}])
+
+    alerts = tracker.recent()
+    assert sorted((alert["headline"], alert["team_abbr"]) for alert in alerts) == [
+        ("FUMBLE", "WSH"), ("INTERCEPTION", "NYG"),
+    ]
+    giants = alerts_for_settings(alerts, DisplaySettings(my_teams=("nfl:NYG",)))
+    assert [(alert["headline"], alert["team_abbr"]) for alert in giants] == [("INTERCEPTION", "NYG")]
+    washington = alerts_for_settings(alerts, DisplaySettings(my_teams=("nfl:WSH",)))
+    assert [(alert["headline"], alert["team_abbr"]) for alert in washington] == [("FUMBLE", "WSH")]
