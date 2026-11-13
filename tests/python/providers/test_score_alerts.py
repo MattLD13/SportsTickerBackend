@@ -209,12 +209,13 @@ def test_football_turnover_alerts_include_player_context_and_deduplicate() -> No
     assert alerts[1]["player"] == "LAWRENCE"
     assert alerts[1]["data"] == "FUMBLE"
     assert alerts[1]["team_abbr"] == "DAL"
-    assert len(
-        alerts_for_settings(
+    assert [
+        alert["headline"]
+        for alert in alerts_for_settings(
             alerts,
             DisplaySettings(mode="sports", score_alerts=True, my_teams=("nfl:nyg",)),
         )
-    ) == 2
+    ] == ["INTERCEPTION"]
 
     tracker.ingest([current])
     assert len(tracker.recent()) == 2
