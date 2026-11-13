@@ -741,7 +741,7 @@ def _compact_event_name(value: object) -> str:
 def _event_yards(text: str) -> int | None:
     """Read a scoring-play yard count from ESPN text."""
 
-    match = re.search(r"(?<!\w)(-?\d+)\s+yds?\b", text.split("(", 1)[0], re.IGNORECASE)
+    match = re.search(r"(?<!\w)(-?\d+)\s+(?:yds?|yards?)\b", text.split("(", 1)[0], re.IGNORECASE)
     return int(match.group(1)) if match else None
 
 
@@ -864,6 +864,62 @@ def _summary_drive_side(payload: Any) -> str:
             side = str(competitor.get("homeAway") or "").strip().lower()
             return side if side in {"home", "away"} else ""
     return ""
+
+
+_KICKER_POSITIONS = frozenset(("PK", "K"))
+
+
+def _scoreboard_scoring_play(event: Any, item: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Normalize the scoreboard lastPlay when it is the scoring play.
+
+    The scoreboard and Fastcast carry lastPlay with the score. The summary can
+    publish the same play one minute later. The play gets the current score,
+    so the alert tracker can match it to the score change.
+    """
+
+    competition = _event_competition(event)
+    last_play = _mapping(_mapping(competition.get("situation")).get("lastPlay"))
+    if not str(last_play.get("id") or "").strip():
+        return None
+    try:
+        score_value = float(last_play.get("scoreValue") or 0)
+    except (TypeError, ValueError):
+        score_value = 0.0
+    if last_play.get("scoringPlay") is not True and score_value <= 0:
+        return None
+    home_score = _score_number(item.get("home_score"))
+    away_score = _score_number(item.get("away_score"))
+    if home_score is None or away_score is None:
+        return None
+    play_type = str(_mapping(last_play.get("type")).get("text") or "")
+    text = str(last_play.get("text") or "")
+    athletes = [_mapping(value) for value in _sequence(last_play.get("athletesInvolved"))]
+    if re.search(r"two[- ]point|2[- ]point", text, re.IGNORECASE):
+        # The athlete list then names the conversion player, not the scorer.
+        athletes = []
+    elif "touchdown" in play_type.casefold():
+        # After the conversion, the athlete list names the kicker.
+        athletes = [
+            athlete for athlete in athletes
+            if str(athlete.get("position") or "").strip().upper() not in _KICKER_POSITIONS
+        ]
+    play = {
+        **{key: value for key, value in last_play.items() if key != "athletesInvolved"},
+        "homeScore": home_score,
+        "awayScore": away_score,
+        "participants": [{"athlete": athlete, "type": "scorer"} for athlete in athletes],
+    }
+    plays = _event_scoring_details(
+        {"header": {"competitions": [competition]}, "scoringPlays": [play]}, item
+    ).get("scoring_plays")
+    if not plays:
+        return None
+    result = dict(plays[0])
+    if not athletes:
+        # Play-by-play text does not name the scorer in a form the text reader knows.
+        for key in ("scorer", "scorer_full", "player"):
+            result[key] = ""
+    return result
 
 
 def _event_player_full(

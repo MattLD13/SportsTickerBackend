@@ -76,6 +76,7 @@ from .espn_plays import (
     _event_scoring_details,
     _football_detail_is_current,
     _nhl_event_details,
+    _scoreboard_scoring_play,
     _soccer_event_details,
     _summary_drive_side,
 )
@@ -220,6 +221,7 @@ class EspnScoreboardProvider:
         self._football_detail_pool: ThreadPoolExecutor | None = None
         self._football_detail_timers: dict[tuple[str, str], Timer] = {}
         self._football_detail_items: dict[tuple[str, str], ContentItem] = {}
+        self._football_scoreboard_plays: dict[tuple[str, str], dict[str, Any]] = {}
         self._closed = False
         self._mlb_event_keys: dict[str, _MlbEventKey] = {}
         self._mlb_schedule_cache: dict[
@@ -739,6 +741,8 @@ class EspnScoreboardProvider:
                             self._projected_events.move_to_end(key)
                             while len(self._projected_events) > 4096:
                                 self._projected_events.popitem(last=False)
+                    if league in _FOOTBALL_LEAGUES:
+                        self._capture_scoreboard_play(key, event, item)
                     items.append(item)
                 except (KeyError, TypeError, ValueError) as exc:
                     invalid_leagues.add(league)
@@ -747,13 +751,15 @@ class EspnScoreboardProvider:
         return _ScoreboardSource(
             content=tuple(
                 sorted(
-                    self._enrich_nhl_live_items(self._with_retained_football_details(items))
-                    if live_only
-                    else self._enrich_live_items(
-                        items,
-                        update_payloads=live_update_payloads,
-                        attempted_update_ids=attempted_live_update_ids,
-                        suppressed_update_ids=suppressed_live_update_ids,
+                    self._with_scoreboard_scoring_plays(
+                        self._enrich_nhl_live_items(self._with_retained_football_details(items))
+                        if live_only
+                        else self._enrich_live_items(
+                            items,
+                            update_payloads=live_update_payloads,
+                            attempted_update_ids=attempted_live_update_ids,
+                            suppressed_update_ids=suppressed_live_update_ids,
+                        )
                     ),
                     key=sports_content_sort_key,
                 )
@@ -1488,6 +1494,57 @@ class EspnScoreboardProvider:
                 else:
                     self._football_detail_reads.discard(key)
 
+    def _capture_scoreboard_play(
+        self,
+        key: tuple[str, str],
+        event: Mapping[str, Any],
+        item: ContentItem,
+    ) -> None:
+        """Keep the scoreboard scoring play seen at the score change.
+
+        The first sight of one play id wins. Later versions of the same play
+        can list the conversion kicker instead of the scorer.
+        """
+
+        if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
+            return
+        play = _scoreboard_scoring_play(event, item.data)
+        if play is None:
+            return
+        with self._football_live_detail_lock:
+            current = self._football_scoreboard_plays.get(key)
+            if current is None or current.get("play_id") != play.get("play_id"):
+                self._football_scoreboard_plays[key] = play
+
+    def _with_scoreboard_scoring_plays(
+        self,
+        items: Sequence[ContentItem],
+    ) -> list[ContentItem]:
+        """Add the kept scoreboard scoring play until the summary has the same play."""
+
+        result = list(items)
+        for index, item in enumerate(result):
+            league = str(item.data.get("sport") or "")
+            if league not in _FOOTBALL_LEAGUES:
+                continue
+            with self._football_live_detail_lock:
+                play = self._football_scoreboard_plays.get((league, item.id))
+            if play is None:
+                continue
+            situation = dict(_mapping(item.data.get("situation")))
+            plays = list(_sequence(situation.get("scoring_plays")))
+            if any(_mapping(value).get("play_id") == play.get("play_id") for value in plays):
+                continue
+            situation["scoring_plays"] = [*plays, play]
+            result[index] = ContentItem(
+                id=item.id,
+                family=item.family,
+                kind=item.kind,
+                is_shown=item.is_shown,
+                data={**item.data, "situation": situation},
+            )
+        return result
+
     def _prune_football_live_details(self, items: Sequence[ContentItem]) -> None:
         """Remove retained football details for events observed outside live state."""
 
@@ -1500,6 +1557,7 @@ class EspnScoreboardProvider:
                 ):
                     self._football_live_details.pop((league, item.id), None)
                     self._football_detail_items.pop((league, item.id), None)
+                    self._football_scoreboard_plays.pop((league, item.id), None)
 
     def _enrich_nhl_live_items(
         self,

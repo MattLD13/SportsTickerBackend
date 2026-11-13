@@ -16,6 +16,7 @@ from sports_ticker.providers.espn_mlb import (
     _mlb_statsapi_summary,
 )
 from sports_ticker.providers.espn_plays import (
+    _scoreboard_scoring_play,
     _event_football_details,
     _event_scoring_details,
     _nhl_event_details,
@@ -1442,6 +1443,97 @@ def test_espn_lagging_summary_is_read_again_without_a_fastcast_change(monkeypatc
         assert fastcast.changed.wait(5.0)
         second = provider.fetch_live_for_ticker("ticker-one", settings)
         assert [(alert["headline"], alert["player"]) for alert in second.alerts] == [("RUSH TD", "Actual Runner")]
+    finally:
+        provider.close()
+
+
+_TOUCHDOWN_LAST_PLAY = {
+    "id": "4018730522575",
+    "text": " J.Daniels pass short right to A.Williams for 31 yards, TOUCHDOWN.",
+    "type": {"id": "67", "text": "Passing Touchdown", "abbreviation": "TD"},
+    "team": {"id": "20"},
+    "scoreValue": 6,
+    "athletesInvolved": [{"id": "5081432", "displayName": "Antonio Williams", "shortName": "A. Williams",
+                          "position": "WR", "team": {"id": "20"}}],
+}
+_CONVERSION_LAST_PLAY = {
+    **_TOUCHDOWN_LAST_PLAY,
+    "text": "J.Daniels pass short right to A.Williams for 31 yards, TOUCHDOWN. D.Stevens extra point is GOOD.",
+    "athletesInvolved": [{"id": "5081335", "displayName": "Drew Stevens", "shortName": "D. Stevens",
+                          "position": "PK", "team": {"id": "20"}}],
+}
+
+
+def _with_last_play(event: dict, last_play: dict | None, *, away_score: int) -> dict:
+    value = deepcopy(event)
+    competition = value["competitions"][0]
+    competition["competitors"][1]["score"] = str(away_score)
+    competition["situation"] = {**competition.get("situation", {}), "lastPlay": deepcopy(last_play)}
+    return value
+
+
+@pytest.mark.parametrize(
+    ("last_play", "expected"),
+    [
+        (_TOUCHDOWN_LAST_PLAY, ("DAL", "Passing Touchdown", "Antonio Williams", 31, (0, 6))),
+        (_CONVERSION_LAST_PLAY, ("DAL", "Passing Touchdown", "", 31, (0, 6))),
+        ({**_TOUCHDOWN_LAST_PLAY, "text": "D.Stevens 45 yard field goal is GOOD.",
+          "type": {"text": "Field Goal Good"}, "scoreValue": 3,
+          "athletesInvolved": _CONVERSION_LAST_PLAY["athletesInvolved"]},
+         ("DAL", "Field Goal Good", "Drew Stevens", 45, (0, 6))),
+    ],
+)
+def test_scoreboard_last_play_becomes_a_scored_play(last_play, expected) -> None:
+    event = _with_last_play(_football_event(0, ""), last_play, away_score=6)
+    play = _scoreboard_scoring_play(event, {"sport": "nfl", "home_abbr": "NYG", "away_abbr": "DAL",
+                                           "home_score": 0, "away_score": 6})
+
+    assert play is not None
+    assert (play["team"], play["event_type"], play.get("scorer_full", ""), play["yards"],
+            (play["home_score"], play["away_score"])) == expected
+
+
+def test_scoreboard_last_play_without_a_score_is_ignored() -> None:
+    timeout = {"id": "1", "text": "Official Timeout at 10:22.", "type": {"text": "Official Timeout"},
+               "team": {"id": "10"}, "scoreValue": 0}
+    event = _with_last_play(_football_event(7, ""), timeout, away_score=0)
+
+    assert _scoreboard_scoring_play(event, {"sport": "nfl", "home_abbr": "NYG", "away_abbr": "DAL",
+                                            "home_score": 7, "away_score": 0}) is None
+
+
+def test_espn_fastcast_score_alert_uses_the_scoreboard_play_before_the_summary() -> None:
+    scheduled = _football_event(7, "", state="pre")
+    lagging = _football_summary(scheduled, drive_team="20")
+    fastcast = _FootballFastcast()
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [_with_last_play(scheduled, None, away_score=0)]}},
+        event_updates={"game-1": lagging},
+    )
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        fastcast=fastcast,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+    settings = DisplaySettings(timezone="America/New_York", my_teams=("nfl:DAL",))
+    try:
+        provider.fetch_for_ticker("ticker-one", settings)
+        current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+        for clock, away_score, last_play in ((6.0, 6, _TOUCHDOWN_LAST_PLAY), (12.0, 7, _CONVERSION_LAST_PLAY)):
+            live = _with_last_play(_football_event(7, ""), last_play, away_score=away_score)
+            fastcast.payload = {"events": [live]}
+            fastcast.event_times["game-1"] = clock
+            monotonic[0] = clock
+            result = provider.fetch_live_for_ticker("ticker-one", settings)
+
+            assert [(alert["headline"], alert["player"], alert["data"], int(alert["away_score"]))
+                    for alert in result.alerts] == [
+                ("PASS TD", "Antonio Williams", "31YD PASS J.Daniels", away_score)
+            ]
     finally:
         provider.close()
 
