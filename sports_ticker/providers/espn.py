@@ -217,6 +217,14 @@ class _MlbLiveDetailCache:
 
 
 @dataclass(frozen=True, slots=True)
+class _FootballLiveDetail:
+    """Keep one football summary read and the side that had the ball in it."""
+
+    details: Mapping[str, Any]
+    drive_side: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class _MlbEventKey:
     """Keep the MLB teams and complete ESPN start time for one event."""
 
@@ -313,7 +321,10 @@ class EspnScoreboardProvider:
             ttl=_SOURCE_CACHE_SECONDS, clock=self._monotonic
         )
         self._mlb_live_detail_cache: dict[str, _MlbLiveDetailCache] = {}
-        self._football_live_details: dict[tuple[str, str], dict[str, Any]] = {}
+        self._football_live_details: dict[tuple[str, str], _FootballLiveDetail] = {}
+        self._football_detail_reads: set[tuple[str, str]] = set()
+        self._football_detail_pool: ThreadPoolExecutor | None = None
+        self._closed = False
         self._mlb_event_keys: dict[str, _MlbEventKey] = {}
         self._mlb_schedule_cache: dict[
             str, tuple[float, tuple[_MlbScheduleGame, ...]]
@@ -334,19 +345,19 @@ class EspnScoreboardProvider:
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
 
-        return self._fetch(settings, self._score_alerts, cache_source=False)
+        return self._fetch(settings, self._score_alerts)
 
     def fetch_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
         """Fetch one ticker scoreboard with score memory isolated to that ticker."""
 
         identifier = str(ticker_id).strip()
         tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
-        return self._fetch(settings, tracker, cache_source=True)
+        return self._fetch(settings, tracker)
 
     def fetch_live_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
         """Project retained source updates without starting HTTP reconciliation."""
         tracker = self._score_alerts_by_ticker.setdefault(str(ticker_id).strip(), ScoreAlertTracker())
-        return self._fetch(settings, tracker, cache_source=True, live_only=True)
+        return self._fetch(settings, tracker, live_only=True)
 
     def fetch_batch_for_tickers(self, settings_by_ticker: Mapping[str, DisplaySettings], *, live_only: bool = False) -> dict[str, object]:
         """Prepare each source view once and keep alert state separate for every ticker."""
@@ -360,7 +371,7 @@ class EspnScoreboardProvider:
             for key, settings in representatives.items():
                 if not live_only or key not in self._source_cache:
                     try:
-                        self._get_source(settings, cache_source=True, current=current)
+                        self._get_source(settings, current=current)
                     except Exception as error:
                         sources[key] = error
             batch = None
@@ -371,7 +382,7 @@ class EspnScoreboardProvider:
                 key = keys[ticker_id]
                 if key not in sources:
                     try:
-                        sources[key] = self._get_source(settings, cache_source=True, live_only=True, batch=batch, current=current)
+                        sources[key] = self._get_source(settings, live_only=True, batch=batch, current=current)
                     except Exception as error:
                         sources[key] = error
                 source = sources[key]
@@ -391,6 +402,11 @@ class EspnScoreboardProvider:
     def close(self) -> None:
         """Stop Fastcast and close this provider's retained HTTP connections."""
 
+        with self._football_live_detail_lock:
+            self._closed = True
+            pool, self._football_detail_pool = self._football_detail_pool, None
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
         if self._fastcast is not None:
             self._fastcast.close()
         source, self._owned_nhl_situation_source = self._owned_nhl_situation_source, None
@@ -410,7 +426,6 @@ class EspnScoreboardProvider:
         settings: DisplaySettings,
         score_alerts: ScoreAlertTracker,
         *,
-        cache_source: bool,
         live_only: bool = False,
     ) -> ProviderResult:
         """Fetch scoreboard content and emit only alerts allowed by ticker settings."""
@@ -418,35 +433,32 @@ class EspnScoreboardProvider:
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
 
-        source = self._get_source(settings, cache_source=cache_source, live_only=live_only)
+        source = self._get_source(settings, live_only=live_only)
         return self._result_from_source(settings, score_alerts, source)
 
-    def _get_source(self, settings: DisplaySettings, *, cache_source: bool, live_only: bool = False,
+    def _get_source(self, settings: DisplaySettings, *, live_only: bool = False,
                     batch: dict | None = None, current: datetime | None = None) -> "_ScoreboardSource":
 
         current = self._now() if current is None else current
         dates = _scoreboard_dates(settings.timezone, now=current)
         source_key = _source_key(self.scoreboard_urls, settings, dates)
-        if cache_source:
-            with self._source_cache_lock:
-                now = self._monotonic()
-                cached = self._source_cache.get(source_key)
-                versions = self._source_versions(settings) if batch is None else {
-                    league: version for league, version in batch["versions"].items()
-                    if league in self.scoreboard_urls and settings.active_sports.get(league, True)}
-                if cached is not None and (live_only or 0 <= now - cached[0] < 5.0):
-                    if versions == cached[2]:
-                        source = cached[1]
-                    else:
-                        source = self._read_source(settings, current, dates, cache_schedule=True, live_only=True, batch=batch)
-                        source = replace(source, errors=cached[1].errors, failed_sources=cached[1].failed_sources,
-                                         invalid_sources=cached[1].invalid_sources)
-                        self._source_cache[source_key] = (cached[0], source, versions)
+        with self._source_cache_lock:
+            now = self._monotonic()
+            cached = self._source_cache.get(source_key)
+            versions = self._source_versions(settings) if batch is None else {
+                league: version for league, version in batch["versions"].items()
+                if league in self.scoreboard_urls and settings.active_sports.get(league, True)}
+            if cached is not None and (live_only or 0 <= now - cached[0] < 5.0):
+                if versions == cached[2]:
+                    source = cached[1]
                 else:
-                    source = self._read_source(settings, current, dates, cache_schedule=True)
-                    self._source_cache[source_key] = (self._monotonic(), source, versions)
-        else:
-            source = self._read_source(settings, current, dates, cache_schedule=False)
+                    source = self._read_source(settings, current, dates, live_only=True, batch=batch)
+                    source = replace(source, errors=cached[1].errors, failed_sources=cached[1].failed_sources,
+                                     invalid_sources=cached[1].invalid_sources)
+                    self._source_cache[source_key] = (cached[0], source, versions)
+            else:
+                source = self._read_source(settings, current, dates)
+                self._source_cache[source_key] = (self._monotonic(), source, versions)
         return source
 
     def _result_from_source(self, settings: DisplaySettings, score_alerts: ScoreAlertTracker,
@@ -499,7 +511,6 @@ class EspnScoreboardProvider:
         current: datetime,
         dates: Sequence[date],
         *,
-        cache_schedule: bool,
         live_only: bool = False,
         batch: dict | None = None,
     ) -> "_ScoreboardSource":
@@ -525,11 +536,11 @@ class EspnScoreboardProvider:
         live_detail_suppressed: set[str] = set()
         for league, url in active_leagues:
             cache_key = (settings.timezone, league, schedule_day)
-            cached = self._league_schedules.get(cache_key) if cache_schedule else None
+            cached = self._league_schedules.get(cache_key)
             raw_schedule_events = (
                 self._fastcast_events(league, cached.events, batch=batch)
-                if cached is not None and cache_schedule
-                else cached.events if cached is not None else ()
+                if cached is not None
+                else ()
             )
             schedule_events = _filter_college_conference_events(
                 league,
@@ -647,7 +658,6 @@ class EspnScoreboardProvider:
                     league,
                     url,
                     dates,
-                    cache_source=cache_schedule,
                 )
                 for league, url in refresh_leagues
             }
@@ -660,7 +670,6 @@ class EspnScoreboardProvider:
                     self._read_event_scoreboard,
                     refresh.league,
                     event_id,
-                    cache_source=cache_schedule,
                 )
                 live_update_expected_fastcast_at[key] = refresh.fastcast_updated_at
             for league, _url in active_leagues:
@@ -683,15 +692,14 @@ class EspnScoreboardProvider:
                         events,
                         settings.active_conferences,
                     )
-                    if cache_schedule:
-                        self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
-                            events=events,
-                            schedule_day=schedule_day,
-                            discovery_at=self._monotonic(),
-                        )
-                        discovery_ages[league] = self._league_schedules[
-                            (settings.timezone, league, schedule_day)
-                        ].discovery_at
+                    self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
+                        events=events,
+                        schedule_day=schedule_day,
+                        discovery_at=self._monotonic(),
+                    )
+                    discovery_ages[league] = self._league_schedules[
+                        (settings.timezone, league, schedule_day)
+                    ].discovery_at
                     live_events = _unique_live_events(events_by_league[league], current)
                     for event in live_events:
                         event_id = str(event.get("id") or "").strip()
@@ -708,17 +716,13 @@ class EspnScoreboardProvider:
                                         self._read_event_scoreboard,
                                         league,
                                         event_id,
-                                        cache_source=cache_schedule,
                                     )
                                     live_update_expected_fastcast_at[(league, event_id)] = None
                     elif self._event_detail_urls.get(league):
                         dense_live = len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
                         if dense_live and league != "mlb" and league != "nhl":
                             live_detail_suppressed.add(league)
-                        if (
-                            (not dense_live or league == "mlb" or league == "nhl")
-                            and (cache_schedule or league == "nhl")
-                        ):
+                        if not dense_live or league == "mlb" or league == "nhl":
                             for event in live_events:
                                 event_id = str(event.get("id") or "").strip()
                                 if event_id and (league, event_id) not in live_update_futures:
@@ -726,7 +730,6 @@ class EspnScoreboardProvider:
                                         self._read_event_scoreboard,
                                         league,
                                         event_id,
-                                        cache_source=cache_schedule,
                                     )
                                     live_update_expected_fastcast_at[(league, event_id)] = None
             for (league, event_id), future in live_update_futures.items():
@@ -759,22 +762,21 @@ class EspnScoreboardProvider:
                             (league, event_id)
                         ),
                     )
-                if cache_schedule:
-                    cached_schedule = self._league_schedules.get(
-                        (settings.timezone, league, schedule_day)
-                    )
-                    stored_events = cached_schedule.events if cached_schedule is not None else updated_events
-                    stored_events = tuple(
-                        _event_update(update, event, league=league)
-                        if str(event.get("id") or "").strip() == event_id
-                        else event
-                        for event in stored_events
-                    )
-                    self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
-                        events=stored_events,
-                        schedule_day=schedule_day,
-                        discovery_at=discovery_ages.get(league, self._monotonic()),
-                    )
+                cached_schedule = self._league_schedules.get(
+                    (settings.timezone, league, schedule_day)
+                )
+                stored_events = cached_schedule.events if cached_schedule is not None else updated_events
+                stored_events = tuple(
+                    _event_update(update, event, league=league)
+                    if str(event.get("id") or "").strip() == event_id
+                    else event
+                    for event in stored_events
+                )
+                self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
+                    events=stored_events,
+                    schedule_day=schedule_day,
+                    discovery_at=discovery_ages.get(league, self._monotonic()),
+                )
             if not live_only and _needs_ncaa_logo_lookup(active_leagues, events_by_league):
                 ncaa_logo_future = pool.submit(self._read_ncaa_school_index)
 
@@ -982,20 +984,10 @@ class EspnScoreboardProvider:
         league: str,
         url: str,
         dates: Sequence[date],
-        *,
-        cache_source: bool = False,
     ) -> tuple[Mapping[str, Any], ...]:
         """Read all games for one league in one request."""
 
         request_url = _scoreboard_url_for_dates(url, dates)
-        if not cache_source:
-            payload = self.client.get_json(request_url, timeout=self.timeout)
-            if self._fastcast is not None:
-                self._fastcast.prime(league, payload)
-            events = _events(payload)
-            self._remember_mlb_events(league, events)
-            return events
-
         response = self._cached_scoreboard(request_url)
         if response.error:
             raise _ScoreboardReadError(
@@ -1012,8 +1004,6 @@ class EspnScoreboardProvider:
         self,
         league: str,
         event_id: str,
-        *,
-        cache_source: bool = False,
     ) -> Mapping[str, Any]:
         """Read one live event from ESPN's compact single-event scoreboard resource."""
 
@@ -1021,9 +1011,6 @@ class EspnScoreboardProvider:
         if not template:
             return {}
         request_url = template.format(event_id)
-        if not cache_source:
-            return self._read_event_payload(league, event_id, request_url)
-
         response = self._cached_event_scoreboard((league, event_id), request_url)
         if response.error:
             raise RuntimeError(response.error)
@@ -1260,21 +1247,54 @@ class EspnScoreboardProvider:
     ) -> dict[str, Any]:
         """Read detailed live facts for one projected scoreboard item."""
 
+        payload = self._live_update(league, item, update)
+        return {} if payload is None else self._details_from_update(league, item, payload)
+
+    def _read_football_detail(
+        self,
+        league: str,
+        item: ContentItem,
+        update: Any | None = None,
+    ) -> _FootballLiveDetail | None:
+        """Read football facts and the current drive side from one summary."""
+
+        payload = self._live_update(league, item, update)
+        if payload is None:
+            return None
+        return _FootballLiveDetail(
+            details=self._details_from_update(league, item, payload),
+            drive_side=_summary_drive_side(payload),
+        )
+
+    def _live_update(
+        self,
+        league: str,
+        item: ContentItem,
+        update: Any | None,
+    ) -> Any | None:
+        """Return the detail payload for one live item, or None when it has none."""
+
         if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
             if league == "mlb":
                 self._clear_mlb_live_detail(item.id)
-            return {}
-        template = self._event_detail_urls.get(league)
-        if not template:
-            return {}
+            return None
+        if not self._event_detail_urls.get(league):
+            return None
+        if update is not None:
+            return update
+        try:
+            return self._read_event_scoreboard(league, item.id)
+        except Exception:
+            return {} if league == "mlb" else None
 
-        if update is None:
-            try:
-                update = self._read_event_scoreboard(league, item.id, cache_source=True)
-            except Exception:
-                if league != "mlb":
-                    return {}
-                update = {}
+    def _details_from_update(
+        self,
+        league: str,
+        item: ContentItem,
+        update: Any,
+    ) -> dict[str, Any]:
+        """Normalize one detail payload into situation facts."""
+
         details = _event_scoring_details(update, item.data)
         details.update(
             _mlb_event_details(update)
@@ -1410,14 +1430,15 @@ class EspnScoreboardProvider:
             ):
                 continue
             if key in suppressed_updates:
-                # Fastcast or a dense slate owns the score. Score alerts still need
-                # the scoring play, so read one summary when the score changes.
+                # Fastcast or a dense slate owns the score. Score and turnover
+                # alerts still need the plays, so read one summary when the
+                # score or possession changes.
                 if league not in _FOOTBALL_LEAGUES:
                     continue
                 summary = provided_updates.get(key) if key in attempted_updates else None
-                retained = self._retained_football_details(key)
-                if summary is None and _football_details_match_score(retained, item.data):
-                    enriched[index] = self._with_live_details(league, item, retained)
+                retained = self._retained_football_detail(key)
+                if summary is None and _football_detail_is_current(retained, item.data):
+                    enriched[index] = self._with_live_details(league, item, retained.details)
                     continue
                 football_reads.add(key)
                 targets.append((index, item, summary))
@@ -1437,7 +1458,9 @@ class EspnScoreboardProvider:
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
                 futures = {
                     pool.submit(
-                        self._live_details,
+                        self._read_football_detail
+                        if (str(item.data.get("sport") or ""), item.id) in football_reads
+                        else self._live_details,
                         str(item.data.get("sport") or ""),
                         item,
                         update=update,
@@ -1447,37 +1470,44 @@ class EspnScoreboardProvider:
                 for future, (index, item) in futures.items():
                     league = str(item.data.get("sport") or "")
                     try:
-                        details = future.result()
+                        result = future.result()
                     except Exception:
                         continue
                     if (league, item.id) in football_reads:
-                        details = self._retain_football_details((league, item.id), details)
-                    enriched[index] = self._with_live_details(league, item, details)
+                        self._retain_football_detail((league, item.id), result)
+                        result = self._retained_football_detail((league, item.id)).details
+                    enriched[index] = self._with_live_details(league, item, result)
         return self._enrich_nhl_live_items(enriched)
 
-    def _retained_football_details(self, key: tuple[str, str]) -> dict[str, Any]:
-        """Return the last summary details read for one suppressed football event."""
+    def _retained_football_detail(self, key: tuple[str, str]) -> _FootballLiveDetail:
+        """Return the last summary read kept for one suppressed football event."""
 
         with self._football_live_detail_lock:
-            return dict(self._football_live_details.get(key, {}))
+            return self._football_live_details.get(key, _FootballLiveDetail({}))
 
-    def _retain_football_details(
+    def _retain_football_detail(
         self,
         key: tuple[str, str],
-        details: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Keep one successful summary read until the score changes again."""
+        detail: _FootballLiveDetail | None,
+    ) -> bool:
+        """Keep one successful summary read and return whether it changed."""
 
+        if detail is None:
+            return False
         with self._football_live_detail_lock:
-            if details:
-                self._football_live_details[key] = dict(details)
-            return dict(self._football_live_details.get(key, {}))
+            changed = self._football_live_details.get(key) != detail
+            self._football_live_details[key] = detail
+            return changed
 
     def _with_retained_football_details(
         self,
         items: Sequence[ContentItem],
     ) -> list[ContentItem]:
-        """Keep football scoring facts on live passes that make no HTTP reads."""
+        """Keep football play facts on live passes that make no HTTP reads.
+
+        When the kept summary does not explain the current score or possession,
+        read it in the background. The live pass does not wait for the read.
+        """
 
         self._prune_football_live_details(items)
         result = list(items)
@@ -1486,11 +1516,46 @@ class EspnScoreboardProvider:
             if (
                 league not in _FOOTBALL_LEAGUES
                 or str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}
+                or not self._event_detail_urls.get(league)
             ):
                 continue
-            retained = self._retained_football_details((league, item.id))
-            result[index] = self._with_live_details(league, item, retained)
+            retained = self._retained_football_detail((league, item.id))
+            if not _football_detail_is_current(retained, item.data):
+                self._start_football_detail_read(league, item)
+            result[index] = self._with_live_details(league, item, retained.details)
         return result
+
+    def _start_football_detail_read(self, league: str, item: ContentItem) -> None:
+        """Start one background summary read for one football event."""
+
+        key = (league, item.id)
+        with self._football_live_detail_lock:
+            if self._closed or key in self._football_detail_reads:
+                return
+            self._football_detail_reads.add(key)
+            if self._football_detail_pool is None:
+                self._football_detail_pool = ThreadPoolExecutor(
+                    max_workers=4, thread_name_prefix="football-details"
+                )
+            pool = self._football_detail_pool
+        try:
+            pool.submit(self._finish_football_detail_read, league, item)
+        except RuntimeError:
+            with self._football_live_detail_lock:
+                self._football_detail_reads.discard(key)
+
+    def _finish_football_detail_read(self, league: str, item: ContentItem) -> None:
+        """Keep one background summary read and wake the live pass when it changed."""
+
+        key = (league, item.id)
+        changed = False
+        try:
+            changed = self._retain_football_detail(key, self._read_football_detail(league, item))
+        finally:
+            with self._football_live_detail_lock:
+                self._football_detail_reads.discard(key)
+        if changed and self._fastcast is not None:
+            self._fastcast.mark_changed(league)
 
     def _prune_football_live_details(self, items: Sequence[ContentItem]) -> None:
         """Remove retained football details for events observed outside live state."""
@@ -3784,23 +3849,63 @@ def _score_number(value: Any) -> int | None:
         return None
 
 
-def _football_details_match_score(
-    details: Mapping[str, Any],
+def _football_detail_is_current(
+    detail: _FootballLiveDetail,
     data: Mapping[str, Any],
 ) -> bool:
-    """Return whether retained football details contain the play for the current score."""
+    """Return whether one summary read explains the current score and possession.
+
+    A score change needs its scoring play. A possession change can be a
+    turnover, so it needs the drive plays. When ESPN's summary is behind the
+    scoreboard, this stays false and the provider reads the summary again.
+    """
 
     current = (_score_number(data.get("home_score")), _score_number(data.get("away_score")))
-    if None in current:
-        return True
-    plays = _sequence(details.get("scoring_plays"))
-    if not plays:
-        return current == (0, 0)
-    latest = _mapping(plays[-1])
-    return (
-        _score_number(latest.get("home_score")),
-        _score_number(latest.get("away_score")),
-    ) == current
+    if None not in current:
+        plays = _sequence(detail.details.get("scoring_plays"))
+        latest = _mapping(plays[-1]) if plays else {}
+        explained = (
+            (_score_number(latest.get("home_score")), _score_number(latest.get("away_score")))
+            if plays
+            else (0, 0)
+        )
+        if explained != current:
+            return False
+    possession = _possession_side(data)
+    return not possession or possession == detail.drive_side
+
+
+def _possession_side(data: Mapping[str, Any]) -> str:
+    """Return the scoreboard side that has the ball, or an empty value."""
+
+    possession = str(_mapping(data.get("situation")).get("possession") or "").strip().casefold()
+    if not possession:
+        return ""
+    for side in ("home", "away"):
+        if possession == str(data.get(f"{side}_abbr") or "").strip().casefold():
+            return side
+    return ""
+
+
+def _summary_drive_side(payload: Any) -> str:
+    """Return the side of the current drive in one ESPN football summary."""
+
+    summary = _mapping(payload)
+    team = _mapping(_mapping(_mapping(summary.get("drives")).get("current")).get("team"))
+    identifier = str(team.get("id") or "").strip()
+    abbreviation = str(team.get("abbreviation") or "").strip().casefold()
+    if not identifier and not abbreviation:
+        return ""
+    for raw_competitor in _sequence(_event_competition(summary).get("competitors")):
+        competitor = _mapping(raw_competitor)
+        competitor_team = _mapping(competitor.get("team"))
+        if (identifier and identifier == str(competitor_team.get("id") or "").strip()) or (
+            abbreviation
+            and abbreviation == str(competitor_team.get("abbreviation") or "").strip().casefold()
+        ):
+            side = str(competitor.get("homeAway") or "").strip().lower()
+            return side if side in {"home", "away"} else ""
+    return ""
 
 
 def _sequence(value: Any) -> tuple[Any, ...]:

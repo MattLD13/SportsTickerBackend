@@ -67,6 +67,32 @@ def test_source_versions_wake_waiters_and_change_after_worker_restart() -> None:
     assert restarted.wait_for_changes(source.versions(), 0) != source.versions()
 
 
+def test_mark_changed_wakes_waiters_without_changing_the_snapshot() -> None:
+    source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    source.prime("nfl", _snapshot())
+    before = source.versions()
+    snapshot = source.snapshot("nfl")
+    result = []
+    ready = threading.Event()
+
+    def wait():
+        ready.set()
+        result.append(source.wait_for_changes(before, 2))
+
+    thread = threading.Thread(target=wait)
+    thread.start()
+    assert ready.wait(1)
+    source.mark_changed("NFL")
+    source.mark_changed("nba")
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert result == [source.versions()]
+    assert result[0]["nfl"] != before["nfl"]
+    assert set(result[0]) == {"nfl"}
+    assert source.snapshot("nfl") == snapshot
+
+
 def test_fastcast_topic_uses_scoreboard_path_and_group() -> None:
     assert fastcast_topic(
         "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"

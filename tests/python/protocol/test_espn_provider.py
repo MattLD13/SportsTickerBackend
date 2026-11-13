@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from copy import deepcopy
-from threading import Barrier
+from threading import Barrier, Event
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -549,8 +549,9 @@ def test_espn_before_three_requests_prior_and_current_local_dates() -> None:
 
     result = provider.fetch(_settings())
 
-    assert len(client.urls) == 1
-    assert parse_qs(urlsplit(client.urls[0]).query)["dates"] == ["20260815", "20260816"]
+    scoreboard_urls = [url for url in client.urls if "/summary?event=" not in url]
+    assert len(scoreboard_urls) == 1
+    assert parse_qs(urlsplit(scoreboard_urls[0]).query)["dates"] == ["20260815", "20260816"]
     assert {item.id for item in result.content} == {"game-prior", "game-current"}
 
 
@@ -1278,6 +1279,177 @@ def test_espn_fastcast_score_change_reads_one_summary_for_the_score_alert() -> N
         assert later_item.data["situation"]["scoring_plays"][-1]["scorer_full"] == "Actual Runner"
         assert [alert["player"] for alert in later.alerts] == ["Actual Runner"]
     assert [url for url in client.urls if "/summary?event=" in url] == summary_urls
+
+
+class _FootballFastcast:
+    """Serve one controlled Fastcast view and record provider wakeups."""
+
+    def __init__(self) -> None:
+        self.payload: dict = {"events": []}
+        self.event_times: dict[str, float] = {}
+        self.revision = 0
+        self.changed = Event()
+
+    def start(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def prime(self, league: str, payload: dict) -> None:
+        del league
+        self.payload = deepcopy(payload)
+
+    def snapshot(self, league: str):
+        del league
+        return deepcopy(self.payload)
+
+    def timed_snapshot(self, league: str):
+        return self.snapshot(league), {}
+
+    def versions(self):
+        return {"nfl": f"{self.revision}:{self.payload!r}"}
+
+    def active(self, league: str) -> bool:
+        del league
+        return True
+
+    def event_updated_at(self, league: str, event_id: str) -> float | None:
+        del league
+        return self.event_times.get(event_id)
+
+    def prime_event(self, league: str, event: dict, *, if_updated_at: float | None = None) -> None:
+        del league, event, if_updated_at
+
+    def mark_changed(self, league: str) -> None:
+        del league
+        self.revision += 1
+        self.changed.set()
+
+
+def _football_event(home_score: int, possession: str, *, state: str = "in") -> dict:
+    event = _event("game-1", "2026-08-16T18:00:00Z", state=state)
+    competition = event["competitions"][0]
+    competition["competitors"][0]["team"]["id"] = "10"
+    competition["competitors"][1]["team"]["id"] = "20"
+    competition["competitors"][0]["score"] = str(home_score)
+    competition["situation"] = {"possession": possession} if possession else {}
+    event["status"] = {"type": {"state": state, "shortDetail": "Q2 08:00"}}
+    return event
+
+
+def _football_summary(event: dict, *, drive_team: str, previous_plays: list[dict] | None = None) -> dict:
+    return {
+        "header": {"id": "game-1", "competitions": [event["competitions"][0]]},
+        "scoringPlays": [{
+            "id": "td-1",
+            "type": {"text": "Rushing Touchdown", "abbreviation": "TD"},
+            "text": "Actual Runner 4 Yd Rush (Actual Kicker Kick)",
+            "homeScore": 7,
+            "awayScore": 0,
+            "period": {"number": 2},
+            "clock": {"displayValue": "8:00"},
+            "team": {"id": "10", "abbreviation": "NYG"},
+            "scoringType": {"name": "touchdown"},
+        }],
+        "drives": {
+            "previous": [{"plays": previous_plays or []}],
+            "current": {"team": {"id": drive_team}, "plays": []},
+        },
+    }
+
+
+def test_espn_live_fastcast_score_reads_summary_in_background_and_fills_the_alert() -> None:
+    scheduled = _football_event(0, "", state="pre")
+    live = _football_event(7, "")
+    fastcast = _FootballFastcast()
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [scheduled]}},
+        event_updates={"game-1": _football_summary(live, drive_team="20")},
+    )
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        fastcast=fastcast,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+    settings = DisplaySettings(timezone="America/New_York", my_teams=("nfl:NYG",))
+    try:
+        provider.fetch_for_ticker("ticker-one", settings)
+        fastcast.payload = {"events": [live]}
+        fastcast.event_times["game-1"] = 6.0
+        current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+        monotonic[0] = 6.0
+
+        first = provider.fetch_live_for_ticker("ticker-one", settings)
+
+        assert [(alert["headline"], alert["player"]) for alert in first.alerts] == [("TOUCHDOWN", "")]
+        assert fastcast.changed.wait(5.0)
+        second = provider.fetch_live_for_ticker("ticker-one", settings)
+        assert [(alert["id"], alert["headline"], alert["player"]) for alert in second.alerts] == [
+            (first.alerts[0]["id"], "RUSH TD", "Actual Runner")
+        ]
+        assert [url for url in client.urls if "/summary?event=" in url] == [
+            "https://example.test/football/nfl/summary?event=game-1"
+        ]
+    finally:
+        provider.close()
+
+
+def test_espn_fastcast_possession_change_reads_summary_for_the_turnover_alert() -> None:
+    before = _football_event(7, "20")
+    after = _football_event(7, "10")
+    interception = {
+        "id": "pick-1",
+        "type": {"text": "Pass Interception Return"},
+        "text": "D.Prescott pass deep right intended for C.Lamb INTERCEPTED by NYG-A.Thomas. A.Thomas to DAL 40 for 12 yards.",
+        "period": {"number": 2},
+        "clock": {"displayValue": "4:12"},
+        "start": {"team": {"id": "20"}, "down": 2, "distance": 8},
+        "end": {"team": {"id": "10"}},
+        "teamParticipants": [{"id": "10", "type": "defense"}, {"id": "20", "type": "offense"}],
+        "isTurnover": True,
+        "scoringPlay": False,
+    }
+    fastcast = _FootballFastcast()
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [before]}},
+        event_updates={"game-1": _football_summary(before, drive_team="20")},
+    )
+    current = [datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        fastcast=fastcast,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+    settings = DisplaySettings(timezone="America/New_York", my_teams=("nfl:NYG",))
+    try:
+        baseline = provider.fetch_for_ticker("ticker-one", settings)
+        assert baseline.alerts == ()
+        assert sum("/summary?event=" in url for url in client.urls) == 1
+
+        client.event_updates["game-1"] = _football_summary(
+            after, drive_team="10", previous_plays=[interception]
+        )
+        fastcast.payload = {"events": [after]}
+        fastcast.event_times["game-1"] = 12.0
+        monotonic[0] = 12.0
+        provider.fetch_live_for_ticker("ticker-one", settings)
+        assert fastcast.changed.wait(5.0)
+        result = provider.fetch_live_for_ticker("ticker-one", settings)
+
+        assert [(alert["headline"], alert["team_abbr"], alert["player"]) for alert in result.alerts] == [
+            ("INTERCEPTION", "NYG", "A.Thomas")
+        ]
+        assert sum("/summary?event=" in url for url in client.urls) == 2
+    finally:
+        provider.close()
 
 
 def test_espn_stale_fastcast_game_uses_one_targeted_http_refresh() -> None:

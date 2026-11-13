@@ -115,6 +115,14 @@ class EspnFastcastSource:
         with self._lock:
             return self.versions(), {league: self.timed_snapshot(league) for league in self.topics}
 
+    def mark_changed(self, league: str) -> None:
+        """Wake source waiters after the provider adds detail for one league."""
+
+        identifier = str(league).strip().lower()
+        with self._lock:
+            if identifier in self._revisions:
+                self._source_changed(identifier)
+
     def _source_changed(self, league: str) -> None:
         self._revisions[league] += 1
         self._changed.notify_all()

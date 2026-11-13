@@ -39,13 +39,16 @@ def _scoreboard(score):
 
 
 def test_espn_score_change_enters_the_v2_alert_channel():
+    monotonic = [0.0]
     provider = EspnScoreboardProvider(
         {"nfl": "https://example.test/nfl"},
         client=SequenceClient([_scoreboard(7), _scoreboard(14)]),
+        monotonic=lambda: monotonic[0],
     )
     settings = DisplaySettings(my_teams=("nfl:NYG",))
 
     assert provider.fetch(settings).alerts == ()
+    monotonic[0] = 61.0
     alerts = provider.fetch(settings).alerts
 
     assert len(alerts) == 1
