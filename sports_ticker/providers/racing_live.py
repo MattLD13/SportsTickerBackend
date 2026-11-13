@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import DisplaySettings
 
-from .espn import _is_current_event
+from .espn_schedule import _is_current_event
 from .http import JsonHttpClient, JsonHttpError, OwnedClient, TextHttpClient, PooledJsonHttpClient, PooledTextHttpClient
 from .racing_session import racing_timed_session
 from .sports_display import racing_short_name, racing_flag_code, RACING_CAUTION_FLAGS

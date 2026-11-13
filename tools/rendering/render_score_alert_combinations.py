@@ -17,9 +17,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
 from sports_ticker.projections.data_api import project_data_v2
-from sports_ticker.providers.espn import (
-    _content_item, _event_plays, _event_scoring_details, _mlb_statsapi_summary,
-    _soccer_event_details, _event_football_details,
+from sports_ticker.providers.espn_content import _content_item
+from sports_ticker.providers.espn_mlb import _mlb_statsapi_summary
+from sports_ticker.providers.espn_plays import (
+    _event_plays,
+    _event_scoring_details,
+    _soccer_event_details,
+    _event_football_details,
 )
 from sports_ticker.providers.score_alerts import _describe, _extract_alert_facts
 from ticker_core.assets import AssetPlanner, LogoAssetView

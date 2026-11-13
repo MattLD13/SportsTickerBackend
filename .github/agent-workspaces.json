@@ -111,6 +111,7 @@
       ],
       "context": [
         "sports_ticker/providers/espn.py",
+        "sports_ticker/providers/espn_plays.py",
         "sports_ticker/providers/sports_display.py",
         "sports_ticker/providers/nhl_live.py",
         "sports_ticker/providers/score_alerts.py"

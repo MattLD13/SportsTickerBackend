@@ -8,19 +8,23 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from sports_ticker.domain import ContentItem, DisplaySettings
-from sports_ticker.providers.espn import (
-    EspnScoreboardProvider,
-    _scoreboard_url_for_dates,
-    _event_detail_url,
-    _event_update,
-    _event_football_details,
-    _event_scoring_details,
-    _merge_event_collections,
+from sports_ticker.providers.espn import EspnScoreboardProvider
+from sports_ticker.providers.espn_mlb import (
     _mlb_has_boxscore,
     _mlb_event_details,
     _mlb_statsapi_summary,
+)
+from sports_ticker.providers.espn_plays import (
+    _event_football_details,
+    _event_scoring_details,
     _nhl_event_details,
     _soccer_event_details,
+)
+from sports_ticker.providers.espn_schedule import (
+    _scoreboard_url_for_dates,
+    _event_detail_url,
+    _event_update,
+    _merge_event_collections,
 )
 
 
@@ -1671,7 +1675,7 @@ def test_espn_event_update_preserves_scoreboard_fields_and_live_state() -> None:
 
 
 def test_team_logo_uses_first_usable_url_when_primary_logo_is_empty() -> None:
-    from sports_ticker.providers.espn import _team
+    from sports_ticker.providers.espn_content import _team
 
     team = _team({"team": {"abbreviation": "NYG", "logo": "",
                           "logos": [{"href": ""}, {"href": "nyg.png"}]}})
