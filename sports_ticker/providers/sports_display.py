@@ -1028,7 +1028,8 @@ def soccer_event(
     """Project soccer player, assist, clock, and goal facts."""
 
     name = str(player or "").strip()
-    surname = name.split()[-1].upper()[:8] if name else ""
+    # A cut name must not end in a joining mark, such as "KEILLOR-" from Keillor-Dunn.
+    surname = name.split()[-1].upper()[:8].rstrip("-'. ") if name else ""
     clock = str(minute or "").strip()
     result = {
         "is_home": bool(is_home),
@@ -1040,7 +1041,7 @@ def soccer_event(
         result["alert_player"] = name
     if str(assist or "").strip():
         full_assist = str(assist).strip()
-        result["assist"] = full_assist.split()[-1].upper()[:12]
+        result["assist"] = full_assist.split()[-1].upper()[:12].rstrip("-'. ")
         result["alert_assist"] = full_assist
     if str(goal_type or "").strip():
         result["goal_type"] = str(goal_type).strip().upper()[:12]

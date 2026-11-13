@@ -592,3 +592,14 @@ def test_turnover_alert_belongs_to_the_team_that_gains_the_ball() -> None:
     assert [(alert["headline"], alert["team_abbr"]) for alert in giants] == [("INTERCEPTION", "NYG")]
     washington = alerts_for_settings(alerts, DisplaySettings(my_teams=("nfl:WSH",)))
     assert [(alert["headline"], alert["team_abbr"]) for alert in washington] == [("FUMBLE", "WSH")]
+
+
+def test_soccer_scorer_cut_does_not_end_in_a_joining_mark() -> None:
+    from sports_ticker.providers.sports_display import soccer_event
+
+    # FotMob match 6469282: Davis Keillor-Dunn scored at 76'.
+    event = soccer_event(is_home=False, player="Davis Keillor-Dunn", minute="76'", assist="Jean Saint-Maximin")
+
+    assert event["player"] == "KEILLOR"
+    assert event["alert_player"] == "Davis Keillor-Dunn"
+    assert event["assist"] == "SAINT-MAXIMI"

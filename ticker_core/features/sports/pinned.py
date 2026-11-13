@@ -430,7 +430,7 @@ class SportsMixin:
                     y0 = H // 2 - (nc - 1) * LINE_H // 2
                     for i, (ev, is_card) in enumerate(subcol):
                         y = y0 + i * LINE_H
-                        player = str(ev.get('player') or '')[:name_len]
+                        player = str(ev.get('player') or '')[:name_len].rstrip("-'. ")
                         t = str(ev.get('time') or '')
                         is_og = not is_card and ev.get('own_goal')
                         label = f"{player} {t}{'(og)' if is_og else ''}".strip()
