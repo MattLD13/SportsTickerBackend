@@ -85,3 +85,28 @@ def test_ohio_state_uses_the_dark_background_mark() -> None:
     )
 
     assert content[0].data["away_logo"] == "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png"
+
+
+def test_wake_forest_uses_the_gold_mark_and_keeps_the_black_mark_for_full_screen() -> None:
+    content = normalize_content(
+        [
+            {
+                "id": "wake-game",
+                "family": "sports",
+                "kind": "scoreboard",
+                "data": {
+                    "sport": "ncf_fbs",
+                    "away_abbr": "WAKE",
+                    "home_abbr": "MICH",
+                    "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/154.png",
+                    "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/130.png",
+                },
+            }
+        ],
+        {},
+    )
+
+    game = content[0].data
+    assert game["away_logo"] == "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/154.png"
+    assert game["away_full_screen_logo"] == "https://a.espncdn.com/i/teamlogos/ncaa/500/154.png"
+    assert "home_full_screen_logo" not in game

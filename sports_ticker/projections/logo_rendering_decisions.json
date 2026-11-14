@@ -5089,12 +5089,12 @@
       "league_id": "ncf_fbs",
       "league": "NCAA (FBS)",
       "abbr": "WAKE",
-      "logo_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/154.png",
+      "logo_url": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/154.png",
       "status": "saved_for_later",
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "soft",
+        "outline": "off",
         "cutoff": 35
       },
       "new": {

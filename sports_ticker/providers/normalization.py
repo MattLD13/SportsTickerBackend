@@ -13,7 +13,7 @@ from sports_ticker.domain import CONTENT_FAMILIES, ContentItem, DisplaySettings
 from sports_ticker.domain.settings import settings_from_mapping
 
 from .contracts import ProviderHealth, ProviderResult
-from .logo_overrides import corrected_logo
+from .logo_overrides import corrected_logo, full_screen_logo
 
 
 _HIDDEN_STATUS_KEYWORDS = frozenset(
@@ -295,6 +295,9 @@ def _apply_sports_logo_overrides(data: dict[str, Any]) -> None:
         field = f"{side}_logo"
         source_url = data.get(field)
         corrected = corrected_logo(league_key, str(abbreviation), source_url if source_url is not None else None)
+        full_screen = full_screen_logo(league_key, str(abbreviation))
+        if full_screen:
+            data[f"{side}_full_screen_logo"] = full_screen
         if corrected:
             data[field] = corrected
             side_display = display_copy.get(side)

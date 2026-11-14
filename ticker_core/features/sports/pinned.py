@@ -297,8 +297,8 @@ class SportsMixin:
             h_logo_top = logo_top_up if h_sc_cx == h_logo_cx else logo_top_center
             a_logo_top = logo_top_up if a_sc_cx == a_logo_cx else logo_top_center
 
-            hl = self.get_logo(game.get('home_logo'), (24, 24), game.get('home_logo_rendering'))
-            al = self.get_logo(game.get('away_logo'), (24, 24), game.get('away_logo_rendering'))
+            hl = self.get_team_logo(game, 'home', (24, 24))
+            al = self.get_team_logo(game, 'away', (24, 24))
             self._paste_team_mark(img, hl, (h_logo_cx - LOGO_SZ // 2, h_logo_top), home_ab, LOGO_SZ, home_ez)
             self._paste_team_mark(img, al, (a_logo_cx - LOGO_SZ // 2, a_logo_top), away_ab, LOGO_SZ, away_ez)
 
@@ -359,8 +359,8 @@ class SportsMixin:
             logo_y = (H - LOGO_SZ) // 2
             h_logo_x = 6
             a_logo_x = W - 3 - LOGO_SZ - 5
-            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ), game.get('home_logo_rendering'))
-            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ), game.get('away_logo_rendering'))
+            hl = self.get_team_logo(game, 'home', (LOGO_SZ, LOGO_SZ))
+            al = self.get_team_logo(game, 'away', (LOGO_SZ, LOGO_SZ))
             self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_pitch)
             self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_pitch)
 
@@ -550,8 +550,8 @@ class SportsMixin:
             logo_y   = (H - LOGO_SZ) // 2
             h_logo_x = 6
             a_logo_x = W - 3 - LOGO_SZ - 5
-            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ), game.get('home_logo_rendering'))
-            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ), game.get('away_logo_rendering'))
+            hl = self.get_team_logo(game, 'home', (LOGO_SZ, LOGO_SZ))
+            al = self.get_team_logo(game, 'away', (LOGO_SZ, LOGO_SZ))
             self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_clr)
             self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_clr)
 
@@ -842,8 +842,8 @@ class SportsMixin:
         h_logo_x = l_used + 5
         a_logo_x = W - r_used - LOGO_SZ - 5
         logo_y   = (H - LOGO_SZ) // 2
-        hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ), game.get('home_logo_rendering'))
-        al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ), game.get('away_logo_rendering'))
+        hl = self.get_team_logo(game, 'home', (LOGO_SZ, LOGO_SZ))
+        al = self.get_team_logo(game, 'away', (LOGO_SZ, LOGO_SZ))
         self._paste_team_mark(img, hl, (h_logo_x, logo_y), home_ab, LOGO_SZ, home_clr)
         self._paste_team_mark(img, al, (a_logo_x, logo_y), away_ab, LOGO_SZ, away_clr)
 
@@ -1163,6 +1163,11 @@ class PreparedSportsFullRenderer(SportsMixin):
         """Return a prepared logo and never fetch from the renderer."""
         return get_prepared_team_logo(self._logos, str(url) if url else None, size, rendering)
 
+    def get_team_logo(self, game, side, size):
+        """Return one team's full-screen logo, or its main logo when it has none."""
+        url = game.get(f"{side}_full_screen_logo") or game.get(f"{side}_logo")
+        return self.get_logo(url, size, game.get(f"{side}_logo_rendering"))
+
     def _paste_team_mark(self, image, logo, xy, abbreviation, size, team_color):
         """Paste one prepared logo or a readable code when its asset is absent."""
         if logo is not None:
@@ -1188,7 +1193,7 @@ class PreparedSportsFullRenderer(SportsMixin):
                 return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
             except (TypeError, ValueError):
                 pass
-        logo = self.get_logo(game.get(f"{side}_logo"), (24, 24), game.get(f"{side}_logo_rendering"))
+        logo = self.get_team_logo(game, side, (24, 24))
         if logo:
             return tuple(int(value) for value in ImageStat.Stat(logo).mean[:3])
         return (60, 60, 60)

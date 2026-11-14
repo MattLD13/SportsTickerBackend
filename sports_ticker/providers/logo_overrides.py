@@ -46,6 +46,15 @@ LOGO_OVERRIDES = MappingProxyType({
     "MLB:COL": "https://raw.githubusercontent.com/MattLD13/PoopTracker/refs/heads/main/Colorado_Rockies_logo.svg.png",
     # Main ticker uses the gold Hawkeye mark rather than ESPN’s black default.
     "NCF_FBS:IOWA": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2294.png",
+    # The gold mark stays visible on the black panel of scroll cards and the Mini.
+    "NCF_FBS:WAKE": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/154.png",
+})
+
+# Full-screen cards draw logos on the team color field. Use these logos there
+# when the main logo matches that field: the gold Wake Forest mark disappears on
+# the gold end zone, so full-screen cards keep the black mark.
+FULL_SCREEN_LOGO_OVERRIDES = MappingProxyType({
+    "NCF_FBS:WAKE": "https://a.espncdn.com/i/teamlogos/ncaa/500/154.png",
 })
 
 
@@ -54,6 +63,12 @@ def corrected_logo(league: str, abbreviation: str, source_url: str | None) -> st
 
     key = f"{str(league).strip().upper()}:{str(abbreviation).strip().upper()}"
     return LOGO_OVERRIDES.get(key, source_url)
+
+
+def full_screen_logo(league: str, abbreviation: str) -> str | None:
+    """Return the logo URL for full-screen cards when it differs from the main logo."""
+
+    return FULL_SCREEN_LOGO_OVERRIDES.get(f"{str(league).strip().upper()}:{str(abbreviation).strip().upper()}")
 
 
 def mini_logo_sources(game, side: str) -> tuple[str, ...]:
@@ -74,4 +89,4 @@ def mini_logo_sources(game, side: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(url for url in (source, fallback) if isinstance(url, str) and url.startswith("https://")))
 
 
-__all__ = ["LOGO_OVERRIDES", "corrected_logo", "mini_logo_sources"]
+__all__ = ["FULL_SCREEN_LOGO_OVERRIDES", "LOGO_OVERRIDES", "corrected_logo", "full_screen_logo", "mini_logo_sources"]

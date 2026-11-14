@@ -433,6 +433,29 @@ def test_pinned_resize_keeps_the_team_logo_treatment(sports: SportsRenderer) -> 
     assert image.getpixel((20, 20))[:3] == (244, 247, 250)
 
 
+class ColorLogos:
+    """Return one solid logo color for each URL."""
+
+    COLORS = {"main": (240, 200, 40, 255), "full": (30, 140, 230, 255)}
+
+    def get(self, url, size):
+        return Image.new("RGBA", size, self.COLORS[url]) if url in self.COLORS else None
+
+
+def test_full_screen_cards_draw_the_full_screen_logo() -> None:
+    sports = SportsRenderer(load_default_font_set(), ColorLogos())
+    game = {
+        "sport": "ncf_fbs", "state": "in", "status": "Q2 05:12", "away_abbr": "AWY", "home_abbr": "HOM",
+        "away_logo": "main", "home_logo": "main", "home_full_screen_logo": "full",
+        "away_color": "#202020", "home_color": "#202020", "situation": {},
+    }
+
+    pixels = set(sports.render_full(game).get_flattened_data())
+
+    assert (30, 140, 230) in pixels
+    assert (240, 200, 40) in pixels
+
+
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
     image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
     team_color = (220, 30, 55)

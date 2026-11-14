@@ -365,6 +365,33 @@ def test_planner_reads_team_logos_from_v2_content_envelopes() -> None:
     }
 
 
+def test_planner_reads_full_screen_logos_with_the_team_rendering() -> None:
+    full_logo = "https://a.espncdn.com/i/teamlogos/ncaa/500/154.png"
+    payload = {
+        "api_version": "v2",
+        "content": {
+            "sports": [
+                {
+                    "id": "wake",
+                    "family": "sports",
+                    "kind": "scoreboard",
+                    "data": {
+                        "sport": "ncf_fbs",
+                        "home_full_screen_logo": full_logo,
+                        "home_logo_rendering": {"method": "new", "outline": "off"},
+                    },
+                }
+            ]
+        },
+    }
+
+    plan = AssetPlanner().plan(payload)
+
+    assert (full_logo, "logo_native_grid", (24, 24)) in {
+        (request.url, request.processor, request.size) for request in plan.requests
+    }
+
+
 def test_f1_car_photo_reaches_the_six_frame_from_a_parsed_v2_response(tmp_path) -> None:
     from datetime import datetime, timezone
     from sports_ticker.providers.racing_live import _f1_car_url

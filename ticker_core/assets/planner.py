@@ -79,6 +79,8 @@ class AssetPlanner:
         for key in ("home_logo", "away_logo"):
             for size in ((16, 16), (22, 22), (24, 24)):
                 _add_team_logo(requests, item, key, size)
+        for side in ("home", "away"):
+            _add_team_logo(requests, item, f"{side}_full_screen_logo", (24, 24), f"{side}_logo_rendering")
 
 
 def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
@@ -158,9 +160,10 @@ def _add_team_logo(
     item: Mapping[str, Any],
     logo_key: str,
     size: tuple[int, int],
+    rendering_key: str | None = None,
 ) -> None:
     """Plan one team logo with its selected native-grid processor."""
-    rendering = _mapping(item.get(f"{logo_key}_rendering"))
+    rendering = _mapping(item.get(rendering_key or f"{logo_key}_rendering"))
     processor = "logo_native_grid" if str(rendering.get("method") or "").lower() == "new" else "logo"
     _add(requests, item.get(logo_key), processor, size)
 
