@@ -15,6 +15,8 @@ _FULL_MIN_CONTRASTING_FRACTION = 0.25
 _KEYLINE_COLORS = ((244, 247, 250), (8, 12, 18))
 _ALPHA_THRESHOLD = 160
 _RECOGNIZABLE_SHAPE_COVERAGE = 0.8
+_HIDDEN_ELEMENT_MIN_CORE = 3
+_LIGHT_MARK_COLOR = (244, 247, 250, 255)
 _NEIGHBOR_OFFSETS = (
     (-1, -1), (0, -1), (1, -1),
     (-1, 0), (1, 0),
@@ -50,18 +52,16 @@ def paste_team_logo(
     )
     selected_outline = getattr(logo, "logo_rendering_outline", None)
     if selected_outline in {"off", "inner", "auto"}:
-        canvas.paste(mark, (x, y), mark)
-        if selected_outline == "off":
-            return False
-        contour = _inner_contour_mask(mark)
         if selected_outline == "auto":
             visibility_distance = _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
-            if _shape_coverage(mark, background, visibility_distance) >= _RECOGNIZABLE_SHAPE_COVERAGE:
-                return False
-            blending, _, _ = _classify_edges(mark, background, visibility_distance)
-            contour = _contour_segments(contour, blending)
-        keyline = Image.new("RGBA", mark.size, (244, 247, 250, 255))
-        canvas.paste(keyline, (x, y), contour)
+            if _shape_coverage(mark, background, visibility_distance) < _RECOGNIZABLE_SHAPE_COVERAGE:
+                canvas.paste(_whiten_hidden_elements(mark, background, visibility_distance), (x, y), mark)
+                return True
+        canvas.paste(mark, (x, y), mark)
+        if selected_outline != "inner":
+            return False
+        keyline = Image.new("RGBA", mark.size, _LIGHT_MARK_COLOR)
+        canvas.paste(keyline, (x, y), _inner_contour_mask(mark))
         return True
 
     edge_pairs = _logo_edge_pairs(mark, background)
@@ -129,25 +129,78 @@ def _shape_coverage(mark: Image.Image, background: Image.Image, minimum_distance
     return shown.histogram()[255] / area
 
 
-def _contour_segments(contour: Image.Image, needed: Image.Image) -> Image.Image:
-    """Keep the contour runs that need a keyline as clean segments.
+def _whiten_hidden_elements(
+    mark: Image.Image,
+    background: Image.Image,
+    minimum_distance_squared: int,
+) -> Image.Image:
+    """Return a copy of the mark with its hidden outer elements in white.
 
-    A contour pixel between two selected contour pixels joins the segment. A
-    selected pixel with no selected contour neighbor is a speck and stays unlined.
+    A hidden element is a connected group of opaque pixels that do not
+    contrast with the pixels below them. The element changes to white when
+    it touches the outside of the logo and at least three of its pixels
+    have no visible neighbor. A thin dark rim beside visible color and a
+    dark area that visible color encloses keep their color.
     """
 
-    segments = ImageChops.multiply(contour, needed)
-    bridged = ImageChops.multiply(contour, _neighbor_count(segments).point(lambda count: 255 if count >= 2 else 0))
-    segments = ImageChops.lighter(segments, bridged)
-    return ImageChops.multiply(segments, _neighbor_count(segments).point(lambda count: 255 if count >= 1 else 0))
+    whitened = mark.copy()
+    pixels = whitened.load()
+    background_pixels = background.load()
+    width, height = mark.size
 
+    def inside(x: int, y: int) -> bool:
+        return 0 <= x < width and 0 <= y < height
 
-def _neighbor_count(mask: Image.Image) -> Image.Image:
-    """Count the selected pixels in the eight neighbors of each pixel."""
-    padded = Image.new("L", (mask.width + 2, mask.height + 2), 0)
-    padded.paste(mask.point(lambda value: 1 if value else 0), (1, 1))
-    counted = padded.filter(ImageFilter.Kernel((3, 3), (1, 1, 1, 1, 0, 1, 1, 1, 1), scale=1))
-    return counted.crop((1, 1, mask.width + 1, mask.height + 1))
+    def opaque(x: int, y: int) -> bool:
+        return pixels[x, y][3] >= _ALPHA_THRESHOLD
+
+    def hidden(x: int, y: int) -> bool:
+        red, green, blue, alpha = pixels[x, y]
+        under = background_pixels[x, y][:3]
+        return alpha > 0 and not _is_contrasting((red, green, blue), under, minimum_distance_squared)
+
+    targets: set[tuple[int, int]] = set()
+    seen: set[tuple[int, int]] = set()
+    for start_y in range(height):
+        for start_x in range(width):
+            start = (start_x, start_y)
+            if start in seen or not opaque(*start) or not hidden(*start):
+                continue
+            element, pending = [], [start]
+            seen.add(start)
+            while pending:
+                x, y = pending.pop()
+                element.append((x, y))
+                for dx, dy in _NEIGHBOR_OFFSETS:
+                    point = (x + dx, y + dy)
+                    if inside(*point) and point not in seen and opaque(*point) and hidden(*point):
+                        seen.add(point)
+                        pending.append(point)
+            touches_outside = any(
+                not inside(x + dx, y + dy) or not opaque(x + dx, y + dy)
+                for x, y in element
+                for dx, dy in _NEIGHBOR_OFFSETS
+            )
+            core = sum(
+                1
+                for x, y in element
+                if not any(
+                    inside(x + dx, y + dy) and opaque(x + dx, y + dy) and not hidden(x + dx, y + dy)
+                    for dx, dy in _NEIGHBOR_OFFSETS
+                )
+            )
+            if touches_outside and core >= _HIDDEN_ELEMENT_MIN_CORE:
+                targets.update(element)
+
+    fringe = {
+        (x + dx, y + dy)
+        for x, y in targets
+        for dx, dy in _NEIGHBOR_OFFSETS
+        if inside(x + dx, y + dy) and not opaque(x + dx, y + dy) and hidden(x + dx, y + dy)
+    }
+    for x, y in targets | fringe:
+        pixels[x, y] = (*_LIGHT_MARK_COLOR[:3], pixels[x, y][3])
+    return whitened
 
 
 def _classify_edges(

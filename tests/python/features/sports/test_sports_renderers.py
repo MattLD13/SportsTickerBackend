@@ -351,7 +351,7 @@ def test_auto_inner_outline_leaves_a_recognizable_logo_unlined() -> None:
     assert canvas.getpixel((14, 10))[:3] == (230, 90, 20)
 
 
-def test_auto_inner_outline_lines_a_logo_that_hides_a_third_of_its_shape() -> None:
+def test_auto_turns_the_hidden_element_of_an_unrecognizable_logo_white() -> None:
     canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
     logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
     draw = ImageDraw.Draw(logo)
@@ -361,23 +361,22 @@ def test_auto_inner_outline_lines_a_logo_that_hides_a_third_of_its_shape() -> No
 
     assert paste_team_logo(canvas, logo, (4, 4)) is True
     assert canvas.getpixel((9, 5))[:3] == (244, 247, 250)
-    assert canvas.getpixel((5, 12))[:3] == (200, 30, 50)
+    assert canvas.getpixel((9, 7))[:3] == (244, 247, 250)
+    assert canvas.getpixel((9, 12))[:3] == (200, 30, 50)
 
 
-def test_auto_inner_outline_lines_only_the_hidden_edges_of_an_unrecognizable_logo() -> None:
-    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
-    logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+def test_auto_keeps_an_enclosed_dark_area_dark() -> None:
+    canvas = Image.new("RGBA", (24, 24), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     draw = ImageDraw.Draw(logo)
-    draw.rectangle((1, 1, 10, 10), fill=(5, 5, 5, 255))
-    draw.rectangle((3, 9, 8, 10), fill=(230, 20, 40, 255))
+    draw.rectangle((1, 1, 14, 8), fill=(5, 5, 5, 255))
+    draw.rectangle((4, 10, 11, 14), fill=(5, 5, 5, 255), outline=(200, 30, 50, 255))
     logo.logo_rendering_outline = "auto"
-    logo.logo_rendering_cutoff = 0.0
 
     assert paste_team_logo(canvas, logo, (4, 4)) is True
-    assert canvas.getpixel((5, 9))[:3] == (244, 247, 250)
-    assert canvas.getpixel((14, 7))[:3] == (244, 247, 250)
-    assert canvas.getpixel((9, 14))[:3] == (230, 20, 40)
-    assert canvas.getpixel((9, 9))[:3] == (5, 5, 5)
+    assert canvas.getpixel((10, 8))[:3] == (244, 247, 250)
+    assert canvas.getpixel((11, 16))[:3] == (5, 5, 5)
+    assert canvas.getpixel((8, 14))[:3] == (200, 30, 50)
 
 
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
