@@ -63,3 +63,25 @@ def test_nfl_jets_keep_the_current_espn_mark_in_the_scoreboard_projection() -> N
     game = content[0].data
     assert game["away_logo"] == jets_logo
     assert game["display"]["away"]["logo"] == jets_logo
+
+
+def test_ohio_state_uses_the_dark_background_mark() -> None:
+    content = normalize_content(
+        [
+            {
+                "id": "osu-game",
+                "family": "sports",
+                "kind": "scoreboard",
+                "data": {
+                    "sport": "ncf_fbs",
+                    "away_abbr": "OSU",
+                    "home_abbr": "MICH",
+                    "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
+                    "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/130.png",
+                },
+            }
+        ],
+        {},
+    )
+
+    assert content[0].data["away_logo"] == "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png"

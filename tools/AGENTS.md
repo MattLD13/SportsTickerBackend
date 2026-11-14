@@ -14,7 +14,6 @@ Read the root `AGENTS.md` before changing a tool.
 | `workspaces/` | Route task context, prepare pinned sparse workspaces, and record checks. |
 | `benchmarks/` | Measure rendering and transport costs. |
 | `experiments/` | Retain optional design and model experiments. |
-| `assets/` | Store source assets used by local tools. |
 
 ## Commands
 

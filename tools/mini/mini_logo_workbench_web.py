@@ -29,7 +29,6 @@ BACKEND_URL = os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org
 STATE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SportsTicker" / "LogoWorkbench"
 STATE_PATH = STATE_DIR / "state.json"
 COMPARISON_PICKS_PATH = STATE_DIR / "comparison-picks.json"
-OHIO_STATE_LOGO_PATH = ROOT / "tools" / "assets" / "ohio-state-white-text.svg"
 ALLOWED_LOGO_HOSTS = {"a.espncdn.com", "raw.githubusercontent.com", "upload.wikimedia.org"}
 app = Flask(__name__)
 http = requests.Session()
@@ -163,7 +162,7 @@ def catalog():
                     "league": league["label"],
                     "league_id": league["id"],
                     "abbr": team["abbr"],
-                    "logo": "workbench:ohio-state-white-text-v1" if league["id"] == "ncf_fbs" and team["abbr"] == "OSU" else team["logo"],
+                    "logo": team["logo"],
                 }
                 for team in result.json().get("teams", [])
                 if team.get("abbr") and team.get("logo")
@@ -179,8 +178,6 @@ def catalog():
 @app.get("/api/logo")
 def logo():
     source = request.args.get("url", "")
-    if source == "workbench:ohio-state-white-text-v1":
-        return Response(OHIO_STATE_LOGO_PATH.read_bytes(), mimetype="image/svg+xml", headers={"Cache-Control": "no-store"})
     parsed = urlparse(source)
     if parsed.scheme != "https" or parsed.hostname not in ALLOWED_LOGO_HOSTS:
         return jsonify({"error": "Logo source is not allowed."}), 400

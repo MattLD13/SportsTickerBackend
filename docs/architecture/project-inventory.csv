@@ -760,8 +760,6 @@ ticker_core/runtime/pacing.py,Six: runtime,885,29,FramePacer:10
 ticker_core/runtime/state.py,Six: runtime,32080,791,_value:34 | _mapping:44 | _content:54 | _event:66 | prepare_content:73 | _fingerprint:86 | classify_content:98 | remap_strip_offset:157 | _QueuedEvent:179 | _ActiveEvent:185 | TickerRuntime:190 | _important_score:692 | _brightness:699 | _interval:708 | _canonical_mode:717 | _is_weather:725 | _is_music:730 | _is_visitor_flight:735 | _is_airport:740 | _pinned_sports:745 | _is_pinned_content:753 | _same_pinned_content:758 | _is_clock:772 | _is_stock:777 | _is_sports:782
 ticker_core/scene.py,Six: startup and public interfaces,522,23,Scene:8 | SceneRenderer:19
 tools/AGENTS.md,tools: root,1695,49,
-tools/assets/Ohio_State_Buckeyes_logo.svg,tools: assets,3827,9,
-tools/assets/ohio-state-white-text.svg,tools: assets,3842,9,
 tools/benchmarks/README.md,tools: benchmarks,7091,130,
 tools/benchmarks/benchmark_mini_https.py,tools: benchmarks,3369,72,benchmark:11 | main:56
 tools/benchmarks/context_discovery.py,tools: benchmarks,19037,330,AttemptFailure:27 | digest:35 | load_cases:39 | usage_counts:65 | observed_runner:86 | total_usage:133 | coverage:144 | score_result:150 | paired_summary:185 | evaluate:203 | load_planner:259 | write_report:268 | main:276
