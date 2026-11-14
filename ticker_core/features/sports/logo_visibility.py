@@ -20,6 +20,7 @@ _GRAY_EDGE_MAX_BRIGHTNESS = 110
 _GRAY_EDGE_MAX_CHROMA = 40
 _SOLID_ALPHA = 128
 _LIGHT_MARK_COLOR = (244, 247, 250, 255)
+_SELECTED_OUTLINES = frozenset({"off", "inner", "outline", "halo", "soft", "auto"})
 _NEIGHBOR_OFFSETS = (
     (-1, -1), (0, -1), (1, -1),
     (-1, 0), (1, 0),
@@ -54,19 +55,8 @@ def paste_team_logo(
         else _COLOR_DISTANCE_THRESHOLD_SQUARED
     )
     selected_outline = getattr(logo, "logo_rendering_outline", None)
-    if selected_outline in {"off", "inner", "auto"}:
-        if selected_outline == "auto":
-            visibility_distance = _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
-            if _shape_coverage(mark, background, visibility_distance) < _RECOGNIZABLE_SHAPE_COVERAGE:
-                whitened = _whiten_hidden_elements(mark, background, visibility_distance)
-                canvas.paste(whitened, (x, y), whitened)
-                return True
-        canvas.paste(mark, (x, y), mark)
-        if selected_outline != "inner":
-            return False
-        keyline = Image.new("RGBA", mark.size, _LIGHT_MARK_COLOR)
-        canvas.paste(keyline, (x, y), _inner_contour_mask(mark))
-        return True
+    if selected_outline in _SELECTED_OUTLINES:
+        return _paste_selected_outline(canvas, mark, (x, y), background, selected_outline)
 
     edge_pairs = _logo_edge_pairs(mark, background)
     visible_pairs = _logo_pixel_pairs(mark, background)
@@ -95,6 +85,45 @@ def paste_team_logo(
 
     canvas.paste(mark, (x, y), mark)
     return added_keyline
+
+
+def _paste_selected_outline(
+    canvas: Image.Image,
+    mark: Image.Image,
+    xy: tuple[int, int],
+    background: Image.Image,
+    selected: str,
+) -> bool:
+    """Paste a logo with the treatment that the team's rendering decision selects.
+
+    "off" pastes the logo as it is. "inner" lines the full silhouette edge.
+    "outline" lines only the edge segments that blend into the background.
+    "halo" puts a ring one pixel outside the edges of hidden elements.
+    "soft" turns hidden elements white and keeps their soft edges. "auto"
+    turns hidden elements white with hard edges when the logo is
+    unrecognizable, and otherwise pastes the logo as it is.
+    """
+
+    distance = _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
+    if selected == "auto":
+        if _shape_coverage(mark, background, distance) >= _RECOGNIZABLE_SHAPE_COVERAGE:
+            selected = "off"
+    if selected in {"auto", "soft"}:
+        whitened = _whiten_hidden_elements(mark, background, distance, hard_edges=selected == "auto")
+        canvas.paste(whitened, xy, whitened)
+        return True
+    canvas.paste(mark, xy, mark)
+    if selected == "off":
+        return False
+    if selected == "inner":
+        line = _inner_contour_mask(mark)
+    elif selected == "outline":
+        blending, _, _ = _classify_edges(mark, background, distance)
+        line = _contour_segments(_inner_contour_mask(mark), blending)
+    else:
+        line = _hidden_edge_halo(mark, background, distance)
+    canvas.paste(Image.new("RGBA", mark.size, _LIGHT_MARK_COLOR), xy, line)
+    return True
 
 
 def _inner_contour_mask(mark: Image.Image) -> Image.Image:
@@ -137,6 +166,8 @@ def _whiten_hidden_elements(
     mark: Image.Image,
     background: Image.Image,
     minimum_distance_squared: int,
+    *,
+    hard_edges: bool,
 ) -> Image.Image:
     """Return a copy of the mark with its hidden outer elements in white.
 
@@ -146,9 +177,10 @@ def _whiten_hidden_elements(
     have no visible neighbor. A thin dark rim beside visible color and a
     dark area that visible color encloses keep their color.
 
-    The white element has hard edges. Gray anti-alias pixels next to it
-    change to white, so no gray fringe stays around the element. Each
-    changed pixel becomes fully opaque or fully transparent.
+    With hard edges, gray anti-alias pixels next to the element change to
+    white and each changed pixel becomes fully opaque or fully transparent.
+    With soft edges, the element and its hidden see-through fringe change
+    to white and keep their opacity, so the gray anti-alias edge stays.
     """
 
     whitened = mark.copy()
@@ -200,6 +232,17 @@ def _whiten_hidden_elements(
             if touches_outside and core >= _HIDDEN_ELEMENT_MIN_CORE:
                 targets.update(element)
 
+    if not hard_edges:
+        fringe = {
+            (x + dx, y + dy)
+            for x, y in targets
+            for dx, dy in _NEIGHBOR_OFFSETS
+            if inside(x + dx, y + dy) and not opaque(x + dx, y + dy) and hidden(x + dx, y + dy)
+        }
+        for x, y in targets | fringe:
+            pixels[x, y] = (*_LIGHT_MARK_COLOR[:3], pixels[x, y][3])
+        return whitened
+
     def gray(x: int, y: int) -> bool:
         red, green, blue, alpha = pixels[x, y]
         brightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue
@@ -218,6 +261,50 @@ def _whiten_hidden_elements(
     for x, y in targets | edge:
         pixels[x, y] = _LIGHT_MARK_COLOR if pixels[x, y][3] >= _SOLID_ALPHA else (0, 0, 0, 0)
     return whitened
+
+
+def _hidden_edge_halo(mark: Image.Image, background: Image.Image, minimum_distance_squared: int) -> Image.Image:
+    """Select the see-through pixels that touch a hidden opaque pixel of the mark."""
+
+    width, height = mark.size
+    pixels = mark.load()
+    background_pixels = background.load()
+    halo = Image.new("L", mark.size, 0)
+    halo_pixels = halo.load()
+
+    def hidden(x: int, y: int) -> bool:
+        if not (0 <= x < width and 0 <= y < height):
+            return False
+        red, green, blue, alpha = pixels[x, y]
+        under = background_pixels[x, y][:3]
+        return alpha >= _ALPHA_THRESHOLD and not _is_contrasting((red, green, blue), under, minimum_distance_squared)
+
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y][3] < _ALPHA_THRESHOLD and any(hidden(x + dx, y + dy) for dx, dy in _NEIGHBOR_OFFSETS):
+                halo_pixels[x, y] = 255
+    return halo
+
+
+def _contour_segments(contour: Image.Image, needed: Image.Image) -> Image.Image:
+    """Keep the contour runs that need a keyline as clean segments.
+
+    A contour pixel between two selected contour pixels joins the segment. A
+    selected pixel with no selected contour neighbor is a speck and stays unlined.
+    """
+
+    segments = ImageChops.multiply(contour, needed)
+    bridged = ImageChops.multiply(contour, _neighbor_count(segments).point(lambda count: 255 if count >= 2 else 0))
+    segments = ImageChops.lighter(segments, bridged)
+    return ImageChops.multiply(segments, _neighbor_count(segments).point(lambda count: 255 if count >= 1 else 0))
+
+
+def _neighbor_count(mask: Image.Image) -> Image.Image:
+    """Count the selected pixels in the eight neighbors of each pixel."""
+    padded = Image.new("L", (mask.width + 2, mask.height + 2), 0)
+    padded.paste(mask.point(lambda value: 1 if value else 0), (1, 1))
+    counted = padded.filter(ImageFilter.Kernel((3, 3), (1, 1, 1, 1, 0, 1, 1, 1, 1), scale=1))
+    return counted.crop((1, 1, mask.width + 1, mask.height + 1))
 
 
 def _classify_edges(

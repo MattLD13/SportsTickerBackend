@@ -2639,7 +2639,7 @@
       },
       "new": {
         "method": "native_grid",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "saved_at": 1791082904.7759988
@@ -2879,7 +2879,7 @@
       },
       "new": {
         "method": "native_grid",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "saved_at": 1791082958.2674723
@@ -3314,7 +3314,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -3774,7 +3774,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -3994,7 +3994,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "outline",
         "cutoff": 35
       },
       "new": {
@@ -4114,7 +4114,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -4314,7 +4314,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -4534,7 +4534,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -5094,7 +5094,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -5514,7 +5514,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -5534,7 +5534,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -5879,7 +5879,7 @@
       },
       "new": {
         "method": "native_grid",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "saved_at": 1791083706.2014892
@@ -7739,7 +7739,7 @@
       },
       "new": {
         "method": "native_grid",
-        "outline": "off",
+        "outline": "halo",
         "cutoff": 35
       },
       "saved_at": 1791084154.129691
@@ -8554,7 +8554,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "new": {
@@ -8799,7 +8799,7 @@
       },
       "new": {
         "method": "native_grid",
-        "outline": "off",
+        "outline": "soft",
         "cutoff": 35
       },
       "saved_at": 1791084315.750544

@@ -7,7 +7,7 @@ from ticker_core.rendering.style import TOURNAMENT_SEED
 from ticker_core.rendering.templates import ImageTemplates
 from .logo_badge import draw_missing_team_badge
 from .logo_visibility import LogoOutlineMode, paste_team_logo
-from .logo_rendering import get_prepared_team_logo, team_logo_layout
+from .logo_rendering import get_prepared_team_logo, resize_team_logo, team_logo_layout
 from .stadium_port import draw_hockey_so_column
 
 PANEL_W = 384
@@ -1166,7 +1166,7 @@ class PreparedSportsFullRenderer(SportsMixin):
     def _paste_team_mark(self, image, logo, xy, abbreviation, size, team_color):
         """Paste one prepared logo or a readable code when its asset is absent."""
         if logo is not None:
-            mark = logo if logo.size == (size, size) else logo.resize((size, size), Image.LANCZOS)
+            mark = resize_team_logo(logo, size)
             paste_team_logo(image, mark, xy, outline_mode=LogoOutlineMode.FULL)
             return
         draw_missing_team_badge(image, xy, size, team_color, abbreviation)

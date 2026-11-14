@@ -383,6 +383,56 @@ def test_auto_keeps_an_enclosed_dark_area_dark() -> None:
     assert canvas.getpixel((8, 14))[:3] == (200, 30, 50)
 
 
+def _dark_topped_logo(outline: str) -> Image.Image:
+    """Build a logo with a hidden black top, a red base, and a soft black fringe pixel."""
+    logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((1, 1, 10, 10), fill=(5, 5, 5, 255))
+    draw.rectangle((1, 5, 10, 10), fill=(200, 30, 50, 255))
+    logo.putpixel((0, 3), (5, 5, 5, 60))
+    logo.logo_rendering_outline = outline
+    return logo
+
+
+def test_soft_fill_whitens_hidden_elements_and_keeps_their_soft_edge() -> None:
+    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
+
+    assert paste_team_logo(canvas, _dark_topped_logo("soft"), (4, 4)) is True
+    assert canvas.getpixel((9, 7))[:3] == (244, 247, 250)
+    assert 0 < canvas.getpixel((4, 7))[0] < 244
+    assert canvas.getpixel((9, 12))[:3] == (200, 30, 50)
+
+
+def test_selected_outline_lines_only_the_hidden_edge() -> None:
+    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
+
+    assert paste_team_logo(canvas, _dark_topped_logo("outline"), (4, 4)) is True
+    assert canvas.getpixel((9, 5))[:3] == (244, 247, 250)
+    assert canvas.getpixel((9, 7))[:3] == (5, 5, 5)
+    assert canvas.getpixel((5, 12))[:3] == (200, 30, 50)
+
+
+def test_halo_rings_hidden_elements_outside_the_logo() -> None:
+    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
+
+    assert paste_team_logo(canvas, _dark_topped_logo("halo"), (4, 4)) is True
+    assert canvas.getpixel((9, 4))[:3] == (244, 247, 250)
+    assert canvas.getpixel((9, 5))[:3] == (5, 5, 5)
+    assert canvas.getpixel((4, 13))[:3] == (0, 0, 0)
+    assert canvas.getpixel((5, 12))[:3] == (200, 30, 50)
+
+
+def test_pinned_resize_keeps_the_team_logo_treatment(sports: SportsRenderer) -> None:
+    image = Image.new("RGBA", (40, 40), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (24, 24), (0, 0, 0, 0))
+    ImageDraw.Draw(logo).rectangle((2, 2, 21, 21), fill=(5, 5, 5, 255))
+    logo.logo_rendering_outline = "soft"
+
+    sports._full._paste_team_mark(image, logo, (10, 10), "AB", 20, (200, 30, 50))
+
+    assert image.getpixel((20, 20))[:3] == (244, 247, 250)
+
+
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
     image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
     team_color = (220, 30, 55)

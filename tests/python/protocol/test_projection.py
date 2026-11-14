@@ -100,3 +100,33 @@ def test_my_teams_filter_projection_matches_aliases() -> None:
     assert sports_content[2]["id"] == "mlb-1"
     assert sports_content[2]["is_shown"] is False
 
+
+
+@pytest.mark.parametrize(
+    ("league", "abbreviation", "outline"),
+    [("ncf_fbs", "IOWA", "soft"), ("ncf_fcs", "WOF", "halo"), ("ncf_fbs", "NMSU", "outline"), ("nfl", "LV", "off")],
+)
+def test_target_ticker_receives_each_team_logo_treatment(league: str, abbreviation: str, outline: str) -> None:
+    from sports_ticker.domain import ContentItem
+    from sports_ticker.projections import data_api
+
+    item = ContentItem(
+        id="game-1",
+        family="sports",
+        kind="scoreboard",
+        data={"sport": league, "league_id": league, "home_abbr": abbreviation, "away_abbr": "OPP"},
+        is_shown=True,
+    )
+    snapshot = TickerSnapshot(
+        ticker_id=data_api._LOGO_RENDERING_TARGET_TICKER_ID,
+        revision=1,
+        observed_at=datetime(2026, 11, 14, tzinfo=timezone.utc),
+        content=(item,),
+        alerts=(),
+        news=(),
+        effective_settings=DisplaySettings(),
+    )
+
+    data = project_data_v2(snapshot, ProviderHealth(provider="test"), {"stale": False})
+
+    assert data["content"]["sports"][0]["data"]["home_logo_rendering"]["outline"] == outline
