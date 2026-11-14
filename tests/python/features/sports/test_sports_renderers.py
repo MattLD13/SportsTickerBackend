@@ -337,31 +337,34 @@ def test_team_logo_keyline_follows_only_the_blending_edge_segments() -> None:
     assert canvas.getpixel((18, 9))[:3] == (255, 220, 0)
 
 
-@pytest.mark.parametrize(
-    ("background_color", "gold_edge"),
-    [
-        ((0, 0, 0, 255), (255, 200, 0)),
-        ((255, 200, 0, 255), (244, 247, 250)),
-    ],
-)
-def test_darkness_inner_outline_lines_only_the_contour_segments_that_need_it(
-    background_color: tuple[int, int, int, int],
-    gold_edge: tuple[int, int, int],
-) -> None:
-    canvas = Image.new("RGBA", (20, 20), background_color)
+def test_auto_inner_outline_leaves_a_recognizable_logo_unlined() -> None:
+    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
     logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
     draw = ImageDraw.Draw(logo)
-    draw.rectangle((1, 1, 10, 10), fill=(10, 20, 60, 255))
-    draw.line((1, 1, 1, 10), fill=(255, 200, 0, 255))
-    logo.putpixel((10, 5), (255, 200, 0, 255))
+    draw.rectangle((1, 1, 10, 10), fill=(230, 90, 20, 255))
+    draw.rectangle((1, 1, 10, 2), fill=(5, 5, 5, 255))
     logo.logo_rendering_outline = "auto"
-    logo.logo_rendering_cutoff = 35 * 255 / 100
+    logo.logo_rendering_cutoff = 255.0
+
+    assert paste_team_logo(canvas, logo, (4, 4)) is False
+    assert canvas.getpixel((7, 5))[:3] == (5, 5, 5)
+    assert canvas.getpixel((14, 10))[:3] == (230, 90, 20)
+
+
+def test_auto_inner_outline_lines_only_the_hidden_edges_of_an_unrecognizable_logo() -> None:
+    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((1, 1, 10, 10), fill=(5, 5, 5, 255))
+    draw.rectangle((3, 9, 8, 10), fill=(230, 20, 40, 255))
+    logo.logo_rendering_outline = "auto"
+    logo.logo_rendering_cutoff = 0.0
 
     assert paste_team_logo(canvas, logo, (4, 4)) is True
-    assert canvas.getpixel((5, 9))[:3] == gold_edge
+    assert canvas.getpixel((5, 9))[:3] == (244, 247, 250)
     assert canvas.getpixel((14, 7))[:3] == (244, 247, 250)
-    assert canvas.getpixel((14, 9))[:3] == (244, 247, 250)
-    assert canvas.getpixel((9, 9))[:3] == (10, 20, 60)
+    assert canvas.getpixel((9, 14))[:3] == (230, 20, 40)
+    assert canvas.getpixel((9, 9))[:3] == (5, 5, 5)
 
 
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:

@@ -14,6 +14,7 @@ _SCROLL_MIN_CONTRASTING_FRACTION = 0.20
 _FULL_MIN_CONTRASTING_FRACTION = 0.25
 _KEYLINE_COLORS = ((244, 247, 250), (8, 12, 18))
 _ALPHA_THRESHOLD = 160
+_RECOGNIZABLE_SHAPE_COVERAGE = 0.5
 _NEIGHBOR_OFFSETS = (
     (-1, -1), (0, -1), (1, -1),
     (-1, 0), (1, 0),
@@ -49,20 +50,19 @@ def paste_team_logo(
     )
     selected_outline = getattr(logo, "logo_rendering_outline", None)
     if selected_outline in {"off", "inner", "auto"}:
-        cutoff = float(getattr(logo, "logo_rendering_cutoff", 0.0))
-        needs_outline = selected_outline == "inner" or (
-            selected_outline == "auto" and mean_edge_brightness(mark) <= cutoff
-        )
         canvas.paste(mark, (x, y), mark)
-        if needs_outline:
-            contour = _inner_contour_mask(mark)
-            if selected_outline == "auto":
-                blending, _, _ = _classify_edges(mark, background, distance_squared)
-                needed = ImageChops.lighter(_dark_pixel_mask(mark, cutoff), blending)
-                contour = _contour_segments(contour, needed)
-            keyline = Image.new("RGBA", mark.size, (244, 247, 250, 255))
-            canvas.paste(keyline, (x, y), contour)
-        return needs_outline
+        if selected_outline == "off":
+            return False
+        contour = _inner_contour_mask(mark)
+        if selected_outline == "auto":
+            visibility_distance = _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
+            if _shape_coverage(mark, background, visibility_distance) >= _RECOGNIZABLE_SHAPE_COVERAGE:
+                return False
+            blending, _, _ = _classify_edges(mark, background, visibility_distance)
+            contour = _contour_segments(contour, blending)
+        keyline = Image.new("RGBA", mark.size, (244, 247, 250, 255))
+        canvas.paste(keyline, (x, y), contour)
+        return True
 
     edge_pairs = _logo_edge_pairs(mark, background)
     visible_pairs = _logo_pixel_pairs(mark, background)
@@ -102,10 +102,31 @@ def _inner_contour_mask(mark: Image.Image) -> Image.Image:
     return ImageChops.subtract(silhouette, eroded)
 
 
-def _dark_pixel_mask(mark: Image.Image, cutoff: float) -> Image.Image:
-    """Select the pixels that have a brightness at or below the darkness cutoff."""
-    brightness = mark.convert("RGB").convert("L", matrix=(0.2126, 0.7152, 0.0722, 0))
-    return brightness.point(lambda value: 255 if value <= cutoff else 0)
+def _shape_coverage(mark: Image.Image, background: Image.Image, minimum_distance_squared: int) -> float:
+    """Return the share of the logo silhouette that visible pixels show.
+
+    A silhouette pixel counts as shown when it or one of its neighbors
+    contrasts with the pixel below it. A low share makes the logo
+    unrecognizable on that background.
+    """
+
+    silhouette = mark.getchannel("A").point(lambda value: 255 if value >= _ALPHA_THRESHOLD else 0)
+    area = silhouette.histogram()[255]
+    if not area:
+        return 1.0
+    mark_pixels = mark.load()
+    background_pixels = background.load()
+    visible = Image.new("L", mark.size, 0)
+    visible_pixels = visible.load()
+    for y in range(mark.height):
+        for x in range(mark.width):
+            red, green, blue, alpha = mark_pixels[x, y]
+            if alpha >= _ALPHA_THRESHOLD and _is_contrasting(
+                (red, green, blue), background_pixels[x, y][:3], minimum_distance_squared
+            ):
+                visible_pixels[x, y] = 255
+    shown = ImageChops.multiply(visible.filter(ImageFilter.MaxFilter(3)), silhouette)
+    return shown.histogram()[255] / area
 
 
 def _contour_segments(contour: Image.Image, needed: Image.Image) -> Image.Image:
