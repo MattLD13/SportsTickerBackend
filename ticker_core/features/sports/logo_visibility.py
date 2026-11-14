@@ -16,6 +16,9 @@ _KEYLINE_COLORS = ((244, 247, 250), (8, 12, 18))
 _ALPHA_THRESHOLD = 160
 _RECOGNIZABLE_SHAPE_COVERAGE = 0.8
 _HIDDEN_ELEMENT_MIN_CORE = 3
+_GRAY_EDGE_MAX_BRIGHTNESS = 110
+_GRAY_EDGE_MAX_CHROMA = 40
+_SOLID_ALPHA = 128
 _LIGHT_MARK_COLOR = (244, 247, 250, 255)
 _NEIGHBOR_OFFSETS = (
     (-1, -1), (0, -1), (1, -1),
@@ -55,7 +58,8 @@ def paste_team_logo(
         if selected_outline == "auto":
             visibility_distance = _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
             if _shape_coverage(mark, background, visibility_distance) < _RECOGNIZABLE_SHAPE_COVERAGE:
-                canvas.paste(_whiten_hidden_elements(mark, background, visibility_distance), (x, y), mark)
+                whitened = _whiten_hidden_elements(mark, background, visibility_distance)
+                canvas.paste(whitened, (x, y), whitened)
                 return True
         canvas.paste(mark, (x, y), mark)
         if selected_outline != "inner":
@@ -141,6 +145,10 @@ def _whiten_hidden_elements(
     it touches the outside of the logo and at least three of its pixels
     have no visible neighbor. A thin dark rim beside visible color and a
     dark area that visible color encloses keep their color.
+
+    The white element has hard edges. Gray anti-alias pixels next to it
+    change to white, so no gray fringe stays around the element. Each
+    changed pixel becomes fully opaque or fully transparent.
     """
 
     whitened = mark.copy()
@@ -192,14 +200,23 @@ def _whiten_hidden_elements(
             if touches_outside and core >= _HIDDEN_ELEMENT_MIN_CORE:
                 targets.update(element)
 
-    fringe = {
+    def gray(x: int, y: int) -> bool:
+        red, green, blue, alpha = pixels[x, y]
+        brightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return (
+            alpha > 0
+            and brightness < _GRAY_EDGE_MAX_BRIGHTNESS
+            and max(red, green, blue) - min(red, green, blue) < _GRAY_EDGE_MAX_CHROMA
+        )
+
+    edge = {
         (x + dx, y + dy)
         for x, y in targets
         for dx, dy in _NEIGHBOR_OFFSETS
-        if inside(x + dx, y + dy) and not opaque(x + dx, y + dy) and hidden(x + dx, y + dy)
+        if inside(x + dx, y + dy) and (x + dx, y + dy) not in targets and gray(x + dx, y + dy)
     }
-    for x, y in targets | fringe:
-        pixels[x, y] = (*_LIGHT_MARK_COLOR[:3], pixels[x, y][3])
+    for x, y in targets | edge:
+        pixels[x, y] = _LIGHT_MARK_COLOR if pixels[x, y][3] >= _SOLID_ALPHA else (0, 0, 0, 0)
     return whitened
 
 

@@ -357,9 +357,13 @@ def test_auto_turns_the_hidden_element_of_an_unrecognizable_logo_white() -> None
     draw = ImageDraw.Draw(logo)
     draw.rectangle((1, 1, 10, 10), fill=(5, 5, 5, 255))
     draw.rectangle((1, 5, 10, 10), fill=(200, 30, 50, 255))
+    logo.putpixel((0, 2), (60, 60, 60, 255))
+    logo.putpixel((0, 3), (5, 5, 5, 60))
     logo.logo_rendering_outline = "auto"
 
     assert paste_team_logo(canvas, logo, (4, 4)) is True
+    assert canvas.getpixel((4, 6))[:3] == (244, 247, 250)
+    assert canvas.getpixel((4, 7))[:3] == (0, 0, 0)
     assert canvas.getpixel((9, 5))[:3] == (244, 247, 250)
     assert canvas.getpixel((9, 7))[:3] == (244, 247, 250)
     assert canvas.getpixel((9, 12))[:3] == (200, 30, 50)
