@@ -38,23 +38,32 @@ def paste_team_logo(
     """Paste a logo and apply the selected display outline policy."""
 
     mark = logo.convert("RGBA")
+    outline_mode = LogoOutlineMode(outline_mode)
+    x, y = int(xy[0]), int(xy[1])
+    width, height = mark.size
+    background = canvas.crop((x, y, x + width, y + height)).convert("RGBA")
+    distance_squared = (
+        _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
+        if outline_mode is LogoOutlineMode.FULL
+        else _COLOR_DISTANCE_THRESHOLD_SQUARED
+    )
     selected_outline = getattr(logo, "logo_rendering_outline", None)
     if selected_outline in {"off", "inner", "auto"}:
         cutoff = float(getattr(logo, "logo_rendering_cutoff", 0.0))
-        x, y = int(xy[0]), int(xy[1])
         needs_outline = selected_outline == "inner" or (
             selected_outline == "auto" and mean_edge_brightness(mark) <= cutoff
         )
         canvas.paste(mark, (x, y), mark)
         if needs_outline:
+            contour = _inner_contour_mask(mark)
+            if selected_outline == "auto":
+                blending, _, _ = _classify_edges(mark, background, distance_squared)
+                needed = ImageChops.lighter(_dark_pixel_mask(mark, cutoff), blending)
+                contour = _contour_segments(contour, needed)
             keyline = Image.new("RGBA", mark.size, (244, 247, 250, 255))
-            canvas.paste(keyline, (x, y), _inner_contour_mask(mark))
+            canvas.paste(keyline, (x, y), contour)
         return needs_outline
 
-    outline_mode = LogoOutlineMode(outline_mode)
-    x, y = int(xy[0]), int(xy[1])
-    width, height = mark.size
-    background = canvas.crop((x, y, x + width, y + height)).convert("RGBA")
     edge_pairs = _logo_edge_pairs(mark, background)
     visible_pairs = _logo_pixel_pairs(mark, background)
     min_contrasting_fraction = (
@@ -62,19 +71,18 @@ def paste_team_logo(
         if outline_mode is LogoOutlineMode.FULL
         else _SCROLL_MIN_CONTRASTING_FRACTION
     )
-    distance_squared = (
-        _FULL_COLOR_DISTANCE_THRESHOLD_SQUARED
-        if outline_mode is LogoOutlineMode.FULL
-        else _COLOR_DISTANCE_THRESHOLD_SQUARED
-    )
     if (
         edge_pairs
         and visible_pairs
         and _needs_keyline(edge_pairs, min_contrasting_fraction, distance_squared)
         and _needs_keyline(visible_pairs, min_contrasting_fraction, distance_squared)
     ):
-        line_color = _keyline_color(edge_pairs)
-        edge = mark.getchannel("A").filter(ImageFilter.MaxFilter(3))
+        blending, visible, blending_pairs = _classify_edges(mark, background, distance_squared)
+        line_color = _keyline_color(blending_pairs)
+        edge = ImageChops.multiply(
+            mark.getchannel("A").filter(ImageFilter.MaxFilter(3)),
+            _keyline_reach(blending, visible),
+        )
         keyline = Image.new("RGBA", mark.size, (*line_color, 255))
         canvas.paste(keyline, (x, y), edge)
         added_keyline = True
@@ -92,6 +100,76 @@ def _inner_contour_mask(mark: Image.Image) -> Image.Image:
     padded.paste(silhouette, (1, 1))
     eroded = padded.filter(ImageFilter.MinFilter(3)).crop((1, 1, mark.width + 1, mark.height + 1))
     return ImageChops.subtract(silhouette, eroded)
+
+
+def _dark_pixel_mask(mark: Image.Image, cutoff: float) -> Image.Image:
+    """Select the pixels that have a brightness at or below the darkness cutoff."""
+    brightness = mark.convert("RGB").convert("L", matrix=(0.2126, 0.7152, 0.0722, 0))
+    return brightness.point(lambda value: 255 if value <= cutoff else 0)
+
+
+def _contour_segments(contour: Image.Image, needed: Image.Image) -> Image.Image:
+    """Keep the contour runs that need a keyline as clean segments.
+
+    A contour pixel between two selected contour pixels joins the segment. A
+    selected pixel with no selected contour neighbor is a speck and stays unlined.
+    """
+
+    segments = ImageChops.multiply(contour, needed)
+    bridged = ImageChops.multiply(contour, _neighbor_count(segments).point(lambda count: 255 if count >= 2 else 0))
+    segments = ImageChops.lighter(segments, bridged)
+    return ImageChops.multiply(segments, _neighbor_count(segments).point(lambda count: 255 if count >= 1 else 0))
+
+
+def _neighbor_count(mask: Image.Image) -> Image.Image:
+    """Count the selected pixels in the eight neighbors of each pixel."""
+    padded = Image.new("L", (mask.width + 2, mask.height + 2), 0)
+    padded.paste(mask.point(lambda value: 1 if value else 0), (1, 1))
+    counted = padded.filter(ImageFilter.Kernel((3, 3), (1, 1, 1, 1, 0, 1, 1, 1, 1), scale=1))
+    return counted.crop((1, 1, mask.width + 1, mask.height + 1))
+
+
+def _classify_edges(
+    mark: Image.Image,
+    background: Image.Image,
+    minimum_distance_squared: int,
+) -> tuple[Image.Image, Image.Image, list[tuple[tuple[int, int, int], tuple[int, int, int]]]]:
+    """Split opaque edge pixels into blending and visible masks against the pixels below them."""
+
+    width, height = mark.size
+    mark_pixels = mark.load()
+    background_pixels = background.load()
+    blending = Image.new("L", mark.size, 0)
+    visible = Image.new("L", mark.size, 0)
+    blending_pixels, visible_pixels = blending.load(), visible.load()
+    pairs = []
+    for y in range(height):
+        for x in range(width):
+            red, green, blue, alpha = mark_pixels[x, y]
+            if alpha < _ALPHA_THRESHOLD or not _is_edge_pixel(mark_pixels, x, y, width, height):
+                continue
+            under = background_pixels[x, y][:3]
+            if _is_contrasting((red, green, blue), under, minimum_distance_squared):
+                visible_pixels[x, y] = 255
+                continue
+            blending_pixels[x, y] = 255
+            pairs.append(((red, green, blue), under))
+    return blending, visible, pairs
+
+
+def _keyline_reach(blending: Image.Image, visible: Image.Image) -> Image.Image:
+    """Limit the keyline to the pixels nearest a blending edge segment.
+
+    The keyline covers the soft logo fringe two pixels out. A pixel two pixels
+    out stays clear when a visible edge pixel is nearer to it.
+    """
+
+    near = blending.filter(ImageFilter.MaxFilter(3))
+    far = ImageChops.subtract(
+        blending.filter(ImageFilter.MaxFilter(5)),
+        visible.filter(ImageFilter.MaxFilter(3)),
+    )
+    return ImageChops.lighter(near, far)
 
 
 def mean_edge_brightness(mark: Image.Image) -> float:

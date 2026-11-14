@@ -323,6 +323,47 @@ def test_full_logo_policy_outlines_the_near_matching_jets_green_mark() -> None:
     assert canvas.getpixel((5, 8))[:3] == (244, 247, 250)
 
 
+def test_team_logo_keyline_follows_only_the_blending_edge_segments() -> None:
+    canvas = Image.new("RGBA", (30, 30), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((2, 2, 13, 13), fill=(0, 0, 0, 255))
+    draw.line((13, 2, 13, 6), fill=(255, 220, 0, 255))
+
+    assert paste_team_logo(canvas, logo, (5, 5)) is True
+    assert canvas.getpixel((6, 13))[:3] == (244, 247, 250)
+    assert canvas.getpixel((19, 15))[:3] == (244, 247, 250)
+    assert canvas.getpixel((19, 9))[:3] == (0, 0, 0)
+    assert canvas.getpixel((18, 9))[:3] == (255, 220, 0)
+
+
+@pytest.mark.parametrize(
+    ("background_color", "gold_edge"),
+    [
+        ((0, 0, 0, 255), (255, 200, 0)),
+        ((255, 200, 0, 255), (244, 247, 250)),
+    ],
+)
+def test_darkness_inner_outline_lines_only_the_contour_segments_that_need_it(
+    background_color: tuple[int, int, int, int],
+    gold_edge: tuple[int, int, int],
+) -> None:
+    canvas = Image.new("RGBA", (20, 20), background_color)
+    logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((1, 1, 10, 10), fill=(10, 20, 60, 255))
+    draw.line((1, 1, 1, 10), fill=(255, 200, 0, 255))
+    logo.putpixel((10, 5), (255, 200, 0, 255))
+    logo.logo_rendering_outline = "auto"
+    logo.logo_rendering_cutoff = 35 * 255 / 100
+
+    assert paste_team_logo(canvas, logo, (4, 4)) is True
+    assert canvas.getpixel((5, 9))[:3] == gold_edge
+    assert canvas.getpixel((14, 7))[:3] == (244, 247, 250)
+    assert canvas.getpixel((14, 9))[:3] == (244, 247, 250)
+    assert canvas.getpixel((9, 9))[:3] == (10, 20, 60)
+
+
 def test_missing_logo_badge_uses_team_color_and_acronym() -> None:
     image = Image.new("RGBA", (24, 24), (40, 40, 40, 255))
     team_color = (220, 30, 55)
