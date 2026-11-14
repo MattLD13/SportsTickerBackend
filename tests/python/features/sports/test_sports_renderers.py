@@ -351,6 +351,19 @@ def test_auto_inner_outline_leaves_a_recognizable_logo_unlined() -> None:
     assert canvas.getpixel((14, 10))[:3] == (230, 90, 20)
 
 
+def test_auto_inner_outline_lines_a_logo_that_hides_a_third_of_its_shape() -> None:
+    canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
+    logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((1, 1, 10, 10), fill=(5, 5, 5, 255))
+    draw.rectangle((1, 5, 10, 10), fill=(200, 30, 50, 255))
+    logo.logo_rendering_outline = "auto"
+
+    assert paste_team_logo(canvas, logo, (4, 4)) is True
+    assert canvas.getpixel((9, 5))[:3] == (244, 247, 250)
+    assert canvas.getpixel((5, 12))[:3] == (200, 30, 50)
+
+
 def test_auto_inner_outline_lines_only_the_hidden_edges_of_an_unrecognizable_logo() -> None:
     canvas = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
     logo = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
