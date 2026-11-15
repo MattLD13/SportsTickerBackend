@@ -4114,7 +4114,7 @@
       "choice": "old",
       "old": {
         "method": "ticker_renderer",
-        "outline": "soft",
+        "outline": "off",
         "cutoff": 35
       },
       "new": {
